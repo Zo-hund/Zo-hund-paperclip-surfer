@@ -122,12 +122,13 @@ export function Analytics() {
   const analytics = analyticsQuery.data;
   const observations = observationsQuery.data ?? [];
   const agents = agentsQuery.data ?? [];
-  const agentTrends = analytics?.agentTrends ?? [];
+  const agentSummaries = analytics?.agentSummaries ?? [];
 
   // Collect experiments for all agents
   const agentIds = agents.map((a) => a.id);
 
-  function formatDuration(ms: number): string {
+  function formatDuration(seconds: number): string {
+    const ms = seconds * 1000;
     if (ms < 1000) return `${Math.round(ms)}ms`;
     if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
     return `${(ms / 60_000).toFixed(1)}m`;
@@ -177,42 +178,17 @@ export function Analytics() {
       {/* Agent Comparison */}
       <section>
         <h3 className="text-sm font-semibold mb-3">Agent Comparison</h3>
-        {agentTrends.length === 0 ? (
-          <EmptySection icon={BarChart3} message="No agent performance data available yet." />
-        ) : (
-          <div className="border border-border rounded-lg overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Agent</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                    Completion Rate
-                  </th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Avg Cost</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                    Avg Duration
-                  </th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">
-                    Total Runs
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {agentTrends.map((trend) => (
+                {agentSummaries.map((trend) => (
                   <tr key={trend.agentId} className="border-b border-border last:border-b-0">
                     <td className="px-3 py-2 font-medium">{trend.agentName}</td>
                     <td className="px-3 py-2">
                       {Math.round(trend.completionRate * 100)}%
                     </td>
                     <td className="px-3 py-2">{formatCents(Math.round(trend.avgCostCents))}</td>
-                    <td className="px-3 py-2">{formatDuration(trend.avgDurationMs)}</td>
+                    <td className="px-3 py-2">{formatDuration(trend.avgDurationSeconds)}</td>
                     <td className="px-3 py-2">{trend.totalRuns}</td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
 
       {/* Observations */}
@@ -241,7 +217,7 @@ export function Analytics() {
                         <h4 className="text-sm font-medium truncate">{obs.title}</h4>
                         <Badge
                           variant="secondary"
-                          className={cn("text-[10px] px-1.5 py-0", severityColors[obs.severity])}
+                          className={cn("text-[10px] px-1.5 py-0", severityColors[obs.severity ?? "info"])}
                         >
                           {obs.severity}
                         </Badge>
@@ -333,9 +309,9 @@ export function Analytics() {
             <Button
               onClick={() =>
                 createObsMutation.mutate({
-                  title: obsForm.title,
-                  content: obsForm.content,
-                  severity: obsForm.severity,
+                  observerType: "board_human",
+                  observation: obsForm.content,
+                  agentIds: [],
                 })
               }
               disabled={!obsForm.title.trim() || !obsForm.content.trim() || createObsMutation.isPending}

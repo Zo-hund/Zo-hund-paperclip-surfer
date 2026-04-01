@@ -140,16 +140,16 @@ export function AgentPerformanceTab({ agentId, companyId }: AgentPerformanceTabP
   const experiments = experimentsQuery.data ?? [];
 
   // Compute summary values from KPIs
-  const completionRates = kpis.filter((k) => k.completionRate != null).map((k) => k.completionRate!);
+  const completionStats = kpis.map((k) => (k.taskCompleted ? 1 : 0));
+  let totalCompletion = 0;
+  completionStats.forEach(v => totalCompletion += v);
   const avgCompletion =
-    completionRates.length > 0
-      ? completionRates.reduce((a, b) => a + b, 0) / completionRates.length
-      : null;
+    completionStats.length > 0 ? totalCompletion / completionStats.length : null;
 
   const costs = kpis.filter((k) => k.costCents != null).map((k) => k.costCents!);
   const avgCost = costs.length > 0 ? costs.reduce((a, b) => a + b, 0) / costs.length : null;
 
-  const durations = kpis.filter((k) => k.durationMs != null).map((k) => k.durationMs!);
+  const durations = kpis.filter((k) => k.durationSeconds != null).map((k) => k.durationSeconds! * 1000);
   const avgDuration =
     durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 
@@ -211,19 +211,19 @@ export function AgentPerformanceTab({ agentId, companyId }: AgentPerformanceTabP
                       {new Date(kpi.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-3 py-2">
-                      {kpi.completionRate != null
-                        ? `${Math.round(kpi.completionRate * 100)}%`
+                      {kpi.taskCompleted != null
+                        ? kpi.taskCompleted ? "100%" : "0%"
                         : "--"}
                     </td>
                     <td className="px-3 py-2">
                       {kpi.costCents != null ? formatCents(kpi.costCents) : "--"}
                     </td>
                     <td className="px-3 py-2">
-                      {kpi.durationMs != null ? formatDuration(kpi.durationMs) : "--"}
+                      {kpi.durationSeconds != null ? formatDuration(kpi.durationSeconds * 1000) : "--"}
                     </td>
                     <td className="px-3 py-2">
-                      {kpi.errorCount > 0 ? (
-                        <span className="text-destructive">{kpi.errorCount}</span>
+                      {kpi.errorsEncountered > 0 ? (
+                        <span className="text-destructive">{kpi.errorsEncountered}</span>
                       ) : (
                         "0"
                       )}
@@ -258,9 +258,9 @@ export function AgentPerformanceTab({ agentId, companyId }: AgentPerformanceTabP
                       <h4 className="text-sm font-medium truncate">{obs.title}</h4>
                       <Badge
                         variant="secondary"
-                        className={cn("text-[10px] px-1.5 py-0", severityColors[obs.severity])}
+                        className={cn("text-[10px] px-1.5 py-0", severityColors[obs.severity ?? "info"])}
                       >
-                        {obs.severity}
+                        {obs.severity ?? "info"}
                       </Badge>
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                         {obs.observerType}
@@ -395,10 +395,9 @@ export function AgentPerformanceTab({ agentId, companyId }: AgentPerformanceTabP
             <Button
               onClick={() =>
                 createObsMutation.mutate({
-                  agentId,
-                  title: obsForm.title,
-                  content: obsForm.content,
-                  severity: obsForm.severity,
+                  observerType: "board_human",
+                  observation: obsForm.content,
+                  agentIds: [agentId],
                 })
               }
               disabled={!obsForm.title.trim() || !obsForm.content.trim() || createObsMutation.isPending}
@@ -475,12 +474,12 @@ export function AgentPerformanceTab({ agentId, companyId }: AgentPerformanceTabP
             <Button
               onClick={() =>
                 createExpMutation.mutate({
-                  name: expForm.name,
-                  description: expForm.description || null,
-                  hypothesis: expForm.hypothesis || null,
+                  hypothesis: expForm.hypothesis,
+                  approachA: expForm.name, // Use name as approach A for now
+                  approachB: expForm.description, // Use description as approach B
                 })
               }
-              disabled={!expForm.name.trim() || createExpMutation.isPending}
+              disabled={!expForm.hypothesis.trim() || createExpMutation.isPending}
             >
               {createExpMutation.isPending ? "Creating..." : "Create"}
             </Button>
