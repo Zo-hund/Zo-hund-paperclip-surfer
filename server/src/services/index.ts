@@ -13,6 +13,7 @@ export { approvalService } from "./approvals.js";
 export { budgetService } from "./budgets.js";
 export { secretService } from "./secrets.js";
 export { routineService } from "./routines.js";
+export { recordingService } from "./recordings.js";
 export { costService } from "./costs.js";
 export { financeService } from "./finance.js";
 export { heartbeatService } from "./heartbeat.js";
@@ -39,3 +40,7 @@ export {
   postRunEvalService,
   kpiAnalyticsService,
 } from "./agent-runtime/index.js";
+export { amxChainService } from "./amxChainService.js";
+export { rqPortalService } from "./rqPortalService.js";
+export { governanceService } from "./governanceService.js";
+export { lmsService } from "./lmsService.js";

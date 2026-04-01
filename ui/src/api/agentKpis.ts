@@ -36,6 +36,11 @@ export interface KpiObservation {
   actionTaken: boolean;
   actionNotes: string | null;
   createdAt: string;
+  // UI-specific fields mapping or older versions
+  title?: string;
+  content?: string;
+  severity?: "info" | "warning" | "critical";
+  agentId?: string; // Singular used in filters
 }
 
 export interface AgentExperiment {
@@ -46,7 +51,7 @@ export interface AgentExperiment {
   approachA: string;
   approachB: string;
   taskType: string | null;
-  status: "running" | "concluded";
+  status: "running" | "concluded" | "draft" | "paused" | "completed" | "cancelled";
   winningApproach: string | null;
   runsA: number;
   runsB: number;
@@ -55,6 +60,10 @@ export interface AgentExperiment {
   changeNotes: string | null;
   createdAt: string;
   concludedAt: string | null;
+  // UI-specific fields
+  name?: string;
+  description?: string;
+  result?: string;
 }
 
 export interface CompanyAnalytics {

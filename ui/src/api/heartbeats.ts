@@ -50,6 +50,8 @@ export const heartbeatsApi = {
       `/workspace-operations/${operationId}/log?offset=${encodeURIComponent(String(offset))}&limitBytes=${encodeURIComponent(String(limitBytes))}`,
     ),
   cancel: (runId: string) => api.post<void>(`/heartbeat-runs/${runId}/cancel`, {}),
+  updateConfig: (runId: string, adapterType?: string, adapterConfig?: Record<string, unknown>) => 
+    api.patch<HeartbeatRun>(`/heartbeat-runs/${runId}/config`, { adapterType, adapterConfig }),
   liveRunsForIssue: (issueId: string) =>
     api.get<LiveRunForIssue[]>(`/issues/${issueId}/live-runs`),
   activeRunForIssue: (issueId: string) =>

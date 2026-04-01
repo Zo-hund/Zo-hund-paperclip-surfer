@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, costEvents, financeEvents, goals, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { agents, costEvents, financeEvents, goals, heartbeatRuns, issues, projects, amxLedger, amxTransactions } from "@paperclipai/db";
+import { amxChainService } from "./amxChainService.js";
 import { notFound, unprocessable } from "../errors.js";
 
 export interface FinanceDateRange {
@@ -129,6 +130,112 @@ export function financeService(db: Db) {
         .where(and(...conditions))
         .orderBy(desc(financeEvents.occurredAt), desc(financeEvents.createdAt))
         .limit(limit);
+    },
+
+    getLedger: async (companyId: string, principalType: string, principalId: string) => {
+      return db
+        .select()
+        .from(amxLedger)
+        .where(and(
+          eq(amxLedger.companyId, companyId),
+          eq(amxLedger.principalType, principalType),
+          eq(amxLedger.principalId, principalId)
+        ))
+        .then(rows => rows[0] ?? null);
+    },
+
+    ensureLedger: async (companyId: string, principalType: string, principalId: string) => {
+      const existing = await db
+        .select()
+        .from(amxLedger)
+        .where(and(
+          eq(amxLedger.companyId, companyId),
+          eq(amxLedger.principalType, principalType),
+          eq(amxLedger.principalId, principalId)
+        ))
+        .then(rows => rows[0] ?? null);
+      
+      if (existing) return existing;
+
+      return db.insert(amxLedger).values({
+        companyId,
+        principalType,
+        principalId,
+        tokenBalance: 0,
+        creditBalance: 0,
+      }).returning().then(rows => rows[0]);
+    },
+
+    transferTokens: async (
+      from: { companyId: string, type: string, id: string },
+      to: { companyId: string, type: string, id: string },
+      amount: number,
+      transactionType: string,
+      metadata?: Record<string, unknown>
+    ) => {
+      return db.transaction(async (tx) => {
+        const fromLedger = await tx.select().from(amxLedger).where(and(
+          eq(amxLedger.companyId, from.companyId),
+          eq(amxLedger.principalType, from.type),
+          eq(amxLedger.principalId, from.id)
+        )).then(rows => rows[0]);
+
+        if (!fromLedger || fromLedger.tokenBalance < amount) {
+          throw unprocessable("Insufficient AMX Token balance");
+        }
+
+        // Deduct from sender
+        await tx.update(amxLedger)
+          .set({ tokenBalance: fromLedger.tokenBalance - amount, updatedAt: new Date() })
+          .where(eq(amxLedger.id, fromLedger.id));
+
+        // Ensure recipient ledger exists
+        let toLedger = await tx.select().from(amxLedger).where(and(
+          eq(amxLedger.companyId, to.companyId),
+          eq(amxLedger.principalType, to.type),
+          eq(amxLedger.principalId, to.id)
+        )).then(rows => rows[0]);
+
+        if (!toLedger) {
+          toLedger = await tx.insert(amxLedger).values({
+            companyId: to.companyId,
+            principalType: to.type,
+            principalId: to.id,
+            tokenBalance: 0,
+            creditBalance: 0,
+          }).returning().then(rows => rows[0]);
+        }
+
+        // Add to recipient
+        await tx.update(amxLedger)
+          .set({ tokenBalance: toLedger.tokenBalance + amount, updatedAt: new Date() })
+          .where(eq(amxLedger.id, toLedger.id));
+
+        // Log transaction
+        const transaction = await tx.insert(amxTransactions).values({
+          fromCompanyId: from.companyId,
+          toCompanyId: to.companyId,
+          fromPrincipalType: from.type,
+          fromPrincipalId: from.id,
+          toPrincipalType: to.type,
+          toPrincipalId: to.id,
+          amount,
+          currency: "AMX",
+          transactionType,
+          status: "completed",
+          metadata,
+        }).returning().then(rows => rows[0]);
+
+        // Chain Audit Record
+        const chain = amxChainService(db);
+        await chain.recordSecurityEvent(from.companyId, from.type, from.id, "LEDGER_TRANSFER", {
+          to: to.id,
+          amount,
+          transactionId: transaction.id
+        });
+
+        return transaction;
+      });
     },
   };
 }

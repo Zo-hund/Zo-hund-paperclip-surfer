@@ -1,0 +1,121 @@
+.voice-room-container {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: radial-gradient(circle at center, #0a0a0f 0%, #050508 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 40px;
+  overflow: hidden;
+  color: white;
+}
+
+.glass-morphism-heavy {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.hud-top {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  opacity: 0.8;
+  margin-top: 20px;
+}
+
+.central-hub {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.visualizer-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.hub-center-branding {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.brand-logo-small {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: 0.2rem;
+  color: white;
+  text-shadow: 0 0 20px rgba(0, 243, 255, 0.6);
+  line-height: 1;
+}
+
+.brand-status {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4rem;
+  color: #00f3ff;
+  opacity: 0.8;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.transcripts-feed {
+  width: 100%;
+  max-width: 800px;
+  height: 200px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 20px;
+  border: 1px solid rgba(0, 243, 255, 0.1);
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.control-bar-hub {
+  width: auto;
+  min-width: 300px;
+  margin-bottom: 40px;
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  padding-left: 30px;
+  padding-right: 30px;
+}
+
+/* Animations */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+
+.transcript-item {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrollbar styling */
+.transcripts-feed::-webkit-scrollbar {
+  width: 4px;
+}
+
+.transcripts-feed::-webkit-scrollbar-thumb {
+  background: rgba(0, 243, 255, 0.2);
+  border-radius: 10px;
+}

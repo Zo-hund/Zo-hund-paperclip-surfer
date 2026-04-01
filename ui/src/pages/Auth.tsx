@@ -73,19 +73,26 @@ export function AuthPage() {
       {/* Left half — form */}
       <div className="w-full md:w-1/2 flex flex-col overflow-y-auto">
         <div className="w-full max-w-md mx-auto my-auto px-8 py-12">
-          <div className="flex items-center gap-2 mb-8">
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Paperclip</span>
-          </div>
-
-          <h1 className="text-xl font-semibold">
-            {mode === "sign_in" ? "Sign in to Paperclip" : "Create your Paperclip account"}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {mode === "sign_in"
-              ? "Use your email and password to access this instance."
-              : "Create an account for this instance. Email confirmation is not required in v1."}
-          </p>
+          <div className="flex items-center gap-2 mb-8 scale-110 origin-left">
+             <div className="w-1.5 h-3.5 bg-primary rounded-[2px] shadow-[0_0_10px_var(--primary)]" />
+             <div className="flex flex-col -gap-1">
+               <span className="text-[11px] font-black tracking-widest uppercase text-foreground/90 leading-none">
+                 AMX LABS
+               </span>
+               <span className="text-[7px] font-bold tracking-[0.2em] uppercase text-muted-foreground/60 leading-none mt-0.5">
+                 Powered by AMX-AIR-HUBS
+               </span>
+             </div>
+           </div>
+ 
+           <h1 className="text-xl font-semibold">
+             {mode === "sign_in" ? "Sign in to AMX LABS" : "Create your AMX LABS account"}
+           </h1>
+           <p className="mt-1 text-sm text-muted-foreground">
+             {mode === "sign_in"
+               ? "Use your account to access the AMX professional suite."
+               : "Initialize your AMX professional profile to continue."}
+           </p>
 
           <form
             className="mt-6 space-y-4"

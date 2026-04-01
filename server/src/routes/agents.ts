@@ -2161,6 +2161,37 @@ export function agentRoutes(db: Db) {
     res.json(run);
   });
 
+  router.patch("/heartbeat-runs/:runId/config", async (req, res) => {
+    assertBoard(req);
+    const runId = req.params.runId as string;
+    const adapterType = typeof req.body.adapterType === "string" ? req.body.adapterType : undefined;
+    const adapterConfig = (typeof req.body.adapterConfig === "object" && req.body.adapterConfig !== null) ? req.body.adapterConfig : undefined;
+    
+    try {
+      const run = await heartbeat.updateConfig(runId, adapterType, adapterConfig);
+      
+      await logActivity(db, {
+        companyId: run.companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "heartbeat.config_updated",
+        entityType: "heartbeat_run",
+        entityId: run.id,
+        details: { agentId: run.agentId, adapterType, adapterConfig },
+      });
+      
+      res.json(run);
+    } catch (err: unknown) {
+      if ((err as { cause?: { name?: string } })?.cause?.name === "NotFoundError" || (err as { name?: string })?.name === "NotFoundError") {
+        res.status(404).json({ error: (err as Error).message });
+      } else if ((err as { cause?: { name?: string } })?.cause?.name === "ConflictError" || (err as { name?: string })?.name === "ConflictError") {
+        res.status(409).json({ error: (err as Error).message });
+      } else {
+        throw err;
+      }
+    }
+  });
+
   router.get("/heartbeat-runs/:runId/events", async (req, res) => {
     const runId = req.params.runId as string;
     const run = await heartbeat.getRun(runId);

@@ -1033,7 +1033,7 @@ const ADAPTER_DISPLAY_LIST: { value: string; label: string; comingSoon: boolean 
   })),
 ];
 
-function AdapterTypeDropdown({
+export function AdapterTypeDropdown({
   value,
   onChange,
 }: {
@@ -1330,7 +1330,7 @@ function EnvVarEditor({
   );
 }
 
-function ModelDropdown({
+export function ModelDropdown({
   models,
   value,
   onChange,

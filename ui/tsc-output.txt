@@ -1,0 +1,39 @@
+src/components/AgentPerformanceTab.tsx(138,15): error TS2551: Property 'agentId' does not exist on type 'KpiObservation'. Did you mean 'agentIds'?
+src/components/AgentPerformanceTab.tsx(138,28): error TS2551: Property 'agentId' does not exist on type 'KpiObservation'. Did you mean 'agentIds'?
+src/components/AgentPerformanceTab.tsx(143,48): error TS2339: Property 'completionRate' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(143,85): error TS2339: Property 'completionRate' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(152,42): error TS2339: Property 'durationMs' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(152,75): error TS2339: Property 'durationMs' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(214,28): error TS2339: Property 'completionRate' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(215,45): error TS2339: Property 'completionRate' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(222,28): error TS2339: Property 'durationMs' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(222,68): error TS2339: Property 'durationMs' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(225,28): error TS2339: Property 'errorCount' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(226,65): error TS2339: Property 'errorCount' does not exist on type 'AgentKpi'.
+src/components/AgentPerformanceTab.tsx(258,73): error TS2339: Property 'title' does not exist on type 'KpiObservation'.
+src/components/AgentPerformanceTab.tsx(261,85): error TS2339: Property 'severity' does not exist on type 'KpiObservation'.
+src/components/AgentPerformanceTab.tsx(263,30): error TS2339: Property 'severity' does not exist on type 'KpiObservation'.
+src/components/AgentPerformanceTab.tsx(269,84): error TS2339: Property 'content' does not exist on type 'KpiObservation'.
+src/components/AgentPerformanceTab.tsx(305,73): error TS2339: Property 'name' does not exist on type 'AgentExperiment'.
+src/components/AgentPerformanceTab.tsx(316,26): error TS2339: Property 'description' does not exist on type 'AgentExperiment'.
+src/components/AgentPerformanceTab.tsx(318,30): error TS2339: Property 'description' does not exist on type 'AgentExperiment'.
+src/components/AgentPerformanceTab.tsx(326,26): error TS2339: Property 'result' does not exist on type 'AgentExperiment'.
+src/components/AgentPerformanceTab.tsx(328,38): error TS2339: Property 'result' does not exist on type 'AgentExperiment'.
+src/components/AgentPerformanceTab.tsx(398,19): error TS2561: Object literal may only specify known properties, but 'agentId' does not exist in type 'ObservationCreateRequest'. Did you mean to write 'agentIds'?
+src/components/AgentPerformanceTab.tsx(480,19): error TS2322: Type 'string | null' is not assignable to type 'string'.
+  Type 'null' is not assignable to type 'string'.
+src/pages/AgentDetail.tsx(29,10): error TS2440: Import declaration conflicts with local declaration of 'AgentSkillsTab'.
+src/pages/Analytics.tsx(125,34): error TS2339: Property 'agentTrends' does not exist on type 'CompanyAnalytics'.
+src/pages/Analytics.tsx(201,35): error TS7006: Parameter 'trend' implicitly has an 'any' type.
+src/pages/Analytics.tsx(233,37): error TS2551: Property 'agentId' does not exist on type 'KpiObservation'. Did you mean 'agentIds'?
+src/pages/Analytics.tsx(234,51): error TS2551: Property 'agentId' does not exist on type 'KpiObservation'. Did you mean 'agentIds'?
+src/pages/Analytics.tsx(241,75): error TS2339: Property 'title' does not exist on type 'KpiObservation'.
+src/pages/Analytics.tsx(244,87): error TS2339: Property 'severity' does not exist on type 'KpiObservation'.
+src/pages/Analytics.tsx(246,32): error TS2339: Property 'severity' does not exist on type 'KpiObservation'.
+src/pages/Analytics.tsx(253,86): error TS2339: Property 'content' does not exist on type 'KpiObservation'.
+src/pages/Analytics.tsx(336,19): error TS2353: Object literal may only specify known properties, and 'title' does not exist in type 'ObservationCreateRequest'.
+src/pages/Analytics.tsx(400,65): error TS2339: Property 'name' does not exist on type 'AgentExperiment'.
+src/pages/Analytics.tsx(411,18): error TS2339: Property 'description' does not exist on type 'AgentExperiment'.
+src/pages/Analytics.tsx(413,22): error TS2339: Property 'description' does not exist on type 'AgentExperiment'.
+src/pages/Analytics.tsx(416,18): error TS2339: Property 'result' does not exist on type 'AgentExperiment'.
+src/pages/Analytics.tsx(418,30): error TS2339: Property 'result' does not exist on type 'AgentExperiment'.

@@ -580,3 +580,4 @@ export {
   type SecretsLocalEncryptedConfig,
   type ConfigMeta,
 } from "./config-schema.js";
+export { BRAND, APP_TITLE } from "./branding.js";

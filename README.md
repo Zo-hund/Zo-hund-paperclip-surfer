@@ -41,6 +41,14 @@ Agents accumulate knowledge that persists across sessions:
 - **Experiments** — opt-in A/B testing of approaches per agent
 - **Analytics page** — company-wide performance trends across all agents
 
+### AMX LABS Ecosystem Expansion (V3)
+Industrial-grade integration for the AMX ecosystem, moving beyond orchestration into production and verified auditing:
+- **XP Exchange** — Dynamic earner marketplace with real-time XP tracking and human-agent payout settlement.
+- **AMX Chain Explorer** — Proof of Work auditing on an immutable ledger. Verifiable security events and cryptographic certificates for all agent deliverables.
+- **RQ Portal** — Advanced "Requirement" submission system for Industrial AI context seeding and deployment mode selection (Online, Physical, Metaverse).
+- **LMS Dashboard (Tech at Nite)** — Integrated learning management system for up-skilling through workshops and simulations (e.g., Louisville FoodPort).
+- **Industrialized Backend** — Fully persistent Express API routes integrated with AMX service layers, replacing mock data with real-time production telemetry.
+
 ---
 
 ## Quickstart

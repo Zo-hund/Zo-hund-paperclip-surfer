@@ -10,9 +10,15 @@ import {
   Network,
   Boxes,
   Repeat,
+  Mic,
   Settings,
   Plug,
   BarChart3,
+  Zap,
+  Factory,
+  GraduationCap,
+  ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -50,25 +56,39 @@ export function Sidebar() {
 
   return (
     <aside className="w-60 h-full min-h-0 border-r border-border bg-background flex flex-col">
-      {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
-      <div className="flex items-center gap-1 px-3 h-12 shrink-0">
-        {selectedCompany?.brandColor && (
-          <div
-            className="w-4 h-4 rounded-sm shrink-0 ml-1"
-            style={{ backgroundColor: selectedCompany.brandColor }}
-          />
-        )}
-        <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
-          {selectedCompany?.name ?? "Select company"}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground shrink-0"
-          onClick={openSearch}
-        >
-          <Search className="h-4 w-4" />
-        </Button>
+      <div className="flex flex-col shrink-0 border-b border-border/40">
+        <div className="flex items-center px-4 h-11 bg-accent/5">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-3.5 bg-primary rounded-[2px] shadow-[0_0_10px_var(--primary)]" />
+            <div className="flex flex-col -gap-1">
+              <span className="text-[11px] font-black tracking-widest uppercase text-foreground/90 leading-none">
+                AMX LABS
+              </span>
+              <span className="text-[7px] font-bold tracking-[0.2em] uppercase text-muted-foreground/60 leading-none mt-0.5">
+                Powered by AMX-AIR-HUBS
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 px-3 h-10">
+          {selectedCompany?.brandColor && (
+            <div
+              className="w-3.5 h-3.5 rounded-sm shrink-0 ml-1"
+              style={{ backgroundColor: selectedCompany.brandColor }}
+            />
+          )}
+          <span className="flex-1 text-[13px] font-semibold text-foreground/80 truncate pl-1">
+            {selectedCompany?.name ?? "Select project"}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-muted-foreground/50 shrink-0 hover:text-foreground"
+            onClick={openSearch}
+          >
+            <Search className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col gap-4 px-3 py-2">
@@ -82,6 +102,7 @@ export function Sidebar() {
             <span className="truncate">New Issue</span>
           </button>
           <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+          <SidebarNavItem to="/meetings" label="Meetings" icon={Mic} textBadge="New" textBadgeTone="amber" />
           <SidebarNavItem
             to="/inbox"
             label="Inbox"
@@ -117,6 +138,14 @@ export function Sidebar() {
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+        </SidebarSection>
+
+        <SidebarSection label="AMX XP HUB">
+          <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" />
+          <SidebarNavItem to="/rq/portal" label="RQ Portal" icon={Factory} />
+          <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
+          <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
+          <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
         </SidebarSection>
 
         <PluginSlotOutlet

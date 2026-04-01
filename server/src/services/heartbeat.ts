@@ -1967,8 +1967,10 @@ export function heartbeatService(db: Db) {
 
     const runtime = await ensureRuntimeState(agent);
     const context = parseObject(run.contextSnapshot);
+    const adapterOverride = parseObject(context.adapterOverride);
+    const activeAdapterType = typeof adapterOverride.adapterType === "string" ? adapterOverride.adapterType : agent.adapterType;
     const taskKey = deriveTaskKey(context, null);
-    const sessionCodec = getAdapterSessionCodec(agent.adapterType);
+    const sessionCodec = getAdapterSessionCodec(activeAdapterType);
     const issueId = readNonEmptyString(context.issueId);
     const issueContext = issueId
       ? await db
@@ -2012,7 +2014,7 @@ export function heartbeatService(db: Db) {
             ))
       : null;
     const taskSession = taskKey
-      ? await getTaskSession(agent.companyId, agent.id, agent.adapterType, taskKey)
+      ? await getTaskSession(agent.companyId, agent.id, activeAdapterType, taskKey)
       : null;
     // V2: Per-project session — use project session as primary if available
     // V2: Per-project session — normalize to same shape as taskSession
@@ -2021,7 +2023,7 @@ export function heartbeatService(db: Db) {
       try {
         const { sessionResolverService } = await import("./agent-runtime/session-resolver.js");
         const sessionResolver = sessionResolverService(db);
-        const rawSession = await sessionResolver.resolveSession(agent.id, agent.adapterType, executionProjectId);
+        const rawSession = await sessionResolver.resolveSession(agent.id, activeAdapterType, executionProjectId);
         if (rawSession) {
           v2ProjectSession = {
             // agent_project_sessions uses "sessionParams" column; normalize for heartbeat
@@ -2048,7 +2050,10 @@ export function heartbeatService(db: Db) {
       explicitResumeSessionParams ??
       (explicitResumeSessionDisplayId ? { sessionId: explicitResumeSessionDisplayId } : null) ??
       normalizeSessionParams(sessionCodec.deserialize(taskSessionForRun?.sessionParamsJson ?? null));
-    const config = parseObject(agent.adapterConfig);
+    const baseConfig = parseObject(agent.adapterConfig);
+    const config = adapterOverride.adapterConfig 
+      ? { ...baseConfig, ...parseObject(adapterOverride.adapterConfig) } 
+      : baseConfig;
     const executionWorkspaceMode = resolveExecutionWorkspaceMode({
       projectPolicy: projectExecutionWorkspacePolicy,
       issueSettings: issueExecutionWorkspaceSettings,
@@ -2516,9 +2521,9 @@ export function heartbeatService(db: Db) {
         });
       };
 
-      const adapter = getServerAdapter(agent.adapterType);
+      const adapter = getServerAdapter(activeAdapterType);
       const authToken = adapter.supportsLocalAgentJwt
-        ? createLocalAgentJwt(agent.id, agent.companyId, agent.adapterType, run.id)
+        ? createLocalAgentJwt(agent.id, agent.companyId, activeAdapterType, run.id)
         : null;
       if (adapter.supportsLocalAgentJwt && !authToken) {
         logger.warn(
@@ -2526,7 +2531,7 @@ export function heartbeatService(db: Db) {
             companyId: agent.companyId,
             agentId: agent.id,
             runId: run.id,
-            adapterType: agent.adapterType,
+            adapterType: activeAdapterType,
           },
           "local agent jwt secret missing or invalid; running without injected PAPERCLIP_API_KEY",
         );
@@ -2676,7 +2681,7 @@ Keep memories concise and specific. Don't write vague platitudes.`;
       const adapterManagedRuntimeServices = adapterResult.runtimeServices
         ? await persistAdapterManagedRuntimeServices({
             db,
-            adapterType: agent.adapterType,
+            adapterType: activeAdapterType,
             runId: run.id,
             agent: {
               id: agent.id,
@@ -2846,13 +2851,13 @@ Keep memories concise and specific. Don't write vague platitudes.`;
           if (adapterResult.clearSession || (!nextSessionState.params && !nextSessionState.displayId)) {
             await clearTaskSessions(agent.companyId, agent.id, {
               taskKey,
-              adapterType: agent.adapterType,
+              adapterType: activeAdapterType,
             });
           } else {
             await upsertTaskSession({
               companyId: agent.companyId,
               agentId: agent.id,
-              adapterType: agent.adapterType,
+              adapterType: activeAdapterType,
               taskKey,
               sessionParamsJson: nextSessionState.params,
               sessionDisplayId: nextSessionState.displayId,
@@ -2866,7 +2871,7 @@ Keep memories concise and specific. Don't write vague platitudes.`;
           try {
             const { sessionResolverService } = await import("./agent-runtime/session-resolver.js");
             const sessionResolver = sessionResolverService(db);
-            await sessionResolver.updateSession(agent.id, agent.adapterType, executionProjectId, {
+            await sessionResolver.updateSession(agent.id, activeAdapterType, executionProjectId, {
               sessionParamsJson: nextSessionState.params,
               sessionDisplayId: nextSessionState.displayId,
               lastRunId: finalizedRun.id,
@@ -4177,6 +4182,46 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
     },
 
     cancelRun: (runId: string) => cancelRunInternal(runId),
+
+    updateConfig: async (runId: string, adapterType?: string, adapterConfig?: Record<string, unknown>) => {
+      const run = await getRun(runId);
+      if (!run) throw notFound("Heartbeat run not found");
+      if (run.status !== "running" && run.status !== "queued") {
+        throw conflict("Run is not active or queued");
+      }
+      const context = parseObject(run.contextSnapshot) ?? {};
+      const adapterOverride = parseObject(context.adapterOverride) ?? {};
+
+      if (typeof adapterType === "string") {
+        adapterOverride.adapterType = adapterType;
+      }
+      if (adapterConfig && typeof adapterConfig === "object") {
+        adapterOverride.adapterConfig = {
+          ...parseObject(adapterOverride.adapterConfig),
+          ...adapterConfig,
+        };
+      }
+
+      context.adapterOverride = adapterOverride;
+
+      const [updatedRun] = await db
+        .update(heartbeatRuns)
+        .set({ contextSnapshot: context, updatedAt: new Date() })
+        .where(eq(heartbeatRuns.id, runId))
+        .returning();
+
+      if (!updatedRun) throw notFound("Failed to update run");
+
+      await appendRunEvent(updatedRun, 1, {
+        eventType: "lifecycle",
+        stream: "system",
+        level: "info",
+        message: "adapter configuration overridden mid-run",
+        payload: { adapterType, adapterConfig },
+      });
+
+      return updatedRun;
+    },
 
     cancelActiveForAgent: (agentId: string) => cancelActiveForAgentInternal(agentId),
 
