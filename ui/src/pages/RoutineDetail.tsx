@@ -129,15 +129,55 @@ function TriggerEditor({
     signingMode: trigger.signingMode ?? "bearer",
     replayWindowSec: String(trigger.replayWindowSec ?? 300),
   });
+  const [isRestored, setIsRestored] = useState(false);
+  const storageKey = `amx_trigger_draft_${trigger.id}`;
+
+  const isDirty = useMemo(() => {
+    return (
+      draft.label !== (trigger.label ?? "") ||
+      draft.cronExpression !== (trigger.cronExpression ?? "") ||
+      draft.signingMode !== (trigger.signingMode ?? "bearer") ||
+      draft.replayWindowSec !== String(trigger.replayWindowSec ?? 300)
+    );
+  }, [draft, trigger]);
 
   useEffect(() => {
-    setDraft({
-      label: trigger.label ?? "",
-      cronExpression: trigger.cronExpression ?? "",
-      signingMode: trigger.signingMode ?? "bearer",
-      replayWindowSec: String(trigger.replayWindowSec ?? 300),
-    });
-  }, [trigger]);
+    if (!isRestored) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          setDraft(JSON.parse(saved));
+        } catch {
+          // Ignore
+        }
+      }
+      setIsRestored(true);
+    }
+  }, [storageKey, isRestored]);
+
+  useEffect(() => {
+    if (isDirty) {
+      localStorage.setItem(storageKey, JSON.stringify(draft));
+    } else if (isRestored) {
+      localStorage.removeItem(storageKey);
+    }
+  }, [draft, storageKey, isDirty, isRestored]);
+
+  useEffect(() => {
+    if (!isDirty) {
+      setDraft({
+        label: trigger.label ?? "",
+        cronExpression: trigger.cronExpression ?? "",
+        signingMode: trigger.signingMode ?? "bearer",
+        replayWindowSec: String(trigger.replayWindowSec ?? 300),
+      });
+    }
+  }, [trigger, isDirty]);
+
+  const handleSave = () => {
+    onSave(trigger.id, buildRoutineTriggerPatch(trigger, draft, getLocalTimezone()));
+    localStorage.removeItem(storageKey);
+  };
 
   return (
     <div className="rounded-lg border border-border p-4 space-y-4">
@@ -210,10 +250,17 @@ function TriggerEditor({
               Rotate secret
             </Button>
           )}
+          {isRestored && isDirty && (
+            <Badge variant="outline" className="h-6 gap-1 border-amber-500/30 text-amber-600 bg-amber-500/5 px-2">
+              <RefreshCw className="h-3 w-3" />
+              Restored
+            </Badge>
+          )}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onSave(trigger.id, buildRoutineTriggerPatch(trigger, draft, getLocalTimezone()))}
+            onClick={handleSave}
+            disabled={!isDirty}
           >
             <Save className="mr-1.5 h-3.5 w-3.5" />
             Save
@@ -262,6 +309,7 @@ export function RoutineDetail() {
     concurrencyPolicy: "coalesce_if_active",
     catchUpPolicy: "skip_missed",
   });
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
   const activeTab = useMemo(() => getRoutineTabFromSearch(location.search), [location.search]);
 
   const { data: routine, isLoading, error } = useQuery({
@@ -339,16 +387,44 @@ export function RoutineDetail() {
   }, [editDraft, routineDefaults]);
 
   useEffect(() => {
-    if (!routine) return;
+    if (!routine || !routineId) return;
     setBreadcrumbs([{ label: "Routines", href: "/routines" }, { label: routine.title }]);
     if (!routineDefaults) return;
 
+    const storageKey = `amx_routine_draft_${routineId}`;
     const changedRoutine = hydratedRoutineIdRef.current !== routine.id;
-    if (changedRoutine || !isEditDirty) {
-      setEditDraft(routineDefaults);
+
+    if (changedRoutine) {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          setEditDraft(JSON.parse(saved));
+          setHasRestoredDraft(true);
+        } catch {
+          setEditDraft(routineDefaults);
+        }
+      } else {
+        setEditDraft(routineDefaults);
+      }
       hydratedRoutineIdRef.current = routine.id;
+    } else if (!isEditDirty && !hasRestoredDraft) {
+      setEditDraft(routineDefaults);
     }
-  }, [routine, routineDefaults, isEditDirty, setBreadcrumbs]);
+  }, [routine, routineId, routineDefaults, isEditDirty, hasRestoredDraft, setBreadcrumbs]);
+
+  useEffect(() => {
+    if (!routineId || !isEditDirty) return;
+    const storageKey = `amx_routine_draft_${routineId}`;
+    localStorage.setItem(storageKey, JSON.stringify(editDraft));
+  }, [editDraft, routineId, isEditDirty]);
+
+  const discardChanges = () => {
+    if (!routineId || !routineDefaults) return;
+    localStorage.removeItem(`amx_routine_draft_${routineId}`);
+    setEditDraft(routineDefaults);
+    setHasRestoredDraft(false);
+    pushToast({ title: "Changes discarded", tone: "success" });
+  };
 
   useEffect(() => {
     autoResizeTextarea(titleInputRef.current);
@@ -393,6 +469,10 @@ export function RoutineDetail() {
       });
     },
     onSuccess: async () => {
+      if (routineId) {
+        localStorage.removeItem(`amx_routine_draft_${routineId}`);
+        setHasRestoredDraft(false);
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.detail(routineId!) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) }),
@@ -587,7 +667,7 @@ export function RoutineDetail() {
     return <EmptyState icon={Repeat} message="Select a company to view routines." />;
   }
 
-  if (isLoading) {
+  if (isLoading && !routine) {
     return <PageSkeleton variant="issues-list" />;
   }
 
@@ -846,11 +926,16 @@ export function RoutineDetail() {
 
       {/* Save bar */}
       <div className="flex items-center justify-between">
-        {isEditDirty ? (
-          <span className="text-xs text-amber-600">Unsaved changes</span>
-        ) : (
-          <span />
-        )}
+        <div className="flex items-center gap-2">
+          {isEditDirty && (
+            <>
+              <span className="text-xs text-amber-600 font-medium">Unsaved changes</span>
+              <Button variant="ghost" size="sm" onClick={discardChanges} className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
+                Discard
+              </Button>
+            </>
+          )}
+        </div>
         <Button
           onClick={() => saveRoutine.mutate()}
           disabled={saveRoutine.isPending || !editDraft.title.trim() || !editDraft.projectId || !editDraft.assigneeAgentId}

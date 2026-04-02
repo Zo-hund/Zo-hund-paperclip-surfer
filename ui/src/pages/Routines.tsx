@@ -85,6 +85,31 @@ export function Routines() {
     concurrencyPolicy: "coalesce_if_active",
     catchUpPolicy: "skip_missed",
   });
+  const [isRestored, setIsRestored] = useState(false);
+
+  useEffect(() => {
+    if (!isRestored) {
+      const saved = localStorage.getItem("amx_new_routine_draft");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setDraft((current) => ({ ...current, ...parsed }));
+        } catch {
+          // Ignore
+        }
+      }
+      setIsRestored(true);
+    }
+  }, [isRestored]);
+
+  useEffect(() => {
+    const isDirty = draft.title.trim() !== "" || draft.description.trim() !== "" || draft.projectId !== "" || draft.assigneeAgentId !== "";
+    if (isDirty) {
+      localStorage.setItem("amx_new_routine_draft", JSON.stringify(draft));
+    } else {
+      localStorage.removeItem("amx_new_routine_draft");
+    }
+  }, [draft]);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Routines" }]);
@@ -126,6 +151,7 @@ export function Routines() {
         concurrencyPolicy: "coalesce_if_active",
         catchUpPolicy: "skip_missed",
       });
+      localStorage.removeItem("amx_new_routine_draft");
       setComposerOpen(false);
       setAdvancedOpen(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) });
