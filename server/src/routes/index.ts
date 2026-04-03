@@ -21,4 +21,5 @@ export { agentKpiRoutes } from "./agent-kpis.js";
 export { agentExperimentRoutes } from "./agent-experiments.js";
 export { amxRoutes } from "./amx.js";
 export { lmsRoutes } from "./lms.js";
+export { auditRoutes } from "./audit.js";
 export { skillChangeRoutes } from "./skill-changes.js";

@@ -337,6 +337,20 @@
       "when": 1775000164692,
       "tag": "0047_light_hedge_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1775160629587,
+      "tag": "0048_aberrant_jigsaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1775226927430,
+      "tag": "0049_fluffy_nextwave",
+      "breakpoints": true
     }
   ]
 }

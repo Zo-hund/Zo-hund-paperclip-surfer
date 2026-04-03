@@ -41,6 +41,8 @@ export {
   kpiAnalyticsService,
 } from "./agent-runtime/index.js";
 export { amxChainService } from "./amxChainService.js";
+export { auditService } from "./auditService.js";
 export { rqPortalService } from "./rqPortalService.js";
 export { governanceService } from "./governanceService.js";
 export { lmsService } from "./lmsService.js";
+export { meetingAgentService } from "./meetingAgentService.js";

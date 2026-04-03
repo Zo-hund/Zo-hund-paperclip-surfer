@@ -19,6 +19,9 @@ import {
   GraduationCap,
   ShieldCheck,
   Wallet,
+  Store,
+  Briefcase,
+  ClipboardCheck,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -141,11 +144,14 @@ export function Sidebar() {
         </SidebarSection>
 
         <SidebarSection label="AMX XP HUB">
+          <SidebarNavItem to="/marketplace" label="Marketplace" icon={Store} textBadge="Hire" />
           <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" />
           <SidebarNavItem to="/rq/portal" label="RQ Portal" icon={Factory} />
           <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
+          <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />
           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
+          <SidebarNavItem to="/board/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
         </SidebarSection>
 
         <PluginSlotOutlet

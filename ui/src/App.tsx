@@ -50,6 +50,10 @@ import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
 import { NotFoundPage } from "./pages/NotFound";
+import { AgentMarketplace } from "./pages/AgentMarketplace";
+import { AgentResumeProfile } from "./pages/AgentResumeProfile";
+import { BoardDeliverables } from "./pages/BoardDeliverables";
+import { AuditTeam } from "./pages/AuditTeam";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { useDialog } from "./context/DialogContext";
@@ -189,6 +193,9 @@ function boardRoutes() {
       <Route path="rq/portal" element={<RqPortal />} />
       <Route path="lms/dashboard" element={<LmsDashboard />} />
       <Route path="amx/chain" element={<AmxChain />} />
+      <Route path="audit/team" element={<AuditTeam />} />
+      <Route path="marketplace" element={<AgentMarketplace />} />
+      <Route path="marketplace/agent/:marketplaceAgentId" element={<AgentResumeProfile />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
     </>
@@ -336,6 +343,7 @@ export function App() {
             <Route path="plugins" element={<PluginManager />} />
             <Route path="plugins/:pluginId" element={<PluginSettings />} />
           </Route>
+          <Route path="dashboard" element={<UnprefixedBoardRedirect />} />
           <Route path="companies" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
@@ -363,6 +371,15 @@ export function App() {
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path="mcp-servers" element={<UnprefixedBoardRedirect />} />
           <Route path="analytics" element={<UnprefixedBoardRedirect />} />
+          <Route path="marketplace" element={<UnprefixedBoardRedirect />} />
+          <Route path="marketplace/agent/:marketplaceAgentId" element={<UnprefixedBoardRedirect />} />
+          
+          {/* Global Board Routes */}
+          <Route path="board" element={<Layout />}>
+            <Route index element={<Navigate to="briefcase" replace />} />
+            <Route path="briefcase" element={<BoardDeliverables />} />
+          </Route>
+
           <Route path=":companyPrefix" element={<Layout />}>
             {boardRoutes()}
           </Route>

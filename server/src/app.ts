@@ -37,6 +37,7 @@ import { agentKpiRoutes } from "./routes/agent-kpis.js";
 import { agentExperimentRoutes } from "./routes/agent-experiments.js";
 import { amxRoutes } from "./routes/amx.js";
 import { lmsRoutes } from "./routes/lms.js";
+import { auditRoutes } from "./routes/audit.js";
 import { skillChangeRoutes } from "./routes/skill-changes.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
@@ -170,6 +171,7 @@ export async function createApp(
   api.use(agentExperimentRoutes(db));
   api.use(amxRoutes(db));
   api.use(lmsRoutes(db));
+  api.use(auditRoutes(db));
   api.use(skillChangeRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();

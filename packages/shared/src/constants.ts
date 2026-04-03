@@ -31,6 +31,7 @@ export const AGENT_ADAPTER_TYPES = [
   "cursor",
   "openclaw_gateway",
   "hermes_local",
+  "hermes_advanced",
 ] as const;
 export type AgentAdapterType = (typeof AGENT_ADAPTER_TYPES)[number];
 
@@ -45,6 +46,7 @@ export const AGENT_ROLES = [
   "qa",
   "devops",
   "researcher",
+  "auditor",
   "general",
 ] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
@@ -60,6 +62,7 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   qa: "QA",
   devops: "DevOps",
   researcher: "Researcher",
+  auditor: "Auditor",
   general: "General",
 };
 
