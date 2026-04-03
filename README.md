@@ -1,13 +1,13 @@
 # Paperclip Surfers
 
-> **Self-improving AI agent companies** — a V2 fork of [paperclipai/paperclip](https://github.com/paperclipai/paperclip) with persistent memory, MCP support, skills management, and a self-improvement loop.
+> **Self-improving AI agent companies** — a V3 fork of [paperclipai/paperclip](https://github.com/paperclipai/paperclip) with persistent memory, MCP support, skills management, a self-improvement loop, and the AMX LABS Ecosystem Expansion.
 
 <p align="center">
-  <a href="https://github.com/IncomeStreamSurfer/paperclip-surfers/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
-  <a href="https://harborseo.ai"><img src="https://img.shields.io/badge/built%20by-HarborSEO-brightgreen" alt="Built by HarborSEO" /></a>
+  <a href="https://github.com/Zo-hund/Zo-hund-paperclip-surfer/blob/experimental/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <a href="https://github.com/Zo-hund"><img src="https://img.shields.io/badge/built%20by-Zohund-brightgreen" alt="Built by Zohund" /></a>
 </p>
 
-Built by [HarborSEO](https://harborseo.ai) — an AI-powered SEO platform.
+Built by [Zohund](https://github.com/Zo-hund) — CTE (Creative Technology Entrepreneur), extending the V2 AMX LABS foundation into a full industrial-grade AI ecosystem.
 
 ---
 
@@ -41,8 +41,8 @@ Agents accumulate knowledge that persists across sessions:
 - **Experiments** — opt-in A/B testing of approaches per agent
 - **Analytics page** — company-wide performance trends across all agents
 
-### AMX LABS Ecosystem Expansion (V3)
-Industrial-grade integration for the AMX ecosystem, moving beyond orchestration into production and verified auditing:
+### AMX LABS Ecosystem Expansion (V3) — by Zohund
+Built by Zohund on top of the V2 AMX LABS foundation. Industrial-grade integration for the AMX ecosystem, moving beyond orchestration into production and verified auditing:
 - **XP Exchange** — Dynamic earner marketplace with real-time XP tracking and human-agent payout settlement.
 - **AMX Chain Explorer** — Proof of Work auditing on an immutable ledger. Verifiable security events and cryptographic certificates for all agent deliverables.
 - **RQ Portal** — Advanced "Requirement" submission system for Industrial AI context seeding and deployment mode selection (Online, Physical, Metaverse).
@@ -56,8 +56,8 @@ Industrial-grade integration for the AMX ecosystem, moving beyond orchestration 
 Requirements: Node.js 20+, pnpm 9+
 
 ```bash
-git clone https://github.com/IncomeStreamSurfer/paperclip-surfers.git
-cd paperclip-surfers
+git clone https://github.com/Zo-hund/Zo-hund-paperclip-surfer.git
+cd Zo-hund-paperclip-surfer
 pnpm install
 pnpm dev
 ```
@@ -109,9 +109,11 @@ This project is a fork of [paperclipai/paperclip](https://github.com/paperclipai
 
 Original work © 2025 Paperclip AI — MIT License.
 
-V2 additions © 2025 [HarborSEO](https://harborseo.ai) — MIT License.
+V2 additions © 2025 [IncomeStreamSurfer](https://github.com/IncomeStreamSurfer) — MIT License.
 
-All original code, architecture, and design belongs to the Paperclip AI team. V2 adds new capabilities on top without modifying the core orchestration engine.
+V3 AMX LABS Ecosystem Expansion © 2025 [Zohund](https://github.com/Zo-hund) — MIT License.
+
+All original code, architecture, and design belongs to the Paperclip AI team. V2 adds new capabilities on top; V3 (built by Zohund) expands into the full AMX LABS industrial ecosystem.
 
 ---
 
