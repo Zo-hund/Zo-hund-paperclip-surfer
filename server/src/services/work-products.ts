@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { issueWorkProducts, issues, projects, agents, amxCertificates, auditVerifications } from "@paperclipai/db";
 import type { IssueWorkProduct } from "@paperclipai/shared";
@@ -65,7 +65,7 @@ export function workProductService(db: Db) {
       .leftJoin(projects, eq(issueWorkProducts.projectId, projects.id))
       .leftJoin(agents, eq(issues.assigneeAgentId, agents.id))
       .leftJoin(amxCertificates, eq(amxCertificates.issueId, issueWorkProducts.issueId))
-      .leftJoin(auditVerifications, eq(auditVerifications.targetId, issueWorkProducts.issueId))
+      .leftJoin(auditVerifications, eq(auditVerifications.targetId, sql`${issueWorkProducts.issueId}::text`))
       .where(
         and(
           companyId ? eq(issueWorkProducts.companyId, companyId) : undefined,
@@ -134,7 +134,7 @@ export function workProductService(db: Db) {
         .leftJoin(projects, eq(issueWorkProducts.projectId, projects.id))
         .leftJoin(agents, eq(issues.assigneeAgentId, agents.id))
         .leftJoin(amxCertificates, eq(amxCertificates.issueId, issueWorkProducts.issueId))
-        .leftJoin(auditVerifications, eq(auditVerifications.targetId, issueWorkProducts.issueId))
+        .leftJoin(auditVerifications, eq(auditVerifications.targetId, sql`${issueWorkProducts.issueId}::text`))
         .where(eq(issueWorkProducts.id, id))
         .limit(1);
 

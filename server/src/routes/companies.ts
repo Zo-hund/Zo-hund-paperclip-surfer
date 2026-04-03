@@ -91,6 +91,47 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     });
   });
 
+  // Board deliverable routes must be before /:companyId to avoid "board" being treated as a companyId.
+  router.get("/board/deliverables", async (req, res) => {
+    assertBoard(req);
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
+    const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
+
+    if (companyId) {
+      const result = await workProducts.listCompanyDeliverables(companyId, search, type);
+      res.json(result);
+      return;
+    }
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
+      const result = await workProducts.listGlobalDeliverables(search, type);
+      res.json(result);
+      return;
+    }
+    const companyIds = req.actor.companyIds ?? [];
+    if (companyIds.length === 0) { res.json([]); return; }
+    const result = await workProducts.listGlobalDeliverables(search, type);
+    res.json(result);
+  });
+
+  router.get("/board/deliverables/:id", async (req, res) => {
+    assertBoard(req);
+    const detail = await workProducts.getDetailById(req.params.id as string);
+    if (!detail) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    res.json(detail);
+  });
+
+  router.patch("/board/deliverables/:id/review", async (req, res) => {
+    assertBoard(req);
+    const { reviewState, healthStatus } = req.body as { reviewState?: string; healthStatus?: string };
+    const patch: Record<string, unknown> = {};
+    if (reviewState) patch.reviewState = reviewState;
+    if (healthStatus) patch.healthStatus = healthStatus;
+    const updated = await workProducts.update(req.params.id as string, patch as any);
+    if (!updated) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    res.json(updated);
+  });
+
   router.get("/:companyId", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -338,46 +379,6 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       return;
     }
     res.json({ ok: true });
-  });
- 
-  router.get("/board/deliverables", async (req, res) => {
-    assertBoard(req);
-    const search = typeof req.query.search === "string" ? req.query.search : undefined;
-    const type = typeof req.query.type === "string" ? req.query.type : undefined;
-    const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
-
-    if (companyId) {
-      const result = await workProducts.listCompanyDeliverables(companyId, search, type);
-      res.json(result);
-      return;
-    }
-    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
-      const result = await workProducts.listGlobalDeliverables(search, type);
-      res.json(result);
-      return;
-    }
-    const companyIds = req.actor.companyIds ?? [];
-    if (companyIds.length === 0) { res.json([]); return; }
-    const result = await workProducts.listGlobalDeliverables(search, type);
-    res.json(result);
-  });
-
-  router.get("/board/deliverables/:id", async (req, res) => {
-    assertBoard(req);
-    const detail = await workProducts.getDetailById(req.params.id as string);
-    if (!detail) { res.status(404).json({ error: "Deliverable not found" }); return; }
-    res.json(detail);
-  });
-
-  router.patch("/board/deliverables/:id/review", async (req, res) => {
-    assertBoard(req);
-    const { reviewState, healthStatus } = req.body as { reviewState?: string; healthStatus?: string };
-    const patch: Record<string, unknown> = {};
-    if (reviewState) patch.reviewState = reviewState;
-    if (healthStatus) patch.healthStatus = healthStatus;
-    const updated = await workProducts.update(req.params.id as string, patch as any);
-    if (!updated) { res.status(404).json({ error: "Deliverable not found" }); return; }
-    res.json(updated);
   });
 
   router.get("/:companyId/metrics", async (req, res) => {
