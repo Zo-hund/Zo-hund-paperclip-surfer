@@ -55,4 +55,25 @@ export const companiesApi = {
     api.post<CompanyPortabilityPreviewResult>("/companies/import/preview", data),
   importBundle: (data: CompanyPortabilityImportRequest) =>
     api.post<CompanyPortabilityImportResult>("/companies/import", data),
+ 
+  listBoardDeliverables: (opts?: { search?: string; type?: string; companyId?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.search) params.set("search", opts.search);
+    if (opts?.type) params.set("type", opts.type);
+    if (opts?.companyId) params.set("companyId", opts.companyId);
+    const qs = params.toString();
+    return api.get<any[]>(`/companies/board/deliverables${qs ? `?${qs}` : ""}`);
+  },
+  listCompanyDeliverables: (companyId: string, opts?: { search?: string; type?: string }) => {
+    const params = new URLSearchParams({ companyId });
+    if (opts?.search) params.set("search", opts.search);
+    if (opts?.type) params.set("type", opts.type);
+    return api.get<any[]>(`/companies/board/deliverables?${params.toString()}`);
+  },
+  getDeliverableDetail: (id: string) => api.get<any>(`/companies/board/deliverables/${id}`),
+  reviewDeliverable: (id: string, data: { reviewState?: string; healthStatus?: string }) =>
+    api.patch<any>(`/companies/board/deliverables/${id}/review`, data),
+  getCompanyMetrics: (companyId: string) => api.get<any>(`/companies/${companyId}/metrics`),
+  updateDeploymentTarget: (companyId: string, target: string) =>
+    api.post<{ ok: true; target: string }>(`/companies/${companyId}/deployment-target`, { target }),
 };

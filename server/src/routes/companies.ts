@@ -17,6 +17,7 @@ import {
   companyPortabilityService,
   companyService,
   logActivity,
+  workProductService,
 } from "../services/index.js";
 import type { StorageService } from "../storage/types.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
@@ -28,6 +29,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
   const portability = companyPortabilityService(db, storage);
   const access = accessService(db);
   const budgets = budgetService(db);
+  const workProducts = workProductService(db);
 
   async function assertCanUpdateBranding(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
@@ -337,6 +339,76 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     }
     res.json({ ok: true });
   });
+ 
+  router.get("/board/deliverables", async (req, res) => {
+    assertBoard(req);
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
+    const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
 
+    if (companyId) {
+      const result = await workProducts.listCompanyDeliverables(companyId, search, type);
+      res.json(result);
+      return;
+    }
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
+      const result = await workProducts.listGlobalDeliverables(search, type);
+      res.json(result);
+      return;
+    }
+    const companyIds = req.actor.companyIds ?? [];
+    if (companyIds.length === 0) { res.json([]); return; }
+    const result = await workProducts.listGlobalDeliverables(search, type);
+    res.json(result);
+  });
+
+  router.get("/board/deliverables/:id", async (req, res) => {
+    assertBoard(req);
+    const detail = await workProducts.getDetailById(req.params.id as string);
+    if (!detail) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    res.json(detail);
+  });
+
+  router.patch("/board/deliverables/:id/review", async (req, res) => {
+    assertBoard(req);
+    const { reviewState, healthStatus } = req.body as { reviewState?: string; healthStatus?: string };
+    const patch: Record<string, unknown> = {};
+    if (reviewState) patch.reviewState = reviewState;
+    if (healthStatus) patch.healthStatus = healthStatus;
+    const updated = await workProducts.update(req.params.id as string, patch as any);
+    if (!updated) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    res.json(updated);
+  });
+
+  router.get("/:companyId/metrics", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const metrics = await workProducts.getCompanyMetrics(companyId);
+    res.json(metrics);
+  });
+ 
+  router.post("/:companyId/deployment-target", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const { target } = req.body;
+    if (!["local", "cloud"].includes(target)) {
+      res.status(400).json({ error: "Invalid target. Must be 'local' or 'cloud'." });
+      return;
+    }
+    
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "company.deployment_target_updated",
+      entityType: "company",
+      entityId: companyId,
+      details: { target },
+    });
+ 
+    res.json({ ok: true, target });
+  });
+ 
   return router;
 }
