@@ -15,9 +15,21 @@ const BOARD_ROUTE_ROOTS = new Set([
   "activity",
   "inbox",
   "design-guide",
+  "meetings",
+  "tests",
+  "analytics",
+  "mcp-servers",
+  "xp",
+  "rq",
+  "lms",
+  "marketplace",
+  "amx",
+  "audit",
+  "briefcase",
 ]);
 
-const GLOBAL_ROUTE_ROOTS = new Set(["auth", "invite", "board-claim", "cli-auth", "docs", "instance"]);
+// "board" is a truly global route — it must go here so it is NEVER treated as a company prefix
+const GLOBAL_ROUTE_ROOTS = new Set(["auth", "invite", "board-claim", "cli-auth", "docs", "instance", "board"]);
 
 export function normalizeCompanyPrefix(prefix: string): string {
   return prefix.trim().toUpperCase();

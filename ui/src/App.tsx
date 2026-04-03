@@ -194,6 +194,7 @@ function boardRoutes() {
       <Route path="lms/dashboard" element={<LmsDashboard />} />
       <Route path="amx/chain" element={<AmxChain />} />
       <Route path="audit/team" element={<AuditTeam />} />
+      <Route path="briefcase" element={<BoardDeliverables />} />
       <Route path="marketplace" element={<AgentMarketplace />} />
       <Route path="marketplace/agent/:marketplaceAgentId" element={<AgentResumeProfile />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />

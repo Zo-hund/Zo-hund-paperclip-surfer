@@ -151,7 +151,7 @@ export function Sidebar() {
           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
           <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />
           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
-          <SidebarNavItem to="/board/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
+          <SidebarNavItem to="/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
         </SidebarSection>
 
         <PluginSlotOutlet
