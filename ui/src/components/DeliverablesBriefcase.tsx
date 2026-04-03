@@ -269,7 +269,7 @@ function DeliverableCard({ dl, onClick }: { dl: any; onClick: () => void }) {
           <span className="text-[11px] text-muted-foreground truncate flex-1">{dl.agentName ?? "Unassigned"}</span>
           <ReviewBadge state={dl.reviewState} />
           {dl.certificateFootprint && (
-            <BadgeCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" title="AMX Certified" />
+            <BadgeCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-label="AMX Certified" />
           )}
           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary transition-colors shrink-0" />
         </div>
