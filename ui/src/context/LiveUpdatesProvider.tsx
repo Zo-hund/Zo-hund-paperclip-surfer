@@ -750,7 +750,13 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
         socket.onmessage = null;
         socket.onerror = null;
         socket.onclose = null;
-        socket.close(1000, "provider_unmount");
+        // Passing a close code while still CONNECTING throws a browser error.
+        // Call close() without arguments in that case.
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close(1000, "provider_unmount");
+        } else {
+          socket.close();
+        }
       }
     };
   }, [queryClient, selectedCompanyId, pushToast, currentUserId]);
