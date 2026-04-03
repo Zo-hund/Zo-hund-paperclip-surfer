@@ -72,13 +72,15 @@ mcp_servers:
     }
   }
 
-  const env: Record<string, string> = { 
+  const env: Record<string, string> = {
     ...process.env,
     ...buildPaperclipEnv(agent),
     PAPERCLIP_API_URL: "http://localhost:3100/api",
     AGENT_ID: agent.id,
     COMPANY_ID: agent.companyId,
     HERMES_CONFIG_PATH: tempConfigPath,
+    PYTHONIOENCODING: "utf-8",
+    PYTHONUTF8: "1",
   };
 
   const commandArgs = [scriptPath, "--query", query];
