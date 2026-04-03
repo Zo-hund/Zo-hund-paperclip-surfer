@@ -746,16 +746,24 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
       closed = true;
       clearReconnect();
       if (socket) {
-        socket.onopen = null;
-        socket.onmessage = null;
-        socket.onerror = null;
-        socket.onclose = null;
-        // Passing a close code while still CONNECTING throws a browser error.
-        // Call close() without arguments in that case.
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.close(1000, "provider_unmount");
+        if (socket.readyState === WebSocket.CONNECTING) {
+          // Calling close() while CONNECTING causes Chrome to log
+          // "WebSocket is closed before the connection is established".
+          // Let it finish opening, then immediately close — handlers are
+          // nulled so no messages are processed.
+          const s = socket;
+          s.onmessage = null;
+          s.onerror = null;
+          s.onclose = null;
+          s.onopen = () => s.close(1000, "provider_unmount");
         } else {
-          socket.close();
+          socket.onopen = null;
+          socket.onmessage = null;
+          socket.onerror = null;
+          socket.onclose = null;
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.close(1000, "provider_unmount");
+          }
         }
       }
     };
