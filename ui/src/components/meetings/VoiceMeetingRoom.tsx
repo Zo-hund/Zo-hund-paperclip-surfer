@@ -1,201 +1,493 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { Mic, MicOff, PhoneOff, Users, MessageSquare, ShieldCheck, Activity, Globe } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  Bot, Mic, MicOff, PhoneOff, UserPlus, Send,
+  CheckCircle2, AlertTriangle, Zap, Maximize, Minimize, Video,
+  Activity, Cpu, Radar, Crosshair, Network, BarChart2
+} from "lucide-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 import { meetingsApi } from "../../api/meetings";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useToast } from "../../context/ToastContext";
-import "./VoiceMeetingRoom.css";
+import { useQuery } from "@tanstack/react-query";
+import { InviteAgentsDialog } from "./InviteAgentsDialog";
 
 interface VoiceMeetingRoomProps {
   meetingId: string;
   onClose: () => void;
 }
 
+const SPEAKER_COLORS = [
+  "#94a3b8", "#cbd5e1", "#64748b", "#475569",
+  "#e2e8f0", "#9ca3af", "#d1d5db", "#4b5563",
+];
+
+const AudioEqualizer = () => (
+  <div className="flex gap-1.5 items-end justify-center h-8 opacity-90 mx-auto mt-4">
+    <div className="w-1.5 bg-current rounded-full animate-[pulse_0.4s_ease-in-out_infinite_alternate]" style={{ height: '40%' }} />
+    <div className="w-1.5 bg-current rounded-full animate-[pulse_0.6s_ease-in-out_infinite_alternate]" style={{ height: '100%', animationDelay: '-0.2s' }} />
+    <div className="w-1.5 bg-current rounded-full animate-[pulse_0.5s_ease-in-out_infinite_alternate]" style={{ height: '60%', animationDelay: '-0.4s' }} />
+    <div className="w-1.5 bg-current rounded-full animate-[pulse_0.7s_ease-in-out_infinite_alternate]" style={{ height: '80%', animationDelay: '-0.1s' }} />
+    <div className="w-1.5 bg-current rounded-full animate-[pulse_0.3s_ease-in-out_infinite_alternate]" style={{ height: '50%', animationDelay: '-0.5s' }} />
+  </div>
+);
+
 export function VoiceMeetingRoom({ meetingId, onClose }: VoiceMeetingRoomProps) {
-  const { isRecording, startRecording, stopRecording, analyser } = useVoiceRecorder();
+  const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
-  const [transcripts, setTranscripts] = useState<any[]>([]);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [commandText, setCommandText] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [mode, setMode] = useState<"chat" | "cockpit" | "video">("cockpit");
+  
+  const threadRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { pushToast } = useToast();
 
-  // Visualization Loop
+  const { data: meeting, refetch: refetchMeeting } = useQuery({
+    queryKey: ["meeting-detail", meetingId],
+    queryFn: () => meetingsApi.getDetail(meetingId),
+    refetchInterval: 2500,
+  });
+
   useEffect(() => {
-    if (!analyser || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    }
+  }, [meeting?.transcripts?.length, meeting?.outcomes?.length, mode]);
 
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    let animationId: number;
+  const colorMap = new Map<string, string>();
+  (meeting?.participants ?? []).forEach((p, i) => {
+    colorMap.set(p.agentId, SPEAKER_COLORS[i % SPEAKER_COLORS.length]);
+  });
 
-    const draw = () => {
-      animationId = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const baseRadius = 100;
-
-      // Draw glowing rings
-      for (let i = 0; i < 3; i++) {
-        const opacity = 0.1 - i * 0.02;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius + i * 20, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(0, 243, 255, ${opacity})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-
-      // Draw audio bars in a circle
-      for (let i = 0; i < bufferLength; i++) {
-        const barHeight = (dataArray[i] / 255) * 100;
-        const angle = (i / bufferLength) * Math.PI * 2;
-        const x1 = centerX + Math.cos(angle) * baseRadius;
-        const y1 = centerY + Math.sin(angle) * baseRadius;
-        const x2 = centerX + Math.cos(angle) * (baseRadius + barHeight + 5);
-        const y2 = centerY + Math.sin(angle) * (baseRadius + barHeight + 5);
-
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.strokeStyle = `rgba(0, 243, 255, ${0.5 + barHeight / 200})`;
-        ctx.lineWidth = 3;
-        ctx.lineCap = "round";
-        ctx.stroke();
-      }
-      
-      // Central pulse
-      const avg = dataArray.reduce((p, c) => p + c, 0) / bufferLength;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, baseRadius - 10 + avg / 10, 0, Math.PI * 2);
-      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius);
-      gradient.addColorStop(0, "rgba(0, 243, 255, 0.4)");
-      gradient.addColorStop(1, "rgba(0, 243, 255, 0)");
-      ctx.fillStyle = gradient;
-      ctx.fill();
-    };
-
-    draw();
-    return () => cancelAnimationFrame(animationId);
-  }, [analyser]);
+  const lastSpeakerId = meeting?.transcripts?.slice(-1)[0]?.actorId ?? null;
 
   const toggleMic = async () => {
     if (!micActive) {
       await startRecording();
       setMicActive(true);
-      pushToast({ title: "Mic Active", body: "AMX AIR-HUBS listening...", tone: "success" });
+      pushToast({ title: "Mic Active", body: "Recording started.", tone: "success" });
     } else {
-      const blob = stopRecording();
-      if (blob) {
-        // Here we'd upload the final recording or chunk
-        console.log("Recording captured:", blob.size);
-      }
+      stopRecording();
       setMicActive(false);
     }
   };
 
-  const handleEndCall = async () => {
-      if (micActive) stopRecording();
-      try {
-        await meetingsApi.finalize(meetingId);
-        onClose();
-        pushToast({ title: "Meeting Stored", body: "Accountability log saved to AMX-AIR-HUBS.", tone: "success" });
-      } catch (err) {
-        onClose();
-      }
+  const handleSend = async () => {
+    const text = commandText.trim();
+    if (!text) return;
+    setCommandText("");
+    await meetingsApi.addTranscript(meetingId, {
+      actorType: "user",
+      actorId: "Board Member",
+      text,
+      timestampOffset: 0,
+    });
+    await refetchMeeting();
+    inputRef.current?.focus();
   };
 
-  return (
-    <div className="voice-room-container glass-morphism-heavy">
-      {/* HUD Elements */}
-      <div className="hud-top">
-         <Badge className="bg-primary/20 border-primary/40 text-primary animate-pulse gap-1.5 flex items-center">
-            <Globe className="h-3 w-3" />
-            LIVE SECURE CHANNEL
-         </Badge>
-         <div className="flex items-center gap-4 text-xs font-mono text-primary/60 uppercase tracking-widest">
-            <div className="flex items-center gap-1.5">
-               <ShieldCheck className="h-3.5 w-3.5" />
-               ENCRYPTED
-            </div>
-            <div className="flex items-center gap-1.5">
-               <Activity className="h-3.5 w-3.5" />
-               STREAMING 48kHZ
-            </div>
-         </div>
-      </div>
+  const handleEndCall = async () => {
+    if (micActive) stopRecording();
+    try {
+      await meetingsApi.finalize(meetingId);
+      onClose();
+      pushToast({ title: "Session Closed", body: "Accountability log indexed.", tone: "success" });
+    } catch {
+      onClose();
+    }
+  };
 
-      <div className="central-hub">
-        <canvas ref={canvasRef} width={600} height={600} className="visualizer-canvas" />
-        <div className="hub-center-branding">
-           <div className="brand-logo-small">AMX</div>
-           <div className="brand-status">AIR-HUBS</div>
+  const transcripts = meeting?.transcripts ?? [];
+  const participants = meeting?.participants ?? [];
+  const outcomes = meeting?.outcomes ?? [];
+
+  const isCockpit = mode === "cockpit";
+  const isVideo = mode === "video";
+  const isExpanded = isCockpit || isVideo;
+
+  return (
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-700 ease-in-out ${isExpanded ? "bg-black/90 backdrop-blur-md" : "bg-black/70 backdrop-blur-sm"}`}>
+      
+      {/* Sci-Fi Ambient Glow */}
+      {isExpanded && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-1/4 -left-[20%] w-[50%] h-[50%] bg-[#94a3b8]/10 blur-[80px] rounded-full mix-blend-screen" />
+          <div className="absolute -bottom-1/4 -right-[10%] w-[50%] h-[50%] bg-slate-700/10 blur-[80px] rounded-full mix-blend-screen" />
+        </div>
+      )}
+
+      <div 
+        className={`relative flex flex-col rounded-2xl overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.8)] transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]
+          ${isExpanded ? "w-[96vw] max-w-7xl h-[92vh]" : "w-full max-w-2xl h-[88vh]"}`}
+        style={{ 
+          background: isExpanded ? "linear-gradient(135deg, rgba(8,8,16,0.95) 0%, rgba(12,12,24,0.95) 100%)" : "#0d0d18", 
+          border: isExpanded ? "1px solid rgba(0, 243, 255, 0.2)" : "1px solid rgba(148,163,184,0.12)",
+          boxShadow: isExpanded ? "0 0 40px rgba(148,163,184,0.05), inset 0 0 20px rgba(148,163,184,0.05)" : undefined,
+        }}
+      >
+        {isExpanded && (
+           <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at center, transparent 0%, rgba(148,163,184,0.03) 100%)" }} />
+        )}
+
+        {/* ── Header ─────────────────────────────────────────── */}
+        <header className={`relative z-10 flex items-center gap-2 md:gap-4 px-4 md:px-5 py-3 border-b flex-shrink-0 backdrop-blur-md
+          ${isExpanded ? "border-[#94a3b8]/20 bg-black/40" : "border-white/[0.06] bg-[#09090f]"}`}>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+             {isExpanded && <Radar className="h-4 w-4 text-[#94a3b8] animate-pulse drop-shadow-[0_0_8px_rgba(148,163,184,0.8)] mr-1 hidden sm:block" />}
+            <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-[pulse_1s_infinite] shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? "text-[#94a3b8]" : "text-red-400"}`}>
+               {isExpanded ? "A.I. LIVE" : "LIVE"}
+            </span>
+          </div>
+          
+          <h2 className="flex-1 text-[12px] md:text-[14px] font-black uppercase tracking-widest text-white/90 truncate ml-1 md:ml-2">
+            {meeting?.title ?? "Strategic Session"}
+            {isExpanded && <span className="ml-3 text-[9px] md:text-[10px] text-white/30 tracking-[0.3em] hidden sm:inline">// UPLINK ACTIVE</span>}
+          </h2>
+
+          <div className="flex items-center gap-1 md:gap-2">
+            <Button
+               size="sm"
+               variant="ghost"
+               className={`h-8 px-2 md:px-3 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] transition-all 
+                 ${mode === "chat" ? "bg-[#94a3b8]/20 text-[#94a3b8] shadow-[0_0_15px_rgba(148,163,184,0.2)]" : "text-white/40 hover:text-[#94a3b8]"}`}
+               onClick={() => setMode("chat")}
+            >
+               <Minimize className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">Chat</span>
+            </Button>
+            <Button
+               size="sm"
+               variant="ghost"
+               className={`h-8 px-2 md:px-3 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] transition-all
+                 ${mode === "cockpit" ? "bg-[#94a3b8]/20 text-[#94a3b8] shadow-[0_0_15px_rgba(148,163,184,0.2)]" : "text-white/40 hover:text-[#94a3b8]"}`}
+               onClick={() => setMode("cockpit")}
+            >
+               <Maximize className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">Cockpit</span>
+            </Button>
+            <Button
+               size="sm"
+               variant="ghost"
+               className={`h-8 px-2 md:px-3 text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] transition-all
+                 ${mode === "video" ? "bg-[#94a3b8]/20 text-[#94a3b8] shadow-[0_0_15px_rgba(148,163,184,0.2)]" : "text-white/40 hover:text-[#94a3b8]"}`}
+               onClick={() => setMode("video")}
+            >
+               <Video className="h-3 w-3 sm:mr-1.5" /> <span className="hidden sm:inline">Vid Pod</span>
+            </Button>
+          </div>
+
+          <div className="w-[1px] h-6 bg-white/10 mx-1 hidden sm:block" />
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-3 text-[9px] font-black uppercase tracking-widest text-[#94a3b8]/50 hover:text-[#94a3b8] hover:bg-[#94a3b8]/10 gap-1.5 flex-shrink-0 hidden sm:flex"
+            onClick={() => setInviteOpen(true)}
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Add Entity
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 rounded-lg flex-shrink-0 bg-red-950/40 hover:bg-red-500 border border-red-500/30 text-red-400 hover:text-white transition-all shadow-[0_0_10px_rgba(239,68,68,0.2)] hover:shadow-[0_0_20px_rgba(239,68,68,0.6)] ml-1"
+            onClick={handleEndCall}
+          >
+            <PhoneOff className="h-4 w-4" />
+          </Button>
+        </header>
+
+        {/* ── Main Layout Body ───────────────────────────────── */}
+        <div className={`relative z-10 flex-1 flex overflow-hidden ${isExpanded ? "flex-col md:flex-row gap-4 p-4" : "flex-col"}`}>
+          
+          {/* LEFT PANE in Cockpit, GRID in Video, STRIP in Chat */}
+          {isCockpit ? (
+            <div className="w-full md:w-64 flex-shrink-0 flex flex-col gap-4">
+              {/* Intel HUD */}
+              <div className="p-4 rounded-xl border border-[#94a3b8]/20 bg-black/40 backdrop-blur-md relative overflow-hidden group">
+                 <div className="absolute inset-0 bg-gradient-to-br from-[#94a3b8]/5 to-transparent pointer-events-none" />
+                 <h3 className="text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2 mb-4 text-[#94a3b8]/70 text-shadow-glow">
+                    <Activity className="h-3.5 w-3.5" /> Sub-Systems
+                 </h3>
+                 <div className="space-y-4">
+                    <div>
+                       <div className="flex justify-between text-[9px] uppercase tracking-widest font-black mb-1">
+                          <span className="text-white/50">Cognitive Load</span>
+                          <span className="text-[#94a3b8]">42%</span>
+                       </div>
+                       <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-[#94a3b8] w-[42%] shadow-[0_0_10px_#94a3b8]" />
+                       </div>
+                    </div>
+                    <div>
+                       <div className="flex justify-between text-[9px] uppercase tracking-widest font-black mb-1">
+                          <span className="text-white/50">Token Matrix</span>
+                          <span className="text-green-400">Stable</span>
+                       </div>
+                       <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-green-400 w-[89%] shadow-[0_0_10px_#4ade80]" />
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Participants Vertical */}
+              <div className="flex-1 p-3 rounded-xl border border-white/10 bg-black/40 backdrop-blur-md overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+                 <h3 className="text-[10px] grid place-items-center mb-3 font-black uppercase tracking-[0.3em] text-white/40">
+                    <span className="flex items-center gap-2"><Network className="h-3 w-3" /> Linked Entities</span>
+                 </h3>
+                 <div className="space-y-2">
+                    {participants.map((p) => {
+                       const color = colorMap.get(p.agentId) ?? "#94a3b8";
+                       const isSpeaking = lastSpeakerId === p.agentId || p.status === "thinking" || p.status === "responding";
+                       return (
+                          <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg border border-white/5 bg-white/[0.02]">
+                             <div
+                                className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-black relative"
+                                style={{
+                                  background: `${color}15`, border: `1.5px solid ${isSpeaking ? color : `${color}28`}`,
+                                  boxShadow: isSpeaking ? `0 0 10px ${color}55` : "none",
+                                }}
+                             >
+                               {p.icon ? <span style={{ fontSize: "0.9rem" }}>{p.icon}</span> : <Bot className="h-4 w-4" style={{ color }} />}
+                               <span className="absolute -bottom-0 -right-0 h-2 w-2 rounded-full border border-black"
+                                 style={{ background: p.status === "thinking" ? "#fbbf24" : p.status === "responding" ? color : p.status === "active" ? "#34d399" : "#ffffff20" }} />
+                             </div>
+                             <div className="flex flex-col flex-1 min-w-0">
+                                <span className="text-[10px] font-black uppercase tracking-widest truncate" style={{ color }}>{p.name}</span>
+                                <span className="text-[8px] uppercase tracking-[0.2em] text-white/30 flex items-center gap-1">
+                                   {p.status === "thinking" ? <><Cpu className="h-2 w-2 text-amber-400 animate-spin" /> Processing</> : p.status}
+                                </span>
+                             </div>
+                          </div>
+                       );
+                    })}
+                 </div>
+              </div>
+            </div>
+          ) : isVideo ? (
+            <div className="flex-1 rounded-xl p-4 md:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+              {participants.map((p) => {
+                const color = colorMap.get(p.agentId) ?? "#94a3b8";
+                const isSpeaking = lastSpeakerId === p.agentId || p.status === "thinking" || p.status === "responding";
+                return (
+                  <div key={p.id} className="relative rounded-2xl overflow-hidden aspect-video bg-black/60 border border-white/10 flex flex-col items-center justify-center transition-all duration-300 group"
+                       style={{ 
+                         borderColor: isSpeaking ? `${color}60` : undefined, 
+                         boxShadow: isSpeaking ? `0 0 30px ${color}30, inset 0 0 20px ${color}15` : undefined 
+                       }}>
+                     
+                     <div className="absolute top-3 left-4 flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full shadow-lg" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-shadow-sm text-white/90 drop-shadow-md">{p.name}</span>
+                     </div>
+
+                     {p.status === "thinking" && (
+                        <div className="absolute top-3 right-4 flex items-center gap-1.5 opacity-80 bg-black/40 px-2 py-1 rounded-md border border-white/10">
+                           <Cpu className="h-3 w-3 text-amber-400 animate-spin" />
+                           <span className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-400">Processing</span>
+                        </div>
+                     )}
+
+                     <div className="relative mt-2">
+                        {isSpeaking && <div className="absolute inset-0 bg-white/5 blur-2xl rounded-full scale-150 mix-blend-screen" style={{ background: `${color}40` }} />}
+                        <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-[30px] flex items-center justify-center text-4xl relative z-10 border-2 shadow-2xl transition-all duration-500"
+                           style={{
+                              background: `linear-gradient(145deg, ${color}20, rgba(0,0,0,0.8))`,
+                              borderColor: isSpeaking ? color : `${color}40`,
+                              boxShadow: isSpeaking ? `0 0 40px ${color}80, inset 0 0 20px ${color}50` : `0 0 10px rgba(0,0,0,0.5)`,
+                              color: isSpeaking ? '#ffffff' : color,
+                           }}>
+                           {p.icon ? <span>{p.icon}</span> : <Bot className="h-10 w-10" />}
+                        </div>
+                     </div>
+                     
+                     {/* Equalizer Waveform overlay when speaking */}
+                     <div className="absolute bottom-4 left-0 right-0 transition-opacity duration-300" style={{ color, opacity: isSpeaking ? 1 : 0 }}>
+                        {isSpeaking && <AudioEqualizer />}
+                     </div>
+
+                     <div className="absolute bottom-3 left-4 right-4 flex justify-between items-center opacity-40 text-[9px] uppercase font-black tracking-[0.3em]">
+                        <span>[ {p.status} ]</span>
+                        <span>NODE ACTIVE</span>
+                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            participants.length > 0 && (
+              <div className="flex items-center gap-4 px-4 py-2.5 border-b border-white/[0.04] bg-[#0a0a15] overflow-x-auto flex-shrink-0 scrollbar-hide">
+                {participants.map((p) => {
+                  const color = colorMap.get(p.agentId) ?? "#94a3b8";
+                  const isSpeaking = lastSpeakerId === p.agentId || p.status === "thinking" || p.status === "responding";
+                  return (
+                    <div key={p.id} className="flex flex-col items-center gap-1 flex-shrink-0">
+                      <div
+                        className="h-9 w-9 rounded-full flex items-center justify-center text-sm font-black relative select-none"
+                        style={{
+                          background: `${color}15`, border: `2px solid ${isSpeaking ? color : `${color}28`}`,
+                          boxShadow: isSpeaking ? `0 0 14px ${color}55, 0 0 4px ${color}80` : "none",
+                          transition: "box-shadow 0.4s ease, border-color 0.4s ease",
+                        }}
+                      >
+                        {p.icon ? <span style={{ fontSize: "1rem" }}>{p.icon}</span> : <Bot className="h-4 w-4" style={{ color }} />}
+                        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0a0a15]"
+                          style={{ background: p.status === "thinking" ? "#fbbf24" : p.status === "responding" ? color : p.status === "active" ? "#34d399" : "#ffffff20" }} />
+                      </div>
+                      <span className="text-[8px] font-black uppercase tracking-tight" style={{ color: `${color}80` }}>{p.name.split(" ")[0]}</span>
+                      {p.status === "thinking" && <span className="text-[7px] text-amber-400 font-bold animate-pulse">···</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {/* CENTER PANE: The Main Thread (or Docked Right Pane in Video Mode) */}
+          <div className={`flex flex-col min-w-0 bg-black/20 backdrop-blur-sm rounded-xl border border-white/5 relative overflow-hidden transition-all duration-500 ease-out 
+            ${isVideo ? "w-full md:w-80 flex-shrink-0" : "flex-1"}`}>
+             
+             {isExpanded && (
+                <div className="absolute inset-0 pointer-events-none opacity-20" style={{ backgroundImage: `linear-gradient(rgba(0, 243, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 243, 255, 0.1) 1px, transparent 1px)`, backgroundSize: '40px 40px' }} />
+             )}
+
+            <div
+              ref={threadRef}
+              className={`flex-1 overflow-y-auto space-y-0.5 scroll-smooth relative z-10 ${isExpanded ? "px-6 py-6" : "px-4 py-4"}`}
+              style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(148,163,184,0.15) transparent" }}
+            >
+              {transcripts.length === 0 && outcomes.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                  <div className="text-4xl mb-5 text-[#94a3b8]/40"><Crosshair className="h-16 w-16" /></div>
+                  <p className="text-[11px] text-white/40 font-black uppercase tracking-[0.3em]">Link Established</p>
+                  <p className="text-[10px] text-[#94a3b8]/40 mt-3 tracking-widest uppercase">INITIALIZE PROTOCOL: /decide · /task · /risk</p>
+                </div>
+              )}
+
+              {transcripts.map((t, i) => {
+                const isUser = t.actorType === "user";
+                const participant = participants.find(p => p.agentId === t.actorId);
+                const color = participant ? (colorMap.get(participant.agentId) ?? "#94a3b8") : "#e2e8f0";
+                const isCommand = t.text.startsWith("/");
+                const isMention = !isCommand && t.text.includes("@");
+                const prev = transcripts[i - 1];
+                const isGrouped = !!prev && prev.actorId === t.actorId;
+                const initials = isUser ? "B" : (participant?.name?.[0]?.toUpperCase() ?? "A");
+
+                return (
+                  <div key={t.id} className={`flex gap-3 ${isGrouped ? "mt-0.5" : "mt-5"} ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+                    {!isGrouped ? (
+                      <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-1 shadow-lg"
+                        style={{ background: `${color}20`, border: `1px solid ${color}60`, color, boxShadow: `0 0 10px ${color}30` }}>
+                        {participant?.icon ? <span style={{ fontSize: "0.85rem" }}>{participant.icon}</span> : initials}
+                      </div>
+                    ) : <div className="w-8 flex-shrink-0" />}
+
+                    <div className={`flex flex-col gap-0.5 max-w-[85%] ${isUser ? "items-end" : "items-start"}`}>
+                      {!isGrouped && (
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] px-1 mb-0.5" style={{ color: isUser ? "rgba(255,255,255,0.4)" : color }}>
+                          {isUser ? "Director" : (participant?.name ?? t.actorId)}
+                        </span>
+                      )}
+                      <div className={`px-4 py-2.5 rounded-2xl text-[13px] leading-relaxed break-words backdrop-blur-md shadow-sm border border-white/5`}
+                        style={
+                          isCommand ? { background: "rgba(148,163,184,0.1)", border: "1px solid rgba(148,163,184,0.3)", color: "#94a3b8", fontFamily: "monospace", boxShadow: "0 0 15px rgba(148,163,184,0.1) inset" }
+                          : isMention ? { background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", color: "rgba(255,255,255,0.95)" }
+                          : isUser ? { background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.95)" }
+                          : { background: `${color}12`, border: `1px solid ${color}30`, color: "rgba(255,255,255,0.95)" }
+                        }
+                      >
+                        {t.text}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Chat & Video modes render outcomes interleaved */}
+              {!isCockpit && outcomes.map((o) => (
+                <div key={o.id} className="flex items-start gap-2.5 mt-5 mx-2 px-3 py-2.5 rounded-xl border"
+                  style={o.type === "decision" ? { background: "rgba(52,211,153,0.06)", borderColor: "rgba(52,211,153,0.2)" } : o.type === "risk" ? { background: "rgba(251,191,36,0.06)", borderColor: "rgba(251,191,36,0.2)" } : { background: "rgba(148,163,184,0.06)", borderColor: "rgba(148,163,184,0.2)" }}>
+                  {o.type === "decision" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />}
+                  {o.type === "risk" && <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0 animate-pulse" />}
+                  {o.type === "action_item" && <Zap className="h-3.5 w-3.5 text-[#94a3b8] mt-0.5 flex-shrink-0" />}
+                  <div className="min-w-0">
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] mr-1" style={{ color: o.type === "decision" ? "#34d399" : o.type === "risk" ? "#fbbf24" : "#94a3b8" }}>{o.type.replace("_", " ")} //</span>
+                    <span className="text-[12px] text-white/80">{o.content}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Input Strip contained in Center Pane in Expanded Modes */}
+            <div className={`relative z-10 px-4 py-3 flex-shrink-0 ${isExpanded ? "bg-black/40 border-t border-[#94a3b8]/20 rounded-b-xl" : "bg-[#09090f] border-t border-white/[0.06]"}`}>
+              <div className="flex items-center gap-2">
+                <Button size="icon" variant="ghost" className="h-10 w-10 rounded-xl flex-shrink-0 transition-all shadow-md"
+                  style={micActive ? { background: "rgba(239,68,68,0.2)", color: "#f87171", boxShadow: "0 0 15px rgba(239,68,68,0.3)" } : { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.4)" }} onClick={toggleMic}>
+                  {micActive ? <MicOff className="h-4 w-4 animate-pulse" /> : <Mic className="h-4 w-4" />}
+                </Button>
+
+                <Input ref={inputRef} placeholder="Transmit protocol or message…"
+                  className="flex-1 h-10 text-[13px] rounded-xl text-white placeholder:text-[#94a3b8]/30 focus-visible:ring-1 focus-visible:ring-[#94a3b8] transition-all"
+                  style={{ background: isExpanded ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.04)", border: isExpanded ? "1px solid rgba(148,163,184,0.3)" : "1px solid rgba(255,255,255,0.08)", boxShadow: isExpanded ? "inset 0 0 10px rgba(148,163,184,0.05)" : undefined }}
+                  value={commandText} onChange={(e) => setCommandText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} />
+
+                <Button size="icon" className="h-10 w-10 rounded-xl flex-shrink-0 transition-all shadow-lg"
+                  style={{ background: commandText.trim() ? "#94a3b8" : "rgba(148,163,184,0.1)", color: commandText.trim() ? "#050510" : "rgba(148,163,184,0.4)", boxShadow: commandText.trim() ? "0 0 15px rgba(148,163,184,0.4)" : undefined }} onClick={handleSend} disabled={!commandText.trim()}>
+                  <Send className="h-4.5 w-4.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT PANE: Strategic Outcomes & Telemetry (Cockpit Only) */}
+          {isCockpit && (
+            <div className="w-full md:w-80 flex-shrink-0 flex flex-col gap-4">
+              <div className="flex-1 rounded-xl border border-[#94a3b8]/20 bg-black/40 backdrop-blur-md overflow-hidden flex flex-col relative group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#94a3b8]/5 rounded-bl-[100px] pointer-events-none" />
+                <div className="px-4 py-3 border-b border-[#94a3b8]/10 flex items-center justify-between">
+                   <h3 className="text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2 text-[#94a3b8]/70 text-shadow-glow">
+                      <BarChart2 className="h-3.5 w-3.5" /> Telemetry Feed
+                   </h3>
+                   <span className="text-[8px] uppercase font-black px-1.5 py-0.5 bg-[#94a3b8]/10 text-[#94a3b8] rounded">Syncing</span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ scrollbarWidth: "none" }}>
+                  {outcomes.length === 0 ? (
+                     <div className="h-full flex items-center justify-center text-center">
+                        <p className="text-[9px] text-[#94a3b8]/30 uppercase tracking-[0.2em] border border-dashed border-[#94a3b8]/10 p-4 rounded-xl">No telemetry detected.<br/>Issuing commands will<br/>populate intelligence vectors.</p>
+                     </div>
+                  ) : outcomes.map((o) => (
+                    <div key={o.id} className="relative p-3 rounded-xl border bg-black/60 shadow-[0_4px_20px_rgba(0,0,0,0.5)] transition-all group-hover:translate-x-0"
+                      style={o.type === "decision" ? { borderColor: "rgba(52,211,153,0.3)" } : o.type === "risk" ? { borderColor: "rgba(251,191,36,0.3)" } : { borderColor: "rgba(148,163,184,0.3)" }}>
+                      <div className="flex items-start gap-2">
+                        {o.type === "decision" && <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0 drop-shadow-[0_0_5px_rgba(52,211,153,0.8)]" />}
+                        {o.type === "risk" && <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0 animate-pulse drop-shadow-[0_0_5px_rgba(251,191,36,0.8)]" />}
+                        {o.type === "action_item" && <Zap className="h-4 w-4 text-[#94a3b8] flex-shrink-0 drop-shadow-[0_0_5px_rgba(148,163,184,0.8)]" />}
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[9px] font-black uppercase tracking-[0.3em]" style={{ color: o.type === "decision" ? "#34d399" : o.type === "risk" ? "#fbbf24" : "#94a3b8" }}>
+                            {o.type.replace("_", " ")}
+                          </span>
+                          <p className="text-[11px] text-white/70 leading-relaxed font-medium">{o.content}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
-      <div className="transcripts-feed scrollbar-auto-hide">
-         <div className="text-center mb-6 text-primary/40 text-xs uppercase tracking-widest flex items-center justify-center gap-3">
-             <div className="h-[1px] w-12 bg-primary/20"></div>
-             REAL-TIME AUDIT FEED
-             <div className="h-[1px] w-12 bg-primary/20"></div>
-         </div>
-         {transcripts.length === 0 && (
-            <div className="text-center py-4 text-sm text-foreground/40 italic">
-               Listening for input...
-            </div>
-         )}
-         {transcripts.map((t, i) => (
-            <div key={i} className="transcript-item mb-4 animate-in fade-in slide-in-from-bottom-2">
-               <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-bold text-primary/60 uppercase">{t.actorId}</span>
-               </div>
-               <p className="text-sm text-foreground/80 leading-relaxed bg-primary/5 p-3 rounded-lg border-l-2 border-primary/40">
-                  {t.text}
-               </p>
-            </div>
-         ))}
-      </div>
-
-      {/* Control Bar */}
-      <div className="control-bar-hub border border-primary/20 bg-background/40 backdrop-blur-xl rounded-full p-4 flex items-center gap-6 shadow-2xl shadow-primary/20">
-         <Button 
-            size="icon" 
-            variant="ghost" 
-            className="rounded-full hover:bg-primary/10 text-primary/60"
-         >
-            <Users className="h-6 w-6" />
-         </Button>
-         
-         <Button 
-            size="icon" 
-            className={`rounded-full h-16 w-16 shadow-xl transition-all hover:scale-110 ${micActive ? 'bg-red-500 hover:bg-red-600 shadow-red-500/20' : 'bg-primary hover:bg-primary/90 shadow-primary/20'}`}
-            onClick={toggleMic}
-          >
-            {micActive ? <MicOff className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
-         </Button>
-
-         <Button 
-            size="icon" 
-            variant="ghost" 
-            className="rounded-full hover:bg-primary/10 text-primary/60"
-         >
-            <MessageSquare className="h-6 w-6" />
-         </Button>
-
-         <div className="w-[1px] h-8 bg-primary/20"></div>
-
-         <Button 
-            size="icon" 
-            variant="destructive" 
-            className="rounded-full bg-red-950/40 hover:bg-red-900 border border-red-500/30"
-            onClick={handleEndCall}
-          >
-            <PhoneOff className="h-6 w-6" />
-         </Button>
-      </div>
+      <InviteAgentsDialog
+        meetingId={meetingId}
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        participants={participants}
+        onInvited={() => refetchMeeting()}
+      />
     </div>
   );
 }

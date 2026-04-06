@@ -27,6 +27,7 @@ import { AgentMemoryTab } from "../components/AgentMemoryTab";
 import { AgentPerformanceTab } from "../components/AgentPerformanceTab";
 import { AgentMcpTab } from "../components/AgentMcpTab";
 import { AgentSkillsTab } from "../components/AgentSkillsTab";
+import { AgentOnboardingLMS } from "../components/AgentOnboardingLMS";
 import { PageTabBar } from "../components/PageTabBar";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
 import { MarkdownEditor } from "../components/MarkdownEditor";
@@ -226,7 +227,7 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps" | "onboarding";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "instructions" || value === "prompts") return "instructions";
@@ -236,6 +237,7 @@ function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "memory") return "memory";
   if (value === "performance") return "performance";
   if (value === "mcps") return "mcps";
+  if (value === "onboarding") return "onboarding";
   if (value === "runs") return value;
   return "dashboard";
 }
@@ -664,7 +666,9 @@ export function AgentDetail() {
                     ? "performance"
                     : activeView === "mcps"
                       ? "mcps"
-                      : "dashboard";
+                      : activeView === "onboarding"
+                        ? "onboarding"
+                        : "dashboard";
     if (routeAgentRef !== canonicalAgentRef || urlTab !== canonicalTab) {
       navigate(`/agents/${canonicalAgentRef}/${canonicalTab}`, { replace: true });
       return;
@@ -787,6 +791,8 @@ export function AgentDetail() {
         crumbs.push({ label: "Runs" });
       } else if (activeView === "budget") {
         crumbs.push({ label: "Budget" });
+      } else if (activeView === "onboarding") {
+        crumbs.push({ label: "LMS Onboarding" });
       } else {
         crumbs.push({ label: "Dashboard" });
       }
@@ -1069,6 +1075,10 @@ export function AgentDetail() {
           companyId={resolvedCompanyId}
           companyPrefix={companyPrefix}
         />
+      )}
+
+      {activeView === "onboarding" && resolvedCompanyId && (
+        <AgentOnboardingLMS agentId={agent.id} />
       )}
 
       {activeView === "budget" && resolvedCompanyId ? (

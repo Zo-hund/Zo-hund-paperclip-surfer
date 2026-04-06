@@ -60,15 +60,12 @@ export function Sidebar() {
   return (
     <aside className="w-60 h-full min-h-0 border-r border-border bg-background flex flex-col">
       <div className="flex flex-col shrink-0 border-b border-border/40">
-        <div className="flex items-center px-4 h-11 bg-accent/5">
+        <div className="flex items-center px-4 h-14 bg-accent/5">
           <div className="flex items-center gap-2">
-            <div className="w-1.5 h-3.5 bg-primary rounded-[2px] shadow-[0_0_10px_var(--primary)]" />
-            <div className="flex flex-col -gap-1">
-              <span className="text-[11px] font-black tracking-widest uppercase text-foreground/90 leading-none">
-                AMX LABS
-              </span>
-              <span className="text-[7px] font-bold tracking-[0.2em] uppercase text-muted-foreground/60 leading-none mt-0.5">
-                Powered by AMX-AIR-HUBS
+            <img src="/brand-logo.png" alt="AMX LABS Logo" className="w-6 h-6 object-contain animate-[spin_30s_linear_infinite] hover:drop-shadow-[0_0_16px_var(--primary)] hover:scale-110 transition-all duration-300" />
+            <div className="flex flex-col">
+              <span className="text-[12px] font-black tracking-widest uppercase text-foreground/90 leading-none pt-1">
+                AMX LABS x AMX-AIR-HUBS
               </span>
             </div>
           </div>
@@ -145,7 +142,7 @@ export function Sidebar() {
 
         <SidebarSection label="AMX XP HUB">
           <SidebarNavItem to="/marketplace" label="Marketplace" icon={Store} textBadge="Hire" />
-          <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" />
+          <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" className="group" iconClassName="group-hover:animate-flash-shake group-hover:text-amber-300 drop-shadow-[0_0_4px_rgba(251,191,36,0.3)] transition-colors duration-200 text-amber-500" />
           <SidebarNavItem to="/rq/portal" label="RQ Portal" icon={Factory} />
           <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />

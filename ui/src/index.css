@@ -258,6 +258,55 @@
     dashboard-activity-highlight 920ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ── Briefcase live ticker ───────────────────────────────────────────────── */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.briefcase-ticker {
+  animation: ticker-scroll 40s linear infinite;
+  will-change: transform;
+}
+.briefcase-ticker:hover {
+  animation-play-state: paused;
+}
+
+/* ── Briefcase header pulse rings ───────────────────────────────────────── */
+@keyframes briefcase-ring {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.briefcase-ring-1 {
+  animation: briefcase-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.briefcase-ring-2 {
+  animation: briefcase-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation-delay: 0.8s;
+}
+.briefcase-ring-3 {
+  animation: briefcase-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation-delay: 1.6s;
+}
+
+/* ── Done pill pop-in ────────────────────────────────────────────────────── */
+@keyframes done-pop {
+  0%   { transform: scale(0.6) translateY(-4px); opacity: 0; }
+  70%  { transform: scale(1.08) translateY(0);   opacity: 1; }
+  100% { transform: scale(1)    translateY(0);   opacity: 1; }
+}
+.done-pill-enter {
+  animation: done-pop 380ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Card stagger entrance ───────────────────────────────────────────────── */
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+.briefcase-card-enter {
+  animation: card-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .activity-row-enter {
     animation: none;
@@ -781,4 +830,23 @@ a.paperclip-project-mention-chip {
 [class*="_toolbarButtonDropdownContainer_"],
 [class*="_toolbarNodeKindSelectContainer_"] {
   z-index: 81 !important;
+}
+
+@keyframes flash-shake {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+    filter: brightness(1) drop-shadow(0 0 0 rgba(251, 191, 36, 0));
+  }
+  15%, 45%, 75% {
+    transform: rotate(-10deg) scale(1.2);
+    filter: brightness(1.5) drop-shadow(0 0 8px rgba(251, 191, 36, 0.7));
+  }
+  30%, 60%, 90% {
+    transform: rotate(10deg) scale(1.2);
+    filter: brightness(2) drop-shadow(0 0 16px rgba(251, 191, 36, 1));
+  }
+}
+
+.animate-flash-shake {
+  animation: flash-shake 0.5s ease-in-out infinite;
 }

@@ -9,12 +9,14 @@ import { piLocalUIAdapter } from "./pi-local";
 import { openClawGatewayUIAdapter } from "./openclaw-gateway";
 import { processUIAdapter } from "./process";
 import { httpUIAdapter } from "./http";
+import { hermesAdvancedUIAdapter } from "./hermes-advanced";
 
 const uiAdapters: UIAdapterModule[] = [
   claudeLocalUIAdapter,
   codexLocalUIAdapter,
   geminiLocalUIAdapter,
   hermesLocalUIAdapter,
+  hermesAdvancedUIAdapter,
   openCodeLocalUIAdapter,
   piLocalUIAdapter,
   cursorLocalUIAdapter,

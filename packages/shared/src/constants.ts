@@ -320,6 +320,11 @@ export const LIVE_EVENT_TYPES = [
   "plugin.ui.updated",
   "plugin.worker.crashed",
   "plugin.worker.restarted",
+  "meeting.started",
+  "meeting.transcript.added",
+  "meeting.participant.joined",
+  "meeting.outcome.added",
+  "meeting.ended",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENT_TYPES)[number];
 

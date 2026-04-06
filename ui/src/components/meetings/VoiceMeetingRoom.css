@@ -2,39 +2,86 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: radial-gradient(circle at center, #0a0a0f 0%, #050508 100%);
+  background: radial-gradient(circle at center, #0a0a0f 0%, #050510 100%);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: 40px;
+  padding: 24px;
   overflow: hidden;
   color: white;
 }
 
 .glass-morphism-heavy {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
 }
 
 .hud-top {
   width: 100%;
-  max-width: 1200px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  opacity: 0.8;
-  margin-top: 20px;
+  opacity: 0.9;
+  margin-bottom: 20px;
+}
+
+/* Cockpit Grid */
+.cockpit-grid {
+  display: grid;
+  grid-template-columns: 1fr 2.5fr 1.2fr;
+  gap: 20px;
+  flex: 1;
+  min-height: 0; /* Important for flex-child scrolling */
+}
+
+/* Side Panels */
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: rgba(10, 10, 20, 0.4);
+  border: 1px solid rgba(0, 243, 255, 0.05);
+  border-radius: 20px;
+  padding: 20px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.panel-header {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  color: rgba(0, 243, 255, 0.5);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+/* Scrollable areas in panels */
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.panel-content::-webkit-scrollbar { display: none; }
+
+/* Deck (Center Column) */
+.center-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 32px;
+  min-height: 0;
 }
 
 .central-hub {
   position: relative;
   width: 100%;
-  max-width: 600px;
-  height: 400px;
+  max-width: 500px;
+  height: 300px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .visualizer-canvas {
@@ -52,70 +99,81 @@
 }
 
 .brand-logo-small {
-  font-size: 2.5rem;
-  font-weight: 800;
-  letter-spacing: 0.2rem;
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 0.3rem;
   color: white;
-  text-shadow: 0 0 20px rgba(0, 243, 255, 0.6);
+  text-shadow: 0 0 30px rgba(0, 243, 255, 0.8);
   line-height: 1;
 }
 
 .brand-status {
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   text-transform: uppercase;
-  letter-spacing: 0.4rem;
+  letter-spacing: 0.5rem;
   color: #00f3ff;
-  opacity: 0.8;
-  margin-top: 0.5rem;
-  font-weight: 600;
+  opacity: 0.9;
+  margin-top: 0.4rem;
+  font-weight: 700;
 }
 
 .transcripts-feed {
   width: 100%;
-  max-width: 800px;
-  height: 200px;
+  max-width: 900px;
+  flex: 1;
   overflow-y: auto;
-  margin-bottom: 20px;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 20px;
+  padding: 30px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
   border: 1px solid rgba(0, 243, 255, 0.1);
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
+  min-height: 0;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
 }
 
+/* Control Hub */
 .control-bar-hub {
   width: auto;
-  min-width: 300px;
-  margin-bottom: 40px;
+  margin: 20px auto;
   display: flex;
   align-items: center;
-  gap: 30px;
-  padding-left: 30px;
-  padding-right: 30px;
-}
-
-/* Animations */
-@keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 0.5; }
-  100% { transform: scale(1.2); opacity: 0; }
+  gap: 32px;
+  padding: 12px 32px;
+  background: rgba(10, 10, 20, 0.8);
+  border: 1px solid rgba(0, 243, 255, 0.2);
+  border-radius: 9999px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 243, 255, 0.1);
+  backdrop-filter: blur(20px);
 }
 
 .transcript-item {
-  animation: fadeIn 0.4s ease-out;
+  animation: slideInUp 0.6s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
+/* Agent List Item */
+.agent-list-item {
+   display: flex;
+   align-items: center;
+   gap: 12px;
+   padding: 12px;
+   background: rgba(0, 243, 255, 0.03);
+   border: 1px solid rgba(0, 243, 255, 0.05);
+   border-radius: 12px;
+   margin-bottom: 10px;
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 /* Scrollbar styling */
 .transcripts-feed::-webkit-scrollbar {
-  width: 4px;
+  width: 5px;
 }
 
 .transcripts-feed::-webkit-scrollbar-thumb {
-  background: rgba(0, 243, 255, 0.2);
+  background: rgba(0, 243, 255, 0.15);
   border-radius: 10px;
 }

@@ -1,7 +1,9 @@
+import * as React from "react";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
+import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -10,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Download, Network, Upload } from "lucide-react";
+import { Download, Network, Upload, Zap, UserCheck, TrendingUp, PieChart, Wallet, History as HistoryIcon } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 
 // Layout constants
@@ -163,17 +165,35 @@ export function OrgChart() {
     return m;
   }, [agents]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     setBreadcrumbs([{ label: "Org Chart" }]);
   }, [setBreadcrumbs]);
 
+  // Fetch live runs for the company to show active connections
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 3000,
+  });
+
+  const activeAgentIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const run of liveRuns ?? []) {
+      if (run.status === "running" || run.status === "queued") {
+        ids.add(run.agentId);
+      }
+    }
+    return ids;
+  }, [liveRuns]);
+
   // Layout computation
-  const layout = useMemo(() => layoutForest(orgTree ?? []), [orgTree]);
-  const allNodes = useMemo(() => flattenLayout(layout), [layout]);
-  const edges = useMemo(() => collectEdges(layout), [layout]);
+  const layout = React.useMemo(() => layoutForest(orgTree ?? []), [orgTree]);
+  const allNodes = React.useMemo(() => flattenLayout(layout), [layout]);
+  const edges = React.useMemo(() => collectEdges(layout), [layout]);
 
   // Compute SVG bounds
-  const bounds = useMemo(() => {
+  const bounds = React.useMemo(() => {
     if (allNodes.length === 0) return { width: 800, height: 600 };
     let maxX = 0, maxY = 0;
     for (const n of allNodes) {
@@ -184,15 +204,23 @@ export function OrgChart() {
   }, [allNodes]);
 
   // Pan & zoom state
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [dragging, setDragging] = useState(false);
-  const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const [isSwarmActive, setIsSwarmActive] = React.useState(false);
+  const [swarmCost, setSwarmCost] = React.useState(0);
+
+  const MODEL_ICONS: Record<string, string> = {
+    "claude-local": "claude_brand_icon_1775315332265.png",
+    "codex-local": "gpt4_brand_icon_1775315349043.png",
+    "gemini-local": "gemini_brand_icon_1775315361793.png",
+  };
+  const [zoom, setZoom] = React.useState(1);
+  const [dragging, setDragging] = React.useState(false);
+  const dragStart = React.useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
   // Center the chart on first load
-  const hasInitialized = useRef(false);
-  useEffect(() => {
+  const hasInitialized = React.useRef(false);
+  React.useEffect(() => {
     if (hasInitialized.current || allNodes.length === 0 || !containerRef.current) return;
     hasInitialized.current = true;
 
@@ -215,7 +243,7 @@ export function OrgChart() {
     });
   }, [allNodes, bounds]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     // Don't drag if clicking a card
     const target = e.target as HTMLElement;
@@ -269,21 +297,57 @@ export function OrgChart() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-    <div className="mb-2 flex items-center justify-start gap-2 shrink-0">
-      <Link to="/company/import">
-        <Button variant="outline" size="sm">
-          <Upload className="mr-1.5 h-3.5 w-3.5" />
-          Import company
-        </Button>
-      </Link>
-      <Link to="/company/export">
-        <Button variant="outline" size="sm">
-          <Download className="mr-1.5 h-3.5 w-3.5" />
-          Export company
-        </Button>
-      </Link>
-    </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      <style>{`
+        @keyframes orbit-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4); border-color: rgba(34, 211, 238, 0.6); }
+          70% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); border-color: rgba(34, 211, 238, 0.2); }
+          100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); border-color: rgba(34, 211, 238, 0.4); }
+        }
+        @keyframes orbit-pulse-queued {
+          0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.4); border-color: rgba(250, 204, 21, 0.6); }
+          70% { box-shadow: 0 0 0 8px rgba(250, 204, 21, 0); border-color: rgba(250, 204, 21, 0.2); }
+          100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); border-color: rgba(250, 204, 21, 0.4); }
+        }
+        @keyframes dash-flow {
+          to { stroke-dashoffset: -20; }
+        }
+        .active-node-running {
+          animation: orbit-pulse 2s infinite;
+          border-width: 1.5px !important;
+        }
+        .active-node-queued {
+          animation: orbit-pulse-queued 2s infinite;
+          border-width: 1.5px !important;
+        }
+        .active-edge-flow {
+          stroke-dasharray: 5, 5;
+          animation: dash-flow 1s linear infinite;
+          stroke: #22d3ee !important;
+          stroke-width: 2 !important;
+          filter: drop-shadow(0 0 2px rgba(34, 211, 238, 0.5));
+        }
+        .active-edge-flow-queued {
+          stroke-dasharray: 5, 5;
+          animation: dash-flow 1.5s linear infinite;
+          stroke: #facc15 !important;
+          stroke-width: 2 !important;
+        }
+      `}</style>
+      <div className="mb-2 flex items-center justify-start gap-2 shrink-0 px-1">
+        <Link to="/company/import">
+          <Button variant="outline" size="sm">
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+            Import company
+          </Button>
+        </Link>
+        <Link to="/company/export">
+          <Button variant="outline" size="sm">
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            Export company
+          </Button>
+        </Link>
+      </div>
     <div
       ref={containerRef}
       className="w-full flex-1 min-h-0 overflow-hidden relative bg-muted/20 border border-border rounded-lg"
@@ -351,7 +415,80 @@ export function OrgChart() {
         </button>
       </div>
 
+      {/* Mission Control: Swarm Overdrive UI */}
+      <div className="absolute bottom-8 right-8 z-50 flex flex-col items-end gap-4">
+        {isSwarmActive && (
+          <div className="bg-card/90 backdrop-blur-xl border border-primary/20 rounded-[2rem] p-6 shadow-2xl animate-in slide-in-from-bottom-4 duration-500 w-80 border-b-primary/50">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Swarm Overdrive</span>
+              </div>
+              <div className="px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[9px] font-black text-primary uppercase">
+                100x Growth
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-end">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Real-Time Tokens</span>
+                  <span className="text-3xl font-black text-foreground tabular-nums tracking-tighter">
+                    {swarmCost.toLocaleString()}
+                  </span>
+                </div>
+                <TrendingUp className="h-8 w-8 text-primary/20 mb-1" />
+              </div>
+              
+              <div className="h-1.5 w-full bg-accent/10 rounded-full overflow-hidden">
+                <div className="h-full bg-primary animate-pulse w-3/4 shadow-[0_0_10px_var(--primary)]" />
+              </div>
+              
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1 rounded-xl h-9 text-[9px] font-black uppercase tracking-widest border-border/60 hover:bg-accent/5 transition-all">
+                  <HistoryIcon className="h-3 w-3 mr-1.5 opacity-50" /> Audit
+                </Button>
+                <Button size="sm" className="flex-1 rounded-xl h-9 bg-emerald-500 hover:bg-emerald-600 text-[9px] font-black uppercase tracking-widest text-white border-0 shadow-lg shadow-emerald-500/20 transition-all">
+                  <PieChart className="h-3 w-3 mr-1.5" /> Reports
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <Button 
+          size="lg" 
+          className={`rounded-full h-16 w-16 shadow-2xl transition-all duration-500 ring-4 ring-offset-2 ${isSwarmActive ? "animate-pulse ring-primary bg-primary scale-110 shadow-primary/40" : "bg-card text-foreground border-border/60 ring-transparent shadow-black/10 hover:scale-105"}`}
+          onClick={() => {
+            setIsSwarmActive(!isSwarmActive);
+            if (!isSwarmActive) {
+              const interval = setInterval(() => {
+                setSwarmCost(prev => prev + Math.floor(Math.random() * 50) + 10);
+              }, 100);
+              (window as any)._swarmInterval = interval;
+            } else {
+              clearInterval((window as any)._swarmInterval);
+            }
+          }}
+        >
+          <Zap className={`h-8 w-8 transition-all ${isSwarmActive ? "fill-white text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-muted-foreground group-hover:text-primary"}`} />
+        </Button>
+      </div>
+
       {/* SVG layer for edges */}
+      <style>{`
+        @keyframes swarm-flow {
+          from { stroke-dashoffset: 100; }
+          to { stroke-dashoffset: 0; }
+        }
+        .active-edge-swarm {
+          stroke: var(--primary) !important;
+          stroke-width: 3 !important;
+          stroke-dasharray: 8 4 !important;
+          animation: swarm-flow 0.5s linear infinite !important;
+          filter: drop-shadow(0 0 8px var(--primary));
+        }
+      `}</style>
       <svg
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -367,6 +504,10 @@ export function OrgChart() {
             const y2 = child.y;
             const midY = (y1 + y2) / 2;
 
+            const isActive = activeAgentIds.has(child.id);
+            const run = liveRuns?.find(r => r.agentId === child.id && (r.status === "running" || r.status === "queued"));
+            const runStatus = run?.status;
+
             return (
               <path
                 key={`${parent.id}-${child.id}`}
@@ -374,6 +515,7 @@ export function OrgChart() {
                 fill="none"
                 stroke="var(--border)"
                 strokeWidth={1.5}
+                className={`${isActive ? (runStatus === "running" ? "active-edge-flow" : "active-edge-flow-queued") : ""} ${isSwarmActive ? "active-edge-swarm" : ""}`}
               />
             );
           })}
@@ -392,11 +534,16 @@ export function OrgChart() {
           const agent = agentMap.get(node.id);
           const dotColor = statusDotColor[node.status] ?? defaultDotColor;
 
+          const run = liveRuns?.find(r => r.agentId === node.id && (r.status === "running" || r.status === "queued"));
+          const runStatus = run?.status;
+
           return (
             <div
               key={node.id}
               data-org-card
-              className="absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
+              className={`absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none
+                ${runStatus ? (runStatus === "running" ? "active-node-running" : "active-node-queued") : ""}
+              `}
               style={{
                 left: node.x,
                 top: node.y,
@@ -408,13 +555,22 @@ export function OrgChart() {
               <div className="flex items-center px-4 py-3 gap-3">
                 {/* Agent icon + status dot */}
                 <div className="relative shrink-0">
-                  <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
-                    <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${isSwarmActive ? "ring-2 ring-primary ring-offset-2 scale-110 shadow-lg shadow-primary/20" : "bg-muted"}`}>
+                    {agent && MODEL_ICONS[agent.adapterType] ? (
+                      <img src={MODEL_ICONS[agent.adapterType]} alt={agent.adapterType} className="w-full h-full object-cover" />
+                    ) : (
+                      <AgentIcon icon={agent?.icon} className="h-5 w-5 text-foreground/70" />
+                    )}
                   </div>
                   <span
-                    className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card"
+                    className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-background"
                     style={{ backgroundColor: dotColor }}
                   />
+                  {(node.name.toLowerCase().includes("human") || node.role.toLowerCase().includes("lead")) && (
+                    <div className="absolute -top-2 -left-2 bg-emerald-500 text-white rounded-full p-1 shadow-lg animate-bounce duration-500">
+                      <UserCheck className="h-2.5 w-2.5" />
+                    </div>
+                  )}
                 </div>
                 {/* Name + role + adapter type */}
                 <div className="flex flex-col items-start min-w-0 flex-1">

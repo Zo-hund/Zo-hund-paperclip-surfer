@@ -425,6 +425,14 @@ class CodexRpcClient {
     this.proc.stderr.on("data", (chunk: string) => {
       this.stderr += chunk;
     });
+    this.proc.on("error", (err: Error) => {
+      this.stderr += `\nSpawn error: ${err.message}`;
+      for (const request of this.pending.values()) {
+        clearTimeout(request.timer);
+        request.reject(new Error(this.stderr.trim() || "codex app-server failed to start"));
+      }
+      this.pending.clear();
+    });
     this.proc.on("exit", () => {
       for (const request of this.pending.values()) {
         clearTimeout(request.timer);

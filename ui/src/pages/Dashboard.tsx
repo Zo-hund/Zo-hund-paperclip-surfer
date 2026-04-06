@@ -25,6 +25,8 @@ import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRa
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
 import { PluginSlotOutlet } from "@/plugins/slots";
+import { DeliverablesBriefcase } from "../components/DeliverablesBriefcase";
+import { DeploymentManagement } from "../components/DeploymentManagement";
 
 function getRecentIssues(issues: Issue[]): Issue[] {
   return [...issues]
@@ -228,6 +230,18 @@ export function Dashboard() {
               </Link>
             </div>
           ) : null}
+ 
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1">
+              <DeploymentManagement />
+            </div>
+            <div className="lg:col-span-2">
+              <div className="flex flex-col gap-4">
+                 <h3 className="text-sm font-black text-muted-foreground uppercase tracking-[0.2em]">AIR HUB Briefcase</h3>
+                 <DeliverablesBriefcase />
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
             <MetricCard

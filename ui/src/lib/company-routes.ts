@@ -23,7 +23,6 @@ const BOARD_ROUTE_ROOTS = new Set([
   "rq",
   "lms",
   "marketplace",
-  "amx",
   "audit",
   "briefcase",
 ]);

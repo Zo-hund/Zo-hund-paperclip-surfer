@@ -17,6 +17,7 @@ import { projectRoutes } from "./routes/projects.js";
 import { issueRoutes } from "./routes/issues.js";
 import { routineRoutes } from "./routes/routines.js";
 import { meetingsRouter as meetingRoutes } from "./routes/meetings.js";
+import { heartbeatService } from "./services/index.js";
 import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
 import { goalRoutes } from "./routes/goals.js";
 import { approvalRoutes } from "./routes/approvals.js";
@@ -59,12 +60,7 @@ import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
 type UiMode = "none" | "static" | "vite-dev";
 
-export function resolveViteHmrPort(serverPort: number): number {
-  if (serverPort <= 55_535) {
-    return serverPort + 10_000;
-  }
-  return Math.max(1_024, serverPort - 10_000);
-}
+
 
 export async function createApp(
   db: Db,
@@ -155,7 +151,7 @@ export async function createApp(
   api.use(projectRoutes(db));
   api.use(issueRoutes(db, opts.storageService));
   api.use(routineRoutes(db));
-  api.use("/meetings", meetingRoutes(db));
+  api.use("/meetings", meetingRoutes(db, heartbeatService(db) as any));
   api.use(executionWorkspaceRoutes(db));
   api.use(goalRoutes(db));
   api.use(approvalRoutes(db));
@@ -273,7 +269,6 @@ export async function createApp(
 
   if (opts.uiMode === "vite-dev") {
     const uiRoot = path.resolve(__dirname, "../../ui");
-    const hmrPort = resolveViteHmrPort(opts.serverPort);
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       root: uiRoot,
@@ -282,14 +277,13 @@ export async function createApp(
         middlewareMode: true,
         hmr: {
           host: opts.bindHost,
-          port: hmrPort,
-          clientPort: hmrPort,
         },
         allowedHosts: privateHostnameGateEnabled ? Array.from(privateHostnameAllowSet) : undefined,
       },
     });
 
     app.use(vite.middlewares);
+    (app as any).viteServer = vite;
     app.get(/.*/, async (req, res, next) => {
       try {
         const templatePath = path.resolve(uiRoot, "index.html");

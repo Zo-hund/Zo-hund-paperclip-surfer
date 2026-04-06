@@ -14,6 +14,9 @@ export interface Meeting {
   durationSeconds: number | null;
   createdAt: string;
   updatedAt: string;
+  insightsCount?: number;
+  approvedCount?: number;
+  risksCount?: number;
 }
 
 export interface MeetingTranscript {
@@ -26,8 +29,31 @@ export interface MeetingTranscript {
   createdAt: string;
 }
 
+export interface MeetingParticipant {
+  id: string;
+  agentId: string;
+  status: string;
+  lastAction: string | null;
+  name: string;
+  role: string;
+  title: string | null;
+  icon: string | null;
+}
+
+export interface MeetingOutcome {
+  id: string;
+  meetingId: string;
+  type: string;
+  content: string;
+  agentId: string | null;
+  status: string;
+  createdAt: string;
+}
+
 export interface MeetingDetail extends Meeting {
   transcripts: MeetingTranscript[];
+  participants: MeetingParticipant[];
+  outcomes: MeetingOutcome[];
 }
 
 export const meetingsApi = {
@@ -45,4 +71,13 @@ export const meetingsApi = {
 
   finalize: (id: string): Promise<{ success: boolean }> =>
     api.post<{ success: boolean }>(`/meetings/${id}/recording`, {}),
+
+  inviteAgent: (id: string, agentId: string): Promise<MeetingParticipant> =>
+    api.post<MeetingParticipant>(`/meetings/${id}/invite`, { agentId }),
+
+  getParticipants: (id: string): Promise<MeetingParticipant[]> =>
+    api.get<MeetingParticipant[]>(`/meetings/${id}/participants`),
+
+  getOutcomes: (id: string): Promise<MeetingOutcome[]> =>
+    api.get<MeetingOutcome[]>(`/meetings/${id}/outcomes`),
 };

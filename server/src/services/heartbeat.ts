@@ -72,6 +72,8 @@ const SESSIONED_LOCAL_ADAPTERS = new Set([
   "codex_local",
   "cursor",
   "gemini_local",
+  "hermes_local",
+  "hermes_advanced",
   "opencode_local",
   "pi_local",
 ]);
@@ -2841,6 +2843,34 @@ Keep memories concise and specific. Don't write vague platitudes.`;
           },
         });
         await releaseIssueExecutionAndPromote(finalizedRun);
+
+        // V2: Automated Asset Linking for Human-in-the-loop transparency
+        if (issueId && outcome === "succeeded") {
+          try {
+            const { issueWorkProducts } = await import("@paperclipai/db");
+            const products = await db
+              .select({
+                id: issueWorkProducts.id,
+                title: issueWorkProducts.title,
+                url: issueWorkProducts.url,
+              })
+              .from(issueWorkProducts)
+              .where(eq(issueWorkProducts.createdByRunId, finalizedRun.id));
+            if (products.length > 0) {
+              const productLinks = products
+                .map((p) => `- **${p.title}**: [View Asset](${p.url || `/api/work-products/${p.id}/content`})`)
+                .join("\n");
+              await issuesSvc.addComment(
+                issueId,
+                `### 🎨 Generated Assets\n\nThis agent run successfully produced the following deliverables:\n\n${productLinks}`,
+                { agentId: agent.id },
+              );
+              logger.info({ runId: finalizedRun.id, productCount: products.length }, "V2: posted automated asset links to issue");
+            }
+          } catch (err) {
+            logger.warn({ err, runId: finalizedRun.id }, "V2: failed to post automated asset links");
+          }
+        }
       }
 
       if (finalizedRun) {

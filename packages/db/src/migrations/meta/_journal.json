@@ -351,6 +351,27 @@
       "when": 1775226927430,
       "tag": "0049_fluffy_nextwave",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1775314342394,
+      "tag": "0050_motionless_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1775315410783,
+      "tag": "0051_modern_nightcrawler",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1775316978258,
+      "tag": "0052_wonderful_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

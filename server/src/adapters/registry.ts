@@ -80,6 +80,7 @@ import {
 } from "hermes-paperclip-adapter";
 import { processAdapter } from "./process/index.js";
 import { httpAdapter } from "./http/index.js";
+import { hermesAdvancedAdapter } from "./hermes-advanced/index.js";
 
 const claudeLocalAdapter: ServerAdapterModule = {
   type: "claude_local",
@@ -197,6 +198,7 @@ const adaptersByType = new Map<string, ServerAdapterModule>(
     geminiLocalAdapter,
     openclawGatewayAdapter,
     hermesLocalAdapter,
+    hermesAdvancedAdapter,
     processAdapter,
     httpAdapter,
   ].map((a) => [a.type, a]),

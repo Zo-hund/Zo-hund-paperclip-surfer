@@ -21,7 +21,7 @@ import {
   resolvePaperclipDesiredSkillNames,
 } from "@paperclipai/adapter-utils/server-utils";
 import { isOpenCodeUnknownSessionError, parseOpenCodeJsonl } from "./parse.js";
-import { ensureOpenCodeModelConfiguredAndAvailable } from "./models.js";
+import { ensureOpenCodeModelConfiguredAndAvailable, discoverOpenCodeModelsCached } from "./models.js";
 import { removeMaintainerOnlySkillSymlinks } from "@paperclipai/adapter-utils/server-utils";
 import { prepareOpenCodeRuntimeConfig } from "./runtime-config.js";
 
@@ -97,7 +97,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     "You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.",
   );
   const command = asString(config.command, "opencode");
-  const model = asString(config.model, "").trim();
+  let model = asString(config.model, "").trim();
   const variant = asString(config.variant, "").trim();
 
   const workspaceContext = parseObject(context.paperclipWorkspace);
@@ -393,13 +393,49 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       };
     };
 
-    const initial = await runAttempt(sessionId);
+    let currentAttempt = await runAttempt(sessionId);
+    let attemptCount = 0;
+    const maxAttempts = 4; // Initial + 3 retries
+    let backoffMs = 5000;
+
+    const isRateLimitError = (att: typeof currentAttempt) => {
+      const errStr = String(att.parsed.errorMessage || "") + String(att.rawStderr || "");
+      return !att.proc.timedOut && (
+        errStr.includes("scale requests more smoothly") ||
+        errStr.includes("429") ||
+        errStr.includes("Too Many Requests") ||
+        errStr.includes("rate limit")
+      );
+    };
+
+    while (attemptCount < maxAttempts && isRateLimitError(currentAttempt)) {
+      attemptCount++;
+      if (attemptCount >= maxAttempts) break;
+      await onLog("stdout", `[paperclip] Rate limit detected. Shifting model from "${model}" and sleeping for ${backoffMs/1000}s...\n`);
+      await new Promise(r => setTimeout(r, backoffMs));
+      backoffMs *= 1.5;
+
+      try {
+        const availableModels = await discoverOpenCodeModelsCached({ command, cwd, env: runtimeEnv });
+        if (availableModels.length > 1) {
+          const currentIndex = availableModels.findIndex(m => m.id === model);
+          const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % availableModels.length : 0;
+          model = availableModels[nextIndex].id;
+          await onLog("stdout", `[paperclip] Shifted target model to: ${model}\n`);
+        }
+      } catch (e) {
+         // ignore discover error and retry with the same
+      }
+
+      currentAttempt = await runAttempt(sessionId);
+    }
+
     const initialFailed =
-      !initial.proc.timedOut && ((initial.proc.exitCode ?? 0) !== 0 || Boolean(initial.parsed.errorMessage));
+      !currentAttempt.proc.timedOut && ((currentAttempt.proc.exitCode ?? 0) !== 0 || Boolean(currentAttempt.parsed.errorMessage));
     if (
       sessionId &&
       initialFailed &&
-      isOpenCodeUnknownSessionError(initial.proc.stdout, initial.rawStderr)
+      isOpenCodeUnknownSessionError(currentAttempt.proc.stdout, currentAttempt.rawStderr)
     ) {
       await onLog(
         "stdout",
@@ -409,7 +445,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       return toResult(retry, true);
     }
 
-    return toResult(initial);
+    return toResult(currentAttempt);
   } finally {
     await preparedRuntimeConfig.cleanup();
   }

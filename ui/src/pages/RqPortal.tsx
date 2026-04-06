@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import * as React from "react";
 import { 
   Factory, 
   Cpu, 
@@ -16,12 +16,19 @@ import {
   Send,
   Sparkles,
   LayoutDashboard,
+  X,
+  Database,
+  Wallet,
+  PieChart,
+  UserCheck,
+  TrendingUp,
   Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { amxApi } from "@/api/amx";
 import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
+import { DeliverablesBriefcase } from "@/components/DeliverablesBriefcase";
 
 const TIERS = [
   {
@@ -95,26 +102,45 @@ const AGENTS = [
 export function RqPortal() {
   const { selectedCompanyId } = useCompany();
   const { pushToast } = useToast();
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [activeTier, setActiveTier] = React.useState<any>(null);
+  const [isSimulation, setIsSimulation] = React.useState(true);
+  const [contextFormData, setContextFormData] = React.useState({
+    userContext: "",
+    domainContext: "",
+    institutionalMemory: ""
+  });
 
-  const handleSubmit = async (tierSlug: string) => {
-    if (!selectedCompanyId) return;
+  // Simulated wallet data for the demo
+  const wallet = {
+    credits: 2450,
+    tokens: 420,
+    extensionFactor: "100x"
+  };
+
+  const handleOpenModal = (tier: any) => {
+    setActiveTier(tier);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedCompanyId || !activeTier) return;
     setSubmitting(true);
     try {
       await amxApi.submitRq(selectedCompanyId, {
-        tier: tierSlug,
-        contextData: {
-          userContext: "Default User Context",
-          domainContext: "Default Domain Context",
-          institutionalMemory: "Initial Memory Seed"
-        },
-        deploymentMode: "hybrid"
+        tier: activeTier.slug,
+        contextData: contextFormData,
+        isSimulation,
+        deploymentMode: activeTier.deployment.toLowerCase().includes("physical") ? "hybrid" : "cloud"
       });
+      setIsModalOpen(false);
       pushToast({
         tone: "success",
         title: "RQ Submitted Successfully!",
-        body: `Your ${tierSlug} request has been received by the Context AI Factory.`
+        body: `Your ${activeTier.name} request has been received by the Context AI Factory.`
       });
+      setContextFormData({ userContext: "", domainContext: "", institutionalMemory: "" });
     } catch (err) {
       pushToast({
         tone: "error",
@@ -126,6 +152,14 @@ export function RqPortal() {
     }
   };
 
+  const steps = [
+    { id: 'pre', label: 'Pre-Production', active: true },
+    { id: 'sim', label: 'Simulation', active: isSimulation },
+    { id: 'prod', label: 'Production', active: !isSimulation },
+    { id: 'live', label: 'Live Performance', active: !isSimulation },
+    { id: 'post', label: 'Post-Production', active: true }
+  ];
+
   return (
     <div className="flex flex-col min-h-screen bg-background/50 animate-in fade-in duration-500">
       {/* Hero Section */}
@@ -136,13 +170,45 @@ export function RqPortal() {
         </div>
 
         <div className="max-w-7xl mx-auto relative z-10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary">
-              <Factory className="h-8 w-8" />
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-primary/10 text-primary shadow-inner">
+                <Factory className="h-8 w-8" />
+              </div>
+              <div>
+                <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-foreground uppercase italic underline decoration-primary/30 decoration-8 underline-offset-8">
+                  CONTEXT AI FACTORY
+                </h1>
+                <p className="text-[10px] font-black tracking-[0.4em] text-muted-foreground uppercase mt-2 ml-1">
+                  Manufacturing Industrial Intelligence
+                </p>
+              </div>
             </div>
-            <h1 className="text-2xl md:text-4xl font-black tracking-tight text-foreground uppercase">
-              AMX RQ PORTAL
-            </h1>
+
+            {/* Simulation Wallet Dashboard */}
+            <div className="flex items-center gap-4 bg-card/80 backdrop-blur-md p-4 rounded-3xl border border-border/60 shadow-xl">
+              <div className="flex flex-col px-4 border-r border-border/40">
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3 text-emerald-500" /> Digital Twin Capacity
+                </span>
+                <span className="text-2xl font-black text-foreground">{wallet.extensionFactor} <span className="text-[10px] text-primary">Extension</span></span>
+              </div>
+              <div className="flex flex-col px-4 border-r border-border/40">
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
+                  <PieChart className="h-3 w-3 text-primary" /> Learning Credits
+                </span>
+                <span className="text-2xl font-black text-foreground">{wallet.credits.toLocaleString()}</span>
+              </div>
+              <div className="flex flex-col px-4">
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
+                  <Wallet className="h-3 w-3 text-amber-500" /> Prod Tokens
+                </span>
+                <span className="text-2xl font-black text-foreground">{wallet.tokens.toLocaleString()}</span>
+              </div>
+              <Button size="sm" variant="outline" className="rounded-2xl border-primary/20 bg-primary/5 hover:bg-primary/10 font-bold text-[10px] uppercase tracking-widest px-4 h-10">
+                Buy Credit Block
+              </Button>
+            </div>
           </div>
           <h2 className="text-4xl md:text-6xl font-black tracking-tighter text-foreground mb-6 leading-tight max-w-4xl">
             Context AI Factory: <span className="text-primary block md:inline">AI Speed + Human Touch</span>
@@ -228,7 +294,7 @@ export function RqPortal() {
                   </div>
 
                   <Button 
-                    onClick={() => handleSubmit(tier.slug)}
+                    onClick={() => handleOpenModal(tier)}
                     disabled={submitting}
                     className={`w-full h-12 font-black text-[12px] uppercase tracking-[0.2em] ${tier.popular ? "shadow-lg shadow-primary/20" : "variant-secondary"}`}
                   >
@@ -241,6 +307,17 @@ export function RqPortal() {
                 </div>
               </div>
             ))}
+          </div>
+ 
+          <div className="mt-20 border-t border-border/40 pt-20">
+             <div className="flex flex-col items-center text-center mb-12">
+                <h2 className="text-[13px] font-black tracking-[0.3em] uppercase text-primary mb-3">Manufactured Intelligence</h2>
+                <h3 className="text-3xl md:text-5xl font-black text-foreground mb-6">Briefcase: Live Factory Deliverables</h3>
+                <p className="text-base md:text-xl text-muted-foreground font-medium max-w-2xl leading-relaxed">
+                   Track every deliverable manufactured by your Context AI Swarm. Complete measurement and direct access to your digital assets.
+                </p>
+             </div>
+             <DeliverablesBriefcase />
           </div>
         </div>
       </section>
@@ -363,6 +440,86 @@ export function RqPortal() {
           </Button>
         </div>
       </section>
+      {isModalOpen && activeTier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="relative w-full max-w-lg bg-card border border-border/60 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="p-6 border-b border-border/40 flex items-center justify-between bg-accent/5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                  <Database className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-foreground uppercase tracking-tight">Context Intake</h3>
+                  <p className="text-[11px] font-bold text-primary uppercase tracking-widest">{activeTier.name}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 hover:bg-accent rounded-full transition-colors"
+              >
+                <X className="h-5 w-5 text-muted-foreground" />
+              </button>
+            </div>
+
+            <div className="p-8 space-y-6">
+              {/* Simulation Mode Toggle */}
+              <div className="p-4 rounded-2xl bg-accent/5 border border-border/40 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg transition-colors ${isSimulation ? "bg-emerald-500/10 text-emerald-500" : "bg-amber-500/10 text-amber-500"}`}>
+                    {isSimulation ? <Sparkles className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">Deployment Mode</span>
+                    <span className="text-sm font-black text-foreground">{isSimulation ? "Simulation (Learning Credits)" : "Live Performance (Production Tokens)"}</span>
+                  </div>
+                </div>
+                <Button 
+                  size="sm" 
+                  variant={isSimulation ? "outline" : "default"}
+                  className={`h-9 px-4 rounded-xl font-black text-[10px] uppercase tracking-widest ${isSimulation ? "border-emerald-500/30 text-emerald-500" : "bg-amber-500 text-white shadow-lg shadow-amber-500/20"}`}
+                  onClick={() => setIsSimulation(!isSimulation)}
+                >
+                  {isSimulation ? "Switch to Live" : "Switch to Sim"}
+                </Button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Domain Context</label>
+                  <textarea 
+                    className="w-full min-h-[100px] p-4 rounded-2xl bg-accent/5 border border-border/40 focus:border-primary/50 focus:ring-0 transition-all text-sm font-medium resize-none"
+                    placeholder="Describe your industry, target audience, and current challenges..."
+                    value={contextFormData.domainContext}
+                    onChange={(e) => setContextFormData({ ...contextFormData, domainContext: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">User Context</label>
+                  <textarea 
+                    className="w-full min-h-[80px] p-4 rounded-2xl bg-accent/5 border border-border/40 focus:border-primary/50 focus:ring-0 transition-all text-sm font-medium resize-none"
+                    placeholder="What specifically should the agents focus on for this run?"
+                    value={contextFormData.userContext}
+                    onChange={(e) => setContextFormData({ ...contextFormData, userContext: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 pt-2">
+                <Button 
+                  onClick={handleSubmit} 
+                  disabled={submitting || !contextFormData.domainContext}
+                  className="w-full h-14 rounded-2xl font-black uppercase tracking-[0.2em] text-sm gap-2 shadow-xl shadow-primary/20"
+                >
+                  {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Initiate Manufacturing Swarm <ArrowRight className="h-4 w-4" /></>}
+                </Button>
+                <p className="text-[10px] text-center text-muted-foreground font-medium italic">
+                  This action will deduct credits and trigger the Context AI Factory.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

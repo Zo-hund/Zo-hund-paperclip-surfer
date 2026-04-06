@@ -10,14 +10,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
       lexical: path.resolve(__dirname, "./node_modules/lexical/Lexical.mjs"),
     },
+    dedupe: ["react", "react-dom"],
   },
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": {
-        target: "http://localhost:3100",
-        ws: true,
-      },
-    },
+  optimizeDeps: {
+    include: ["react", "react-dom", "react-dom/client"],
   },
 });

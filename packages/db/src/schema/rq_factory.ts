@@ -1,5 +1,6 @@
-import { pgTable, uuid, text, timestamp, jsonb, index, integer } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, index, integer, boolean } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
+import { issues } from "./issues.js";
 
 /**
  * AMX Context AI Factory - Requirement Portal
@@ -23,11 +24,18 @@ export const rqSubmissions = pgTable(
     amountPaidCents: integer("amount_paid_cents").notNull(), 
     currency: text("currency").notNull().default("USD"), // Fiat/Crypto
     amxTxId: uuid("amx_tx_id"), // Linked to AMX Ledger
+    issueId: uuid("issue_id").references(() => issues.id), // Linked Paperclip Issue for tracking
+    lifecycleStage: text("lifecycle_stage").notNull().default("pre_production"), // 'pre_production', 'simulation', 'production', 'live', 'post_production'
+    isSimulation: boolean("is_simulation").notNull().default(true),
+    creditCost: integer("credit_cost").notNull().default(0),
+    tokenCost: integer("token_cost").notNull().default(0),
+    simulationStatus: text("simulation_status").notNull().default("idle"), // 'idle', 'running', 'completed', 'certified'
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     companyStatusIdx: index("rq_company_status_idx").on(table.companyId, table.status),
+    companyLifecycleIdx: index("rq_company_lifecycle_idx").on(table.companyId, table.lifecycleStage),
   }),
 );
 

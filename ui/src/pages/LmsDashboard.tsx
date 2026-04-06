@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { useQuery } from "@tanstack/react-query";
 import { amxApi } from "@/api/amx";
 import { useCompany } from "@/context/CompanyContext";
+import { DeliverablesBriefcase } from "@/components/DeliverablesBriefcase";
 
 export function LmsDashboard() {
   const { selectedCompanyId } = useCompany();
@@ -205,6 +206,17 @@ export function LmsDashboard() {
                     <Compass className="h-5 w-5 shrink-0" />
                   </Button>
                </div>
+            </div>
+
+            <div className="mt-16 md:mt-24 border-t border-border/40 pt-16 md:pt-20">
+               <div className="mb-12">
+                  <h2 className="text-[13px] font-black tracking-[0.3em] uppercase text-primary mb-3">Skill Outputs</h2>
+                  <h3 className="text-3xl font-black text-foreground mb-4">Briefcase: Training Deliverables</h3>
+                  <p className="text-sm md:text-lg text-muted-foreground font-medium max-w-2xl leading-relaxed">
+                     The tangible results of your simulations and workshops. Measured and verified.
+                  </p>
+               </div>
+               <DeliverablesBriefcase />
             </div>
           </div>
         </div>

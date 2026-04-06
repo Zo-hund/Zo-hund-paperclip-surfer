@@ -515,6 +515,32 @@ export function issueRoutes(db: Db, storage: StorageService) {
     });
     const doc = result.document;
 
+    // Promotion logic: if this is a primary deliverable key, sync a record to work products
+    // so it shows up in global Briefcase views.
+    const deliverableKeys = ["report_deliverable", "strategic_assessment", "blueprint"];
+    if (deliverableKeys.includes(doc.key)) {
+      try {
+        await workProductsSvc.createForIssue(issue.id, issue.companyId, {
+          title: doc.title || "Strategic Assessment",
+          type: "document",
+          provider: "agent-sync",
+          externalId: `doc:${doc.id}`,
+          status: "active",
+          isPrimary: true,
+          summary: req.body.changeSummary || "Automated report delivery via Strategic Pipeline.",
+          projectId: issue.projectId ?? null,
+          createdByRunId: actor.runId ?? null,
+          metadata: {
+            documentId: doc.id,
+            documentKey: doc.key,
+            format: doc.format,
+          },
+        });
+      } catch (err) {
+        logger.warn({ err, issueId: issue.id, docKey: doc.key }, "failed to sync document to work products");
+      }
+    }
+
     await logActivity(db, {
       companyId: issue.companyId,
       actorType: actor.actorType,
@@ -530,6 +556,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
         title: doc.title,
         format: doc.format,
         revisionNumber: doc.latestRevisionNumber,
+        syncedToBriefcase: deliverableKeys.includes(doc.key),
       },
     });
 

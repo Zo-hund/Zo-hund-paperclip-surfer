@@ -548,6 +548,18 @@ export async function startServer(): Promise<StartedServer> {
     deploymentMode: config.deploymentMode,
     resolveSessionFromHeaders,
   });
+  
+  // Delegate HMR upgrades to Vite if in dev mode
+  (server as any).on("upgrade", (req: any, socket: any, head: any) => {
+    const vite = (app as any).viteServer;
+    if (vite && typeof vite.ws?.handleUpgrade === "function") {
+      try {
+        vite.ws.handleUpgrade(req, socket, head);
+      } catch (err) {
+        logger.error({ err }, "failed vite hmr upgrade delegation");
+      }
+    }
+  });
 
   void reconcilePersistedRuntimeServicesOnStartup(db as any)
     .then((result) => {

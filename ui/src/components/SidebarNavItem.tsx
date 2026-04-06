@@ -9,6 +9,7 @@ interface SidebarNavItemProps {
   icon: LucideIcon;
   end?: boolean;
   className?: string;
+  iconClassName?: string;
   badge?: number;
   badgeTone?: "default" | "danger";
   textBadge?: string;
@@ -23,6 +24,7 @@ export function SidebarNavItem({
   icon: Icon,
   end,
   className,
+  iconClassName,
   badge,
   badgeTone = "default",
   textBadge,
@@ -48,7 +50,7 @@ export function SidebarNavItem({
       }
     >
       <span className="relative shrink-0">
-        <Icon className="h-4 w-4" />
+        <Icon className={cn("h-4 w-4", iconClassName)} />
         {alert && (
           <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500 shadow-[0_0_0_2px_hsl(var(--background))]" />
         )}

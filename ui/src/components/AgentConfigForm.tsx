@@ -314,10 +314,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     adapterType === "codex_local" ||
     adapterType === "gemini_local" ||
     adapterType === "hermes_local" ||
+    adapterType === "hermes_advanced" ||
     adapterType === "opencode_local" ||
     adapterType === "pi_local" ||
     adapterType === "cursor";
-  const isHermesLocal = adapterType === "hermes_local";
+  const isHermes = adapterType === "hermes_local" || adapterType === "hermes_advanced";
   const showLegacyWorkingDirectoryField =
     isLocal && shouldShowLegacyWorkingDirectoryField({ isCreate, adapterConfig: config });
   const uiAdapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
@@ -347,7 +348,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       }
       return agentsApi.detectModel(selectedCompanyId, adapterType);
     },
-    enabled: Boolean(selectedCompanyId && isHermesLocal),
+    enabled: Boolean(selectedCompanyId && isHermes),
   });
   const detectedModel = detectedModelData?.model ?? null;
 
@@ -723,7 +724,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       ? "codex"
                       : adapterType === "gemini_local"
                         ? "gemini"
-                        : adapterType === "hermes_local"
+                        : adapterType === "hermes_local" || adapterType === "hermes_advanced"
                           ? "hermes"
                         : adapterType === "pi_local"
                           ? "pi"
@@ -746,18 +747,17 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 }
                 open={modelOpen}
                 onOpenChange={setModelOpen}
-                allowDefault={adapterType !== "opencode_local" && adapterType !== "hermes_local"}
-                required={adapterType === "opencode_local" || adapterType === "hermes_local"}
+                allowDefault={adapterType !== "opencode_local" && !isHermes}
+                required={adapterType === "opencode_local" || isHermes}
                 groupByProvider={adapterType === "opencode_local"}
-                creatable={adapterType === "hermes_local"}
-                detectedModel={adapterType === "hermes_local" ? detectedModel : null}
-                onDetectModel={adapterType === "hermes_local"
+                detectedModel={isHermes ? detectedModel : null}
+                onDetectModel={isHermes
                   ? async () => {
                       const result = await refetchDetectedModel();
                       return result.data?.model ?? null;
                     }
                   : undefined}
-                detectModelLabel={adapterType === "hermes_local" ? "Detect from Hermes config" : undefined}
+                detectModelLabel={isHermes ? "Detect from Hermes config" : undefined}
               />
               {fetchedModelsError && (
                 <p className="text-xs text-destructive">
@@ -1022,7 +1022,7 @@ function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmentTestRe
 
 /* ---- Internal sub-components ---- */
 
-const ENABLED_ADAPTER_TYPES = new Set(["claude_local", "codex_local", "gemini_local", "opencode_local", "pi_local", "cursor", "hermes_local"]);
+const ENABLED_ADAPTER_TYPES = new Set(["claude_local", "codex_local", "gemini_local", "opencode_local", "pi_local", "cursor", "hermes_local", "hermes_advanced"]);
 
 /** Display list includes all real adapter types plus UI-only coming-soon entries. */
 const ADAPTER_DISPLAY_LIST: { value: string; label: string; comingSoon: boolean }[] = [

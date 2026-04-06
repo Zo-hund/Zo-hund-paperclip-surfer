@@ -2,9 +2,11 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { rqSubmissions, rqAgentConfigs } from "@paperclipai/db";
 import { heartbeatService } from "./heartbeat.js";
+import { issueService } from "./issues.js";
 
 export function rqPortalService(db: Db) {
   const heartbeat = heartbeatService(db);
+  const issues = issueService(db);
 
   /**
    * Submits a new Requirement (RQ) to the AI Factory.
@@ -18,22 +20,56 @@ export function rqPortalService(db: Db) {
     },
     deploymentMode: string;
     amountPaidCents: number;
+    isSimulation?: boolean;
   }) {
+    const isSimulation = data.isSimulation ?? true;
+    
+    // 1. Create the Paperclip Issue for tracking
+    const tierLabel = data.tier.replace("_", " ").toUpperCase();
+    const prefix = isSimulation ? "[SIM-FACTORY]" : "[LIVE-FACTORY]";
+    const issue = await issues.create(companyId, {
+      title: `${prefix} ${tierLabel} Manufacturing`,
+      description: `Requirement Portal Job\n\nMode: ${isSimulation ? "Simulation" : "Live Production"}\nUser Context: ${data.contextData.userContext || "None"}\nDomain Context: ${data.contextData.domainContext || "None"}\nDeployment: ${data.deploymentMode}`,
+      status: "todo",
+      createdByUserId: userId,
+      priority: data.tier === "metaverse_enterprise" ? "high" : "medium",
+    });
+
+    // 2. Insert the submission linked to the issue
     const submission = await db.insert(rqSubmissions).values({
       ...data,
       companyId,
       userId,
+      issueId: issue.id,
+      isSimulation,
+      lifecycleStage: isSimulation ? "simulation" : "production",
       status: "submitted",
     }).returning().then(rows => rows[0]);
 
-    // Automatically trigger the Agent Swarm based on the tier
-    // In a real implementation, this would queue a multi-agent workflow
-    // For now, we update status to 'activating_agents'
+    // 3. Automatically trigger the Agent Swarm
     await db.update(rqSubmissions)
-      .set({ status: "activating_agents", updatedAt: new Date() })
+      .set({ 
+        status: "activating_agents", 
+        simulationStatus: "running",
+        updatedAt: new Date() 
+      })
       .where(eq(rqSubmissions.id, submission.id));
 
-    return submission;
+    return {
+      ...submission,
+      issueIdentifier: issue.identifier
+    };
+  }
+
+  /**
+   * Updates the lifecycle stage of a submission.
+   */
+  async function updateLifecycleStage(submissionId: string, stage: string) {
+    return db.update(rqSubmissions)
+      .set({ lifecycleStage: stage as any, updatedAt: new Date() })
+      .where(eq(rqSubmissions.id, submissionId))
+      .returning()
+      .then(rows => rows[0]);
   }
 
   /**
@@ -47,6 +83,7 @@ export function rqPortalService(db: Db) {
 
   return {
     submitRQ,
+    updateLifecycleStage,
     listSubmissions
   };
 }
