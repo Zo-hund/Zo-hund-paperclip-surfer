@@ -50,3 +50,6 @@ tests/release-smoke/test-results/
 tests/release-smoke/playwright-report/
 .superset/
 .claude/worktrees/
+
+# nested repo — excluded from porcelain status
+packages/hermes-agent/
