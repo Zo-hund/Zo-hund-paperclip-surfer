@@ -326,6 +326,63 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
   );
 }
 
+// ── Folder path ticker (per-card) ────────────────────────────────────────────
+
+/** Maps deliverable type to OPPRRC folder + file extension. */
+function getOpprcInfo(type: string): { folder: string; folderNum: string; ext: string; color: string } {
+  const t = (type ?? "").toLowerCase();
+  if (["document", "text"].includes(t))
+    return { folder: "01-TEXT",            folderNum: "01", ext: "md",   color: "text-blue-400/80" };
+  if (["image", "artifact", "visual"].includes(t))
+    return { folder: "02-IMAGE",           folderNum: "02", ext: "png",  color: "text-violet-400/80" };
+  if (["video", "preview_url"].includes(t))
+    return { folder: "03-VIDEO",           folderNum: "03", ext: "mp4",  color: "text-pink-400/80" };
+  if (["code", "pull_request", "branch", "commit"].includes(t))
+    return { folder: "04-CODE",            folderNum: "04", ext: "ts",   color: "text-emerald-400/80" };
+  if (["runtime_service", "audit"].includes(t))
+    return { folder: "05-SKILLS",          folderNum: "05", ext: "md",   color: "text-amber-400/80" };
+  return   { folder: "MASTERS-BRIEFCASE", folderNum: "MB", ext: "md",   color: "text-cyan-400/80" };
+}
+
+/** Slugifies a title into a filename-safe string. */
+function slugifyTitle(title: string): string {
+  return (title ?? "untitled")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function FolderPathTicker({ dl }: { dl: any }) {
+  const { folder, ext, color } = getOpprcInfo(dl.type);
+  const slug = dl.issueIdentifier
+    ? `${dl.issueIdentifier.toLowerCase()}_${slugifyTitle(dl.title)}`
+    : slugifyTitle(dl.title);
+  const filename = `${slug}.${ext}`;
+  const fullPath = `AMX-AIR-HUBS-OPPRRC / ${folder} / ${filename}`;
+
+  // Repeat to fill the scroll strip
+  const display = `${fullPath}   ·   ${fullPath}   ·   ${fullPath}`;
+
+  return (
+    <div
+      className="folder-path-ticker-wrap relative overflow-hidden bg-black/20 border-b border-border/20 h-5 flex items-center"
+      title={fullPath}
+    >
+      {/* Left fade */}
+      <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-black/30 to-transparent z-10 pointer-events-none" />
+      {/* Scrolling path */}
+      <div className="folder-path-ticker flex items-center px-3">
+        <span className={`text-[9px] font-mono font-semibold ${color} select-none`}>
+          {display}
+        </span>
+      </div>
+      {/* Right fade */}
+      <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-black/30 to-transparent z-10 pointer-events-none" />
+    </div>
+  );
+}
+
 // ── Deliverable card ─────────────────────────────────────────────────────────
 
 function DeliverableCard({ dl, onClick, index }: { dl: any; onClick: () => void; index: number }) {
@@ -341,6 +398,9 @@ function DeliverableCard({ dl, onClick, index }: { dl: any; onClick: () => void;
     >
       {/* Top color strip by type */}
       <div className={`h-0.5 w-full ${cfg.bg.replace("/10", "/40")}`} />
+
+      {/* OPPRRC folder path ticker */}
+      <FolderPathTicker dl={dl} />
 
       <div className="p-5">
         {/* Row 1: type + date + done pill */}
@@ -395,21 +455,38 @@ function DeliverableCard({ dl, onClick, index }: { dl: any; onClick: () => void;
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── OPPRRC Folder Convention ─────────────────────────────────────────────────
 
-const TYPE_FILTERS = [
-  { value: "",               label: "All" },
-  { value: "document",       label: "Doc" },
-  { value: "artifact",       label: "Asset" },
-  { value: "pull_request",   label: "PR" },
-  { value: "branch",         label: "Branch" },
-  { value: "preview_url",    label: "Preview" },
-];
+/** Maps OPPRRC folder slugs to deliverable types, display labels, and colors. */
+const OPPRRC_FOLDERS = [
+  { folder: "",         label: "All",           types: [],                             icon: "📦", color: "text-foreground" },
+  { folder: "text",    label: "01 · TEXT",      types: ["document", "text"],            icon: "📄", color: "text-blue-400" },
+  { folder: "image",   label: "02 · IMAGE",     types: ["image", "artifact", "visual"], icon: "🖼️", color: "text-violet-400" },
+  { folder: "video",   label: "03 · VIDEO",     types: ["video", "preview_url"],        icon: "🎬", color: "text-pink-400" },
+  { folder: "code",    label: "04 · CODE",      types: ["code", "pull_request", "branch", "commit"], icon: "💻", color: "text-emerald-400" },
+  { folder: "skills",  label: "05 · SKILLS",    types: ["runtime_service", "audit"],    icon: "🤖", color: "text-amber-400" },
+  { folder: "briefcase", label: "BRIEFCASE",    types: [],                             icon: "🗂️", color: "text-cyan-400" },
+] as const;
+
+type OpprcFolder = (typeof OPPRRC_FOLDERS)[number]["folder"];
+
+function folderForType(type: string): OpprcFolder {
+  const t = (type ?? "").toLowerCase();
+  for (const f of OPPRRC_FOLDERS) {
+    if (f.folder === "") continue;
+    if ((f.types as unknown as string[]).includes(t)) return f.folder;
+  }
+  return "briefcase";
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export function DeliverablesBriefcase({ global = false }: { global?: boolean }) {
   const { selectedCompanyId } = useCompany();
-  const [search, setSearch]       = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  const [search, setSearch]         = useState("");
+  const [typeFilter, setTypeFilter]  = useState("");
+  const [folderView, setFolderView]  = useState(false);
+  const [activeFolder, setActiveFolder] = useState<OpprcFolder>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const companyId = global ? undefined : selectedCompanyId ?? undefined;
@@ -442,9 +519,36 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
           d.issueIdentifier?.toLowerCase().includes(q),
       );
     }
-    if (typeFilter) list = list.filter((d) => d.type?.toLowerCase() === typeFilter);
+    if (!folderView && typeFilter) {
+      list = list.filter((d) => d.type?.toLowerCase() === typeFilter);
+    }
+    if (folderView && activeFolder) {
+      const cfg = OPPRRC_FOLDERS.find((f) => f.folder === activeFolder);
+      if (cfg && cfg.types.length > 0) {
+        list = list.filter((d) => (cfg.types as unknown as string[]).includes(d.type?.toLowerCase()));
+      } else if (activeFolder === "briefcase") {
+        // Show anything not in TEXT/IMAGE/VIDEO/CODE/SKILLS
+        const knownTypes = OPPRRC_FOLDERS.flatMap((f) => [...f.types] as string[]);
+        list = list.filter((d) => !knownTypes.includes(d.type?.toLowerCase()));
+      }
+    }
     return list;
-  }, [deliverables, search, typeFilter]);
+  }, [deliverables, search, typeFilter, folderView, activeFolder]);
+
+  // Group by OPPRRC folder for folder view
+  const groupedByFolder = useMemo(() => {
+    if (!folderView) return null;
+    const groups: Record<string, { cfg: typeof OPPRRC_FOLDERS[number]; items: any[] }> = {};
+    for (const f of OPPRRC_FOLDERS) {
+      if (f.folder === "") continue;
+      groups[f.folder] = { cfg: f, items: [] };
+    }
+    for (const item of deliverables as any[]) {
+      const fk = folderForType(item.type);
+      if (groups[fk]) groups[fk].items.push(item);
+    }
+    return groups;
+  }, [deliverables, folderView]);
 
   const allItems = deliverables as any[];
 
@@ -474,14 +578,67 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
         <LiveTickerBanner items={allItems} />
       )}
 
-      {/* Search + type filters */}
+      {/* OPPRRC Folder View Toggle */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => { setFolderView(false); setActiveFolder(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors ${
+            !folderView ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+          }`}
+        >
+          <Briefcase className="h-3 w-3" /> All Assets
+        </button>
+        <button
+          onClick={() => { setFolderView(true); setActiveFolder(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors ${
+            folderView ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+          }`}
+        >
+          <PackageOpen className="h-3 w-3" /> OPPRRC Folders
+        </button>
+        {!folderView && (
+          <span className="text-[10px] text-muted-foreground/50 border border-border/30 rounded px-2 py-1 font-mono">v1.0 global standard</span>
+        )}
+      </div>
+
+      {/* OPPRRC Folder Tabs (when folder view is active) */}
+      {folderView && (
+        <div className="flex flex-wrap gap-2">
+          {OPPRRC_FOLDERS.map((f) => {
+            const count = f.folder === ""
+              ? allItems.length
+              : allItems.filter((d: any) => folderForType(d.type) === f.folder).length;
+            return (
+              <button
+                key={f.folder}
+                onClick={() => setActiveFolder(f.folder)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider border transition-all ${
+                  activeFolder === f.folder
+                    ? "border-primary/60 bg-primary/10 text-primary"
+                    : "border-border/40 bg-card text-muted-foreground hover:border-border hover:text-foreground"
+                }`}
+              >
+                <span>{f.icon}</span>
+                <span>{f.label}</span>
+                {count > 0 && (
+                  <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                    activeFolder === f.folder ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  }`}>{count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Search + type filters (flat view only) */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Quick-find by title, agent, issue ID..."
+            placeholder={folderView ? "Search within folder..." : "Quick-find by title, agent, issue ID..."}
             className="pl-10 h-11 rounded-xl bg-card border-border/60 focus:border-primary"
           />
           {search && (
@@ -489,21 +646,6 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
               <X className="h-4 w-4" />
             </button>
           )}
-        </div>
-        <div className="flex items-center gap-1 p-1 rounded-xl border border-border/40 bg-card shrink-0">
-          {TYPE_FILTERS.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setTypeFilter(value)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors ${
-                typeFilter === value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -523,21 +665,55 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
         )}
       </div>
 
-      {/* Grid */}
+      {/* Grid — folder grouped view */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary/40" />
         </div>
+      ) : folderView && !activeFolder && groupedByFolder ? (
+        // Show all folders with their contents
+        <div className="flex flex-col gap-8">
+          {OPPRRC_FOLDERS.filter((f) => f.folder !== "").map((f) => {
+            const items = groupedByFolder[f.folder]?.items ?? [];
+            if (items.length === 0) return null;
+            return (
+              <div key={f.folder}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">{f.icon}</span>
+                  <h3 className={`text-xs font-black uppercase tracking-widest ${f.color}`}>{f.label}</h3>
+                  <span className="text-[10px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full font-mono">{items.length} file{items.length !== 1 ? "s" : ""}</span>
+                  <div className="flex-1 h-px bg-border/30 ml-2" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {items.map((dl: any, i: number) => (
+                    <DeliverableCard key={dl.id} dl={dl} index={i} onClick={() => setSelectedId(dl.id)} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {allItems.length === 0 && (
+            <div className="py-20 flex flex-col items-center justify-center text-center opacity-50">
+              <div className="p-5 rounded-full bg-accent/10 mb-4"><Briefcase className="h-10 w-10 text-muted-foreground" /></div>
+              <h3 className="text-lg font-black text-foreground">Briefcase is Empty</h3>
+              <p className="text-muted-foreground max-w-sm mt-2 text-sm">No deliverables yet — agents will populate this as they complete work.</p>
+            </div>
+          )}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="py-20 flex flex-col items-center justify-center text-center opacity-50">
           <div className="p-5 rounded-full bg-accent/10 mb-4">
-            <Briefcase className="h-10 w-10 text-muted-foreground" />
+            {folderView && activeFolder
+              ? <span className="text-4xl">{OPPRRC_FOLDERS.find((f) => f.folder === activeFolder)?.icon ?? "📦"}</span>
+              : <Briefcase className="h-10 w-10 text-muted-foreground" />}
           </div>
-          <h3 className="text-lg font-black text-foreground">Briefcase is Empty</h3>
+          <h3 className="text-lg font-black text-foreground">
+            {folderView && activeFolder
+              ? `${OPPRRC_FOLDERS.find((f) => f.folder === activeFolder)?.label} folder is empty`
+              : "Briefcase is Empty"}
+          </h3>
           <p className="text-muted-foreground max-w-sm mt-2 text-sm">
-            {search || typeFilter
-              ? "No deliverables match your filters."
-              : "No deliverables yet — agents will populate this as they complete work."}
+            {search ? "No deliverables match your search." : "No deliverables yet — agents will populate this as they complete work."}
           </p>
         </div>
       ) : (

@@ -54,6 +54,7 @@ import { AgentMarketplace } from "./pages/AgentMarketplace";
 import { AgentResumeProfile } from "./pages/AgentResumeProfile";
 import { BoardDeliverables } from "./pages/BoardDeliverables";
 import { AuditTeam } from "./pages/AuditTeam";
+import { TeamRoster } from "./pages/TeamRoster";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { useDialog } from "./context/DialogContext";
@@ -197,6 +198,7 @@ function boardRoutes() {
       <Route path="briefcase" element={<BoardDeliverables />} />
       <Route path="marketplace" element={<AgentMarketplace />} />
       <Route path="marketplace/agent/:marketplaceAgentId" element={<AgentResumeProfile />} />
+      <Route path="teams/roster" element={<TeamRoster />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
     </>
