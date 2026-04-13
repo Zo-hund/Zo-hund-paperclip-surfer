@@ -55,6 +55,11 @@ import { AgentResumeProfile } from "./pages/AgentResumeProfile";
 import { BoardDeliverables } from "./pages/BoardDeliverables";
 import { AuditTeam } from "./pages/AuditTeam";
 import { TeamRoster } from "./pages/TeamRoster";
+import { PublicHome } from "./pages/PublicHome";
+import { PublicAgentProfile } from "./pages/PublicAgentProfile";
+import { PublicCompanyProfile } from "./pages/PublicCompanyProfile";
+import { ServiceRequest } from "./pages/ServiceRequest";
+import { MemberProfile } from "./pages/MemberProfile";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { useDialog } from "./context/DialogContext";
@@ -270,9 +275,9 @@ function CompanyRootRedirect() {
         hasCompanies: false,
       })
     ) {
-      return <Navigate to="/onboarding" replace />;
+      return <Navigate to="/profile" replace />;
     }
-    return <NoCompaniesStartPage />;
+    return <Navigate to="/profile" replace />;
   }
 
   return <Navigate to={`/${targetCompany.issuePrefix}/dashboard`} replace />;
@@ -294,9 +299,9 @@ function UnprefixedBoardRedirect() {
         hasCompanies: false,
       })
     ) {
-      return <Navigate to="/onboarding" replace />;
+      return <Navigate to="/profile" replace />;
     }
-    return <NoCompaniesStartPage />;
+    return <Navigate to="/profile" replace />;
   }
 
   return (
@@ -329,6 +334,15 @@ export function App() {
   return (
     <>
       <Routes>
+        {/* ── Public routes — no auth required ── */}
+        <Route path="home" element={<PublicHome />} />
+        <Route path="p/company/:slug" element={<PublicCompanyProfile />} />
+        <Route path="p/agent/:agentId" element={<PublicAgentProfile />} />
+        <Route path="request" element={<ServiceRequest />} />
+        <Route path="join" element={<ServiceRequest />} />
+        <Route path="profile" element={<MemberProfile />} />
+
+        {/* ── Auth-required routes ── */}
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />

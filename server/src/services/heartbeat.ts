@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { nextCronTickInTimeZone, validateCron, assertValidTimeZone } from "./cron.js";
 import type { Db } from "@paperclipai/db";
 import type { BillingType } from "@paperclipai/shared";
 import {
@@ -2935,6 +2936,29 @@ Keep memories concise and specific. Don't write vague platitudes.`;
           logger.warn({ err, agentId: agent.id, runId: run.id }, "V2: failed to record post-run KPIs");
         }
 
+        // Chat reply persistence: if this run was triggered by a chat message, persist the agent's reply
+        try {
+          const context = parseObject(finalizedRun.contextSnapshot);
+          if (context && context.source === "chat") {
+            const replyContent =
+              (typeof adapterResult.summary === "string" && adapterResult.summary.trim())
+                ? adapterResult.summary.trim()
+                : outcome === "succeeded"
+                  ? "(Agent completed the task — see run logs for details)"
+                  : `(Agent run ${outcome})`;
+
+            const { agentChatService } = await import("./agent-chat.js");
+            await agentChatService(db).persistAgentReply({
+              companyId: finalizedRun.companyId,
+              agentId: finalizedRun.agentId,
+              runId: finalizedRun.id,
+              content: replyContent,
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, runId: finalizedRun.id }, "chat: failed to persist agent reply");
+        }
+
         // V2 Layer 2: Trigger CEO + board review every N runs
         try {
           const CEO_REVIEW_INTERVAL = 10; // Every 10 runs across any agent in the company
@@ -4204,6 +4228,56 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
             now: now.toISOString(),
           },
         });
+        if (run) enqueued += 1;
+        else skipped += 1;
+      }
+
+      return { checked, enqueued, skipped };
+    },
+
+    tickSchedules: async (now = new Date()) => {
+      const NON_INVOKABLE = new Set(["paused", "terminated", "pending_approval"]);
+      const dueAgents = await db
+        .select()
+        .from(agents)
+        .where(
+          and(
+            eq(agents.scheduleEnabled, true),
+            isNotNull(agents.nextScheduledAt),
+            lte(agents.nextScheduledAt, now),
+          ),
+        );
+
+      let checked = 0;
+      let enqueued = 0;
+      let skipped = 0;
+
+      for (const agent of dueAgents) {
+        if (NON_INVOKABLE.has(agent.status)) continue;
+        if (!agent.cronExpression) continue;
+        checked += 1;
+
+        const run = await enqueueWakeup(agent.id, {
+          source: "timer",
+          triggerDetail: "system",
+          reason: "schedule_cron",
+          requestedByActorType: "system",
+          requestedByActorId: "cron_scheduler",
+          contextSnapshot: {
+            source: "scheduler",
+            reason: "cron_fired",
+            expression: agent.cronExpression,
+            now: now.toISOString(),
+          },
+        });
+
+        const tz = agent.scheduleTimezone ?? "UTC";
+        const next = nextCronTickInTimeZone(agent.cronExpression, tz, now);
+        await db
+          .update(agents)
+          .set({ nextScheduledAt: next ?? undefined, updatedAt: new Date() })
+          .where(eq(agents.id, agent.id));
+
         if (run) enqueued += 1;
         else skipped += 1;
       }

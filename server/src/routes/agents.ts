@@ -61,6 +61,8 @@ import {
   loadDefaultAgentInstructionsBundle,
   resolveDefaultAgentInstructionsBundleRole,
 } from "../services/default-agent-instructions.js";
+import { validateCron, nextCronTickInTimeZone, assertValidTimeZone } from "../services/cron.js";
+import { agentChatRoutes } from "./agent-chat.js";
 
 export function agentRoutes(db: Db) {
   const DEFAULT_INSTRUCTIONS_PATH_KEYS: Record<string, string> = {
@@ -1779,6 +1781,38 @@ export function agentRoutes(db: Db) {
       );
     }
 
+    // --- Schedule field processing ---
+    if (Object.prototype.hasOwnProperty.call(patchData, "scheduleEnabled") ||
+        Object.prototype.hasOwnProperty.call(patchData, "cronExpression") ||
+        Object.prototype.hasOwnProperty.call(patchData, "scheduleTimezone")) {
+      const scheduleEnabled = patchData.scheduleEnabled ?? existing.scheduleEnabled;
+      const cronExpression = Object.prototype.hasOwnProperty.call(patchData, "cronExpression")
+        ? (patchData.cronExpression as string | null | undefined)
+        : existing.cronExpression;
+      const scheduleTimezone = Object.prototype.hasOwnProperty.call(patchData, "scheduleTimezone")
+        ? (patchData.scheduleTimezone as string | null | undefined)
+        : existing.scheduleTimezone;
+
+      if (scheduleEnabled && cronExpression) {
+        const cronError = validateCron(cronExpression);
+        if (cronError) {
+          res.status(422).json({ error: `Invalid cron expression: ${cronError}` });
+          return;
+        }
+        if (scheduleTimezone) {
+          try { assertValidTimeZone(scheduleTimezone); } catch (e) {
+            res.status(422).json({ error: `Invalid timezone: ${scheduleTimezone}` });
+            return;
+          }
+        }
+        const tz = scheduleTimezone ?? "UTC";
+        patchData.nextScheduledAt = nextCronTickInTimeZone(cronExpression, tz, new Date());
+      } else if (!scheduleEnabled) {
+        patchData.nextScheduledAt = null;
+      }
+    }
+    // --- End schedule field processing ---
+
     const actor = getActorInfo(req);
     const agent = await svc.update(id, patchData, {
       recordRevision: {
@@ -2347,6 +2381,9 @@ export function agentRoutes(db: Db) {
       adapterType: agent.adapterType,
     });
   });
+
+  // Agent chat sub-router
+  router.use("/agents/:agentId/chat", agentChatRoutes(db));
 
   return router;
 }

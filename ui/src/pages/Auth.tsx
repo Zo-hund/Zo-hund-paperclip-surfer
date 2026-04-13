@@ -69,9 +69,9 @@ export function AuthPage() {
   }
 
   return (
-    <div className="fixed inset-0 flex bg-background">
+    <div className="public-page flex min-h-screen bg-background">
       {/* Left half — form */}
-      <div className="w-full md:w-1/2 flex flex-col overflow-y-auto">
+      <div className="w-full md:w-1/2 flex flex-col">
         <div className="w-full max-w-md mx-auto my-auto px-8 py-12">
           <div className="flex items-center gap-2 mb-8 scale-110 origin-left">
              <img src="/brand-logo.png" alt="AMX LABS Logo" className="w-6 h-6 object-contain animate-[spin_30s_linear_infinite] hover:drop-shadow-[0_0_16px_var(--primary)] hover:scale-110 transition-all duration-300" />

@@ -1,0 +1,1599 @@
+commit a0574ffa55933104d9e277e1bce5b9792a3ed7de
+Author: TechAtNite <amx@techatnite.site>
+Date:   Fri Apr 3 12:37:27 2026 -0400
+
+    fix: Master Briefcase sidebar link — add to company routes and route registry
+    
+    Three issues prevented the sidebar link from working:
+    1. /briefcase route not registered in boardRoutes() — clicking the sidebar
+       link from within a company context hit the 404 catch-all
+    2. Sidebar link pointed to /board/briefcase (global, no company context)
+       instead of /briefcase (company-prefixed, has selectedCompanyId)
+    3. "briefcase", "amx", "audit" missing from BOARD_ROUTE_ROOTS so
+       applyCompanyPrefix() would not correctly prepend the company prefix
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 900f46a6..6e52ac6b 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -151,7 +151,7 @@ export function Sidebar() {
+           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
+           <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />
+           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
+-          <SidebarNavItem to="/board/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
++          <SidebarNavItem to="/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
+         </SidebarSection>
+ 
+         <PluginSlotOutlet
+
+commit b9fe4493240d3c624025516bf1d9a47e2e07deeb
+Author: TechAtNite <amx@techatnite.site>
+Date:   Fri Apr 3 11:22:11 2026 -0400
+
+    fix + deploy: full agent deployment — self-healing, audit team, proof-of-work
+    
+    BUG FIXES:
+    - fix(hermes-agent): restore missing `def main(` at run_agent.py:8522 —
+      syntax error blocked ALL hermes_advanced agents (CTO, CMO, Hermes Hub)
+    - fix(hermes-advanced): replace process.cwd() path detection with
+      import.meta.url for reliable monorepo root on Windows
+    
+    AGENT DEPLOYMENT (via API — live platform):
+    - Patched H3AT CEO BRANDON: codex_local → claude_local (model mismatch fix)
+    - Patched legacy AMX CEO: hermes_local → hermes_advanced
+    - Configured all 6 agents: skills (paperclip, para-memory-files, firecrawl),
+      budgets ($10-$20/mo), updated role-specific AGENTS.md instructions
+    
+    AUDIT TEAM:
+    - feat(db): add audit_verifications schema + migration 0049
+    - feat(server): auditService + audit routes (team, stats, verifications, pass/fail)
+    - feat(ui): AuditTeam page + sidebar nav + App route
+    - Hired V3 Audit Lead (auditor role, claude_local, board-approved)
+    
+    SELF-HEALING:
+    - System Health Monitor routine: */30 * * * * ET — CEO checks all agents,
+      creates recovery issues for errors, escalates persistent failures
+    - Daily Health Report routine: 0 6 * * * ET — CEO attaches health_report.md
+    
+    PROOF OF WORK (5 live issues: AMXA-123 to AMXA-127):
+    - AMXA-123: [TEXT] V3 Platform Overview → CEO → amx_labs_v3_overview.md
+    - AMXA-124: [CODE] XP Calculator utility → CTO → xp_calculator.ts
+    - AMXA-125: [IMAGE] Dashboard screenshot → CMO → firecrawl capture
+    - AMXA-126: [AUDIO] V3 Strategy Meeting Brief → CEO → transcript.md
+    - AMXA-127: [VISUAL] V3 Launch Promo Brief → CMO → creative brief.md
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index d746e483..900f46a6 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -19,6 +19,9 @@ import {
+   GraduationCap,
+   ShieldCheck,
+   Wallet,
++  Store,
++  Briefcase,
++  ClipboardCheck,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+ import { SidebarSection } from "./SidebarSection";
+@@ -141,11 +144,14 @@ export function Sidebar() {
+         </SidebarSection>
+ 
+         <SidebarSection label="AMX XP HUB">
++          <SidebarNavItem to="/marketplace" label="Marketplace" icon={Store} textBadge="Hire" />
+           <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" />
+           <SidebarNavItem to="/rq/portal" label="RQ Portal" icon={Factory} />
+           <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
+           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
++          <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />
+           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
++          <SidebarNavItem to="/board/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
+         </SidebarSection>
+ 
+         <PluginSlotOutlet
+
+commit 0c74acc686a41ca1f0edffa0257a10842f5132e8
+Author: TechAtNite <amx@techatnite.site>
+Date:   Tue Mar 31 22:56:52 2026 -0400
+
+    Industrialize AMX LABS Ecosystem: Dynamic Backend, AMX Hub, and Verified Auditing (V3)
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 6658022b..d746e483 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -10,9 +10,15 @@ import {
+   Network,
+   Boxes,
+   Repeat,
++  Mic,
+   Settings,
+   Plug,
+   BarChart3,
++  Zap,
++  Factory,
++  GraduationCap,
++  ShieldCheck,
++  Wallet,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+ import { SidebarSection } from "./SidebarSection";
+@@ -50,25 +56,39 @@ export function Sidebar() {
+ 
+   return (
+     <aside className="w-60 h-full min-h-0 border-r border-border bg-background flex flex-col">
+-      {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
+-      <div className="flex items-center gap-1 px-3 h-12 shrink-0">
+-        {selectedCompany?.brandColor && (
+-          <div
+-            className="w-4 h-4 rounded-sm shrink-0 ml-1"
+-            style={{ backgroundColor: selectedCompany.brandColor }}
+-          />
+-        )}
+-        <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
+-          {selectedCompany?.name ?? "Select company"}
+-        </span>
+-        <Button
+-          variant="ghost"
+-          size="icon-sm"
+-          className="text-muted-foreground shrink-0"
+-          onClick={openSearch}
+-        >
+-          <Search className="h-4 w-4" />
+-        </Button>
++      <div className="flex flex-col shrink-0 border-b border-border/40">
++        <div className="flex items-center px-4 h-11 bg-accent/5">
++          <div className="flex items-center gap-2">
++            <div className="w-1.5 h-3.5 bg-primary rounded-[2px] shadow-[0_0_10px_var(--primary)]" />
++            <div className="flex flex-col -gap-1">
++              <span className="text-[11px] font-black tracking-widest uppercase text-foreground/90 leading-none">
++                AMX LABS
++              </span>
++              <span className="text-[7px] font-bold tracking-[0.2em] uppercase text-muted-foreground/60 leading-none mt-0.5">
++                Powered by AMX-AIR-HUBS
++              </span>
++            </div>
++          </div>
++        </div>
++        <div className="flex items-center gap-1 px-3 h-10">
++          {selectedCompany?.brandColor && (
++            <div
++              className="w-3.5 h-3.5 rounded-sm shrink-0 ml-1"
++              style={{ backgroundColor: selectedCompany.brandColor }}
++            />
++          )}
++          <span className="flex-1 text-[13px] font-semibold text-foreground/80 truncate pl-1">
++            {selectedCompany?.name ?? "Select project"}
++          </span>
++          <Button
++            variant="ghost"
++            size="icon-xs"
++            className="text-muted-foreground/50 shrink-0 hover:text-foreground"
++            onClick={openSearch}
++          >
++            <Search className="h-3.5 w-3.5" />
++          </Button>
++        </div>
+       </div>
+ 
+       <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col gap-4 px-3 py-2">
+@@ -82,6 +102,7 @@ export function Sidebar() {
+             <span className="truncate">New Issue</span>
+           </button>
+           <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
++          <SidebarNavItem to="/meetings" label="Meetings" icon={Mic} textBadge="New" textBadgeTone="amber" />
+           <SidebarNavItem
+             to="/inbox"
+             label="Inbox"
+@@ -119,6 +140,14 @@ export function Sidebar() {
+           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+         </SidebarSection>
+ 
++        <SidebarSection label="AMX XP HUB">
++          <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" />
++          <SidebarNavItem to="/rq/portal" label="RQ Portal" icon={Factory} />
++          <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
++          <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
++          <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
++        </SidebarSection>
++
+         <PluginSlotOutlet
+           slotTypes={["sidebarPanel"]}
+           context={pluginContext}
+
+commit d9b4f9971a49901f3e50378c33090ffb72e9f795
+Author: hamish davison <incomestreamsurfer@gmail.com>
+Date:   Mon Mar 30 10:43:14 2026 +0100
+
+    Initial commit: Paperclip Surfers V2
+    
+    Based on paperclipai/paperclip (MIT License)
+    Original work Copyright (c) 2025 Paperclip AI
+    
+    V2 additions:
+    - Per-agent-per-project persistent conversations (--resume)
+    - Agent memory system (global + project-scoped)
+    - MCP server management: sync from Claude Code, per-agent assignment
+    - User-installed skills selectable per agent
+    - Post-run KPI recording and analytics
+    - CEO/board observation and experiment tracking
+    - Agent runtime layer: memory, MCPs, skills all injected at execution time
+    
+    Built by IncomeStreamSurfer - harborseo.ai
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index b8cea2ca..6658022b 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -11,6 +11,8 @@ import {
+   Boxes,
+   Repeat,
+   Settings,
++  Plug,
++  BarChart3,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+ import { SidebarSection } from "./SidebarSection";
+@@ -110,6 +112,8 @@ export function Sidebar() {
+         <SidebarSection label="Company">
+           <SidebarNavItem to="/org" label="Org" icon={Network} />
+           <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
++          <SidebarNavItem to="/mcp-servers" label="MCPs" icon={Plug} />
++          <SidebarNavItem to="/analytics" label="Analytics" icon={BarChart3} />
+           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+           <SidebarNavItem to="/activity" label="Activity" icon={History} />
+           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+
+commit 13fd656e2b3981d6d6b5774b653819782d83b619
+Author: dotta <dotta@example.com>
+Date:   Fri Mar 20 13:10:45 2026 -0500
+
+    Add Beta badge to Routines page and sidebar nav
+    
+    Adds an amber "Beta" tag next to "Routines" in both the page heading
+    and the sidebar navigation item. Extends SidebarNavItem with textBadge
+    and textBadgeTone props for reusable text badges.
+    
+    Co-Authored-By: Paperclip <noreply@paperclip.ing>
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 14272454..b8cea2ca 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -99,7 +99,7 @@ export function Sidebar() {
+ 
+         <SidebarSection label="Work">
+           <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+-          <SidebarNavItem to="/routines" label="Routines" icon={Repeat} />
++          <SidebarNavItem to="/routines" label="Routines" icon={Repeat} textBadge="Beta" textBadgeTone="amber" />
+           <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+         </SidebarSection>
+ 
+
+commit 8f5196f7d6ce24f8c5526f9b24d90da2bdbce5dc
+Author: dotta <dotta@example.com>
+Date:   Thu Mar 19 08:39:24 2026 -0500
+
+    Add routines automation workflows
+    
+    Co-Authored-By: Paperclip <noreply@paperclip.ing>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index b0be8415..14272454 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -9,6 +9,7 @@ import {
+   SquarePen,
+   Network,
+   Boxes,
++  Repeat,
+   Settings,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+@@ -98,6 +99,7 @@ export function Sidebar() {
+ 
+         <SidebarSection label="Work">
+           <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
++          <SidebarNavItem to="/routines" label="Routines" icon={Repeat} />
+           <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+         </SidebarSection>
+ 
+
+commit 2c35be02125804b86129f4a382760e8c827eeaf7
+Merge: c44dbf79 bfaa4b4b
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Sat Mar 14 21:45:54 2026 -0500
+
+    Merge public-gh/master into paperclip-company-import-export
+
+commit 0bf53bc513422218e38576a3a3baded975fc9d3b
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Sat Mar 14 10:55:04 2026 -0500
+
+    Add company skills library and agent skills UI
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 0cc46d87..34396cae 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -8,6 +8,7 @@ import {
+   Search,
+   SquarePen,
+   Network,
++  Boxes,
+   Settings,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+@@ -93,6 +94,7 @@ export function Sidebar() {
+ 
+         <SidebarSection label="Company">
+           <SidebarNavItem to="/org" label="Org" icon={Network} />
++          <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
+           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+           <SidebarNavItem to="/activity" label="Activity" icon={History} />
+           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+
+commit 6fa1dd21974a77c4f77a86d4ee3cd4f24015a732
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Fri Mar 13 23:03:51 2026 -0500
+
+    Add kitchen sink plugin example
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 0cc46d87..b8742dee 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -21,6 +21,7 @@ import { heartbeatsApi } from "../api/heartbeats";
+ import { queryKeys } from "../lib/queryKeys";
+ import { useInboxBadge } from "../hooks/useInboxBadge";
+ import { Button } from "@/components/ui/button";
++import { PluginSlotOutlet } from "@/plugins/slots";
+ 
+ export function Sidebar() {
+   const { openNewIssue } = useDialog();
+@@ -38,6 +39,11 @@ export function Sidebar() {
+     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+   }
+ 
++  const pluginContext = {
++    companyId: selectedCompanyId,
++    companyPrefix: selectedCompany?.issuePrefix ?? null,
++  };
++
+   return (
+     <aside className="w-60 h-full min-h-0 border-r border-border bg-background flex flex-col">
+       {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
+@@ -80,6 +86,13 @@ export function Sidebar() {
+             badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
+             alert={inboxBadge.failedRuns > 0}
+           />
++          <PluginSlotOutlet
++            slotTypes={["sidebar"]}
++            context={pluginContext}
++            className="flex flex-col gap-0.5"
++            itemClassName="text-[13px] font-medium"
++            missingBehavior="placeholder"
++          />
+         </div>
+ 
+         <SidebarSection label="Work">
+@@ -97,6 +110,14 @@ export function Sidebar() {
+           <SidebarNavItem to="/activity" label="Activity" icon={History} />
+           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+         </SidebarSection>
++
++        <PluginSlotOutlet
++          slotTypes={["sidebarPanel"]}
++          context={pluginContext}
++          className="flex flex-col gap-3"
++          itemClassName="rounded-lg border border-border p-3"
++          missingBehavior="placeholder"
++        />
+       </nav>
+     </aside>
+   );
+
+commit a503d2c12ceb65b5a2635e930724863b14bcaf51
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Wed Mar 11 07:42:19 2026 -0500
+
+    Adjust inbox tab memory and badge counts
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 684c878a..0cc46d87 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -73,7 +73,7 @@ export function Sidebar() {
+           </button>
+           <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+           <SidebarNavItem
+-            to="/inbox/all"
++            to="/inbox"
+             label="Inbox"
+             icon={Inbox}
+             badge={inboxBadge.inbox}
+
+commit 21d2b075e7cde134cdb9ce7f513d5cb26a75b738
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Tue Mar 10 22:55:45 2026 -0500
+
+    Fix inbox badge logic and landing view
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index ae5e83d4..684c878a 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -17,19 +17,15 @@ import { SidebarProjects } from "./SidebarProjects";
+ import { SidebarAgents } from "./SidebarAgents";
+ import { useDialog } from "../context/DialogContext";
+ import { useCompany } from "../context/CompanyContext";
+-import { sidebarBadgesApi } from "../api/sidebarBadges";
+ import { heartbeatsApi } from "../api/heartbeats";
+ import { queryKeys } from "../lib/queryKeys";
++import { useInboxBadge } from "../hooks/useInboxBadge";
+ import { Button } from "@/components/ui/button";
+ 
+ export function Sidebar() {
+   const { openNewIssue } = useDialog();
+   const { selectedCompanyId, selectedCompany } = useCompany();
+-  const { data: sidebarBadges } = useQuery({
+-    queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
+-    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+-    enabled: !!selectedCompanyId,
+-  });
++  const inboxBadge = useInboxBadge(selectedCompanyId);
+   const { data: liveRuns } = useQuery({
+     queryKey: queryKeys.liveRuns(selectedCompanyId!),
+     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+@@ -77,12 +73,12 @@ export function Sidebar() {
+           </button>
+           <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+           <SidebarNavItem
+-            to="/inbox"
++            to="/inbox/all"
+             label="Inbox"
+             icon={Inbox}
+-            badge={sidebarBadges?.inbox}
+-            badgeTone={sidebarBadges?.failedRuns ? "danger" : "default"}
+-            alert={(sidebarBadges?.failedRuns ?? 0) > 0}
++            badge={inboxBadge.inbox}
++            badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
++            alert={inboxBadge.failedRuns > 0}
+           />
+         </div>
+ 
+
+commit eb607f7df8c27eb62634ffd4a3a143d5e01c6037
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Fri Mar 6 07:39:35 2026 -0600
+
+    feat(ui): auto-hide sidebar scrollbar when not hovering
+    
+    Replace scrollbar-none with a scrollbar-auto-hide utility that keeps the
+    scrollbar thumb transparent by default and reveals it on container hover.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index c1b57f7e..ae5e83d4 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -65,7 +65,7 @@ export function Sidebar() {
+         </Button>
+       </div>
+ 
+-      <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-none flex flex-col gap-4 px-3 py-2">
++      <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col gap-4 px-3 py-2">
+         <div className="flex flex-col gap-0.5">
+           {/* New Issue button aligned with nav items */}
+           <button
+
+commit 8ee063c4e58fa9a561e7e3d4248595ab41606b61
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Mon Mar 2 16:44:03 2026 -0600
+
+    feat(ui): reconcile backup UI changes with current routing and interaction features
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index d6e89b42..c1b57f7e 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -21,7 +21,6 @@ import { sidebarBadgesApi } from "../api/sidebarBadges";
+ import { heartbeatsApi } from "../api/heartbeats";
+ import { queryKeys } from "../lib/queryKeys";
+ import { Button } from "@/components/ui/button";
+-import { ScrollArea } from "@/components/ui/scroll-area";
+ 
+ export function Sidebar() {
+   const { openNewIssue } = useDialog();
+@@ -66,45 +65,43 @@ export function Sidebar() {
+         </Button>
+       </div>
+ 
+-      <ScrollArea className="flex-1">
+-        <nav className="flex flex-col gap-4 px-3 py-2">
+-          <div className="flex flex-col gap-0.5">
+-            {/* New Issue button aligned with nav items */}
+-            <button
+-              onClick={() => openNewIssue()}
+-              className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+-            >
+-              <SquarePen className="h-4 w-4 shrink-0" />
+-              <span className="truncate">New Issue</span>
+-            </button>
+-            <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+-            <SidebarNavItem
+-              to="/inbox"
+-              label="Inbox"
+-              icon={Inbox}
+-              badge={sidebarBadges?.inbox}
+-              badgeTone={sidebarBadges?.failedRuns ? "danger" : "default"}
+-              alert={(sidebarBadges?.failedRuns ?? 0) > 0}
+-            />
+-          </div>
++      <nav className="flex-1 min-h-0 overflow-y-auto scrollbar-none flex flex-col gap-4 px-3 py-2">
++        <div className="flex flex-col gap-0.5">
++          {/* New Issue button aligned with nav items */}
++          <button
++            onClick={() => openNewIssue()}
++            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
++          >
++            <SquarePen className="h-4 w-4 shrink-0" />
++            <span className="truncate">New Issue</span>
++          </button>
++          <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
++          <SidebarNavItem
++            to="/inbox"
++            label="Inbox"
++            icon={Inbox}
++            badge={sidebarBadges?.inbox}
++            badgeTone={sidebarBadges?.failedRuns ? "danger" : "default"}
++            alert={(sidebarBadges?.failedRuns ?? 0) > 0}
++          />
++        </div>
+ 
+-          <SidebarSection label="Work">
+-            <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+-            <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+-          </SidebarSection>
++        <SidebarSection label="Work">
++          <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
++          <SidebarNavItem to="/goals" label="Goals" icon={Target} />
++        </SidebarSection>
+ 
+-          <SidebarProjects />
++        <SidebarProjects />
+ 
+-          <SidebarAgents />
++        <SidebarAgents />
+ 
+-          <SidebarSection label="Company">
+-            <SidebarNavItem to="/org" label="Org" icon={Network} />
+-            <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+-            <SidebarNavItem to="/activity" label="Activity" icon={History} />
+-            <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+-          </SidebarSection>
+-        </nav>
+-      </ScrollArea>
++        <SidebarSection label="Company">
++          <SidebarNavItem to="/org" label="Org" icon={Network} />
++          <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
++          <SidebarNavItem to="/activity" label="Activity" icon={History} />
++          <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
++        </SidebarSection>
++      </nav>
+     </aside>
+   );
+ }
+
+commit f54f30cb90924d08a48e125e962be04d3a14d757
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Mon Mar 2 14:20:49 2026 -0600
+
+    feat(ui): drag-to-reorder sidebar projects with persistent order
+    
+    Add drag-and-drop reordering to sidebar project list using dnd-kit,
+    persisted per-user via localStorage. Use consistent project order in
+    issue properties, new issue dialog, and issue detail mention options.
+    Move projects section below Work section in sidebar.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 68e9b637..d6e89b42 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -88,13 +88,13 @@ export function Sidebar() {
+             />
+           </div>
+ 
+-          <SidebarProjects />
+-
+           <SidebarSection label="Work">
+             <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+             <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+           </SidebarSection>
+ 
++          <SidebarProjects />
++
+           <SidebarAgents />
+ 
+           <SidebarSection label="Company">
+
+commit a7402a5500f303dfef6986200dd947becb548664
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Thu Feb 26 16:30:12 2026 -0600
+
+    style(ui): restore rounding for buttons, comments, and company/project icons
+    
+    Per feedback on PAP-186: containers should have hard edges but buttons,
+    comment containers, project icons, and company icons should keep rounding.
+    
+    - Restore --radius-sm (6px) and --radius-md (8px) for buttons/inputs
+    - Keep --radius-lg and --radius-xl at 0 for cards/containers/dialogs
+    - Add rounded-sm to comment container divs in CommentThread
+    - Replace rounded-xl with rounded-[14px] on company icons (CompanyRail,
+      CompanySettings) since --radius-xl is 0
+    - Fix brand color dot in Sidebar (rounded → rounded-sm)
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 7c65d576..68e9b637 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -8,6 +8,7 @@ import {
+   Search,
+   SquarePen,
+   Network,
++  Settings,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+ import { SidebarSection } from "./SidebarSection";
+@@ -46,6 +47,12 @@ export function Sidebar() {
+     <aside className="w-60 h-full min-h-0 border-r border-border bg-background flex flex-col">
+       {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
+       <div className="flex items-center gap-1 px-3 h-12 shrink-0">
++        {selectedCompany?.brandColor && (
++          <div
++            className="w-4 h-4 rounded-sm shrink-0 ml-1"
++            style={{ backgroundColor: selectedCompany.brandColor }}
++          />
++        )}
+         <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
+           {selectedCompany?.name ?? "Select company"}
+         </span>
+@@ -94,6 +101,7 @@ export function Sidebar() {
+             <SidebarNavItem to="/org" label="Org" icon={Network} />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+             <SidebarNavItem to="/activity" label="Activity" icon={History} />
++            <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
+           </SidebarSection>
+         </nav>
+       </ScrollArea>
+
+commit 33d549db136b95ec260ead1d0d2533215cd48543
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Wed Feb 25 21:36:06 2026 -0600
+
+    feat(ui): mobile UX improvements, comment attachments, and cost breakdown
+    
+    Add PWA meta tags for iOS home screen. Fix mobile properties drawer with safe
+    area insets. Add image attachment button to comment thread. Improve sidebar
+    with collapsible sections, project grouping, and mobile bottom nav. Show
+    token and billing type breakdown on costs page. Fix inbox loading state to
+    show content progressively. Various mobile overflow and layout fixes.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 1372f55e..7c65d576 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -43,7 +43,7 @@ export function Sidebar() {
+   }
+ 
+   return (
+-    <aside className="w-60 h-full border-r border-border bg-background flex flex-col">
++    <aside className="w-60 h-full min-h-0 border-r border-border bg-background flex flex-col">
+       {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
+       <div className="flex items-center gap-1 px-3 h-12 shrink-0">
+         <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
+
+commit 82251b7b27c0b52549afd21fdc651348d3859ce4
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Wed Feb 25 08:39:31 2026 -0600
+
+    feat(ui): org chart page, issue detail tabs, and UX improvements
+    
+    - Add org chart page with tree visualization and sidebar nav link
+    - Restructure issue detail into tabbed layout (comments/activity/sub-issues)
+    - Persist comment drafts to localStorage with debounce
+    - Add inline assignee picker to issues list with search
+    - Fix assignee clear to reset both agent and user assignee
+    - Fix InlineEditor nesting when rendering markdown content
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 68ccff34..1372f55e 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -7,6 +7,7 @@ import {
+   History,
+   Search,
+   SquarePen,
++  Network,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+ import { SidebarSection } from "./SidebarSection";
+@@ -90,6 +91,7 @@ export function Sidebar() {
+           <SidebarAgents />
+ 
+           <SidebarSection label="Company">
++            <SidebarNavItem to="/org" label="Org" icon={Network} />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+             <SidebarNavItem to="/activity" label="Activity" icon={History} />
+           </SidebarSection>
+
+commit cf237d2e7f950b31cc4614e5016578883d4a13fd
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Mon Feb 23 12:25:13 2026 -0600
+
+    feat: add agent icons with picker and collapsible sidebar section
+    
+    - Add `icon` text column to agents DB schema with migration
+    - Add icon field to shared Agent type and validators
+    - Create AgentIconPicker component with 40+ curated lucide icons and search
+    - Show clickable icon next to agent name on detail page header
+    - Replace static Agents nav item with collapsible AGENTS section in sidebar
+    - Each agent shows its icon (defaulting to Bot) with truncated name
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 09b9b168..68ccff34 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -3,34 +3,39 @@ import {
+   CircleDot,
+   Target,
+   LayoutDashboard,
+-  Bot,
+   DollarSign,
+   History,
+   Search,
+   SquarePen,
+-  BookOpen,
+-  Paperclip,
+ } from "lucide-react";
+ import { useQuery } from "@tanstack/react-query";
+-import { CompanySwitcher } from "./CompanySwitcher";
+ import { SidebarSection } from "./SidebarSection";
+ import { SidebarNavItem } from "./SidebarNavItem";
+ import { SidebarProjects } from "./SidebarProjects";
++import { SidebarAgents } from "./SidebarAgents";
+ import { useDialog } from "../context/DialogContext";
+ import { useCompany } from "../context/CompanyContext";
+ import { sidebarBadgesApi } from "../api/sidebarBadges";
++import { heartbeatsApi } from "../api/heartbeats";
+ import { queryKeys } from "../lib/queryKeys";
+ import { Button } from "@/components/ui/button";
+ import { ScrollArea } from "@/components/ui/scroll-area";
+ 
+ export function Sidebar() {
+   const { openNewIssue } = useDialog();
+-  const { selectedCompanyId } = useCompany();
++  const { selectedCompanyId, selectedCompany } = useCompany();
+   const { data: sidebarBadges } = useQuery({
+     queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
+     queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
+     enabled: !!selectedCompanyId,
+   });
++  const { data: liveRuns } = useQuery({
++    queryKey: queryKeys.liveRuns(selectedCompanyId!),
++    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
++    enabled: !!selectedCompanyId,
++    refetchInterval: 10_000,
++  });
++  const liveRunCount = liveRuns?.length ?? 0;
+ 
+   function openSearch() {
+     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+@@ -38,17 +43,11 @@ export function Sidebar() {
+ 
+   return (
+     <aside className="w-60 h-full border-r border-border bg-background flex flex-col">
+-      {/* Logo */}
+-      <div className="flex items-center gap-2 px-4 py-3">
+-        <Paperclip className="h-5 w-5 text-foreground" />
+-        <span className="text-sm font-semibold tracking-tight text-foreground">Paperclip</span>
+-      </div>
+-
+-      {/* Company switcher + actions */}
+-      <div className="flex items-center gap-1 px-3 pb-3">
+-        <div className="flex-1 min-w-0">
+-          <CompanySwitcher />
+-        </div>
++      {/* Top bar: Company name (bold) + Search — aligned with top sections (no visible border) */}
++      <div className="flex items-center gap-1 px-3 h-12 shrink-0">
++        <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
++          {selectedCompany?.name ?? "Select company"}
++        </span>
+         <Button
+           variant="ghost"
+           size="icon-sm"
+@@ -57,20 +56,20 @@ export function Sidebar() {
+         >
+           <Search className="h-4 w-4" />
+         </Button>
+-        <Button
+-          variant="ghost"
+-          size="icon-sm"
+-          className="text-muted-foreground shrink-0"
+-          onClick={() => openNewIssue()}
+-        >
+-          <SquarePen className="h-4 w-4" />
+-        </Button>
+       </div>
+ 
+       <ScrollArea className="flex-1">
+         <nav className="flex flex-col gap-4 px-3 py-2">
+           <div className="flex flex-col gap-0.5">
+-            <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />
++            {/* New Issue button aligned with nav items */}
++            <button
++              onClick={() => openNewIssue()}
++              className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
++            >
++              <SquarePen className="h-4 w-4 shrink-0" />
++              <span className="truncate">New Issue</span>
++            </button>
++            <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
+             <SidebarNavItem
+               to="/inbox"
+               label="Inbox"
+@@ -88,18 +87,14 @@ export function Sidebar() {
+             <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+           </SidebarSection>
+ 
++          <SidebarAgents />
++
+           <SidebarSection label="Company">
+-            <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+             <SidebarNavItem to="/activity" label="Activity" icon={History} />
+           </SidebarSection>
+         </nav>
+       </ScrollArea>
+-
+-      {/* Bottom links */}
+-      <div className="border-t border-border px-3 py-2">
+-        <SidebarNavItem to="/docs" label="Documentation" icon={BookOpen} />
+-      </div>
+     </aside>
+   );
+ }
+
+commit a57d3427f77ea7b7ed6313ae920f348dfe9c2ccb
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Mon Feb 23 09:14:08 2026 -0600
+
+    feat: foldable PROJECTS section in sidebar with color support
+    
+    - Add `color` (text) and `archivedAt` (timestamp) columns to projects table
+    - Add PROJECT_COLORS palette constant (10 colors) in shared package
+    - Add color/archivedAt to Project type interface and Zod validators
+    - Auto-assign next available color from palette on project creation
+    - New SidebarProjects component with:
+      - Collapsible PROJECTS header above WORK section
+      - Caret toggle visible on hover (left of header)
+      - Always-visible plus button (right of header) opens NewProjectDialog
+      - Lists non-archived projects with colored rounded squares
+      - Active project highlighted based on URL match
+    - Remove Projects nav item from WORK section in sidebar
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 21c014eb..09b9b168 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -1,7 +1,6 @@
+ import {
+   Inbox,
+   CircleDot,
+-  Hexagon,
+   Target,
+   LayoutDashboard,
+   Bot,
+@@ -9,7 +8,6 @@ import {
+   History,
+   Search,
+   SquarePen,
+-  ShieldCheck,
+   BookOpen,
+   Paperclip,
+ } from "lucide-react";
+@@ -17,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
+ import { CompanySwitcher } from "./CompanySwitcher";
+ import { SidebarSection } from "./SidebarSection";
+ import { SidebarNavItem } from "./SidebarNavItem";
++import { SidebarProjects } from "./SidebarProjects";
+ import { useDialog } from "../context/DialogContext";
+ import { useCompany } from "../context/CompanyContext";
+ import { sidebarBadgesApi } from "../api/sidebarBadges";
+@@ -82,20 +81,15 @@ export function Sidebar() {
+             />
+           </div>
+ 
++          <SidebarProjects />
++
+           <SidebarSection label="Work">
+             <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+-            <SidebarNavItem to="/projects" label="Projects" icon={Hexagon} />
+             <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+           </SidebarSection>
+ 
+           <SidebarSection label="Company">
+             <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
+-            <SidebarNavItem
+-              to="/approvals"
+-              label="Approvals"
+-              icon={ShieldCheck}
+-              badge={sidebarBadges?.approvals}
+-            />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+             <SidebarNavItem to="/activity" label="Activity" icon={History} />
+           </SidebarSection>
+
+commit adca44849a754867128e289301f75a8ea8d82d01
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Fri Feb 20 10:32:32 2026 -0600
+
+    feat(ui): active agents panel, sidebar context, and page enhancements
+    
+    Add live ActiveAgentsPanel with real-time transcript feed, SidebarContext
+    for responsive sidebar state, agent config form with reasoning effort,
+    improved inbox with failed run alerts, enriched issue detail with project
+    picker, and various component refinements across pages.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index b6a63d6b..21c014eb 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -77,6 +77,8 @@ export function Sidebar() {
+               label="Inbox"
+               icon={Inbox}
+               badge={sidebarBadges?.inbox}
++              badgeTone={sidebarBadges?.failedRuns ? "danger" : "default"}
++              alert={(sidebarBadges?.failedRuns ?? 0) > 0}
+             />
+           </div>
+ 
+
+commit 3b81557f7cf8b71b633e3f78a067a9c446ea4847
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Thu Feb 19 14:39:48 2026 -0600
+
+    UI: URL-based tab routing, ActivityRow extraction, and agent detail redesign
+    
+    Switch agents, issues, and approvals pages from query-param tabs to
+    URL-based routes (/agents/active, /issues/backlog, /approvals/pending).
+    Extract shared ActivityRow component used by both Dashboard and Activity
+    pages. Redesign agent detail overview with LatestRunCard showing live/
+    recent run status, move permissions toggle to Configuration tab, add
+    budget progress bar, and reorder tabs (Runs before Configuration).
+    Dashboard now counts idle agents as active and shows "Recent Tasks"
+    instead of "Stale Tasks". Remove unused MyIssues page and sidebar link.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 45ca6dee..b6a63d6b 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -9,7 +9,6 @@ import {
+   History,
+   Search,
+   SquarePen,
+-  ListTodo,
+   ShieldCheck,
+   BookOpen,
+   Paperclip,
+@@ -79,7 +78,6 @@ export function Sidebar() {
+               icon={Inbox}
+               badge={sidebarBadges?.inbox}
+             />
+-            <SidebarNavItem to="/my-issues" label="My Issues" icon={ListTodo} />
+           </div>
+ 
+           <SidebarSection label="Work">
+
+commit ea60e4800f2e7b3913b1573d2b9c795dc99d4cf6
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Thu Feb 19 14:02:29 2026 -0600
+
+    UI: task sessions in agent detail, ApprovalCard extraction, and company settings page
+    
+    Show task sessions list in AgentDetail with per-session reset. Extract
+    ApprovalCard into standalone component from Approvals and Inbox pages,
+    reducing duplication. Add CompanySettings page with issuePrefix configuration.
+    Fix Sidebar active state for settings route. Display sessionDisplayId
+    in agent properties. Various cleanups to Approvals and Inbox pages.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 2ba146aa..45ca6dee 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -11,7 +11,6 @@ import {
+   SquarePen,
+   ListTodo,
+   ShieldCheck,
+-  Building2,
+   BookOpen,
+   Paperclip,
+ } from "lucide-react";
+@@ -73,6 +72,7 @@ export function Sidebar() {
+       <ScrollArea className="flex-1">
+         <nav className="flex flex-col gap-4 px-3 py-2">
+           <div className="flex flex-col gap-0.5">
++            <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />
+             <SidebarNavItem
+               to="/inbox"
+               label="Inbox"
+@@ -89,7 +89,6 @@ export function Sidebar() {
+           </SidebarSection>
+ 
+           <SidebarSection label="Company">
+-            <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />
+             <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
+             <SidebarNavItem
+               to="/approvals"
+@@ -99,7 +98,6 @@ export function Sidebar() {
+             />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+             <SidebarNavItem to="/activity" label="Activity" icon={History} />
+-            <SidebarNavItem to="/companies" label="Companies" icon={Building2} />
+           </SidebarSection>
+         </nav>
+       </ScrollArea>
+
+commit 176d2794036cfd8b8b272a7d07cbbf2961513c5d
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Thu Feb 19 13:03:08 2026 -0600
+
+    UI: approval detail page, agent hiring UX, costs breakdown, sidebar badges, and dashboard improvements
+    
+    Add ApprovalDetail page with comment thread, revision request/resubmit flow,
+    and ApprovalPayload component for structured payload display. Extend AgentDetail
+    with permissions management, config revision history, and duplicate action.
+    Add agent hire dialog with permission-gated access. Rework Costs page with
+    per-agent breakdown table and period filtering. Add sidebar badge counts for
+    pending approvals and inbox items. Enhance Dashboard with live metrics and
+    sparkline trends. Extend Agents list with pending_approval status and bulk
+    actions. Update IssueDetail with approval linking. Various component improvements
+    to MetricCard, InlineEditor, CommentThread, and StatusBadge.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 56e15f96..2ba146aa 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -15,15 +15,25 @@ import {
+   BookOpen,
+   Paperclip,
+ } from "lucide-react";
++import { useQuery } from "@tanstack/react-query";
+ import { CompanySwitcher } from "./CompanySwitcher";
+ import { SidebarSection } from "./SidebarSection";
+ import { SidebarNavItem } from "./SidebarNavItem";
+ import { useDialog } from "../context/DialogContext";
++import { useCompany } from "../context/CompanyContext";
++import { sidebarBadgesApi } from "../api/sidebarBadges";
++import { queryKeys } from "../lib/queryKeys";
+ import { Button } from "@/components/ui/button";
+ import { ScrollArea } from "@/components/ui/scroll-area";
+ 
+ export function Sidebar() {
+   const { openNewIssue } = useDialog();
++  const { selectedCompanyId } = useCompany();
++  const { data: sidebarBadges } = useQuery({
++    queryKey: queryKeys.sidebarBadges(selectedCompanyId!),
++    queryFn: () => sidebarBadgesApi.get(selectedCompanyId!),
++    enabled: !!selectedCompanyId,
++  });
+ 
+   function openSearch() {
+     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+@@ -63,7 +73,12 @@ export function Sidebar() {
+       <ScrollArea className="flex-1">
+         <nav className="flex flex-col gap-4 px-3 py-2">
+           <div className="flex flex-col gap-0.5">
+-            <SidebarNavItem to="/inbox" label="Inbox" icon={Inbox} />
++            <SidebarNavItem
++              to="/inbox"
++              label="Inbox"
++              icon={Inbox}
++              badge={sidebarBadges?.inbox}
++            />
+             <SidebarNavItem to="/my-issues" label="My Issues" icon={ListTodo} />
+           </div>
+ 
+@@ -76,7 +91,12 @@ export function Sidebar() {
+           <SidebarSection label="Company">
+             <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />
+             <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
+-            <SidebarNavItem to="/approvals" label="Approvals" icon={ShieldCheck} />
++            <SidebarNavItem
++              to="/approvals"
++              label="Approvals"
++              icon={ShieldCheck}
++              badge={sidebarBadges?.approvals}
++            />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+             <SidebarNavItem to="/activity" label="Activity" icon={History} />
+             <SidebarNavItem to="/companies" label="Companies" icon={Building2} />
+
+commit 0d436911cd13637208e349cd375a885289033d04
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Wed Feb 18 10:43:25 2026 -0600
+
+    Polish UI components and rework AgentConfigForm
+    
+    Major AgentConfigForm rework with improved adapter configuration
+    fields and layout. Refine sidebar, breadcrumbs, and card/tab
+    components for visual consistency. Clean up page layouts across
+    Activity, Agents, Approvals, Costs, Dashboard, Goals, Inbox,
+    Issues, Org, and Projects pages. Minor heartbeat-run CLI fix.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 72dd9fb2..56e15f96 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -12,13 +12,14 @@ import {
+   ListTodo,
+   ShieldCheck,
+   Building2,
++  BookOpen,
++  Paperclip,
+ } from "lucide-react";
+ import { CompanySwitcher } from "./CompanySwitcher";
+ import { SidebarSection } from "./SidebarSection";
+ import { SidebarNavItem } from "./SidebarNavItem";
+ import { useDialog } from "../context/DialogContext";
+ import { Button } from "@/components/ui/button";
+-import { Separator } from "@/components/ui/separator";
+ import { ScrollArea } from "@/components/ui/scroll-area";
+ 
+ export function Sidebar() {
+@@ -29,8 +30,15 @@ export function Sidebar() {
+   }
+ 
+   return (
+-    <aside className="w-60 h-full border-r border-border bg-card flex flex-col">
+-      <div className="flex items-center gap-1 p-3">
++    <aside className="w-60 h-full border-r border-border bg-background flex flex-col">
++      {/* Logo */}
++      <div className="flex items-center gap-2 px-4 py-3">
++        <Paperclip className="h-5 w-5 text-foreground" />
++        <span className="text-sm font-semibold tracking-tight text-foreground">Paperclip</span>
++      </div>
++
++      {/* Company switcher + actions */}
++      <div className="flex items-center gap-1 px-3 pb-3">
+         <div className="flex-1 min-w-0">
+           <CompanySwitcher />
+         </div>
+@@ -52,10 +60,8 @@ export function Sidebar() {
+         </Button>
+       </div>
+ 
+-      <Separator />
+-
+       <ScrollArea className="flex-1">
+-        <nav className="flex flex-col gap-3 p-3">
++        <nav className="flex flex-col gap-4 px-3 py-2">
+           <div className="flex flex-col gap-0.5">
+             <SidebarNavItem to="/inbox" label="Inbox" icon={Inbox} />
+             <SidebarNavItem to="/my-issues" label="My Issues" icon={ListTodo} />
+@@ -77,6 +83,11 @@ export function Sidebar() {
+           </SidebarSection>
+         </nav>
+       </ScrollArea>
++
++      {/* Bottom links */}
++      <div className="border-t border-border px-3 py-2">
++        <SidebarNavItem to="/docs" label="Documentation" icon={BookOpen} />
++      </div>
+     </aside>
+   );
+ }
+
+commit c0ae9423f0e76ee8357aea0592d30c5f5a3b47d6
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Tue Feb 17 20:07:49 2026 -0600
+
+    UI polish: sidebar nav, Companies/Issues layout, assignee in issue defaults
+    
+    - Sidebar: add Approvals and Companies links, remove temporary Design Guide link
+    - Companies: replace inline create form with 'New Company' button (opens onboarding)
+    - Issues: move filter tabs inline with page heading (consistent with Agents)
+    - DialogContext: add assigneeAgentId to NewIssueDefaults
+    - NewIssueDialog: wire assigneeAgentId default (pre-select assignee when opening
+      from agent detail page)
+    - CommandPalette: minor cleanup
+    - App: add DesignGuide route (dev-only, no sidebar link)
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 80be3421..72dd9fb2 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -4,15 +4,14 @@ import {
+   Hexagon,
+   Target,
+   LayoutDashboard,
+-  GitBranch,
+   Bot,
+   DollarSign,
+   History,
+   Search,
+   SquarePen,
+-  Building2,
+   ListTodo,
+-  LayoutList,
++  ShieldCheck,
++  Building2,
+ } from "lucide-react";
+ import { CompanySwitcher } from "./CompanySwitcher";
+ import { SidebarSection } from "./SidebarSection";
+@@ -70,8 +69,8 @@ export function Sidebar() {
+ 
+           <SidebarSection label="Company">
+             <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />
+-            <SidebarNavItem to="/org" label="Org Chart" icon={GitBranch} />
+             <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
++            <SidebarNavItem to="/approvals" label="Approvals" icon={ShieldCheck} />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+             <SidebarNavItem to="/activity" label="Activity" icon={History} />
+             <SidebarNavItem to="/companies" label="Companies" icon={Building2} />
+
+commit d912670f72514436a37c7c12545f9f585d772a3a
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Tue Feb 17 10:53:20 2026 -0600
+
+    Polish UI: enhance dialogs, command palette, and page layouts
+    
+    Expand NewIssueDialog with richer form fields. Add NewProjectDialog.
+    Enhance CommandPalette with more actions and search. Improve
+    CompanySwitcher, EmptyState, and IssueProperties. Flesh out Activity,
+    Companies, Dashboard, and Inbox pages with real content and layouts.
+    Refine sidebar, routing, and dialog context. CSS tweaks for dark theme.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 28032b82..80be3421 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -12,6 +12,7 @@ import {
+   SquarePen,
+   Building2,
+   ListTodo,
++  LayoutList,
+ } from "lucide-react";
+ import { CompanySwitcher } from "./CompanySwitcher";
+ import { SidebarSection } from "./SidebarSection";
+@@ -29,16 +30,15 @@ export function Sidebar() {
+   }
+ 
+   return (
+-    <aside className="w-60 border-r border-border bg-card flex flex-col shrink-0">
+-      <div className="p-3">
+-        <CompanySwitcher />
+-      </div>
+-
+-      <div className="flex items-center gap-1 px-3 pb-2">
++    <aside className="w-60 h-full border-r border-border bg-card flex flex-col">
++      <div className="flex items-center gap-1 p-3">
++        <div className="flex-1 min-w-0">
++          <CompanySwitcher />
++        </div>
+         <Button
+           variant="ghost"
+           size="icon-sm"
+-          className="text-muted-foreground"
++          className="text-muted-foreground shrink-0"
+           onClick={openSearch}
+         >
+           <Search className="h-4 w-4" />
+@@ -46,7 +46,7 @@ export function Sidebar() {
+         <Button
+           variant="ghost"
+           size="icon-sm"
+-          className="text-muted-foreground"
++          className="text-muted-foreground shrink-0"
+           onClick={() => openNewIssue()}
+         >
+           <SquarePen className="h-4 w-4" />
+@@ -63,13 +63,13 @@ export function Sidebar() {
+           </div>
+ 
+           <SidebarSection label="Work">
+-            <SidebarNavItem to="/tasks" label="Issues" icon={CircleDot} />
++            <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+             <SidebarNavItem to="/projects" label="Projects" icon={Hexagon} />
+             <SidebarNavItem to="/goals" label="Goals" icon={Target} />
+           </SidebarSection>
+ 
+           <SidebarSection label="Company">
+-            <SidebarNavItem to="/" label="Dashboard" icon={LayoutDashboard} end />
++            <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />
+             <SidebarNavItem to="/org" label="Org Chart" icon={GitBranch} />
+             <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
+             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
+
+commit fad1bd27ceebe2f888dcd35da7ade31303f4bad4
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Tue Feb 17 09:57:00 2026 -0600
+
+    Add shared UI primitives, contexts, and reusable components
+    
+    Add shadcn components: avatar, breadcrumb, checkbox, collapsible,
+    command, dialog, dropdown-menu, label, popover, scroll-area, sheet,
+    skeleton, tabs, textarea, tooltip. Add shared components: BreadcrumbBar,
+    CommandPalette, CompanySwitcher, CommentThread, EmptyState, EntityRow,
+    FilterBar, InlineEditor, MetricCard, PageSkeleton, PriorityIcon,
+    PropertiesPanel, StatusIcon, SidebarNavItem/Section. Add contexts for
+    breadcrumbs, dialogs, and side panels. Add keyboard shortcut hook and
+    utility helpers. Update layout, sidebar, and main app shell.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 38312096..28032b82 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -1,42 +1,83 @@
+-import { NavLink } from "react-router-dom";
+-import { cn } from "../lib/utils";
+-
+-const links = [
+-  { to: "/", label: "Dashboard" },
+-  { to: "/companies", label: "Companies" },
+-  { to: "/org", label: "Org" },
+-  { to: "/agents", label: "Agents" },
+-  { to: "/tasks", label: "Tasks" },
+-  { to: "/projects", label: "Projects" },
+-  { to: "/goals", label: "Goals" },
+-  { to: "/approvals", label: "Approvals" },
+-  { to: "/costs", label: "Costs" },
+-  { to: "/activity", label: "Activity" },
+-];
++import {
++  Inbox,
++  CircleDot,
++  Hexagon,
++  Target,
++  LayoutDashboard,
++  GitBranch,
++  Bot,
++  DollarSign,
++  History,
++  Search,
++  SquarePen,
++  Building2,
++  ListTodo,
++} from "lucide-react";
++import { CompanySwitcher } from "./CompanySwitcher";
++import { SidebarSection } from "./SidebarSection";
++import { SidebarNavItem } from "./SidebarNavItem";
++import { useDialog } from "../context/DialogContext";
++import { Button } from "@/components/ui/button";
++import { Separator } from "@/components/ui/separator";
++import { ScrollArea } from "@/components/ui/scroll-area";
+ 
+ export function Sidebar() {
++  const { openNewIssue } = useDialog();
++
++  function openSearch() {
++    document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
++  }
++
+   return (
+-    <aside className="w-56 border-r border-border bg-card p-4 flex flex-col gap-1">
+-      <h1 className="text-lg font-bold mb-6 px-3">Paperclip</h1>
+-      <nav className="flex flex-col gap-1">
+-        {links.map((link) => (
+-          <NavLink
+-            key={link.to}
+-            to={link.to}
+-            end={link.to === "/"}
+-            className={({ isActive }) =>
+-              cn(
+-                "px-3 py-2 rounded-md text-sm font-medium transition-colors",
+-                isActive
+-                  ? "bg-accent text-accent-foreground"
+-                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+-              )
+-            }
+-          >
+-            {link.label}
+-          </NavLink>
+-        ))}
+-      </nav>
++    <aside className="w-60 border-r border-border bg-card flex flex-col shrink-0">
++      <div className="p-3">
++        <CompanySwitcher />
++      </div>
++
++      <div className="flex items-center gap-1 px-3 pb-2">
++        <Button
++          variant="ghost"
++          size="icon-sm"
++          className="text-muted-foreground"
++          onClick={openSearch}
++        >
++          <Search className="h-4 w-4" />
++        </Button>
++        <Button
++          variant="ghost"
++          size="icon-sm"
++          className="text-muted-foreground"
++          onClick={() => openNewIssue()}
++        >
++          <SquarePen className="h-4 w-4" />
++        </Button>
++      </div>
++
++      <Separator />
++
++      <ScrollArea className="flex-1">
++        <nav className="flex flex-col gap-3 p-3">
++          <div className="flex flex-col gap-0.5">
++            <SidebarNavItem to="/inbox" label="Inbox" icon={Inbox} />
++            <SidebarNavItem to="/my-issues" label="My Issues" icon={ListTodo} />
++          </div>
++
++          <SidebarSection label="Work">
++            <SidebarNavItem to="/tasks" label="Issues" icon={CircleDot} />
++            <SidebarNavItem to="/projects" label="Projects" icon={Hexagon} />
++            <SidebarNavItem to="/goals" label="Goals" icon={Target} />
++          </SidebarSection>
++
++          <SidebarSection label="Company">
++            <SidebarNavItem to="/" label="Dashboard" icon={LayoutDashboard} end />
++            <SidebarNavItem to="/org" label="Org Chart" icon={GitBranch} />
++            <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
++            <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
++            <SidebarNavItem to="/activity" label="Activity" icon={History} />
++            <SidebarNavItem to="/companies" label="Companies" icon={Building2} />
++          </SidebarSection>
++        </nav>
++      </ScrollArea>
+     </aside>
+   );
+ }
+
+commit 22e7930d0b91296dad7412c50b43449d57d0fc84
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Tue Feb 17 09:07:32 2026 -0600
+
+    Overhaul UI with shadcn components and new pages
+    
+    Add shadcn/ui components (badge, button, card, input, select,
+    separator). Add company context provider. New pages: Activity,
+    Approvals, Companies, Costs, Org chart. Restyle existing pages
+    (Dashboard, Agents, Issues, Goals, Projects) with shadcn components
+    and dark theme. Update layout, sidebar navigation, and routing.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+index 23a1b485..38312096 100644
+--- a/ui/src/components/Sidebar.tsx
++++ b/ui/src/components/Sidebar.tsx
+@@ -3,15 +3,20 @@ import { cn } from "../lib/utils";
+ 
+ const links = [
+   { to: "/", label: "Dashboard" },
++  { to: "/companies", label: "Companies" },
++  { to: "/org", label: "Org" },
+   { to: "/agents", label: "Agents" },
++  { to: "/tasks", label: "Tasks" },
+   { to: "/projects", label: "Projects" },
+-  { to: "/issues", label: "Issues" },
+   { to: "/goals", label: "Goals" },
++  { to: "/approvals", label: "Approvals" },
++  { to: "/costs", label: "Costs" },
++  { to: "/activity", label: "Activity" },
+ ];
+ 
+ export function Sidebar() {
+   return (
+-    <aside className="w-56 border-r border-gray-200 bg-white p-4 flex flex-col gap-1">
++    <aside className="w-56 border-r border-border bg-card p-4 flex flex-col gap-1">
+       <h1 className="text-lg font-bold mb-6 px-3">Paperclip</h1>
+       <nav className="flex flex-col gap-1">
+         {links.map((link) => (
+@@ -23,8 +28,8 @@ export function Sidebar() {
+               cn(
+                 "px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                 isActive
+-                  ? "bg-gray-100 text-gray-900"
+-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
++                  ? "bg-accent text-accent-foreground"
++                  : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+               )
+             }
+           >
+
+commit c3d82ed8577bd6f17ccecf986f69dce65f0683ae
+Author: Dotta <bippadotta@protonmail.com>
+Date:   Mon Feb 16 13:32:04 2026 -0600
+
+    Add React UI with Vite
+    
+    Dashboard, agents, goals, issues, and projects pages with sidebar
+    navigation. API client layer, custom hooks, and shared layout
+    components. Built with Vite and TypeScript.
+    
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+diff --git a/ui/src/components/Sidebar.tsx b/ui/src/components/Sidebar.tsx
+new file mode 100644
+index 00000000..23a1b485
+--- /dev/null
++++ b/ui/src/components/Sidebar.tsx
+@@ -0,0 +1,37 @@
++import { NavLink } from "react-router-dom";
++import { cn } from "../lib/utils";
++
++const links = [
++  { to: "/", label: "Dashboard" },
++  { to: "/agents", label: "Agents" },
++  { to: "/projects", label: "Projects" },
++  { to: "/issues", label: "Issues" },
++  { to: "/goals", label: "Goals" },
++];
++
++export function Sidebar() {
++  return (
++    <aside className="w-56 border-r border-gray-200 bg-white p-4 flex flex-col gap-1">
++      <h1 className="text-lg font-bold mb-6 px-3">Paperclip</h1>
++      <nav className="flex flex-col gap-1">
++        {links.map((link) => (
++          <NavLink
++            key={link.to}
++            to={link.to}
++            end={link.to === "/"}
++            className={({ isActive }) =>
++              cn(
++                "px-3 py-2 rounded-md text-sm font-medium transition-colors",
++                isActive
++                  ? "bg-gray-100 text-gray-900"
++                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
++              )
++            }
++          >
++            {link.label}
++          </NavLink>
++        ))}
++      </nav>
++    </aside>
++  );
++}

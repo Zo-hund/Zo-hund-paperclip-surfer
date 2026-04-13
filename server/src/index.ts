@@ -608,6 +608,17 @@ export async function startServer(): Promise<StartedServer> {
         .catch((err) => {
           logger.error({ err }, "routine scheduler tick failed");
         });
+
+      void heartbeat
+        .tickSchedules(new Date())
+        .then((result) => {
+          if (result.enqueued > 0) {
+            logger.info({ ...result }, "agent cron scheduler tick enqueued runs");
+          }
+        })
+        .catch((err) => {
+          logger.error({ err }, "agent cron scheduler tick failed");
+        });
   
       // Periodically reap orphaned runs (5-min staleness threshold) and make sure
       // persisted queued work is still being driven forward.

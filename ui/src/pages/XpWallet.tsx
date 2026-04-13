@@ -12,7 +12,7 @@ import { useCompany } from "@/context/CompanyContext";
 import { useNavigate } from "@/lib/router";
 
 // ── Credit tier packages ──────────────────────────────────────────────────────
-const CREDIT_TIERS = [
+export const CREDIT_TIERS = [
   { id: "starter",    name: "Starter",    credits: 1000,  price: 9,   pricePerCredit: "0.009",  badge: null,           badgeColor: "",                              color: "from-blue-500/20 to-blue-600/5",    border: "border-blue-500/20 hover:border-blue-500/50",   perks: ["Solo agent hiring", "Basic tasks", "Standard support"] },
   { id: "pro",        name: "Pro",         credits: 5000,  price: 39,  pricePerCredit: "0.0078", badge: "Most Popular",  badgeColor: "bg-primary text-primary-foreground",            color: "from-primary/20 to-primary/5",      border: "border-primary/30 hover:border-primary/60",     perks: ["Co-op team hiring", "Priority queue", "Analytics", "24h support"] },
   { id: "enterprise", name: "Enterprise",  credits: 25000, price: 149, pricePerCredit: "0.006",  badge: "Best Value",    badgeColor: "bg-violet-500 text-white",                      color: "from-violet-500/20 to-violet-600/5", border: "border-violet-500/20 hover:border-violet-500/50", perks: ["Full team hiring", "Dedicated rep", "Custom SLA", "Priority onboarding"] },
@@ -28,7 +28,7 @@ const HIRE_MODES = [
 ];
 
 // ── Buy Credits Modal ─────────────────────────────────────────────────────────
-function BuyCreditsModal({ onClose, currency }: { onClose: () => void; currency: string }) {
+export function BuyCreditsModal({ onClose, currency }: { onClose: () => void; currency: string }) {
   const [selected, setSelected] = useState("pro");
   const [step, setStep] = useState<"pick" | "checkout" | "success">("pick");
   const tier = CREDIT_TIERS.find((t) => t.id === selected)!;

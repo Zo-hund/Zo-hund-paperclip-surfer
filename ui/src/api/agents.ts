@@ -11,6 +11,7 @@ import type {
   HeartbeatRun,
   Approval,
   AgentConfigRevision,
+  AgentChatMessage,
 } from "@paperclipai/shared";
 import { isUuidLike, normalizeAgentUrlKey } from "@paperclipai/shared";
 import { ApiError, api } from "./client";
@@ -194,6 +195,13 @@ export const agentsApi = {
     api.post<ClaudeLoginResult>(agentPath(id, companyId, "/claude-login"), {}),
   availableSkills: () =>
     api.get<{ skills: AvailableSkill[] }>("/skills/available"),
+  listChatMessages: (agentId: string) =>
+    api.get<AgentChatMessage[]>(`/agents/${encodeURIComponent(agentId)}/chat/messages`),
+  sendChatMessage: (agentId: string, content: string) =>
+    api.post<{ message: AgentChatMessage; runId: string | null }>(
+      `/agents/${encodeURIComponent(agentId)}/chat/messages`,
+      { content },
+    ),
 };
 
 export interface AvailableSkill {

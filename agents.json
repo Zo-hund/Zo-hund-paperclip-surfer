@@ -1,0 +1,235 @@
+
+> paperclip@ paperclipai C:\Users\Techa\.paperclip\tmp_surfers
+> node cli/node_modules/tsx/dist/cli.mjs cli/src/index.ts "agent" "list" "--company-id" "dece557d-8849-4040-b8ad-e0e235a54b52" "--json"
+
+[
+  {
+    "id": "e115eeab-2657-468e-8160-6a9f741f8136",
+    "companyId": "dece557d-8849-4040-b8ad-e0e235a54b52",
+    "name": "V3 Audit Lead",
+    "role": "auditor",
+    "title": "Chief Verification Officer",
+    "icon": null,
+    "status": "error",
+    "reportsTo": "482b3bd0-f6c3-44b6-82b4-83c2c97187d7",
+    "capabilities": "Verify all agent work products are real deliverables. Issue AMX Chain certificates for passing work. Flag failures with structured findings.",
+    "adapterType": "opencode_local",
+    "adapterConfig": {
+      "mode": "",
+      "model": "opencode/qwen3.6-plus-free",
+      "effort": "",
+      "variant": "",
+      "modelReasoningEffort": ""
+    },
+    "runtimeConfig": {
+      "heartbeat": {
+        "enabled": true,
+        "cooldownSec": 10,
+        "intervalSec": 3600,
+        "wakeOnDemand": true,
+        "maxConcurrentRuns": 1
+      }
+    },
+    "budgetMonthlyCents": 500,
+    "spentMonthlyCents": 474,
+    "pauseReason": null,
+    "pausedAt": null,
+    "permissions": {
+      "canCreateAgents": true
+    },
+    "lastHeartbeatAt": "2026-04-05T17:53:27.663Z",
+    "metadata": null,
+    "createdAt": "2026-04-03T15:14:13.833Z",
+    "updatedAt": "2026-04-05T17:59:28.315Z",
+    "urlKey": "v3-audit-lead"
+  },
+  {
+    "id": "696f77ba-3f81-438f-b77d-2c338fffd323",
+    "companyId": "dece557d-8849-4040-b8ad-e0e235a54b52",
+    "name": "CMO",
+    "role": "cmo",
+    "title": "Chief Marketing Officer",
+    "icon": "wand",
+    "status": "idle",
+    "reportsTo": "482b3bd0-f6c3-44b6-82b4-83c2c97187d7",
+    "capabilities": "Own marketing strategy, content operations, partner communications, and growth messaging execution.",
+    "adapterType": "opencode_local",
+    "adapterConfig": {
+      "model": "opencode/qwen3.6-plus-free",
+      "paperclipSkillSync": {
+        "desiredSkills": [
+          "paperclipai/paperclip/paperclip",
+          "paperclipai/paperclip/para-memory-files",
+          "paperclipai/paperclip/firecrawl"
+        ]
+      },
+      "instructionsFilePath": "C:\\Users\\Techa\\.paperclip\\instances\\default\\companies\\dece557d-8849-4040-b8ad-e0e235a54b52\\agents\\696f77ba-3f81-438f-b77d-2c338fffd323\\instructions\\AGENTS.md",
+      "instructionsRootPath": "C:\\Users\\Techa\\.paperclip\\instances\\default\\companies\\dece557d-8849-4040-b8ad-e0e235a54b52\\agents\\696f77ba-3f81-438f-b77d-2c338fffd323\\instructions",
+      "instructionsEntryFile": "AGENTS.md",
+      "instructionsBundleMode": "managed"
+    },
+    "runtimeConfig": {
+      "heartbeat": {
+        "enabled": true,
+        "cooldownSec": 10,
+        "intervalSec": 3600,
+        "wakeOnDemand": true,
+        "maxConcurrentRuns": 1
+      }
+    },
+    "budgetMonthlyCents": 1500,
+    "spentMonthlyCents": 0,
+    "pauseReason": null,
+    "pausedAt": null,
+    "permissions": {
+      "canCreateAgents": true
+    },
+    "lastHeartbeatAt": "2026-04-05T17:54:04.897Z",
+    "metadata": null,
+    "createdAt": "2026-04-01T15:59:34.030Z",
+    "updatedAt": "2026-04-05T17:54:04.897Z",
+    "urlKey": "cmo"
+  },
+  {
+    "id": "7349f568-fc69-4bfc-a3e9-16a1c239525a",
+    "companyId": "dece557d-8849-4040-b8ad-e0e235a54b52",
+    "name": "V3 Audit Lead 2",
+    "role": "auditor",
+    "title": "Chief Verification Officer",
+    "icon": null,
+    "status": "paused",
+    "reportsTo": "482b3bd0-f6c3-44b6-82b4-83c2c97187d7",
+    "capabilities": "Verify all agent work products. Issue AMX Chain certificates.",
+    "adapterType": "opencode_local",
+    "adapterConfig": {
+      "mode": "",
+      "model": "opencode/qwen3.6-plus-free",
+      "effort": "",
+      "variant": "",
+      "modelReasoningEffort": ""
+    },
+    "runtimeConfig": {
+      "heartbeat": {
+        "enabled": true,
+        "cooldownSec": 10,
+        "intervalSec": 3600,
+        "wakeOnDemand": true,
+        "maxConcurrentRuns": 1
+      }
+    },
+    "budgetMonthlyCents": 500,
+    "spentMonthlyCents": 537,
+    "pauseReason": "budget",
+    "pausedAt": "2026-04-05T05:38:10.571Z",
+    "permissions": {
+      "canCreateAgents": true
+    },
+    "lastHeartbeatAt": "2026-04-05T04:37:07.025Z",
+    "metadata": null,
+    "createdAt": "2026-04-03T15:14:18.958Z",
+    "updatedAt": "2026-04-05T18:01:59.033Z",
+    "urlKey": "v3-audit-lead-2"
+  },
+  {
+    "id": "482b3bd0-f6c3-44b6-82b4-83c2c97187d7",
+    "companyId": "dece557d-8849-4040-b8ad-e0e235a54b52",
+    "name": "CEO: Zomorphesus",
+    "role": "ceo",
+    "title": null,
+    "icon": "crown",
+    "status": "idle",
+    "reportsTo": null,
+    "capabilities": null,
+    "adapterType": "opencode_local",
+    "adapterConfig": {
+      "mode": "",
+      "model": "opencode/qwen3.6-plus-free",
+      "effort": "",
+      "variant": "",
+      "graceSec": 15,
+      "timeoutSec": 0,
+      "paperclipSkillSync": {
+        "desiredSkills": [
+          "paperclipai/paperclip/paperclip",
+          "paperclipai/paperclip/paperclip-create-agent",
+          "paperclipai/paperclip/para-memory-files",
+          "paperclipai/paperclip/firecrawl"
+        ]
+      },
+      "instructionsFilePath": "C:\\Users\\Techa\\.paperclip\\instances\\default\\companies\\dece557d-8849-4040-b8ad-e0e235a54b52\\agents\\482b3bd0-f6c3-44b6-82b4-83c2c97187d7\\instructions\\AGENTS.md",
+      "instructionsRootPath": "C:\\Users\\Techa\\.paperclip\\instances\\default\\companies\\dece557d-8849-4040-b8ad-e0e235a54b52\\agents\\482b3bd0-f6c3-44b6-82b4-83c2c97187d7\\instructions",
+      "modelReasoningEffort": "",
+      "instructionsEntryFile": "AGENTS.md",
+      "instructionsBundleMode": "managed"
+    },
+    "runtimeConfig": {
+      "heartbeat": {
+        "enabled": true,
+        "cooldownSec": 10,
+        "intervalSec": 3600,
+        "wakeOnDemand": true,
+        "maxConcurrentRuns": 1
+      }
+    },
+    "budgetMonthlyCents": 1000,
+    "spentMonthlyCents": 0,
+    "pauseReason": null,
+    "pausedAt": null,
+    "permissions": {
+      "canCreateAgents": true
+    },
+    "lastHeartbeatAt": "2026-04-05T18:06:34.476Z",
+    "metadata": null,
+    "createdAt": "2026-03-31T22:46:09.408Z",
+    "updatedAt": "2026-04-05T18:06:34.476Z",
+    "urlKey": "ceo-zomorphesus"
+  },
+  {
+    "id": "f11ec0c8-577c-43ab-baf6-b7be5492168d",
+    "companyId": "dece557d-8849-4040-b8ad-e0e235a54b52",
+    "name": "CTO",
+    "role": "cto",
+    "title": "Chief Technology Officer",
+    "icon": "puzzle",
+    "status": "idle",
+    "reportsTo": "482b3bd0-f6c3-44b6-82b4-83c2c97187d7",
+    "capabilities": "Own technical strategy, engineering hiring, architecture, and execution delegation.",
+    "adapterType": "opencode_local",
+    "adapterConfig": {
+      "model": "opencode/qwen3.6-plus-free",
+      "paperclipSkillSync": {
+        "desiredSkills": [
+          "paperclipai/paperclip/paperclip",
+          "paperclipai/paperclip/paperclip-create-agent",
+          "paperclipai/paperclip/para-memory-files",
+          "paperclipai/paperclip/firecrawl"
+        ]
+      },
+      "instructionsFilePath": "C:\\Users\\Techa\\.paperclip\\instances\\default\\companies\\dece557d-8849-4040-b8ad-e0e235a54b52\\agents\\f11ec0c8-577c-43ab-baf6-b7be5492168d\\instructions\\AGENTS.md",
+      "instructionsRootPath": "C:\\Users\\Techa\\.paperclip\\instances\\default\\companies\\dece557d-8849-4040-b8ad-e0e235a54b52\\agents\\f11ec0c8-577c-43ab-baf6-b7be5492168d\\instructions",
+      "instructionsEntryFile": "AGENTS.md",
+      "instructionsBundleMode": "managed"
+    },
+    "runtimeConfig": {
+      "heartbeat": {
+        "enabled": true,
+        "cooldownSec": 10,
+        "intervalSec": 3600,
+        "wakeOnDemand": true,
+        "maxConcurrentRuns": 1
+      }
+    },
+    "budgetMonthlyCents": 2000,
+    "spentMonthlyCents": 0,
+    "pauseReason": null,
+    "pausedAt": null,
+    "permissions": {
+      "canCreateAgents": false
+    },
+    "lastHeartbeatAt": "2026-04-05T17:53:55.863Z",
+    "metadata": null,
+    "createdAt": "2026-03-31T22:48:13.911Z",
+    "updatedAt": "2026-04-05T17:53:55.863Z",
+    "urlKey": "cto"
+  }
+]

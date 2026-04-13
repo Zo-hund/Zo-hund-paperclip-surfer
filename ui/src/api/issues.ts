@@ -111,4 +111,13 @@ export const issuesApi = {
   updateWorkProduct: (id: string, data: Record<string, unknown>) =>
     api.patch<IssueWorkProduct>(`/work-products/${id}`, data),
   deleteWorkProduct: (id: string) => api.delete<IssueWorkProduct>(`/work-products/${id}`),
+  bulkUpdate: (
+    companyId: string,
+    ids: string[],
+    update: { status?: string; assigneeAgentId?: string | null; assigneeUserId?: string | null },
+  ) =>
+    api.post<{ updated: Issue[]; count: number }>(
+      `/companies/${companyId}/issues/bulk-update`,
+      { ids, update },
+    ),
 };

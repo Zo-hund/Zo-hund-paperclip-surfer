@@ -650,6 +650,15 @@ function handleLiveEvent(
       gatedPushToast(gate, pushToast, `activity:${action ?? "unknown"}`, toast);
     }
   }
+
+  if (event.type === "agent.chat.message") {
+    const agentId = readString(payload.message && typeof payload.message === "object"
+      ? (payload.message as Record<string, unknown>).agentId
+      : null);
+    if (agentId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.chatMessages(agentId) });
+    }
+  }
 }
 
 export const __liveUpdatesTestUtils = {

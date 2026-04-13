@@ -325,6 +325,7 @@ export const LIVE_EVENT_TYPES = [
   "meeting.participant.joined",
   "meeting.outcome.added",
   "meeting.ended",
+  "agent.chat.message",
 ] as const;
 export type LiveEventType = (typeof LIVE_EVENT_TYPES)[number];
 

@@ -15,6 +15,7 @@ import { PriorityIcon } from "./PriorityIcon";
 import { EmptyState } from "./EmptyState";
 import { Identity } from "./Identity";
 import { IssueRow } from "./IssueRow";
+import { BulkActionToolbar } from "./BulkActionToolbar";
 import { PageSkeleton } from "./PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,6 +174,9 @@ interface IssuesListProps {
   };
   onSearchChange?: (search: string) => void;
   onUpdateIssue: (id: string, data: Record<string, unknown>) => void;
+  enableBulkActions?: boolean;
+  onBulkUpdate?: (ids: string[], update: Record<string, unknown>) => void;
+  isBulkUpdating?: boolean;
 }
 
 interface IssuesSearchInputProps {
@@ -228,8 +232,53 @@ export function IssuesList({
   searchFilters,
   onSearchChange,
   onUpdateIssue,
+  enableBulkActions = false,
+  onBulkUpdate,
+  isBulkUpdating = false,
 }: IssuesListProps) {
   const { selectedCompanyId } = useCompany();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelectAll(groupItems?: Issue[]) {
+    const items = groupItems ?? filtered;
+    const ids = items.map((i) => i.id);
+    const allIn = ids.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allIn) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  function handleBulkClose() {
+    onBulkUpdate?.(Array.from(selectedIds), { status: "done" });
+    clearSelection();
+  }
+
+  function handleBulkAssign(agentId: string) {
+    onBulkUpdate?.(Array.from(selectedIds), { assigneeAgentId: agentId, assigneeUserId: null });
+    clearSelection();
+  }
+
+  function handleBulkUnassign() {
+    onBulkUpdate?.(Array.from(selectedIds), { assigneeAgentId: null, assigneeUserId: null });
+    clearSelection();
+  }
+
   const { openNewIssue } = useDialog();
   const { data: session } = useQuery({
     queryKey: queryKeys.auth.session,
@@ -678,8 +727,19 @@ export function IssuesList({
               });
             }}
           >
-            {group.label && (
+            {group.label ? (
               <div className="flex items-center py-1.5 pl-1 pr-3">
+                {enableBulkActions && (
+                  <span
+                    className="mr-2 flex items-center"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  >
+                    <Checkbox
+                      checked={group.items.length > 0 && group.items.every((i) => selectedIds.has(i.id))}
+                      onCheckedChange={() => toggleSelectAll(group.items)}
+                    />
+                  </span>
+                )}
                 <CollapsibleTrigger className="flex items-center gap-1.5">
                   <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform [[data-state=open]>&]:rotate-90" />
                   <span className="text-sm font-semibold uppercase tracking-wide">
@@ -695,7 +755,20 @@ export function IssuesList({
                   <Plus className="h-3 w-3" />
                 </Button>
               </div>
-            )}
+            ) : enableBulkActions && filtered.length > 0 ? (
+              <div className="flex items-center py-1 pl-1">
+                <span
+                  className="flex items-center gap-2"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                >
+                  <Checkbox
+                    checked={filtered.every((i) => selectedIds.has(i.id))}
+                    onCheckedChange={() => toggleSelectAll()}
+                  />
+                  <span className="text-xs text-muted-foreground">Select all</span>
+                </span>
+              </div>
+            ) : null}
             <CollapsibleContent>
               {group.items.map((issue) => (
                 <IssueRow
@@ -710,14 +783,35 @@ export function IssuesList({
                         e.stopPropagation();
                       }}
                     >
-                      <StatusIcon
-                        status={issue.status}
-                        onChange={(s) => onUpdateIssue(issue.id, { status: s })}
-                      />
+                      {enableBulkActions ? (
+                        <Checkbox
+                          checked={selectedIds.has(issue.id)}
+                          onCheckedChange={() => toggleSelect(issue.id)}
+                        />
+                      ) : (
+                        <StatusIcon
+                          status={issue.status}
+                          onChange={(s) => onUpdateIssue(issue.id, { status: s })}
+                        />
+                      )}
                     </span>
                   )}
                   desktopMetaLeading={(
                     <>
+                      {enableBulkActions && (
+                        <span
+                          className="hidden shrink-0 sm:inline-flex"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                        >
+                          <Checkbox
+                            checked={selectedIds.has(issue.id)}
+                            onCheckedChange={() => toggleSelect(issue.id)}
+                          />
+                        </span>
+                      )}
                       <span
                         className="hidden shrink-0 sm:inline-flex"
                         onClick={(e) => {

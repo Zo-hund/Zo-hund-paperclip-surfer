@@ -28,6 +28,7 @@ import { AgentPerformanceTab } from "../components/AgentPerformanceTab";
 import { AgentMcpTab } from "../components/AgentMcpTab";
 import { AgentSkillsTab } from "../components/AgentSkillsTab";
 import { AgentOnboardingLMS } from "../components/AgentOnboardingLMS";
+import { AgentChatPanel } from "../components/AgentChatPanel";
 import { PageTabBar } from "../components/PageTabBar";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
 import { MarkdownEditor } from "../components/MarkdownEditor";
@@ -227,9 +228,10 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps" | "onboarding";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps" | "onboarding" | "chat";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
+  if (value === "chat") return "chat";
   if (value === "instructions" || value === "prompts") return "instructions";
   if (value === "configure" || value === "configuration") return "configuration";
   if (value === "skills") return "skills";
@@ -668,7 +670,9 @@ export function AgentDetail() {
                       ? "mcps"
                       : activeView === "onboarding"
                         ? "onboarding"
-                        : "dashboard";
+                        : activeView === "chat"
+                          ? "chat"
+                          : "dashboard";
     if (routeAgentRef !== canonicalAgentRef || urlTab !== canonicalTab) {
       navigate(`/agents/${canonicalAgentRef}/${canonicalTab}`, { replace: true });
       return;
@@ -793,6 +797,8 @@ export function AgentDetail() {
         crumbs.push({ label: "Budget" });
       } else if (activeView === "onboarding") {
         crumbs.push({ label: "LMS Onboarding" });
+      } else if (activeView === "chat") {
+        crumbs.push({ label: "Chat" });
       } else {
         crumbs.push({ label: "Dashboard" });
       }
@@ -928,6 +934,7 @@ export function AgentDetail() {
           <PageTabBar
             items={[
               { value: "dashboard", label: "Dashboard" },
+              { value: "chat", label: "Chat" },
               { value: "instructions", label: "Instructions" },
               { value: "skills", label: "Skills" },
               { value: "configuration", label: "Configuration" },
@@ -1059,6 +1066,10 @@ export function AgentDetail() {
           adapterType={agent.adapterType}
           adapterConfig={agent.adapterConfig}
         />
+      )}
+
+      {activeView === "chat" && resolvedCompanyId && (
+        <AgentChatPanel agentId={agent.id} companyId={resolvedCompanyId} />
       )}
 
       {activeView === "memory" && resolvedCompanyId && (

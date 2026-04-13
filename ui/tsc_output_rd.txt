@@ -1,0 +1,229 @@
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/focusManager.d.ts(6,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(9,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(115,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(156,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(205,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(266,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(427,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(444,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/onlineManager.d.ts(6,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/queriesObserver.d.ts(11,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/removable.d.ts(2,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/timeoutManager.d.ts(41,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+src/api/activity.ts(1,36): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/agents.ts(14,8): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/agents.ts(15,50): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/heartbeats.ts(6,8): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/projects.ts(1,48): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/routines.ts(10,8): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/routines.ts(54,16): error TS2802: Type 'MapIterator<ActivityEvent>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/lib/routine-trigger-patch.ts(1,37): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/pages/RoutineDetail.tsx(2,59): error TS2307: Cannot find module '@/lib/router' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(20,31): error TS6142: Module '../components/LiveRunWidget' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/LiveRunWidget.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(23,28): error TS6142: Module '../context/CompanyContext' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/context/CompanyContext.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(24,32): error TS6142: Module '../context/BreadcrumbContext' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/context/BreadcrumbContext.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(25,26): error TS6142: Module '../context/ToastContext' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/context/ToastContext.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(29,28): error TS6142: Module '../components/EmptyState' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/EmptyState.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(30,30): error TS6142: Module '../components/PageSkeleton' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/PageSkeleton.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(31,27): error TS6142: Module '../components/AgentIconPicker' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/AgentIconPicker.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(32,63): error TS6142: Module '../components/InlineEntitySelector' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/InlineEntitySelector.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(33,56): error TS6142: Module '../components/MarkdownEditor' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/MarkdownEditor.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(34,50): error TS6142: Module '../components/ScheduleEditor' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/ScheduleEditor.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(35,27): error TS6142: Module '../components/AgentActionButtons' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/AgentActionButtons.tsx', but '--jsx' is not set.
+src/pages/RoutineDetail.tsx(37,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(38,69): error TS2307: Cannot find module '@/components/ui/collapsible' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(39,23): error TS2307: Cannot find module '@/components/ui/input' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(40,23): error TS2307: Cannot find module '@/components/ui/label' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(41,27): error TS2307: Cannot find module '@/components/ui/separator' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(48,8): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(49,58): error TS2307: Cannot find module '@/components/ui/tabs' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(50,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
+src/pages/RoutineDetail.tsx(51,37): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/pages/RoutineDetail.tsx(183,5): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(184,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(185,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(186,42): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(186,108): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(186,146): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(189,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(198,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(199,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(200,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(201,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(207,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(208,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(209,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(216,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(217,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(218,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(219,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(223,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(224,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(226,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(228,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(233,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(234,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(235,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(244,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(245,32): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(246,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(248,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(249,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(254,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(255,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(259,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(265,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(268,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(274,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(667,12): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(671,12): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(676,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(692,5): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(694,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(695,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(725,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(726,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(727,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(739,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(745,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(753,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(754,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(755,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(756,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(758,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(759,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(760,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(761,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(762,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(766,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(767,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(768,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(769,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(778,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(779,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(780,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(781,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(803,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(804,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(805,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(808,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(811,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(815,38): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(818,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(819,31): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(820,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(825,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(826,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(838,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(839,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(843,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(846,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(850,38): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(853,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(854,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(858,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(867,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(882,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(883,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(884,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(885,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(885,87): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(887,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(888,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(889,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(890,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(891,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(895,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(896,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(898,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(900,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(900,66): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+src/pages/RoutineDetail.tsx(904,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(906,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(907,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(908,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(912,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(913,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(915,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(917,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(917,66): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+src/pages/RoutineDetail.tsx(921,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(928,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(929,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(931,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(932,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(933,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(939,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(943,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(948,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(951,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(952,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(953,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(954,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(957,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(958,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(960,28): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(962,1): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(963,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(968,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(970,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(971,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(972,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(973,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(974,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(975,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(976,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(977,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(979,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(981,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(989,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(990,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(991,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(998,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(999,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1000,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1001,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1002,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1003,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1005,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1007,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1011,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1013,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1014,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1015,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1020,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1021,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1029,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1031,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1033,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1045,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1047,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1050,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1052,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1054,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1055,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1056,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1057,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1061,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1064,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1069,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1076,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1078,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1080,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1082,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1083,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1084,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1086,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1088,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1089,39): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1090,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/RoutineDetail.tsx(1090,77): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+src/pages/RoutineDetail.tsx(1097,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.

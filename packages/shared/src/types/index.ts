@@ -1,4 +1,5 @@
 export type { Company } from "./company.js";
+export type { AgentChatMessage } from "./agent-chat.js";
 export type { InstanceExperimentalSettings, InstanceGeneralSettings, InstanceSettings } from "./instance.js";
 export type {
   CompanySkillSourceType,

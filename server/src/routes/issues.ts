@@ -13,6 +13,8 @@ import {
   updateIssueWorkProductSchema,
   upsertIssueDocumentSchema,
   updateIssueSchema,
+  bulkUpdateIssueSchema,
+  type BulkUpdateIssue,
 } from "@paperclipai/shared";
 import type { StorageService } from "../storage/types.js";
 import { validate } from "../middleware/validate.js";
@@ -913,6 +915,75 @@ export function issueRoutes(db: Db, storage: StorageService) {
 
     res.status(201).json(issue);
   });
+
+  router.post(
+    "/companies/:companyId/issues/bulk-update",
+    validate(bulkUpdateIssueSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+
+      const { ids, update } = req.body as BulkUpdateIssue;
+      const assigneeWillChange =
+        Object.prototype.hasOwnProperty.call(update, "assigneeAgentId") ||
+        Object.prototype.hasOwnProperty.call(update, "assigneeUserId");
+
+      if (assigneeWillChange) {
+        await assertCanAssignTasks(req, companyId);
+      }
+
+      const actor = getActorInfo(req);
+
+      const results = await Promise.allSettled(
+        ids.map(async (id) => {
+          const existing = await svc.getById(id);
+          if (!existing || existing.companyId !== companyId) return null;
+
+          const updated = await svc.update(id, update as Parameters<typeof svc.update>[1]);
+          if (!updated) return null;
+
+          await logActivity(db, {
+            companyId,
+            actorType: actor.actorType,
+            actorId: actor.actorId,
+            agentId: actor.agentId,
+            runId: actor.runId,
+            action: "issue.updated",
+            entityType: "issue",
+            entityId: id,
+            details: {
+              ...update,
+              identifier: updated.identifier,
+              source: "bulk_update",
+            },
+          });
+
+          if (assigneeWillChange && update.assigneeAgentId) {
+            await queueIssueAssignmentWakeup({
+              heartbeat,
+              issue: updated,
+              reason: "issue_assigned",
+              mutation: "bulk_update",
+              contextSource: "bulk_update",
+              requestedByActorType: actor.actorType,
+              requestedByActorId: actor.actorId,
+            });
+          }
+
+          return updated;
+        }),
+      );
+
+      const updated = results
+        .filter(
+          (r): r is PromiseFulfilledResult<NonNullable<Awaited<ReturnType<typeof svc.getById>>>> =>
+            r.status === "fulfilled" && r.value != null,
+        )
+        .map((r) => r.value);
+
+      res.json({ updated, count: updated.length });
+    },
+  );
 
   router.patch("/issues/:id", validate(updateIssueSchema), async (req, res) => {
     const id = req.params.id as string;

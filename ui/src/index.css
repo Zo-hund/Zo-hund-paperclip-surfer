@@ -127,6 +127,15 @@
     height: 100%;
     overflow: hidden;
   }
+  /* Public pages need natural body scroll — override the global lock */
+  html:has(.public-page) body {
+    overflow: auto !important;
+    height: auto !important;
+  }
+  html:has(.public-page) {
+    height: auto !important;
+    overflow: auto !important;
+  }
   h1,
   h2,
   h3 {

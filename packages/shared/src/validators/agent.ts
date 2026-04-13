@@ -57,6 +57,9 @@ export const createAgentSchema = z.object({
   budgetMonthlyCents: z.number().int().nonnegative().optional().default(0),
   permissions: agentPermissionsSchema.optional(),
   metadata: z.record(z.unknown()).optional().nullable(),
+  scheduleEnabled: z.boolean().optional().default(false),
+  cronExpression: z.string().optional().nullable(),
+  scheduleTimezone: z.string().optional().nullable(),
 });
 
 export type CreateAgent = z.infer<typeof createAgentSchema>;

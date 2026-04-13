@@ -1,0 +1,168 @@
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/focusManager.d.ts(6,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(9,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(115,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(156,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(205,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(266,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(427,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/hydration-BlEVG2Lp.d.ts(444,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/onlineManager.d.ts(6,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/queriesObserver.d.ts(11,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/removable.d.ts(2,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+../node_modules/.pnpm/@tanstack+query-core@5.90.20/node_modules/@tanstack/query-core/build/legacy/timeoutManager.d.ts(41,5): error TS18028: Private identifiers are only available when targeting ECMAScript 2015 and higher.
+src/api/activity.ts(1,36): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/agents.ts(14,8): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/agents.ts(15,50): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/projects.ts(1,48): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/routines.ts(10,8): error TS2307: Cannot find module '@paperclipai/shared' or its corresponding type declarations.
+  There are types at 'C:/Users/Techa/.paperclip/tmp_surfers/ui/node_modules/@paperclipai/shared/src/index.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+src/api/routines.ts(54,16): error TS2802: Type 'MapIterator<ActivityEvent>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/Routines.tsx(3,29): error TS2307: Cannot find module '@/lib/router' or its corresponding type declarations.
+src/pages/Routines.tsx(8,28): error TS6142: Module '../context/CompanyContext' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/context/CompanyContext.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(9,32): error TS6142: Module '../context/BreadcrumbContext' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/context/BreadcrumbContext.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(10,26): error TS6142: Module '../context/ToastContext' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/context/ToastContext.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(13,28): error TS6142: Module '../components/EmptyState' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/EmptyState.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(14,30): error TS6142: Module '../components/PageSkeleton' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/PageSkeleton.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(15,27): error TS6142: Module '../components/AgentIconPicker' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/AgentIconPicker.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(16,63): error TS6142: Module '../components/InlineEntitySelector' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/InlineEntitySelector.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(17,56): error TS6142: Module '../components/MarkdownEditor' was resolved to 'C:/Users/Techa/.paperclip/tmp_surfers/ui/src/components/MarkdownEditor.tsx', but '--jsx' is not set.
+src/pages/Routines.tsx(18,24): error TS2307: Cannot find module '@/components/ui/button' or its corresponding type declarations.
+src/pages/Routines.tsx(19,35): error TS2307: Cannot find module '@/components/ui/card' or its corresponding type declarations.
+src/pages/Routines.tsx(20,69): error TS2307: Cannot find module '@/components/ui/collapsible' or its corresponding type declarations.
+src/pages/Routines.tsx(21,39): error TS2307: Cannot find module '@/components/ui/dialog' or its corresponding type declarations.
+src/pages/Routines.tsx(28,8): error TS2307: Cannot find module '@/components/ui/dropdown-menu' or its corresponding type declarations.
+src/pages/Routines.tsx(35,8): error TS2307: Cannot find module '@/components/ui/select' or its corresponding type declarations.
+src/pages/Routines.tsx(247,12): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(251,12): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(255,5): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(256,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(257,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(258,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(260,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(262,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(266,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(267,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(272,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(280,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(281,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(282,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(283,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(284,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(288,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(301,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(302,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(335,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(336,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(337,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(338,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(339,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(361,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(362,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(363,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(366,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(369,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(373,44): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(376,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(377,37): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(378,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(383,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(384,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(396,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(397,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(401,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(404,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(408,44): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(411,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(412,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(416,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(425,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(426,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(441,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(442,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(443,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(444,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(445,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(446,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(448,33): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(448,93): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(450,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(451,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(452,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(453,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(454,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(458,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(459,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(461,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(463,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(463,72): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+src/pages/Routines.tsx(467,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(469,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(470,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(471,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(475,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(476,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(478,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(480,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(480,72): error TS2550: Property 'replaceAll' does not exist on type 'string'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2021' or later.
+src/pages/Routines.tsx(484,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(491,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(492,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(495,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(496,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(505,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(509,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(519,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(520,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(526,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(528,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(529,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(535,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(536,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(537,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(538,17): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(539,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(540,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(541,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(542,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(543,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(544,19): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(547,15): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(553,21): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(558,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(559,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(560,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(564,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(570,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(572,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(573,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(577,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(580,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(583,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(587,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(588,31): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(589,31): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(592,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(595,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(598,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(599,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(601,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(604,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(605,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(606,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(623,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(629,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(634,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(635,25): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(636,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(637,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(638,31): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(641,27): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(642,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(645,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(651,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(652,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/pages/Routines.tsx(663,29): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.

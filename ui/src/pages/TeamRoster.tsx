@@ -3,7 +3,7 @@ import {
   Users, Zap, Bot, UserCheck, ShieldCheck, Play, Cpu, Video,
   CheckCircle2, Lock, TrendingUp, Star, Plus, ChevronRight, X,
   Sparkles, ArrowRight, Layers, Medal, Activity, Heart, Trophy,
-  AlertTriangle, Target, Clock, Flame, BarChart2
+  AlertTriangle, Target, Clock, Flame, BarChart2, Globe
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/context/CompanyContext";
@@ -34,6 +34,7 @@ export interface RosterMember {
   name: string;
   title: string;
   type: MemberType;
+  origin: "internal" | "network";
   avatarUrl: string;
   xp: number;
   health: number;       // 0–100
@@ -48,12 +49,13 @@ export interface RosterMember {
 // ── Default demo roster ───────────────────────────────────────────────────────
 
 const DEFAULT_ROSTER: RosterMember[] = [
-  { id: "r1", name: "Hermes Advanced", title: "Nous Research Reasoning Elite", type: "agent",  avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=hermes-advanced", xp: 1650, health: 94, status: "live_ready",  teamId: "alpha", hiredAt: "2026-04-01", phase: "prod",  simRuns: 12, badges: ["Top Rated Plus", "Nous Verified"] },
-  { id: "r2", name: "Astra",           title: "Senior Full-Stack Engineer",    type: "agent",  avatarUrl: "https://i.pravatar.cc/150?u=a042581f4e29026024d",              xp: 820,  health: 78, status: "sim_ready",  teamId: "alpha", hiredAt: "2026-04-02", phase: "sim",   simRuns: 4,  badges: ["Top Rated Plus"] },
-  { id: "r3", name: "Sarah Chen",      title: "Senior Product Designer",       type: "human", avatarUrl: "https://i.pravatar.cc/150?u=sarah-chen",                       xp: 2400, health: 99, status: "live_active", teamId: "alpha", hiredAt: "2026-03-28", phase: "live",  simRuns: 23, badges: ["Verified Human", "Expert Lead"] },
-  { id: "r4", name: "Nexus",           title: "Data Science & Analytics Lead", type: "agent",  avatarUrl: "https://i.pravatar.cc/150?u=a04258a2462d826712d",              xp: 120,  health: 55, status: "in_training", teamId: null,    hiredAt: "2026-04-05", phase: null,    simRuns: 0,  badges: ["AMX Certified"] },
-  { id: "r5", name: "Marcus Thorne",   title: "Enterprise Solutions Architect", type: "human", avatarUrl: "https://i.pravatar.cc/150?u=marcus-thorne",                   xp: 3200, health: 91, status: "live_active", teamId: "beta",  hiredAt: "2026-03-20", phase: "prod",  simRuns: 31, badges: ["Verified Human", "Security Cleared"] },
-  { id: "r6", name: "Cipher",          title: "Cybersecurity Analyst",         type: "agent",  avatarUrl: "https://i.pravatar.cc/150?u=a042581f4e29026704d",              xp: 390,  health: 62, status: "sim_active",  teamId: "beta",  hiredAt: "2026-04-03", phase: "sim",   simRuns: 2,  badges: ["Security Cleared"] },
+  { id: "r1", name: "Hermes Advanced", title: "Nous Research Reasoning Elite", type: "agent", origin: "internal", avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=hermes-advanced", xp: 1650, health: 94, status: "live_ready",  teamId: "alpha", hiredAt: "2026-04-01", phase: "prod",  simRuns: 12, badges: ["Top Rated Plus", "Nous Verified"] },
+  { id: "r2", name: "Astra",           title: "Senior Full-Stack Engineer",    type: "agent", origin: "internal", avatarUrl: "https://i.pravatar.cc/150?u=a042581f4e29026024d",              xp: 820,  health: 78, status: "sim_ready",  teamId: "alpha", hiredAt: "2026-04-02", phase: "sim",   simRuns: 4,  badges: ["Top Rated Plus"] },
+  { id: "r3", name: "Sarah Chen",      title: "Senior Product Designer",       type: "human", origin: "internal", avatarUrl: "https://i.pravatar.cc/150?u=sarah-chen",                       xp: 2400, health: 99, status: "live_active", teamId: "alpha", hiredAt: "2026-03-28", phase: "live",  simRuns: 23, badges: ["Verified Human", "Expert Lead"] },
+  { id: "r4", name: "Nexus",           title: "Data Science & Analytics Lead", type: "agent", origin: "internal", avatarUrl: "https://i.pravatar.cc/150?u=a04258a2462d826712d",              xp: 120,  health: 55, status: "in_training", teamId: null,    hiredAt: "2026-04-05", phase: null,    simRuns: 0,  badges: ["AMX Certified"] },
+  { id: "r5", name: "Marcus Thorne",   title: "Enterprise Solutions Architect", type: "human", origin: "internal", avatarUrl: "https://i.pravatar.cc/150?u=marcus-thorne",                   xp: 3200, health: 91, status: "live_active", teamId: "beta",  hiredAt: "2026-03-20", phase: "prod",  simRuns: 31, badges: ["Verified Human", "Security Cleared"] },
+  { id: "r6", name: "Cipher",          title: "Cybersecurity Analyst",         type: "agent", origin: "internal", avatarUrl: "https://i.pravatar.cc/150?u=a042581f4e29026704d",              xp: 390,  health: 62, status: "sim_active",  teamId: "beta",  hiredAt: "2026-04-03", phase: "sim",   simRuns: 2,  badges: ["Security Cleared"] },
+  { id: "r7", name: "Digital Dasher",  title: "High-Speed Task Runner",       type: "agent", origin: "network",  avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=digital-dasher", xp: 450,  health: 100, status: "live_active", teamId: null,    hiredAt: "2026-04-06", phase: "live",  simRuns: 15, badges: ["Network Node", "Rapid"] },
 ];
 
 const DEFAULT_TEAMS = [
@@ -233,6 +235,10 @@ function MemberCard({ member, teams, onUpdate }: {
                 <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${member.type === "human" ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"}`}>
                   {member.type === "human" ? <UserCheck className="h-2.5 w-2.5" /> : <Bot className="h-2.5 w-2.5" />}
                   {member.type === "human" ? "Human" : "AI Agent"}
+                </span>
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${member.origin === "network" ? "bg-primary/20 text-primary border-primary/30" : "bg-slate-500/10 text-slate-400 border-slate-500/20"}`}>
+                  <Globe className="h-2.5 w-2.5" />
+                  {member.origin === "network" ? "Network Dasher" : "Internal"}
                 </span>
                 <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${level.bg} ${level.color} ${level.border}`}>
                   <Medal className="h-2.5 w-2.5" /> Lv{level.level} {level.label}
@@ -480,13 +486,36 @@ export function TeamRoster() {
       <main className="px-4 md:px-8 py-6 flex-1">
         <div className="max-w-7xl mx-auto">
           {view === "board" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-              {/* Unassigned column */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+              {/* Unassigned Internal column */}
               <TeamColumn
                 team={null}
-                members={displayed.filter((m) => !m.teamId)}
+                members={displayed.filter((m) => !m.teamId && m.origin === "internal")}
                 onUpdate={updateMember}
               />
+              {/* Network Dashers column */}
+              <div className="rounded-2xl border bg-gradient-to-b from-primary/10 to-transparent border-primary/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-primary/20 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <h3 className="text-[12px] font-black uppercase tracking-widest text-primary">Network Dashers</h3>
+                    <span className="text-[10px] font-bold text-primary border border-primary/30 rounded px-1.5 bg-primary/10">
+                      {displayed.filter((m) => m.origin === "network").length}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-3 space-y-3">
+                  {displayed.filter((m) => m.origin === "network").map((m) => (
+                    <MemberCard key={m.id} member={m} teams={DEFAULT_TEAMS} onUpdate={updateMember} />
+                  ))}
+                  {displayed.filter((m) => m.origin === "network").length === 0 && (
+                    <div className="py-8 flex flex-col items-center text-center opacity-40 gap-2">
+                      <Zap className="h-6 w-6 text-muted-foreground" />
+                      <p className="text-[11px] font-bold text-muted-foreground">No active dashes</p>
+                    </div>
+                  )}
+                </div>
+              </div>
               {DEFAULT_TEAMS.map((team) => (
                 <TeamColumn
                   key={team.id}

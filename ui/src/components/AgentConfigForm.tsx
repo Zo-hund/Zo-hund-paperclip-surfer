@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
+import { AGENT_ADAPTER_TYPES, validateCron, nextCronTickFromExpression } from "@paperclipai/shared";
 import type {
   Agent,
   AdapterEnvironmentTestResult,
@@ -23,7 +23,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Heart, ChevronDown, X } from "lucide-react";
+import { FolderOpen, Heart, ChevronDown, X, CalendarClock } from "lucide-react";
 import { cn } from "../lib/utils";
 import { extractModelName, extractProviderId } from "../lib/model-utils";
 import { queryKeys } from "../lib/queryKeys";
@@ -981,6 +981,127 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         </div>
       ) : null}
 
+      {/* ---- Schedule ---- */}
+      {!isCreate && (
+        <ScheduleSection
+          agent={props.agent}
+          cards={cards}
+          eff={eff}
+          mark={mark}
+        />
+      )}
+
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Schedule section (edit mode only)
+// ---------------------------------------------------------------------------
+
+const IANA_TIMEZONES: string[] = (() => {
+  try {
+    return (Intl as unknown as { supportedValuesOf(key: string): string[] }).supportedValuesOf("timeZone");
+  } catch {
+    return ["UTC", "America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Asia/Tokyo"];
+  }
+})();
+
+function computeNextRuns(expression: string, tz: string, count = 3): Date[] {
+  const results: Date[] = [];
+  let cursor = new Date();
+  for (let i = 0; i < count; i++) {
+    const next = nextCronTickFromExpression(expression, cursor);
+    if (!next) break;
+    results.push(next);
+    cursor = next;
+  }
+  // Convert UTC dates to display in chosen timezone
+  return results;
+}
+
+type ScheduleSectionProps = {
+  agent: { scheduleEnabled: boolean; cronExpression: string | null; scheduleTimezone: string | null; nextScheduledAt: Date | null };
+  cards: boolean;
+  eff: <T>(group: "runtime" | "heartbeat" | "identity" | "adapterConfig", field: string, original: T) => T;
+  mark: (group: "runtime" | "heartbeat" | "identity" | "adapterConfig", field: string, value: unknown) => void;
+};
+
+function ScheduleSection({ agent, cards, eff, mark }: ScheduleSectionProps) {
+  const scheduleEnabled = eff("runtime", "scheduleEnabled", agent.scheduleEnabled);
+  const cronExpression = eff("runtime", "cronExpression", agent.cronExpression ?? "");
+  const scheduleTimezone = eff("runtime", "scheduleTimezone", agent.scheduleTimezone ?? "UTC");
+
+  const cronError = cronExpression ? validateCron(cronExpression) : null;
+  const nextRuns = !cronError && cronExpression ? computeNextRuns(cronExpression, scheduleTimezone) : [];
+
+  const formatNextRun = (date: Date) => {
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        timeZone: scheduleTimezone,
+        weekday: "short", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true,
+      }).format(date);
+    } catch {
+      return date.toLocaleString();
+    }
+  };
+
+  return (
+    <div className={cn(!cards && "border-b border-border")}>
+      {cards
+        ? <h3 className="text-sm font-medium flex items-center gap-2 mb-3"><CalendarClock className="h-3 w-3" /> Schedule</h3>
+        : <div className="px-4 py-2 text-xs font-medium text-muted-foreground flex items-center gap-2"><CalendarClock className="h-3 w-3" /> Schedule</div>
+      }
+      <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+        <ToggleField
+          label="Enable cron schedule"
+          hint="Run this agent on a calendar-based schedule instead of (or in addition to) the heartbeat interval."
+          checked={scheduleEnabled}
+          onChange={(v) => mark("runtime", "scheduleEnabled", v)}
+        />
+        {scheduleEnabled && (
+          <div className="space-y-3 pl-2 border-l border-border ml-1">
+            <Field
+              label="Cron expression"
+              hint="Standard 5-field cron: minute hour day-of-month month day-of-week. Example: 0 9 * * 1-5 (9am Mon–Fri)"
+            >
+              <DraftInput
+                value={cronExpression}
+                onCommit={(v) => mark("runtime", "cronExpression", v)}
+                placeholder="0 9 * * 1-5"
+                className={cn(inputClass, cronError && cronExpression ? "border-red-400" : "")}
+              />
+              {cronError && cronExpression && (
+                <p className="text-xs text-red-500 mt-1">{cronError}</p>
+              )}
+            </Field>
+            <Field label="Timezone" hint="IANA timezone for the cron schedule (e.g. America/Chicago)">
+              <select
+                value={scheduleTimezone}
+                onChange={(e) => mark("runtime", "scheduleTimezone", e.target.value)}
+                className={cn(inputClass, "cursor-pointer")}
+              >
+                {IANA_TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+            </Field>
+            {nextRuns.length > 0 && (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Next runs:</p>
+                <ul className="space-y-0.5">
+                  {nextRuns.map((d, i) => (
+                    <li key={i} className="text-xs font-mono text-muted-foreground">
+                      {formatNextRun(d)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

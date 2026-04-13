@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { Issue } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
-import { X } from "lucide-react";
+import { X, Globe } from "lucide-react";
 import { cn } from "../lib/utils";
 import { StatusIcon } from "./StatusIcon";
 
@@ -17,6 +17,7 @@ interface IssueRowProps {
   desktopTrailing?: ReactNode;
   trailingMeta?: ReactNode;
   unreadState?: UnreadState | null;
+  isNetwork?: boolean;
   onMarkRead?: () => void;
   onArchive?: () => void;
   archiveDisabled?: boolean;
@@ -33,6 +34,7 @@ export function IssueRow({
   desktopTrailing,
   trailingMeta,
   unreadState = null,
+  isNetwork = false,
   onMarkRead,
   onArchive,
   archiveDisabled,
@@ -71,6 +73,12 @@ export function IssueRow({
               <span className="shrink-0 font-mono text-xs text-muted-foreground">
                 {identifier}
               </span>
+              {isNetwork && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 border border-primary/20 px-1.5 py-0.5 ml-1">
+                  <Globe className="h-3 w-3 text-primary" />
+                  <span className="text-[10px] font-black text-primary uppercase tracking-widest hidden sm:inline">Network</span>
+                </span>
+              )}
             </>
           )}
           {mobileMeta ? (

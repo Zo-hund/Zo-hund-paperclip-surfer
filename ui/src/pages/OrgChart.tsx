@@ -1,19 +1,21 @@
 import * as React from "react";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Download, Network, Upload, Zap, UserCheck, TrendingUp, PieChart, Wallet, History as HistoryIcon } from "lucide-react";
+import { Download, Network, Upload, Zap, UserCheck, TrendingUp, PieChart, Wallet, History as HistoryIcon, Maximize2, Minimize2, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { extractModelName } from "../lib/model-utils";
 
 // Layout constants
 const CARD_W = 200;
@@ -203,11 +205,65 @@ export function OrgChart() {
     return { width: maxX + PADDING, height: maxY + PADDING };
   }, [allNodes]);
 
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+
+  // Swarm state
+  const [isSwarmActive, setIsSwarmActive] = React.useState(false);
+  const [swarmBatchId, setSwarmBatchId] = React.useState<string | null>(null);
+  const [swarmAgentIds, setSwarmAgentIds] = React.useState<string[]>([]);
+  const [swarmStartedAt, setSwarmStartedAt] = React.useState<Date | null>(null);
+
+  const swarmMutation = useMutation({
+    mutationFn: ({ agentIds, batchId }: { agentIds: string[]; batchId: string }) =>
+      Promise.all(
+        agentIds.map((id) =>
+          agentsApi.wakeup(
+            id,
+            { source: "on_demand", triggerDetail: "manual", reason: "Swarm Boost", payload: { swarmBatchId: batchId } },
+            selectedCompanyId!,
+          ),
+        ),
+      ),
+    onSuccess: (results) => {
+      const fired = results.filter((r) => !("status" in r && r.status === "skipped")).length;
+      pushToast({ title: `Swarm Boost — ${fired} agents running in parallel` });
+      queryClient.invalidateQueries({ queryKey: queryKeys.liveRuns(selectedCompanyId!) });
+    },
+    onError: () => pushToast({ tone: "warn", title: "Swarm failed to launch" }),
+  });
+
+  // Derive real swarm runs from liveRuns (match by agentId + start time)
+  const swarmRuns = React.useMemo(() => {
+    if (!swarmAgentIds.length || !swarmStartedAt) return [];
+    const cutoff = swarmStartedAt.getTime() - 5000;
+    return (liveRuns ?? []).filter(
+      (r) =>
+        swarmAgentIds.includes(r.agentId) &&
+        r.startedAt != null &&
+        new Date(r.startedAt).getTime() >= cutoff,
+    );
+  }, [liveRuns, swarmAgentIds, swarmStartedAt]);
+
+  const swarmStats = React.useMemo(() => {
+    const running = swarmRuns.filter((r) => r.status === "running").length;
+    const done    = swarmRuns.filter((r) => r.status === "completed").length;
+    const failed  = swarmRuns.filter((r) => r.status === "failed" || r.status === "error").length;
+    const total   = swarmAgentIds.length;
+    const progress = total > 0 ? (done + failed) / total : 0;
+    return { running, done, failed, total, progress };
+  }, [swarmRuns, swarmAgentIds]);
+
+  // Auto-deactivate when all runs finish
+  React.useEffect(() => {
+    if (!isSwarmActive || swarmStats.total === 0 || swarmStats.progress < 1) return;
+    const t = setTimeout(() => setIsSwarmActive(false), 3000);
+    return () => clearTimeout(t);
+  }, [isSwarmActive, swarmStats.progress, swarmStats.total]);
+
   // Pan & zoom state
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [pan, setPan] = React.useState({ x: 0, y: 0 });
-  const [isSwarmActive, setIsSwarmActive] = React.useState(false);
-  const [swarmCost, setSwarmCost] = React.useState(0);
 
   const MODEL_ICONS: Record<string, string> = {
     "claude-local": "claude_brand_icon_1775315332265.png",
@@ -217,31 +273,43 @@ export function OrgChart() {
   const [zoom, setZoom] = React.useState(1);
   const [dragging, setDragging] = React.useState(false);
   const dragStart = React.useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const [fullscreen, setFullscreen] = React.useState(false);
 
-  // Center the chart on first load
+  // Center the chart on first load — retry until container has real dimensions (mobile fix)
   const hasInitialized = React.useRef(false);
+  // Re-fit whenever fullscreen changes
+  React.useEffect(() => {
+    hasInitialized.current = false;
+  }, [fullscreen]);
   React.useEffect(() => {
     if (hasInitialized.current || allNodes.length === 0 || !containerRef.current) return;
-    hasInitialized.current = true;
 
-    const container = containerRef.current;
-    const containerW = container.clientWidth;
-    const containerH = container.clientHeight;
+    const tryFit = () => {
+      const container = containerRef.current;
+      if (!container) return;
+      const containerW = container.clientWidth;
+      const containerH = container.clientHeight;
 
-    // Fit chart to container
-    const scaleX = (containerW - 40) / bounds.width;
-    const scaleY = (containerH - 40) / bounds.height;
-    const fitZoom = Math.min(scaleX, scaleY, 1);
+      // Container not laid out yet (mobile flex-1 collapse) — retry next frame
+      if (containerW === 0 || containerH === 0) {
+        requestAnimationFrame(tryFit);
+        return;
+      }
 
-    const chartW = bounds.width * fitZoom;
-    const chartH = bounds.height * fitZoom;
+      hasInitialized.current = true;
+      const scaleX = (containerW - 40) / bounds.width;
+      const scaleY = (containerH - 40) / bounds.height;
+      const fitZoom = Math.min(scaleX, scaleY, 1);
+      const chartW = bounds.width * fitZoom;
+      const chartH = bounds.height * fitZoom;
+      setZoom(fitZoom);
+      setPan({ x: (containerW - chartW) / 2, y: (containerH - chartH) / 2 });
+    };
 
-    setZoom(fitZoom);
-    setPan({
-      x: (containerW - chartW) / 2,
-      y: (containerH - chartH) / 2,
-    });
+    tryFit();
   }, [allNodes, bounds]);
+
+  const lastTouchDist = React.useRef<number | null>(null);
 
   const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -261,6 +329,51 @@ export function OrgChart() {
 
   const handleMouseUp = useCallback(() => {
     setDragging(false);
+  }, []);
+
+  const handleTouchStart = React.useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const target = e.touches[0].target as HTMLElement;
+      if (target.closest("[data-org-card]")) return;
+      const t = e.touches[0];
+      setDragging(true);
+      dragStart.current = { x: t.clientX, y: t.clientY, panX: pan.x, panY: pan.y };
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist.current = Math.hypot(dx, dy);
+    }
+  }, [pan]);
+
+  const handleTouchMove = React.useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1 && dragging) {
+      const dx = e.touches[0].clientX - dragStart.current.x;
+      const dy = e.touches[0].clientY - dragStart.current.y;
+      setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy });
+    } else if (e.touches.length === 2 && lastTouchDist.current !== null) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const factor = dist / lastTouchDist.current;
+      const newZoom = Math.min(Math.max(zoom * factor, 0.2), 2);
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const px = cx - rect.left;
+        const py = cy - rect.top;
+        const scale = newZoom / zoom;
+        setPan({ x: px - scale * (px - pan.x), y: py - scale * (py - pan.y) });
+      }
+      setZoom(newZoom);
+      lastTouchDist.current = dist;
+    }
+  }, [dragging, zoom, pan]);
+
+  const handleTouchEnd = React.useCallback(() => {
+    setDragging(false);
+    lastTouchDist.current = null;
   }, []);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -297,41 +410,46 @@ export function OrgChart() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className={fullscreen ? "fixed inset-0 z-50 flex flex-col bg-background" : "flex flex-col h-full overflow-hidden"}>
       <style>{`
         @keyframes orbit-pulse {
-          0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4); border-color: rgba(34, 211, 238, 0.6); }
-          70% { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); border-color: rgba(34, 211, 238, 0.2); }
-          100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); border-color: rgba(34, 211, 238, 0.4); }
+          0%   { outline-color: rgba(34, 211, 238, 0.7); outline-offset: 0px; }
+          70%  { outline-color: rgba(34, 211, 238, 0);   outline-offset: 6px; }
+          100% { outline-color: rgba(34, 211, 238, 0);   outline-offset: 0px; }
         }
         @keyframes orbit-pulse-queued {
-          0% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.4); border-color: rgba(250, 204, 21, 0.6); }
-          70% { box-shadow: 0 0 0 8px rgba(250, 204, 21, 0); border-color: rgba(250, 204, 21, 0.2); }
-          100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); border-color: rgba(250, 204, 21, 0.4); }
+          0%   { outline-color: rgba(250, 204, 21, 0.7); outline-offset: 0px; }
+          70%  { outline-color: rgba(250, 204, 21, 0);   outline-offset: 6px; }
+          100% { outline-color: rgba(250, 204, 21, 0);   outline-offset: 0px; }
         }
         @keyframes dash-flow {
           to { stroke-dashoffset: -20; }
         }
         .active-node-running {
           animation: orbit-pulse 2s infinite;
-          border-width: 1.5px !important;
+          outline: 1.5px solid rgba(34, 211, 238, 0.7);
+          will-change: outline-color, outline-offset;
         }
         .active-node-queued {
           animation: orbit-pulse-queued 2s infinite;
-          border-width: 1.5px !important;
+          outline: 1.5px solid rgba(250, 204, 21, 0.7);
+          will-change: outline-color, outline-offset;
         }
         .active-edge-flow {
           stroke-dasharray: 5, 5;
           animation: dash-flow 1s linear infinite;
           stroke: #22d3ee !important;
           stroke-width: 2 !important;
-          filter: drop-shadow(0 0 2px rgba(34, 211, 238, 0.5));
         }
         .active-edge-flow-queued {
           stroke-dasharray: 5, 5;
           animation: dash-flow 1.5s linear infinite;
           stroke: #facc15 !important;
           stroke-width: 2 !important;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .active-node-running, .active-node-queued { animation: none; }
+          .active-edge-flow, .active-edge-flow-queued { animation: none; stroke-dasharray: none; }
         }
       `}</style>
       <div className="mb-2 flex items-center justify-start gap-2 shrink-0 px-1">
@@ -351,12 +469,15 @@ export function OrgChart() {
     <div
       ref={containerRef}
       className="w-full flex-1 min-h-0 overflow-hidden relative bg-muted/20 border border-border rounded-lg"
-      style={{ cursor: dragging ? "grabbing" : "grab" }}
+      style={{ cursor: dragging ? "grabbing" : "grab", touchAction: "none" }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Zoom controls */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
@@ -413,6 +534,16 @@ export function OrgChart() {
         >
           Fit
         </button>
+        <button
+          className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded hover:bg-accent transition-colors"
+          onClick={() => setFullscreen(f => !f)}
+          title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        >
+          {fullscreen
+            ? <Minimize2 className="w-3.5 h-3.5" />
+            : <Maximize2 className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
       {/* Mission Control: Swarm Overdrive UI */}
@@ -430,20 +561,47 @@ export function OrgChart() {
             </div>
             
             <div className="space-y-4">
-              <div className="flex justify-between items-end">
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Real-Time Tokens</span>
-                  <span className="text-3xl font-black text-foreground tabular-nums tracking-tighter">
-                    {swarmCost.toLocaleString()}
-                  </span>
+              {/* Real-time stats */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-2xl font-black tabular-nums text-blue-400">{swarmStats.running}</div>
+                  <div className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Running</div>
                 </div>
-                <TrendingUp className="h-8 w-8 text-primary/20 mb-1" />
+                <div>
+                  <div className="text-2xl font-black tabular-nums text-green-400">{swarmStats.done}</div>
+                  <div className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Done</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-black tabular-nums text-red-400">{swarmStats.failed}</div>
+                  <div className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Failed</div>
+                </div>
               </div>
-              
+
+              {/* Progress bar */}
               <div className="h-1.5 w-full bg-accent/10 rounded-full overflow-hidden">
-                <div className="h-full bg-primary animate-pulse w-3/4 shadow-[0_0_10px_var(--primary)]" />
+                <div
+                  className="h-full bg-primary transition-all duration-500 shadow-[0_0_10px_var(--primary)]"
+                  style={{ width: `${Math.round(swarmStats.progress * 100)}%` }}
+                />
               </div>
-              
+
+              {/* Per-agent status rows */}
+              <div className="space-y-1 max-h-28 overflow-y-auto">
+                {allNodes.map((node) => {
+                  const run = swarmRuns.find((r) => r.agentId === node.id);
+                  const status = run?.status ?? "pending";
+                  return (
+                    <div key={node.id} className="flex items-center gap-2 text-[10px]">
+                      {status === "running" && <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />}
+                      {status === "completed" && <CheckCircle2 className="h-3 w-3 text-green-400 shrink-0" />}
+                      {(status === "failed" || status === "error") && <XCircle className="h-3 w-3 text-red-400 shrink-0" />}
+                      {status === "pending" && <div className="h-3 w-3 rounded-full bg-muted-foreground/30 shrink-0" />}
+                      <span className="truncate text-muted-foreground">{node.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" className="flex-1 rounded-xl h-9 text-[9px] font-black uppercase tracking-widest border-border/60 hover:bg-accent/5 transition-all">
                   <HistoryIcon className="h-3 w-3 mr-1.5 opacity-50" /> Audit
@@ -460,14 +618,19 @@ export function OrgChart() {
           size="lg" 
           className={`rounded-full h-16 w-16 shadow-2xl transition-all duration-500 ring-4 ring-offset-2 ${isSwarmActive ? "animate-pulse ring-primary bg-primary scale-110 shadow-primary/40" : "bg-card text-foreground border-border/60 ring-transparent shadow-black/10 hover:scale-105"}`}
           onClick={() => {
-            setIsSwarmActive(!isSwarmActive);
-            if (!isSwarmActive) {
-              const interval = setInterval(() => {
-                setSwarmCost(prev => prev + Math.floor(Math.random() * 50) + 10);
-              }, 100);
-              (window as any)._swarmInterval = interval;
+            if (isSwarmActive) {
+              setIsSwarmActive(false);
+              setSwarmBatchId(null);
+              setSwarmAgentIds([]);
+              setSwarmStartedAt(null);
             } else {
-              clearInterval((window as any)._swarmInterval);
+              const agentIds = allNodes.map((n) => n.id);
+              const batchId = crypto.randomUUID();
+              setSwarmBatchId(batchId);
+              setSwarmAgentIds(agentIds);
+              setSwarmStartedAt(new Date());
+              setIsSwarmActive(true);
+              swarmMutation.mutate({ agentIds, batchId });
             }
           }}
         >
@@ -583,6 +746,11 @@ export function OrgChart() {
                   {agent && (
                     <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
                       {adapterLabels[agent.adapterType] ?? agent.adapterType}
+                    </span>
+                  )}
+                  {agent && typeof agent.adapterConfig.model === "string" && agent.adapterConfig.model && (
+                    <span className="text-[10px] text-primary/70 font-mono leading-tight mt-0.5">
+                      {extractModelName(agent.adapterConfig.model)}
                     </span>
                   )}
                 </div>

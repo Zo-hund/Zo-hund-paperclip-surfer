@@ -53,6 +53,7 @@ import {
   Repeat,
   SlidersHorizontal,
   Trash2,
+  Globe,
 } from "lucide-react";
 import type { ActivityEvent } from "@paperclipai/shared";
 import type { Agent, IssueAttachment } from "@paperclipai/shared";
@@ -736,6 +737,25 @@ export function IssueDetail() {
               </span>
               Live
             </span>
+          )}
+
+          {/* Network Indicator & Team Access */}
+          {(issue as any).assigneeId === "ag_dasher" && (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-black text-primary uppercase tracking-widest shrink-0 shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)]">
+                <Globe className="h-3 w-3" />
+                AMX Network
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-[10px] uppercase font-black tracking-widest border-primary/30 hover:bg-primary/10 text-primary transition-all group"
+                onClick={() => pushToast({ title: "Connecting to External Team...", body: "Digital Dasher node secure bridge established.", tone: "success" })}
+              >
+                <Globe className="h-3 w-3 mr-1.5 group-hover:animate-spin" />
+                External Access
+              </Button>
+            </div>
           )}
 
           {issue.originKind === "routine_execution" && issue.originId && (

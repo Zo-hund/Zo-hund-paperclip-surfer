@@ -89,10 +89,13 @@ export function Layout() {
   useEffect(() => {
     if (companiesLoading || onboardingTriggered.current) return;
     if (health?.deploymentMode === "authenticated") return;
+    // Don't force onboarding for new members
+    /*
     if (companies.length === 0) {
       onboardingTriggered.current = true;
       openOnboarding();
     }
+    */
   }, [companies, companiesLoading, openOnboarding, health?.deploymentMode]);
 
   useEffect(() => {

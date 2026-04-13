@@ -10,6 +10,13 @@ export {
 } from "./instance.js";
 
 export {
+  sendChatMessageSchema,
+  type SendChatMessage,
+  createChatWorkOrderSchema,
+  type CreateChatWorkOrder,
+} from "./agent-chat.js";
+
+export {
   upsertBudgetPolicySchema,
   resolveBudgetIncidentSchema,
   type UpsertBudgetPolicy,
@@ -128,6 +135,7 @@ export {
   issueDocumentFormatSchema,
   issueDocumentKeySchema,
   upsertIssueDocumentSchema,
+  bulkUpdateIssueSchema,
   type CreateIssue,
   type CreateIssueLabel,
   type UpdateIssue,
@@ -138,6 +146,7 @@ export {
   type CreateIssueAttachmentMetadata,
   type IssueDocumentFormat,
   type UpsertIssueDocument,
+  type BulkUpdateIssue,
 } from "./issue.js";
 
 export {

@@ -5,6 +5,7 @@ import {
   agents,
   agentConfigRevisions,
   agentApiKeys,
+  agentKpis,
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
@@ -476,6 +477,7 @@ export function agentService(db: Db) {
         await tx.update(agents).set({ reportsTo: null }).where(eq(agents.reportsTo, id));
         await tx.delete(heartbeatRunEvents).where(eq(heartbeatRunEvents.agentId, id));
         await tx.delete(agentTaskSessions).where(eq(agentTaskSessions.agentId, id));
+        await tx.delete(agentKpis).where(eq(agentKpis.agentId, id));
         await tx.delete(heartbeatRuns).where(eq(heartbeatRuns.agentId, id));
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.agentId, id));

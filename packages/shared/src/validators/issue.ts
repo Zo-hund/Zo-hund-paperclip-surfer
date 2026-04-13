@@ -120,3 +120,14 @@ export const upsertIssueDocumentSchema = z.object({
 
 export type IssueDocumentFormat = z.infer<typeof issueDocumentFormatSchema>;
 export type UpsertIssueDocument = z.infer<typeof upsertIssueDocumentSchema>;
+
+export const bulkUpdateIssueSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+  update: z.object({
+    status: z.enum(ISSUE_STATUSES).optional(),
+    assigneeAgentId: z.string().uuid().nullable().optional(),
+    assigneeUserId: z.string().nullable().optional(),
+  }),
+});
+
+export type BulkUpdateIssue = z.infer<typeof bulkUpdateIssueSchema>;

@@ -37,9 +37,10 @@ const MOCK_HUMANS = [
   { id: "h_3", name: "Elena Rodriguez",title: "Content & Cultural Lead",   role: "content",   rating: 4.8, reviews: 92,  hourlyRateTokens: 550, skills: ["Localization", "Branding", "Storytelling", "AR Copy"],         available: false, badges: ["Verified Human", "Multilingual"],        avatarUrl: "https://i.pravatar.cc/150?u=elena-rod",     description: "Expert in cultural nuances and localization. Bridges raw AI output with premium human-centric brand experiences.", phases: ["pre", "prod", "post"] },
 ];
 
-const MOCK_AGENTS = [
+export const MOCK_AGENTS = [
+  { id: "ag_dasher", name: "Digital Dasher", title: "High-Speed Task Runner", role: "engineer", rating: 4.9, reviews: 850, hourlyRateTokens: 35,  skills: ["Rapid Prototyping", "Task Automation", "Swift Execution"], available: true,  badges: ["Speedster", "High Volume"], avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=digital-dasher", description: "Specialized for high-cadence, short-burst task runs. The fastest agent in the AMX fleet for repetitive high-volume work.", phases: ["live", "prod"] },
   { id: "ag_hermes", name: "Hermes Advanced", title: "Nous Research Reasoning Elite", role: "engineer", rating: 5.0, reviews: 324, hourlyRateTokens: 80,  skills: ["Nous Backend", "Deep Reasoning", "Complex Tool Use", "Paperclip MCP"], available: true,  badges: ["Top Rated Plus", "Nous Verified"],  avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=hermes-advanced", description: "State-of-the-art Hermes reasoning agent on Nous Research industrial backends. Full Paperclip MCP integration.",    phases: ["sim", "pre", "live", "prod", "post"] },
-  { id: "ag_astra",  name: "Astra",           title: "Senior Full-Stack Engineer",    role: "engineer", rating: 4.9, reviews: 142, hourlyRateTokens: 50,  skills: ["React", "Node.js", "System Architecture", "TypeScript"],            available: true,  badges: ["Top Rated Plus", "Verified Identity"], avatarUrl: "https://i.pravatar.cc/150?u=a042581f4e29026024d",               description: "Expert at building scalable web applications. Quick to adapt and excellent at debugging complex architectural issues.", phases: ["sim", "pre", "prod", "post"] },
+  { id: "ag_astra",  name: "Astra",           title: "Senior Full-Stack Engineer",    role: "engineer", rating: 4.9, reviews: 142, hourlyRateTokens: 50,  skills: ["React", "Node.js", "System Architecture", "TypeScript"],            available: true,  badges: ["Top Rated Plus", "Verified Identity"], avatarUrl: "https://i.pravatar.cc/150?u=sarah-chen-2",               description: "Expert at building scalable web applications. Quick to adapt and excellent at debugging complex architectural issues.", phases: ["sim", "pre", "prod", "post"] },
   { id: "ag_nexus",  name: "Nexus",           title: "Data Science & Analytics Lead", role: "analyst",  rating: 4.8, reviews: 89,  hourlyRateTokens: 45,  skills: ["Python", "Machine Learning", "Data Pipelines", "SQL"],              available: true,  badges: ["Top Rated", "AMX Certified"],          avatarUrl: "https://i.pravatar.cc/150?u=a04258a2462d826712d",               description: "Specializes in extracting actionable insights. Capable of building predictive models and robust data pipelines.",    phases: ["sim", "pre", "prod", "post"] },
   { id: "ag_cipher", name: "Cipher",          title: "Cybersecurity Analyst",         role: "security", rating: 5.0, reviews: 210, hourlyRateTokens: 75,  skills: ["Penetration Testing", "Audit", "Cryptography", "Compliance"],       available: false, badges: ["Top Rated Plus", "Security Cleared"],  avatarUrl: "https://i.pravatar.cc/150?u=a042581f4e29026704d",               description: "Relentless vulnerability identifier. Conducts thorough automated and manual code audits for enterprise security.",    phases: ["pre", "prod", "post"] },
 ];
@@ -55,7 +56,7 @@ const MOCK_TEAMS = [
 ];
 
 // ── Engage (Hire) Modal ───────────────────────────────────────────────────────
-function EngageModal({ talent, activeTab, balance, currency, onClose, companyPrefix }: {
+export function EngageModal({ talent, activeTab, balance, currency, onClose, companyPrefix }: {
   talent: any; activeTab: string; balance: number; currency: string; onClose: () => void; companyPrefix?: string;
 }) {
   const navigate = useNavigate();
@@ -79,7 +80,8 @@ function EngageModal({ talent, activeTab, balance, currency, onClose, companyPre
         <p className="text-[13px] text-muted-foreground mb-1">
           <span className="font-black text-foreground">{talent.name}</span> hired for <span className="font-black text-primary">{selectedPhase?.label}</span>
         </p>
-        <p className="text-[11px] text-muted-foreground mb-2">{totalCost.toLocaleString()} {currency} deducted · Entry logged to ledger</p>
+        <p className="text-[11px] text-muted-foreground mb-1">{totalCost.toLocaleString()} {currency} deducted from buyer</p>
+        <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-2">10% Platform Fee deducted from provider payout</p>
         <div className="flex items-center justify-center gap-2 mb-8 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
           <span className="text-[11px] font-bold text-amber-400">💡 They enter In Training — assign to a team and track XP before activating SIM or LIVE.</span>
         </div>

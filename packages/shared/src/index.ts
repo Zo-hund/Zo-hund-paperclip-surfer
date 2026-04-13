@@ -135,6 +135,10 @@ export {
 } from "./constants.js";
 
 export type {
+  AgentChatMessage,
+} from "./types/agent-chat.js";
+
+export type {
   Company,
   CompanySkillSourceType,
   CompanySkillTrustLevel,
@@ -321,6 +325,10 @@ export {
   instanceExperimentalSettingsSchema,
   patchInstanceExperimentalSettingsSchema,
   type PatchInstanceExperimentalSettings,
+  sendChatMessageSchema,
+  type SendChatMessage,
+  createChatWorkOrderSchema,
+  type CreateChatWorkOrder,
 } from "./validators/index.js";
 
 export {
@@ -387,6 +395,7 @@ export {
   issueDocumentFormatSchema,
   issueDocumentKeySchema,
   upsertIssueDocumentSchema,
+  bulkUpdateIssueSchema,
   type CreateIssue,
   type CreateIssueLabel,
   type UpdateIssue,
@@ -399,6 +408,7 @@ export {
   type UpdateExecutionWorkspace,
   type IssueDocumentFormat,
   type UpsertIssueDocument,
+  type BulkUpdateIssue,
   createGoalSchema,
   updateGoalSchema,
   type CreateGoal,
@@ -581,3 +591,13 @@ export {
   type ConfigMeta,
 } from "./config-schema.js";
 export { BRAND, APP_TITLE } from "./branding.js";
+
+export {
+  parseCron,
+  validateCron,
+  nextCronTick,
+  nextCronTickFromExpression,
+  nextCronTickInTimeZone,
+  assertValidTimeZone,
+  type ParsedCron,
+} from "./cron.js";

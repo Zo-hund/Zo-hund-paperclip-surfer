@@ -1,0 +1,27 @@
+
+=== COMPANY + AGENT AUDIT (11 companies) ===
+
+[FBM] FB Marketing Hub — 0 agent(s)
+  (none)
+[SOC] Social Media Test Co — 0 agent(s)
+  (none)
+[FBMA] FB Marketing Hub — 0 agent(s)
+  (none)
+[FBMAA] FB Marketing Hub — 0 agent(s)
+  (none)
+[AMXA] AMX-LABS — 3 agent(s)
+  • CMO [idle]
+  • CTO [running]
+  • CEO: Zomorphesus [running]
+[SOCA] Social Media Test Co — 0 agent(s)
+  (none)
+[FBMAAAAA] FB Marketing Hub — 0 agent(s)
+  (none)
+[FBMAAA] FB Marketing Hub — 0 agent(s)
+  (none)
+[AMX] AMX-LABS — 0 agent(s)
+  (none)
+[FBMAAAA] FB Marketing Hub — 0 agent(s)
+  (none)
+[HAT] H3AT C&D — 1 agent(s)
+  • CEO BRANDON [error]

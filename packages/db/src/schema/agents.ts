@@ -4,6 +4,7 @@ import {
   uuid,
   text,
   integer,
+  boolean,
   timestamp,
   jsonb,
   index,
@@ -31,6 +32,10 @@ export const agents = pgTable(
     pausedAt: timestamp("paused_at", { withTimezone: true }),
     permissions: jsonb("permissions").$type<Record<string, unknown>>().notNull().default({}),
     lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
+    cronExpression: text("cron_expression"),
+    scheduleTimezone: text("schedule_timezone"),
+    nextScheduledAt: timestamp("next_scheduled_at", { withTimezone: true }),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -38,5 +43,6 @@ export const agents = pgTable(
   (table) => ({
     companyStatusIdx: index("agents_company_status_idx").on(table.companyId, table.status),
     companyReportsToIdx: index("agents_company_reports_to_idx").on(table.companyId, table.reportsTo),
+    scheduleIdx: index("agents_schedule_idx").on(table.scheduleEnabled, table.nextScheduledAt),
   }),
 );

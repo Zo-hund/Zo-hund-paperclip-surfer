@@ -79,6 +79,10 @@ export interface Agent {
   pausedAt: Date | null;
   permissions: AgentPermissions;
   lastHeartbeatAt: Date | null;
+  scheduleEnabled: boolean;
+  cronExpression: string | null;
+  scheduleTimezone: string | null;
+  nextScheduledAt: Date | null;
   metadata: Record<string, unknown> | null;
   createdAt: Date;
   updatedAt: Date;

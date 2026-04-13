@@ -1163,6 +1163,7 @@ export function Inbox() {
                     key={`issue:${issue.id}`}
                     issue={issue}
                     issueLinkState={issueLinkState}
+                    isNetwork={(issue as any).assigneeId === "ag_dasher"}
                     className={
                       isArchiving
                         ? "pointer-events-none -translate-x-4 scale-[0.98] opacity-0 transition-all duration-200 ease-out"
