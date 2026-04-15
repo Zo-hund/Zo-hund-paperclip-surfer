@@ -626,12 +626,16 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       initial.parsed &&
       isClaudeUnknownSessionError(initial.parsed)
     ) {
-      await onLog(
-        "stdout",
-        `[paperclip] Claude resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
-      );
+      const sessionLostNotice = `[Session lost — previous session "${sessionId}" was not found (cleared or expired). Started fresh.]`;
+      await onLog("stdout", `[paperclip] ${sessionLostNotice}\n`);
       const retry = await runAttempt(null);
-      return toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
+      const retryResult = toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
+      return {
+        ...retryResult,
+        summary: retryResult.summary
+          ? `${sessionLostNotice}\n\n${retryResult.summary}`
+          : sessionLostNotice,
+      };
     }
 
     return toAdapterResult(initial, { fallbackSessionId: runtimeSessionId || runtime.sessionId });
