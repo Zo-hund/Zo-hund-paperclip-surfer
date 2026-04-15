@@ -202,6 +202,28 @@ export const agentsApi = {
       `/agents/${encodeURIComponent(agentId)}/chat/messages`,
       { content },
     ),
+  swarmLaunch: (
+    companyId: string,
+    data: {
+      agentIds: string[];
+      payload?: Record<string, unknown>;
+      runMode?: "sim" | "live";
+      swarmBatchId?: string;
+      protections?: { failureThreshold?: number; maxConcurrentAgents?: number };
+    },
+  ) =>
+    api.post<{ batchId: string; runMode: "sim" | "live"; runs: HeartbeatRun[] }>(
+      `/companies/${encodeURIComponent(companyId)}/swarm/launch`,
+      data,
+    ),
+  swarmPromote: (
+    companyId: string,
+    data: { swarmBatchId: string; agentIds?: string[] },
+  ) =>
+    api.post<{ batchId: string; sourceBatchId: string; runs: HeartbeatRun[] }>(
+      `/companies/${encodeURIComponent(companyId)}/swarm/promote`,
+      data,
+    ),
 };
 
 export interface AvailableSkill {

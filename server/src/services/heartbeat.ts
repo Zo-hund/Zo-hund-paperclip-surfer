@@ -61,7 +61,7 @@ import {
 
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
 const HEARTBEAT_MAX_CONCURRENT_RUNS_DEFAULT = 1;
-const HEARTBEAT_MAX_CONCURRENT_RUNS_MAX = 10;
+const HEARTBEAT_MAX_CONCURRENT_RUNS_MAX = 100;
 const DEFERRED_WAKE_CONTEXT_KEY = "_paperclipWakeContext";
 const DETACHED_PROCESS_ERROR_CODE = "process_detached";
 const startLocksByAgent = new Map<string, Promise<void>>();
@@ -214,6 +214,9 @@ interface WakeupOptions {
   requestedByActorType?: "user" | "agent" | "system";
   requestedByActorId?: string | null;
   contextSnapshot?: Record<string, unknown>;
+  runMode?: "sim" | "live";
+  swarmBatchId?: string | null;
+  promotedFromRunId?: string | null;
 }
 
 type UsageTotals = {
@@ -3744,6 +3747,9 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
             wakeupRequestId: wakeupRequest.id,
             contextSnapshot: enrichedContextSnapshot,
             sessionIdBefore: sessionBefore,
+            runMode: opts.runMode ?? "live",
+            swarmBatchId: opts.swarmBatchId ?? null,
+            promotedFromRunId: opts.promotedFromRunId ?? null,
           })
           .returning()
           .then((rows) => rows[0]);

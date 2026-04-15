@@ -1990,6 +1990,7 @@ export function agentRoutes(db: Db) {
       idempotencyKey: req.body.idempotencyKey ?? null,
       requestedByActorType: req.actor.type === "agent" ? "agent" : "user",
       requestedByActorId: req.actor.type === "agent" ? req.actor.agentId ?? null : req.actor.userId ?? null,
+      runMode: req.body.runMode === "sim" ? "sim" : "live",
       contextSnapshot: {
         triggeredBy: req.actor.type,
         actorId: req.actor.type === "agent" ? req.actor.agentId : req.actor.userId,
@@ -2162,6 +2163,177 @@ export function agentRoutes(db: Db) {
     }
 
     res.json(liveRuns);
+  });
+
+  // ── Swarm launch: fire N agents in parallel ──────────────────────────────
+  router.post("/companies/:companyId/swarm/launch", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const { agentIds, payload, runMode, swarmBatchId, protections } = req.body as {
+      agentIds: string[];
+      payload?: Record<string, unknown>;
+      runMode?: "sim" | "live";
+      swarmBatchId?: string;
+      protections?: { failureThreshold?: number; maxConcurrentAgents?: number };
+    };
+
+    if (!Array.isArray(agentIds) || agentIds.length === 0) {
+      res.status(400).json({ error: "agentIds must be a non-empty array" });
+      return;
+    }
+    if (agentIds.length > 100) {
+      res.status(400).json({ error: "agentIds must not exceed 100" });
+      return;
+    }
+
+    const batchId = swarmBatchId ?? randomUUID();
+    const mode: "sim" | "live" = runMode === "sim" ? "sim" : "live";
+    const maxConcurrent = protections?.maxConcurrentAgents ?? agentIds.length;
+
+    // Validate all agents belong to this company
+    const agents = await db
+      .select({ id: agentsTable.id })
+      .from(agentsTable)
+      .where(and(inArray(agentsTable.id, agentIds), eq(agentsTable.companyId, companyId)));
+
+    const validIds = new Set(agents.map((a) => a.id));
+    const invalidIds = agentIds.filter((id) => !validIds.has(id));
+    if (invalidIds.length > 0) {
+      res.status(400).json({ error: `Unknown agent IDs: ${invalidIds.join(", ")}` });
+      return;
+    }
+
+    const actor = getActorInfo(req);
+    const runs: unknown[] = [];
+    // Fire up to maxConcurrent agents; rest queue naturally via their own heartbeat slots
+    const toFire = agentIds.slice(0, maxConcurrent);
+    const toQueue = agentIds.slice(maxConcurrent);
+
+    for (const agentId of toFire) {
+      const run = await heartbeat.wakeup(agentId, {
+        source: "on_demand",
+        triggerDetail: "manual",
+        reason: mode === "sim" ? "Swarm (Sim)" : "Swarm (Live)",
+        payload: { ...(payload ?? {}), swarmBatchId: batchId },
+        requestedByActorType: "user",
+        requestedByActorId: actor.actorId,
+        runMode: mode,
+        swarmBatchId: batchId,
+      });
+      if (run) {
+        runs.push(run);
+        await logActivity(db, {
+          companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          action: "heartbeat.invoked",
+          entityType: "heartbeat_run",
+          entityId: (run as { id: string }).id,
+          details: { agentId, swarmBatchId: batchId, runMode: mode },
+        });
+      }
+    }
+
+    // Queue remaining agents (they'll be claimed as slots open)
+    for (const agentId of toQueue) {
+      const run = await heartbeat.wakeup(agentId, {
+        source: "on_demand",
+        triggerDetail: "manual",
+        reason: mode === "sim" ? "Swarm (Sim)" : "Swarm (Live)",
+        payload: { ...(payload ?? {}), swarmBatchId: batchId },
+        requestedByActorType: "user",
+        requestedByActorId: actor.actorId,
+        runMode: mode,
+        swarmBatchId: batchId,
+      });
+      if (run) runs.push(run);
+    }
+
+    res.status(202).json({ batchId, runMode: mode, runs });
+  });
+
+  // ── Swarm promote: escalate completed sim runs to live ────────────────────
+  router.post("/companies/:companyId/swarm/promote", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const { swarmBatchId, agentIds } = req.body as {
+      swarmBatchId: string;
+      agentIds?: string[];
+    };
+
+    if (!swarmBatchId) {
+      res.status(400).json({ error: "swarmBatchId is required" });
+      return;
+    }
+
+    // Find completed sim runs for this batch
+    const simRuns = await db
+      .select({
+        id: heartbeatRuns.id,
+        agentId: heartbeatRuns.agentId,
+        contextSnapshot: heartbeatRuns.contextSnapshot,
+      })
+      .from(heartbeatRuns)
+      .where(
+        and(
+          eq(heartbeatRuns.companyId, companyId),
+          eq(heartbeatRuns.swarmBatchId, swarmBatchId),
+          eq(heartbeatRuns.runMode, "sim"),
+          inArray(heartbeatRuns.status, ["completed", "failed"]),
+        ),
+      );
+
+    const targetRuns = agentIds
+      ? simRuns.filter((r) => agentIds.includes(r.agentId))
+      : simRuns;
+
+    if (targetRuns.length === 0) {
+      res.status(404).json({ error: "No completed sim runs found for this batch" });
+      return;
+    }
+
+    const actor = getActorInfo(req);
+    const newBatchId = randomUUID();
+    const promotedRuns: unknown[] = [];
+
+    for (const simRun of targetRuns) {
+      const simPayload = (simRun.contextSnapshot as Record<string, unknown> | null) ?? {};
+      const run = await heartbeat.wakeup(simRun.agentId, {
+        source: "on_demand",
+        triggerDetail: "manual",
+        reason: "Swarm Promote → Live",
+        payload: { ...simPayload, swarmBatchId: newBatchId, promotedFromBatchId: swarmBatchId },
+        requestedByActorType: "user",
+        requestedByActorId: actor.actorId,
+        runMode: "live",
+        swarmBatchId: newBatchId,
+        promotedFromRunId: simRun.id,
+      });
+      if (run) {
+        promotedRuns.push(run);
+        await logActivity(db, {
+          companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          action: "heartbeat.invoked",
+          entityType: "heartbeat_run",
+          entityId: (run as { id: string }).id,
+          details: {
+            agentId: simRun.agentId,
+            swarmBatchId: newBatchId,
+            promotedFromRunId: simRun.id,
+            sourceBatchId: swarmBatchId,
+            runMode: "live",
+          },
+        });
+      }
+    }
+
+    res.status(202).json({ batchId: newBatchId, sourceBatchId: swarmBatchId, runs: promotedRuns });
   });
 
   router.get("/heartbeat-runs/:runId", async (req, res) => {

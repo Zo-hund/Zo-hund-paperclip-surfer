@@ -38,6 +38,9 @@ interface DialogContextValue {
   onboardingOptions: OnboardingOptions;
   openOnboarding: (options?: OnboardingOptions) => void;
   closeOnboarding: () => void;
+  swarmLauncherOpen: boolean;
+  openSwarmLauncher: () => void;
+  closeSwarmLauncher: () => void;
 }
 
 const DialogContext = createContext<DialogContextValue | null>(null);
@@ -51,6 +54,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [newAgentOpen, setNewAgentOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingOptions, setOnboardingOptions] = useState<OnboardingOptions>({});
+  const [swarmLauncherOpen, setSwarmLauncherOpen] = useState(false);
 
   const openNewIssue = useCallback((defaults: NewIssueDefaults = {}) => {
     setNewIssueDefaults(defaults);
@@ -98,6 +102,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     setOnboardingOptions({});
   }, []);
 
+  const openSwarmLauncher = useCallback(() => setSwarmLauncherOpen(true), []);
+  const closeSwarmLauncher = useCallback(() => setSwarmLauncherOpen(false), []);
+
   return (
     <DialogContext.Provider
       value={{
@@ -119,6 +126,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         onboardingOptions,
         openOnboarding,
         closeOnboarding,
+        swarmLauncherOpen,
+        openSwarmLauncher,
+        closeSwarmLauncher,
       }}
     >
       {children}
