@@ -2303,6 +2303,40 @@ export function heartbeatService(db: Db) {
         return home;
       })(),
     };
+
+    // Ensure PARA memory daily note if skill is enabled.
+    // desiredSkills may be stored as an array OR as a legacy space-separated string
+    // (e.g. V3 Audit Lead agents patched via CEO had string format).
+    const adapterConfig = parseObject(agent.adapterConfig);
+    const rawDesiredSkills = parseObject(adapterConfig.paperclipSkillSync).desiredSkills;
+    const desiredSkills: string[] = Array.isArray(rawDesiredSkills)
+      ? (rawDesiredSkills as unknown[]).filter((s): s is string => typeof s === "string")
+      : typeof rawDesiredSkills === "string"
+        ? rawDesiredSkills.split(/\s+/).filter(Boolean)
+        : [];
+    if (desiredSkills.some((s) => s.includes("para-memory-files"))) {
+      const today = new Date().toISOString().split("T")[0];
+      const memoryDir = path.join(context.paperclipWorkspace.agentHome, "memory");
+      const dailyNotePath = path.join(memoryDir, `${today}.md`);
+
+      try {
+        await fs.mkdir(memoryDir, { recursive: true });
+        const exists = await fs
+          .stat(dailyNotePath)
+          .then(() => true)
+          .catch(() => false);
+        if (!exists) {
+          await fs.writeFile(
+            dailyNotePath,
+            `# Daily Notes - ${today}\n\n* (System) Session started at ${new Date().toISOString()}\n`,
+            "utf8",
+          );
+          logger.info({ agentId: agent.id, dailyNotePath }, "Initialized daily memory note for PARA skill");
+        }
+      } catch (err) {
+        logger.warn({ err, agentId: agent.id }, "Failed to initialize daily memory note");
+      }
+    }
     context.paperclipWorkspaces = resolvedWorkspace.workspaceHints;
     const runtimeServiceIntents = (() => {
       const runtimeConfig = parseObject(resolvedConfig.workspaceRuntime);
@@ -2604,7 +2638,9 @@ Keep memories concise and specific. Don't write vague platitudes.`;
           try { fsSync.rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }
         };
       } catch (memErr) {
+        const memErrMsg = memErr instanceof Error ? memErr.message : String(memErr);
         logger.warn({ err: memErr, agentId: agent.id, runId: run.id }, "V2: failed to load agent memories");
+        await onLog("stderr", `[paperclip] Warning: agent memory injection failed — running without memory context. Reason: ${memErrMsg}\n`);
       }
 
       // V2 Layer 3: Inject active experiment approach into context
