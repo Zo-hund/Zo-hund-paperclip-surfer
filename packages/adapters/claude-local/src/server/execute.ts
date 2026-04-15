@@ -401,9 +401,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const runtimeSessionParams = parseObject(runtime.sessionParams);
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
+  const cwdMatches = (a: string, b: string): boolean => {
+    const na = path.normalize(path.resolve(a));
+    const nb = path.normalize(path.resolve(b));
+    return process.platform === "win32" ? na.toLowerCase() === nb.toLowerCase() : na === nb;
+  };
   const canResumeSession =
     runtimeSessionId.length > 0 &&
-    (runtimeSessionCwd.length === 0 || path.resolve(runtimeSessionCwd) === path.resolve(cwd));
+    (runtimeSessionCwd.length === 0 || cwdMatches(runtimeSessionCwd, cwd));
   const sessionId = canResumeSession ? runtimeSessionId : null;
   if (runtimeSessionId && !canResumeSession) {
     await onLog(
