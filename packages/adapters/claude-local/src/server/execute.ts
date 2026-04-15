@@ -585,7 +585,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         ...(workspaceRepoRef ? { repoRef: workspaceRepoRef } : {}),
       } as Record<string, unknown>)
       : null;
-    const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);
+    const hitMaxTurns = isClaudeMaxTurnsResult(parsed);
+    const baseSummary = parsedStream.summary || asString(parsed.result, "");
 
     return {
       exitCode: proc.exitCode,
@@ -607,8 +608,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       billingType,
       costUsd: parsedStream.costUsd ?? asNumber(parsed.total_cost_usd, 0),
       resultJson: parsed,
-      summary: parsedStream.summary || asString(parsed.result, ""),
-      clearSession: clearSessionForMaxTurns || Boolean(opts.clearSessionOnMissingSession && !resolvedSessionId),
+      // When max turns is hit the session is still valid — keep it so the next
+      // run resumes via --resume instead of starting blind.
+      summary: hitMaxTurns
+        ? `[Paused at turn limit — session preserved, will resume next run]\n\n${baseSummary}`.trim()
+        : baseSummary,
+      clearSession: Boolean(opts.clearSessionOnMissingSession && !resolvedSessionId),
     };
   };
 
