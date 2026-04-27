@@ -106,6 +106,7 @@ export const wakeAgentSchema = z.object({
     (value) => (value === null ? undefined : value),
     z.boolean().optional().default(false),
   ),
+  runMode: z.enum(["sim", "live"]).optional().default("live"),
 });
 
 export type WakeAgent = z.infer<typeof wakeAgentSchema>;

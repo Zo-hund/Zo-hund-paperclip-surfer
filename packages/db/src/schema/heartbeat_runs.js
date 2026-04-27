@@ -35,6 +35,11 @@ export const heartbeatRuns = pgTable("heartbeat_runs", {
     }),
     processLossRetryCount: integer("process_loss_retry_count").notNull().default(0),
     contextSnapshot: jsonb("context_snapshot").$type(),
+    runMode: text("run_mode").notNull().default("live"),
+    swarmBatchId: text("swarm_batch_id"),
+    promotedFromRunId: uuid("promoted_from_run_id").references(() => heartbeatRuns.id, {
+        onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

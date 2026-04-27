@@ -1,21 +1,21 @@
 import * as React from "react";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "@/lib/router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
-import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { agentUrl } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Download, Network, Upload, Zap, UserCheck, TrendingUp, PieChart, Wallet, History as HistoryIcon, Maximize2, Minimize2, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Download, Network, Upload, Zap, UserCheck, Maximize2, Minimize2 } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import { extractModelName } from "../lib/model-utils";
+import { useDialog } from "../context/DialogContext";
 
 // Layout constants
 const CARD_W = 200;
@@ -205,61 +205,7 @@ export function OrgChart() {
     return { width: maxX + PADDING, height: maxY + PADDING };
   }, [allNodes]);
 
-  const queryClient = useQueryClient();
-  const { pushToast } = useToast();
-
-  // Swarm state
-  const [isSwarmActive, setIsSwarmActive] = React.useState(false);
-  const [swarmBatchId, setSwarmBatchId] = React.useState<string | null>(null);
-  const [swarmAgentIds, setSwarmAgentIds] = React.useState<string[]>([]);
-  const [swarmStartedAt, setSwarmStartedAt] = React.useState<Date | null>(null);
-
-  const swarmMutation = useMutation({
-    mutationFn: ({ agentIds, batchId }: { agentIds: string[]; batchId: string }) =>
-      Promise.all(
-        agentIds.map((id) =>
-          agentsApi.wakeup(
-            id,
-            { source: "on_demand", triggerDetail: "manual", reason: "Swarm Boost", payload: { swarmBatchId: batchId } },
-            selectedCompanyId!,
-          ),
-        ),
-      ),
-    onSuccess: (results) => {
-      const fired = results.filter((r) => !("status" in r && r.status === "skipped")).length;
-      pushToast({ title: `Swarm Boost — ${fired} agents running in parallel` });
-      queryClient.invalidateQueries({ queryKey: queryKeys.liveRuns(selectedCompanyId!) });
-    },
-    onError: () => pushToast({ tone: "warn", title: "Swarm failed to launch" }),
-  });
-
-  // Derive real swarm runs from liveRuns (match by agentId + start time)
-  const swarmRuns = React.useMemo(() => {
-    if (!swarmAgentIds.length || !swarmStartedAt) return [];
-    const cutoff = swarmStartedAt.getTime() - 5000;
-    return (liveRuns ?? []).filter(
-      (r) =>
-        swarmAgentIds.includes(r.agentId) &&
-        r.startedAt != null &&
-        new Date(r.startedAt).getTime() >= cutoff,
-    );
-  }, [liveRuns, swarmAgentIds, swarmStartedAt]);
-
-  const swarmStats = React.useMemo(() => {
-    const running = swarmRuns.filter((r) => r.status === "running").length;
-    const done    = swarmRuns.filter((r) => r.status === "completed").length;
-    const failed  = swarmRuns.filter((r) => r.status === "failed" || r.status === "error").length;
-    const total   = swarmAgentIds.length;
-    const progress = total > 0 ? (done + failed) / total : 0;
-    return { running, done, failed, total, progress };
-  }, [swarmRuns, swarmAgentIds]);
-
-  // Auto-deactivate when all runs finish
-  React.useEffect(() => {
-    if (!isSwarmActive || swarmStats.total === 0 || swarmStats.progress < 1) return;
-    const t = setTimeout(() => setIsSwarmActive(false), 3000);
-    return () => clearTimeout(t);
-  }, [isSwarmActive, swarmStats.progress, swarmStats.total]);
+  const { openSwarmLauncher } = useDialog();
 
   // Pan & zoom state
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -546,95 +492,15 @@ export function OrgChart() {
         </button>
       </div>
 
-      {/* Mission Control: Swarm Overdrive UI */}
-      <div className="absolute bottom-8 right-8 z-50 flex flex-col items-end gap-4">
-        {isSwarmActive && (
-          <div className="bg-card/90 backdrop-blur-xl border border-primary/20 rounded-[2rem] p-6 shadow-2xl animate-in slide-in-from-bottom-4 duration-500 w-80 border-b-primary/50">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary animate-ping" />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Swarm Overdrive</span>
-              </div>
-              <div className="px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[9px] font-black text-primary uppercase">
-                100x Growth
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              {/* Real-time stats */}
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <div className="text-2xl font-black tabular-nums text-blue-400">{swarmStats.running}</div>
-                  <div className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Running</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-black tabular-nums text-green-400">{swarmStats.done}</div>
-                  <div className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Done</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-black tabular-nums text-red-400">{swarmStats.failed}</div>
-                  <div className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Failed</div>
-                </div>
-              </div>
-
-              {/* Progress bar */}
-              <div className="h-1.5 w-full bg-accent/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary transition-all duration-500 shadow-[0_0_10px_var(--primary)]"
-                  style={{ width: `${Math.round(swarmStats.progress * 100)}%` }}
-                />
-              </div>
-
-              {/* Per-agent status rows */}
-              <div className="space-y-1 max-h-28 overflow-y-auto">
-                {allNodes.map((node) => {
-                  const run = swarmRuns.find((r) => r.agentId === node.id);
-                  const status = run?.status ?? "pending";
-                  return (
-                    <div key={node.id} className="flex items-center gap-2 text-[10px]">
-                      {status === "running" && <Loader2 className="h-3 w-3 text-blue-400 animate-spin shrink-0" />}
-                      {status === "completed" && <CheckCircle2 className="h-3 w-3 text-green-400 shrink-0" />}
-                      {(status === "failed" || status === "error") && <XCircle className="h-3 w-3 text-red-400 shrink-0" />}
-                      {status === "pending" && <div className="h-3 w-3 rounded-full bg-muted-foreground/30 shrink-0" />}
-                      <span className="truncate text-muted-foreground">{node.name}</span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="flex-1 rounded-xl h-9 text-[9px] font-black uppercase tracking-widest border-border/60 hover:bg-accent/5 transition-all">
-                  <HistoryIcon className="h-3 w-3 mr-1.5 opacity-50" /> Audit
-                </Button>
-                <Button size="sm" className="flex-1 rounded-xl h-9 bg-emerald-500 hover:bg-emerald-600 text-[9px] font-black uppercase tracking-widest text-white border-0 shadow-lg shadow-emerald-500/20 transition-all">
-                  <PieChart className="h-3 w-3 mr-1.5" /> Reports
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <Button 
-          size="lg" 
-          className={`rounded-full h-16 w-16 shadow-2xl transition-all duration-500 ring-4 ring-offset-2 ${isSwarmActive ? "animate-pulse ring-primary bg-primary scale-110 shadow-primary/40" : "bg-card text-foreground border-border/60 ring-transparent shadow-black/10 hover:scale-105"}`}
-          onClick={() => {
-            if (isSwarmActive) {
-              setIsSwarmActive(false);
-              setSwarmBatchId(null);
-              setSwarmAgentIds([]);
-              setSwarmStartedAt(null);
-            } else {
-              const agentIds = allNodes.map((n) => n.id);
-              const batchId = crypto.randomUUID();
-              setSwarmBatchId(batchId);
-              setSwarmAgentIds(agentIds);
-              setSwarmStartedAt(new Date());
-              setIsSwarmActive(true);
-              swarmMutation.mutate({ agentIds, batchId });
-            }
-          }}
+      {/* Swarm launcher button */}
+      <div className="absolute bottom-8 right-8 z-50">
+        <Button
+          size="lg"
+          className="rounded-full h-16 w-16 shadow-2xl transition-all duration-300 bg-card text-foreground border border-border/60 ring-4 ring-transparent ring-offset-2 shadow-black/10 hover:scale-105 hover:ring-primary/30"
+          title="Launch Swarm"
+          onClick={openSwarmLauncher}
         >
-          <Zap className={`h-8 w-8 transition-all ${isSwarmActive ? "fill-white text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-muted-foreground group-hover:text-primary"}`} />
+          <Zap className="h-8 w-8 text-muted-foreground" />
         </Button>
       </div>
 
@@ -678,7 +544,7 @@ export function OrgChart() {
                 fill="none"
                 stroke="var(--border)"
                 strokeWidth={1.5}
-                className={`${isActive ? (runStatus === "running" ? "active-edge-flow" : "active-edge-flow-queued") : ""} ${isSwarmActive ? "active-edge-swarm" : ""}`}
+                className={`${isActive ? (runStatus === "running" ? "active-edge-flow" : "active-edge-flow-queued") : ""}`}
               />
             );
           })}
@@ -718,7 +584,7 @@ export function OrgChart() {
               <div className="flex items-center px-4 py-3 gap-3">
                 {/* Agent icon + status dot */}
                 <div className="relative shrink-0">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${isSwarmActive ? "ring-2 ring-primary ring-offset-2 scale-110 shadow-lg shadow-primary/20" : "bg-muted"}`}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 bg-muted">
                     {agent && MODEL_ICONS[agent.adapterType] ? (
                       <img src={MODEL_ICONS[agent.adapterType]} alt={agent.adapterType} className="w-full h-full object-cover" />
                     ) : (

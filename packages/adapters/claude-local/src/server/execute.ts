@@ -401,9 +401,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const runtimeSessionParams = parseObject(runtime.sessionParams);
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
+  const cwdMatches = (a: string, b: string): boolean => {
+    const na = path.normalize(path.resolve(a));
+    const nb = path.normalize(path.resolve(b));
+    return process.platform === "win32" ? na.toLowerCase() === nb.toLowerCase() : na === nb;
+  };
   const canResumeSession =
     runtimeSessionId.length > 0 &&
-    (runtimeSessionCwd.length === 0 || path.resolve(runtimeSessionCwd) === path.resolve(cwd));
+    (runtimeSessionCwd.length === 0 || cwdMatches(runtimeSessionCwd, cwd));
   const sessionId = canResumeSession ? runtimeSessionId : null;
   if (runtimeSessionId && !canResumeSession) {
     await onLog(
@@ -580,7 +585,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         ...(workspaceRepoRef ? { repoRef: workspaceRepoRef } : {}),
       } as Record<string, unknown>)
       : null;
-    const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);
+    const hitMaxTurns = isClaudeMaxTurnsResult(parsed);
+    const baseSummary = parsedStream.summary || asString(parsed.result, "");
 
     return {
       exitCode: proc.exitCode,
@@ -602,8 +608,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       billingType,
       costUsd: parsedStream.costUsd ?? asNumber(parsed.total_cost_usd, 0),
       resultJson: parsed,
-      summary: parsedStream.summary || asString(parsed.result, ""),
-      clearSession: clearSessionForMaxTurns || Boolean(opts.clearSessionOnMissingSession && !resolvedSessionId),
+      // When max turns is hit the session is still valid — keep it so the next
+      // run resumes via --resume instead of starting blind.
+      summary: hitMaxTurns
+        ? `[Paused at turn limit — session preserved, will resume next run]\n\n${baseSummary}`.trim()
+        : baseSummary,
+      clearSession: Boolean(opts.clearSessionOnMissingSession && !resolvedSessionId),
     };
   };
 
@@ -616,12 +626,16 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       initial.parsed &&
       isClaudeUnknownSessionError(initial.parsed)
     ) {
-      await onLog(
-        "stdout",
-        `[paperclip] Claude resume session "${sessionId}" is unavailable; retrying with a fresh session.\n`,
-      );
+      const sessionLostNotice = `[Session lost — previous session "${sessionId}" was not found (cleared or expired). Started fresh.]`;
+      await onLog("stdout", `[paperclip] ${sessionLostNotice}\n`);
       const retry = await runAttempt(null);
-      return toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
+      const retryResult = toAdapterResult(retry, { fallbackSessionId: null, clearSessionOnMissingSession: true });
+      return {
+        ...retryResult,
+        summary: retryResult.summary
+          ? `${sessionLostNotice}\n\n${retryResult.summary}`
+          : sessionLostNotice,
+      };
     }
 
     return toAdapterResult(initial, { fallbackSessionId: runtimeSessionId || runtime.sessionId });

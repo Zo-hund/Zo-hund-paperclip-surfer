@@ -38,6 +38,9 @@ export interface HeartbeatRun {
   retryOfRunId: string | null;
   processLossRetryCount: number;
   contextSnapshot: Record<string, unknown> | null;
+  runMode: string;
+  swarmBatchId: string | null;
+  promotedFromRunId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
