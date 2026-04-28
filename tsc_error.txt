@@ -1,0 +1,191 @@
+src/types.ts(26,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/index.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/types.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/types.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/host-client-factory.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/protocol.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/protocol.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/testing.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/worker-rpc-host.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/worker-rpc-host.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/worker-rpc-host.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/index.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/ui/types.ts'
+    Imported via "@paperclipai/shared" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src/ui/types.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(135,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/constants.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/index.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/company.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/agent.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/access.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/project.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/issue.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/goal.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/approval.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/budget.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/routine.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/cost.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/finance.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/heartbeat.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/live.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/plugin.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/budget.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/company.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/agent.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/secret.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/project.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/issue.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/goal.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/approval.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/routine.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/cost.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/finance.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/access.ts'
+    Imported via "../constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/plugin.ts'
+    Imported via "./constants.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/config-schema.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(139,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/agent-chat.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./types/agent-chat.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/index.ts'
+    Imported via "./agent-chat.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/index.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(319,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/index.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(332,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/index.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./validators/index.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/index.ts'
+    Imported via "./validators/index.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/index.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(549,33): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/api.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(550,69): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/agent-url-key.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(551,61): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/project-url-key.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(563,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/project-mentions.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(592,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/config-schema.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(593,34): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/branding.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/index.ts(603,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/cron.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/agent.ts(10,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/access.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./access.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/agent.ts'
+    Imported via "./access.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/index.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(1,30): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/company.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(3,94): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/instance.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(24,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/company-skill.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(32,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/adapter-skills.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(49,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/agent.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(50,33): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/asset.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(51,104): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/project.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./project.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/index.ts'
+    Imported via "./project.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/issue.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(68,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/workspace-operation.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(75,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/work-product.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./work-product.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/index.ts'
+    Imported via "./work-product.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/issue.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(90,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/issue.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(92,48): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/approval.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(100,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/budget.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(110,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/secrets.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(120,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/routine.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(121,146): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/cost.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(122,83): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/finance.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(130,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/heartbeat.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(131,32): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/live.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(132,39): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/dashboard.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(133,36): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/activity.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(134,36): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/sidebar-badges.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(142,55): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/quota.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(173,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/company-portability.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/index.ts(195,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/plugin.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/issue.ts(2,27): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/goal.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./goal.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/issue.ts'
+    Imported via "./goal.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/index.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/types/project.ts(2,79): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/workspace-runtime.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./workspace-runtime.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/project.ts'
+    Imported via "./workspace-runtime.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/index.ts'
+    Imported via "./workspace-runtime.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/types/issue.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/agent.ts(8,33): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/secret.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via "./secret.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/agent.ts'
+    Imported via "./secret.js" from file 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/index.ts'
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(10,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/instance.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(17,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/agent-chat.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(24,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/budget.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(33,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/company.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(57,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/company-skill.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(65,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/adapter-skills.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(84,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/company-portability.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(111,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/agent.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(124,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/project.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(150,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/issue.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(160,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/work-product.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(166,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/execution-workspace.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(173,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/goal.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(186,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/approval.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(214,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/routine.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(221,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/cost.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(226,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/finance.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(231,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/asset.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(254,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/access.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+../../shared/src/validators/index.ts(290,8): error TS6059: File 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/src/validators/plugin.ts' is not under 'rootDir' 'C:/Users/Techa/.paperclip/tmp_surfers/packages/plugins/sdk/src'. 'rootDir' is expected to contain all source files.
+  File is ECMAScript module because 'C:/Users/Techa/.paperclip/tmp_surfers/packages/shared/package.json' has field "type" with value "module"
+undefined
+C:\Users\Techa\.paperclip\tmp_surfers\packages\plugins\sdk:
+ΓÇëERR_PNPM_RECURSIVE_EXEC_FIRST_FAILΓÇë Command failed with exit code 2: tsc

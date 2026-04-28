@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
-import { Download, Network, Upload, Zap, UserCheck, Maximize2, Minimize2 } from "lucide-react";
+import { Brain, Download, Network, Upload, Zap, UserCheck, Maximize2, Minimize2 } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import { extractModelName } from "../lib/model-utils";
 import { useDialog } from "../context/DialogContext";
@@ -127,6 +127,7 @@ const adapterLabels: Record<string, string> = {
   opencode_local: "OpenCode",
   cursor: "Cursor",
   hermes_local: "Hermes",
+  hermes_advanced: "Hermes Advanced",
   openclaw_gateway: "OpenClaw Gateway",
   process: "Process",
   http: "HTTP",
@@ -397,6 +398,42 @@ export function OrgChart() {
           .active-node-running, .active-node-queued { animation: none; }
           .active-edge-flow, .active-edge-flow-queued { animation: none; stroke-dasharray: none; }
         }
+
+        /* ── Hermes Gold brain animation ─────────────────────────── */
+        @keyframes hermes-brain-pulse {
+          0%, 100% { filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.4)); }
+          50%       { filter: drop-shadow(0 0 8px rgba(245, 158, 11, 1)) drop-shadow(0 0 18px rgba(245, 158, 11, 0.45)); }
+        }
+        @keyframes hermes-ring-expand {
+          0%   { transform: scale(1);    opacity: 0.65; }
+          75%  { transform: scale(1.55); opacity: 0;    }
+          100% { transform: scale(1.55); opacity: 0;    }
+        }
+        @keyframes hermes-card-shimmer {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+          50%       { box-shadow: 0 0 12px 2px rgba(245, 158, 11, 0.18); }
+        }
+        .hermes-brain {
+          animation: hermes-brain-pulse 2.2s ease-in-out infinite;
+          color: #f59e0b;
+          will-change: filter;
+        }
+        .hermes-ring {
+          position: absolute;
+          inset: 0;
+          border-radius: 0.75rem;
+          border: 1.5px solid rgba(245, 158, 11, 0.75);
+          animation: hermes-ring-expand 2.2s ease-out infinite;
+          pointer-events: none;
+        }
+        .hermes-card {
+          animation: hermes-card-shimmer 2.2s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hermes-brain { animation: none; color: #f59e0b; }
+          .hermes-ring  { animation: none; opacity: 0.4; }
+          .hermes-card  { animation: none; }
+        }
       `}</style>
       <div className="mb-2 flex items-center justify-start gap-2 shrink-0 px-1">
         <Link to="/company/import">
@@ -566,11 +603,14 @@ export function OrgChart() {
           const run = liveRuns?.find(r => r.agentId === node.id && (r.status === "running" || r.status === "queued"));
           const runStatus = run?.status;
 
+          const isHermes = agent?.adapterType === "hermes_local";
+
           return (
             <div
               key={node.id}
               data-org-card
-              className={`absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none
+              className={`absolute bg-card border rounded-lg shadow-sm hover:shadow-md transition-[box-shadow,border-color] duration-150 cursor-pointer select-none
+                ${isHermes ? "border-amber-500/40 hover:border-amber-400/60 hermes-card" : "border-border hover:border-foreground/20"}
                 ${runStatus ? (runStatus === "running" ? "active-node-running" : "active-node-queued") : ""}
               `}
               style={{
@@ -584,13 +624,20 @@ export function OrgChart() {
               <div className="flex items-center px-4 py-3 gap-3">
                 {/* Agent icon + status dot */}
                 <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 bg-muted">
-                    {agent && MODEL_ICONS[agent.adapterType] ? (
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden transition-all duration-300 ${isHermes ? "bg-amber-950/40" : "bg-muted"}`}
+                    style={isHermes ? { boxShadow: "inset 0 0 8px rgba(245,158,11,0.15)" } : undefined}
+                  >
+                    {isHermes ? (
+                      <Brain className="h-5 w-5 hermes-brain" />
+                    ) : agent && MODEL_ICONS[agent.adapterType] ? (
                       <img src={MODEL_ICONS[agent.adapterType]} alt={agent.adapterType} className="w-full h-full object-cover" />
                     ) : (
                       <AgentIcon icon={agent?.icon} className="h-5 w-5 text-foreground/70" />
                     )}
                   </div>
+                  {/* Hermes gold expanding ring */}
+                  {isHermes && <div className="hermes-ring" />}
                   <span
                     className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-background"
                     style={{ backgroundColor: dotColor }}
@@ -603,19 +650,19 @@ export function OrgChart() {
                 </div>
                 {/* Name + role + adapter type */}
                 <div className="flex flex-col items-start min-w-0 flex-1">
-                  <span className="text-sm font-semibold text-foreground leading-tight">
+                  <span className={`text-sm font-semibold leading-tight ${isHermes ? "text-amber-100" : "text-foreground"}`}>
                     {node.name}
                   </span>
                   <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
                     {agent?.title ?? roleLabel(node.role)}
                   </span>
                   {agent && (
-                    <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
+                    <span className={`text-[10px] font-mono leading-tight mt-1 ${isHermes ? "text-amber-500/80" : "text-muted-foreground/60"}`}>
                       {adapterLabels[agent.adapterType] ?? agent.adapterType}
                     </span>
                   )}
                   {agent && typeof agent.adapterConfig.model === "string" && agent.adapterConfig.model && (
-                    <span className="text-[10px] text-primary/70 font-mono leading-tight mt-0.5">
+                    <span className={`text-[10px] font-mono leading-tight mt-0.5 ${isHermes ? "text-amber-400/90" : "text-primary/70"}`}>
                       {extractModelName(agent.adapterConfig.model)}
                     </span>
                   )}

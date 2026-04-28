@@ -2,12 +2,17 @@ import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { agents } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
+import type { OperatingEnvironment } from "@paperclipai/shared";
 import { memoryLoaderService } from "../services/agent-runtime/memory-loader.js";
 import { assertCompanyAccess } from "./authz.js";
 
 export function agentMemoryRoutes(db: Db) {
   const router = Router();
   const svc = memoryLoaderService(db);
+  const normalizeOperatingEnvironment = (value: unknown): OperatingEnvironment | undefined => {
+    if (value === "simulation" || value === "live") return value;
+    return undefined;
+  };
 
   // Agent self-write: POST /agents/me/memories (called by agent during/after runs)
   router.post("/agents/me/memories", async (req, res) => {
@@ -16,7 +21,11 @@ export function agentMemoryRoutes(db: Db) {
       return;
     }
     const agentId = req.actor.agentId;
-    const companyId = req.actor.companyId;
+    const agentContext = await getAgentContext(agentId);
+    if (!agentContext) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
 
     const { scope, projectId, category, title, content, confidence } = req.body;
     if (!scope || !category || !title || !content) {
@@ -26,13 +35,14 @@ export function agentMemoryRoutes(db: Db) {
 
     const memory = await svc.saveMemory({
       agentId,
-      companyId,
+      companyId: agentContext.companyId,
       scope,
       projectId: projectId ?? null,
       category,
       title,
       content,
       source: "self",
+      operatingEnvironment: agentContext.environment,
       confidence: confidence ?? 0.7,
     });
 
@@ -45,48 +55,61 @@ export function agentMemoryRoutes(db: Db) {
       res.status(401).json({ error: "Agent authentication required" });
       return;
     }
+    const agentContext = await getAgentContext(req.actor.agentId);
+    if (!agentContext) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
     const scope = req.query.scope as "global" | "project" | undefined;
     const projectId = req.query.projectId as string | undefined;
-    const memories = await svc.loadMemories(req.actor.agentId, projectId, { scope });
+    const memories = await svc.loadMemories(req.actor.agentId, projectId, {
+      scope,
+      operatingEnvironment: agentContext.environment,
+    });
     res.json(memories);
   });
 
-  async function getAgentCompanyId(agentId: string): Promise<string | null> {
+  async function getAgentContext(agentId: string): Promise<{ companyId: string; environment: OperatingEnvironment } | null> {
     const [agent] = await db
-      .select({ companyId: agents.companyId })
+      .select({ companyId: agents.companyId, environment: agents.environment })
       .from(agents)
       .where(eq(agents.id, agentId))
       .limit(1);
-    return agent?.companyId ?? null;
+    if (!agent?.companyId) return null;
+    return {
+      companyId: agent.companyId,
+      environment: agent.environment === "simulation" ? "simulation" : "live",
+    };
   }
 
   // List memories for an agent
   router.get("/agents/:agentId/memories", async (req, res) => {
     const { agentId } = req.params;
-    const companyId = await getAgentCompanyId(agentId);
-    if (!companyId) {
+    const agentContext = await getAgentContext(agentId);
+    if (!agentContext) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
-    assertCompanyAccess(req, companyId);
+    assertCompanyAccess(req, agentContext.companyId);
 
     const scope = req.query.scope as "global" | "project" | undefined;
     const projectId = req.query.projectId as string | undefined;
     const category = req.query.category as string | undefined;
+    const operatingEnvironment = normalizeOperatingEnvironment(req.query.environment) ?? agentContext.environment;
 
-    const memories = await svc.loadMemories(agentId, projectId, { scope, category });
+    const memories = await svc.loadMemories(agentId, projectId, { scope, category, operatingEnvironment });
     res.json(memories);
   });
 
   // Create a memory
   router.post("/agents/:agentId/memories", async (req, res) => {
     const { agentId } = req.params;
-    const companyId = await getAgentCompanyId(agentId);
-    if (!companyId) {
+    const agentContext = await getAgentContext(agentId);
+    if (!agentContext) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
-    assertCompanyAccess(req, companyId);
+    assertCompanyAccess(req, agentContext.companyId);
 
     const { scope, projectId, category, title, content, source, confidence } = req.body;
 
@@ -97,13 +120,14 @@ export function agentMemoryRoutes(db: Db) {
 
     const memory = await svc.saveMemory({
       agentId,
-      companyId,
+      companyId: agentContext.companyId,
       scope,
       projectId: projectId ?? null,
       category,
       title,
       content,
       source,
+      operatingEnvironment: normalizeOperatingEnvironment(req.body.environment) ?? agentContext.environment,
       confidence,
     });
 
@@ -113,12 +137,12 @@ export function agentMemoryRoutes(db: Db) {
   // Update a memory
   router.patch("/agents/:agentId/memories/:memoryId", async (req, res) => {
     const { agentId, memoryId } = req.params;
-    const companyId = await getAgentCompanyId(agentId);
-    if (!companyId) {
+    const agentContext = await getAgentContext(agentId);
+    if (!agentContext) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
-    assertCompanyAccess(req, companyId);
+    assertCompanyAccess(req, agentContext.companyId);
 
     const existing = await svc.getMemory(memoryId);
     if (!existing || existing.agentId !== agentId) {
@@ -140,12 +164,12 @@ export function agentMemoryRoutes(db: Db) {
   // Delete a memory
   router.delete("/agents/:agentId/memories/:memoryId", async (req, res) => {
     const { agentId, memoryId } = req.params;
-    const companyId = await getAgentCompanyId(agentId);
-    if (!companyId) {
+    const agentContext = await getAgentContext(agentId);
+    if (!agentContext) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
-    assertCompanyAccess(req, companyId);
+    assertCompanyAccess(req, agentContext.companyId);
 
     const existing = await svc.getMemory(memoryId);
     if (!existing || existing.agentId !== agentId) {

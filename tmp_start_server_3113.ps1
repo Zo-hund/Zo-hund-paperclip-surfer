@@ -1,0 +1,7 @@
+Set-Location 'C:\Users\Techa\.paperclip\tmp_surfers\server'
+C:\Users\Techa\AppData\Local\Temp = 'G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\15_BACKUPS\paperclip-runtime-temp'
+C:\Users\Techa\AppData\Local\Temp = 'G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\15_BACKUPS\paperclip-runtime-temp'
+ = '3113'
+ = 'false'
+ = 'false'
+pnpm dev *>> 'C:\Users\Techa\.paperclip\tmp_surfers\tmp_server_3113.out.log'

@@ -4,6 +4,7 @@ import {
   AGENT_ICON_NAMES,
   AGENT_ROLES,
   AGENT_STATUSES,
+  OPERATING_ENVIRONMENTS,
 } from "../constants.js";
 import { envConfigSchema } from "./secret.js";
 
@@ -45,6 +46,7 @@ const adapterConfigSchema = z.record(z.unknown()).superRefine((value, ctx) => {
 
 export const createAgentSchema = z.object({
   name: z.string().min(1),
+  environment: z.enum(OPERATING_ENVIRONMENTS).optional().default("live"),
   role: z.enum(AGENT_ROLES).optional().default("general"),
   title: z.string().optional().nullable(),
   icon: z.enum(AGENT_ICON_NAMES).optional().nullable(),

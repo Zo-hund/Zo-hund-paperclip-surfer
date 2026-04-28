@@ -1,385 +1,458 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Zap, ShieldCheck, Globe, QrCode, Sparkles, Share2, Download,
-  CheckCircle2, CreditCard, Award, Crown, User, ArrowLeft, RefreshCw,
-  Plus, Play, ShoppingBag, Terminal, Cpu, ArrowUpRight, BadgeCheck,
-  TrendingUp, Info, AlertCircle, ShoppingCart, Bot, ChevronRight
+  ArrowLeft,
+  BadgeCheck,
+  CreditCard,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
+  Store,
+  Trophy,
+  UserCheck,
+  Wallet,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Link } from "@/lib/router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PublicLayout } from "@/components/PublicLayout";
-import { BuyCreditsModal } from "./XpWallet";
-import { EngageModal, MOCK_AGENTS } from "./AgentMarketplace";
-import { MOCK_MARKET_ITEMS, MarketplaceItem } from "@/lib/marketplace_data";
-import { calculatePlatformFee, calculateSellerPayout, formatCurrency } from "@/lib/financials";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Link } from "@/lib/router";
+import { marketplaceApi } from "@/api/marketplace";
+import { ApiError } from "@/api/client";
 
-// ── Pass Types ──────────────────────────────────────────────────────────────
-type MembershipTier = "Collective" | "Elective" | "Community Partner" | "Expert";
-
-interface MemberPassData {
-  id: string;
-  name: string;
-  tier: MembershipTier;
-  issuedAt: string;
-  expiresAt: string;
-  xp: number;
-  tokens: number;
-  status: "Active" | "Pending" | "Verified";
-  color: string;
-  secondary: string;
-  icon: React.ReactNode;
-}
-
-const DEFAULT_MEMBER: MemberPassData = {
-  id: "AMX-PASS-0941-ZKD",
-  name: "Zomorpheus",
-  tier: "Community Partner",
-  issuedAt: "OCT 2023",
-  expiresAt: "LIFETIME",
-  xp: 14500,
-  tokens: 2540,
-  status: "Verified",
-  color: "from-primary via-violet-500 to-primary",
-  secondary: "text-violet-400",
-  icon: <Crown className="h-4 w-4" />,
-};
-
-// ── MemberPassCard Component ──────────────────────────────────────────────────
-function MemberPassCard({ data }: { data: MemberPassData }) {
-  const [flipped, setFlipped] = useState(false);
-
-  return (
-    <div className="relative w-full max-w-[380px] aspect-[1.586/1] perspective-1000 group mx-auto mb-10 translate-y-20 scale-110">
-      {/* Front of Pass */}
-      <div 
-        onClick={() => setFlipped(!flipped)}
-        className={`relative w-full h-full transition-all duration-700 preserve-3d cursor-pointer active:scale-95 ${flipped ? "rotate-y-180" : ""}`}
-      >
-        {/* Front Surface */}
-        <div className="absolute inset-0 backface-hidden rounded-3xl overflow-hidden border border-white/20 shadow-2xl">
-          <div className="absolute inset-0 bg-[#0a0a0a]/90 backdrop-blur-3xl" />
-          <div className={`absolute inset-0 bg-gradient-to-br ${data.color} opacity-10`} />
-          <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.03)_0%,transparent_70%)] animate-pulse" />
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
-
-          <div className="relative h-full p-6 flex flex-col justify-between">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-primary/10 border border-primary/20">
-                  <Zap className="h-5 w-5 text-primary" />
-                </div>
-                <div className="leading-none">
-                  <span className="text-[12px] font-black tracking-tight text-white block">AMX PLATFORM</span>
-                  <span className="text-[8px] font-black tracking-[0.3em] text-muted-foreground uppercase">Network Node</span>
-                </div>
-              </div>
-              <div className="flex flex-col items-end">
-                <div className="text-[10px] font-black text-primary uppercase tracking-widest bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
-                  {data.status}
-                </div>
-                <span className="text-[7px] text-muted-foreground font-black mt-1">NO. {data.id}</span>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Access Tier</div>
-              <h2 className="text-2xl font-black text-white tracking-tight leading-none mb-4">{data.tier}</h2>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-0.5">Member Name</div>
-                  <div className="text-[14px] font-bold text-white uppercase">{data.name}</div>
-                </div>
-                <div>
-                  <div className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-0.5">Tokens (SIMS)</div>
-                  <div className="text-[14px] font-bold text-primary flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3 text-primary" /> {data.tokens.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-end justify-between pt-4 border-t border-white/5">
-              <div className="flex gap-4">
-                <div>
-                  <div className="text-[7px] font-black text-muted-foreground uppercase tracking-widest">Issued</div>
-                  <div className="text-[10px] font-bold text-white">{data.issuedAt}</div>
-                </div>
-                <div>
-                  <div className="text-[7px] font-black text-muted-foreground uppercase tracking-widest">Performance</div>
-                  <div className="text-[10px] font-bold text-white">{data.xp.toLocaleString()} XP</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 text-[10px] h-5 px-2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black tracking-widest">
-                <ShieldCheck className="h-3 w-3" /> VERIFIED
-              </div>
-            </div>
-          </div>
-
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-tr from-transparent via-white/5 to-transparent -translate-x-[200%] group-hover:translate-x-[200%] transition-transform duration-1000 ease-in-out" />
-        </div>
-
-        {/* Back of Pass */}
-        <div className="absolute inset-0 backface-hidden rotate-y-180 rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-[#0a0a0a]">
-          <div className="absolute inset-0 opacity-[0.05] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
-          <div className="h-full p-6 flex flex-col justify-between items-center text-center">
-            <div className="w-full flex justify-between items-center opacity-40">
-                <div className="h-2 w-16 bg-white/20 rounded-full" />
-                <div className="h-2 w-8 bg-white/20 rounded-full" />
-            </div>
-            <div className="p-4 bg-white rounded-2xl shadow-inner group/qr relative">
-                <QrCode className="h-24 w-24 text-black" />
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/qr:opacity-100 transition-opacity bg-black/80 rounded-2xl backdrop-blur-sm">
-                   <span className="text-white text-[10px] font-black uppercase tracking-widest">Scan to Sync</span>
-                </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-white px-4 uppercase">Chain Identity Verified</p>
-              <p className="text-[8px] text-muted-foreground mt-2 leading-tight px-6">This pass authorizes smart contract execution and credit transfers on the AMX Chain. 10% Platform fee applies to all provider payouts.</p>
-            </div>
-            <div className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-               ZKODE NETWORKS x AMX
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── MarketplaceItemCard ───────────────────────────────────────────────────────
-function MarketItemCard({ item, onBuy }: { item: MarketplaceItem; onBuy: (item: MarketplaceItem) => void }) {
-  const Icon = item.icon;
-  const platformFee = calculatePlatformFee(item.price);
-  const sellerPayout = calculateSellerPayout(item.price);
-
-  return (
-    <div className="min-w-[240px] md:min-w-[280px] p-4 rounded-2xl border border-border/60 bg-card hover:border-primary/40 transition-all group shrink-0">
-       <div className="flex items-start justify-between mb-4">
-          <div className="p-2 rounded-xl bg-accent/20 border border-border/40 group-hover:bg-primary/10 group-hover:border-primary/20 transition-all">
-             <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary" />
-          </div>
-          <div className="text-right">
-             <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground mb-1">Contract Value</p>
-             <p className="text-[14px] font-black text-white">{formatCurrency(item.price)}</p>
-          </div>
-       </div>
-
-       <div className="mb-4">
-          <h4 className="text-[13px] font-bold text-white mb-1">{item.name}</h4>
-          <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">{item.description}</p>
-       </div>
-
-       <div className="p-3 rounded-xl bg-white/5 border border-white/5 mb-4 group/fee relative overflow-hidden">
-          <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1.5">
-             <span>Platform Fee (10%)</span>
-             <span className="text-rose-400">-{formatCurrency(platformFee)}</span>
-          </div>
-          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-400">
-             <span>Provider Payout</span>
-             <span>{formatCurrency(sellerPayout)}</span>
-          </div>
-          <div className="absolute top-1 right-1 opacity-0 group-hover/fee:opacity-100 transition-opacity">
-             <Info className="h-3 w-3 text-muted-foreground" />
-          </div>
-       </div>
-
-       <Button onClick={() => onBuy(item)} className="w-full h-10 font-black uppercase tracking-widest text-[10px] gap-2 shadow-lg shadow-primary/10">
-          <ShoppingCart className="h-3.5 w-3.5" /> Purchase Skill
-       </Button>
-    </div>
-  );
-}
-
-// ── MemberProfile Main ────────────────────────────────────────────────────────
 export function MemberProfile() {
-  const [member, setMember] = useState(DEFAULT_MEMBER);
-  const [showCreditsModal, setShowCreditsModal] = useState(false);
-  const [showEngageModal, setShowEngageModal] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<any>(null);
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    displayName: "",
+    headline: "",
+    bio: "",
+    location: "",
+    skills: "",
+    badges: "",
+    payoutWallet: "",
+    availability: "",
+    supportedRunPhases: "",
+  });
 
-  const dashAgent = MOCK_AGENTS.find(a => a.id === "ag_dasher");
+  const profileQuery = useQuery({
+    queryKey: ["marketplace", "me"],
+    queryFn: () => marketplaceApi.getMyProfile(),
+    retry: false,
+  });
 
-  const handleQuickRentDasher = () => {
-    setSelectedAgent(dashAgent);
-    setShowEngageModal(true);
+  useEffect(() => {
+    const profile = profileQuery.data?.profile;
+    if (!profile) return;
+    setForm({
+      displayName: profile.displayName ?? "",
+      headline: profile.headline ?? "",
+      bio: profile.bio ?? "",
+      location: profile.location ?? "",
+      skills: (profile.skills ?? []).join(", "),
+      badges: (profile.badges ?? []).join(", "),
+      payoutWallet: profile.payoutWallet ?? "",
+      availability: profile.availability ?? "",
+      supportedRunPhases: (profile.supportedRunPhases ?? []).join(", "),
+    });
+  }, [profileQuery.data?.profile]);
+
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["marketplace", "me"] }),
+      queryClient.invalidateQueries({ queryKey: ["marketplace", "admin", "applications"] }),
+      queryClient.invalidateQueries({ queryKey: ["amx", "exchange"] }),
+      queryClient.invalidateQueries({ queryKey: ["amx", "lms"] }),
+    ]);
   };
+
+  const updateProfileMutation = useMutation({
+    mutationFn: () =>
+      marketplaceApi.updateProfile({
+        displayName: form.displayName.trim() || null,
+        headline: form.headline.trim() || null,
+        bio: form.bio.trim() || null,
+        location: form.location.trim() || null,
+        skills: form.skills.split(",").map((entry) => entry.trim()).filter(Boolean),
+        badges: form.badges.split(",").map((entry) => entry.trim()).filter(Boolean),
+        payoutWallet: form.payoutWallet.trim() || null,
+        availability: form.availability.trim() || null,
+        supportedRunPhases: form.supportedRunPhases.split(",").map((entry) => entry.trim()).filter(Boolean),
+      }),
+    onSuccess: refresh,
+    onError: (error) => {
+      window.alert(error instanceof Error ? error.message : "Failed to update profile");
+    },
+  });
+
+  const chooseRoleMutation = useMutation({
+    mutationFn: (roleIntent: "member" | "partner") => marketplaceApi.updateProfile({ roleIntent }),
+    onSuccess: refresh,
+    onError: (error) => {
+      window.alert(error instanceof Error ? error.message : "Failed to update role");
+    },
+  });
+
+  const partnerApplicationMutation = useMutation({
+    mutationFn: () => marketplaceApi.submitPartnerApplication(),
+    onSuccess: refresh,
+    onError: (error) => {
+      window.alert(error instanceof Error ? error.message : "Failed to submit partner application");
+    },
+  });
+
+  const topUpCreditsMutation = useMutation({
+    mutationFn: () => marketplaceApi.topUpBalance("lms", 250),
+    onSuccess: refresh,
+  });
+
+  const topUpTokensMutation = useMutation({
+    mutationFn: () => marketplaceApi.topUpBalance("tokens", 120),
+    onSuccess: refresh,
+  });
+
+  if (profileQuery.isLoading) {
+    return (
+      <PublicLayout>
+        <div className="flex h-[60vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary/60" />
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (profileQuery.error instanceof ApiError && profileQuery.error.status === 401) {
+    return (
+      <PublicLayout>
+        <div className="mx-auto flex min-h-[75vh] max-w-4xl flex-col items-center justify-center px-6 text-center">
+          <div className="rounded-full border border-primary/20 bg-primary/10 p-4 text-primary">
+            <UserCheck className="h-8 w-8" />
+          </div>
+          <h1 className="mt-6 text-4xl font-black tracking-tight text-white">Member Central</h1>
+          <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+            Choose a global AMX marketplace path as a Member or Partner. Members learn and browse.
+            Partners unlock provider listings after LMS eligibility and admin approval.
+          </p>
+          <div className="mt-8 flex gap-3">
+            <Link to="/auth">
+              <Button className="h-12 px-6 text-[11px] font-black uppercase tracking-widest">Sign In</Button>
+            </Link>
+            <Link to="/register">
+              <Button variant="outline" className="h-12 px-6 text-[11px] font-black uppercase tracking-widest">Create Account</Button>
+            </Link>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  if (profileQuery.error || !profileQuery.data) {
+    return (
+      <PublicLayout>
+        <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
+          <p className="font-bold text-muted-foreground">Failed to load marketplace profile</p>
+          <Button onClick={() => window.location.reload()} variant="outline">Retry</Button>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  const { profile, eligibility, guidance } = profileQuery.data;
+  const canApply =
+    eligibility.eligibleForPartner &&
+    guidance.requiredChecklistComplete &&
+    profile.partnerStatus !== "active" &&
+    profile.partnerStatus !== "pending";
 
   return (
     <PublicLayout>
-      <div className="relative min-h-[90vh] py-12 px-4 md:px-8">
-        {/* Modals */}
-        {showCreditsModal && <BuyCreditsModal currency="SIMS" onClose={() => setShowCreditsModal(false)} />}
-        {showEngageModal && selectedAgent && (
-           <EngageModal 
-              talent={selectedAgent} 
-              activeTab="agents" 
-              balance={member.tokens} 
-              currency="SIMS" 
-              onClose={() => setShowEngageModal(false)} 
-           />
-        )}
+      <div className="relative min-h-[90vh] px-4 py-12 md:px-8">
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[800px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-[120px]" />
 
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-primary/5 blur-[120px] pointer-events-none" />
-
-        <div className="max-w-6xl mx-auto relative z-10">
-          <div className="flex flex-col lg:flex-row items-center gap-12 pt-10">
-            <div className="w-full lg:w-1/2 flex flex-col items-center">
-               <MemberPassCard data={member} />
-               <p className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.4em] mt-24 flex items-center gap-2">
-                 <RefreshCw className="h-3 w-3 animate-spin-slow" /> Click to Flip Pass
-               </p>
-            </div>
-
-            <div className="w-full lg:w-1/2 space-y-8 animate-in slide-in-from-right-10 duration-700">
-               <div>
-                  <h1 className="text-4xl font-black tracking-tighter text-white mb-2">Member Central</h1>
-                  <p className="text-muted-foreground leading-relaxed">Your AMX Digital Pass is currently active. Hire specialists, buy core skills, and manage your token balance directly from this hub.</p>
-               </div>
-
-               <div className="flex flex-col sm:flex-row gap-3">
-                  <Button onClick={() => setShowCreditsModal(true)} className="h-14 flex-1 font-black uppercase tracking-widest gap-2 shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90">
-                     <Plus className="h-5 w-5" /> Add Credits
-                  </Button>
-                  <Link to="/home#agents" className="flex-1">
-                     <Button variant="outline" className="h-14 w-full font-black uppercase tracking-widest gap-2 border-border/60 hover:bg-accent/5">
-                        <User className="h-5 w-5" /> Hire Specialist
-                     </Button>
-                  </Link>
-               </div>
-
-               {/* Agent Digital Dasher Quick Rent */}
-               {dashAgent && (
-                  <div className="p-6 rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent relative overflow-hidden group">
-                     <div className="absolute -right-4 -top-4 opacity-[0.05] group-hover:scale-110 transition-transform duration-500"><Bot className="h-32 w-32" /></div>
-                     <div className="flex items-start justify-between mb-4">
-                        <div className="flex gap-4">
-                           <div className="p-3 rounded-2xl bg-primary/20 border border-primary/30"><Zap className="h-6 w-6 text-primary" /></div>
-                           <div>
-                              <h3 className="text-lg font-black text-white">{dashAgent.name}</h3>
-                              <p className="text-[11px] font-black text-primary uppercase tracking-widest">Active & Ready · 24/7 Dash Run</p>
-                           </div>
-                        </div>
-                        <div className="text-right">
-                           <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Standard Rate</p>
-                           <p className="text-xl font-black text-white">{dashAgent.hourlyRateTokens} <span className="text-[10px] text-muted-foreground">CR/HR</span></p>
-                        </div>
-                     </div>
-                     <p className="text-[12px] text-muted-foreground mb-5 leading-relaxed max-w-sm">The fleet's fastest agent for high-cadence task automation. Perfect for repetitive runs and rapid prototyping.</p>
-                     
-                     <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 mb-4">
-                        <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                           <Info className="h-3.5 w-3.5 text-primary" /> Seller Pays 10% Fee
-                        </div>
-                        <p className="text-[10px] font-black text-emerald-400">NET Payout: {dashAgent.hourlyRateTokens - calculatePlatformFee(dashAgent.hourlyRateTokens)} cr/hr</p>
-                     </div>
-
-                     <Button onClick={handleQuickRentDasher} className="w-full h-12 font-black uppercase tracking-widest gap-2">
-                        <Play className="h-4 w-4" /> Rent Digital Dasher now
-                     </Button>
-                  </div>
-               )}
-               {/* Running Nodes / Active Dashes */}
-               <div className="space-y-4">
-                  <div className="flex items-center justify-between pt-4">
-                     <h3 className="text-[12px] font-black text-muted-foreground uppercase tracking-[0.2em]">Running Nodes</h3>
-                     <div className="h-px flex-1 bg-white/5 mx-4" />
-                     <span className="text-[10px] font-black text-primary px-2 py-0.5 rounded border border-primary/30 bg-primary/5">1 ACTIVE</span>
-                  </div>
-                  
-                  <div className="p-4 rounded-2xl border border-white/5 bg-white/5 flex items-center justify-between group hover:border-primary/20 transition-all cursor-pointer">
-                     <div className="flex items-center gap-4">
-                        <div className="relative">
-                           <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
-                              <Zap className="h-4 w-4 text-primary" />
-                           </div>
-                           <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-emerald-500 border-2 border-[#0a0a0a] animate-pulse" />
-                        </div>
-                        <div>
-                           <div className="text-[13px] font-bold text-white uppercase">Digital Dasher #704</div>
-                           <div className="text-[10px] text-muted-foreground">Running Node · SIM-02 · <span className="text-primary tracking-widest font-black">3 ACTIVE TASKS</span></div>
-                        </div>
-                     </div>
-                     <Link to="/roster">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary">
-                           <ChevronRight className="h-4 w-4" />
-                        </Button>
-                     </Link>
-                  </div>
-               </div>
-
-               {/* Dash Requests / Orders */}
-               <div className="space-y-4">
-                  <div className="flex items-center justify-between pt-4">
-                     <h3 className="text-[12px] font-black text-muted-foreground uppercase tracking-[0.2em]">Dash Requests</h3>
-                     <div className="h-px flex-1 bg-white/5 mx-4" />
-                     <Link to="/inbox">
-                        <button className="text-[10px] font-black text-white/40 hover:text-primary uppercase tracking-widest transition-colors">View All Orders</button>
-                     </Link>
-                  </div>
-
-                  <div className="space-y-2 opacity-80">
-                     {[
-                        { id: "DSH-992", task: "Python Optimization", status: "In Progress", color: "text-amber-400" },
-                        { id: "DSH-884", task: "Database Indexing", status: "Completed", color: "text-emerald-400" }
-                     ].map((req) => (
-                        <div key={req.id} className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-black/20 text-[11px]">
-                           <div className="flex items-center gap-3">
-                              <span className="font-mono text-muted-foreground">{req.id}</span>
-                              <span className="font-bold text-white">{req.task}</span>
-                           </div>
-                           <span className={`font-black uppercase tracking-widest ${req.color}`}>{req.status}</span>
-                        </div>
-                     ))}
-                  </div>
-               </div>
-            </div>
-          </div>
-
-          {/* Member Marketplace Feed */}
-          <div className="mt-20 space-y-6">
-             <div className="flex items-center justify-between">
+        <div className="relative z-10 mx-auto max-w-6xl space-y-10">
+          <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-3xl border border-border/60 bg-card/70 p-8">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-primary/10 p-3 text-primary">
+                  <Sparkles className="h-6 w-6" />
+                </div>
                 <div>
-                   <h2 className="text-2xl font-black tracking-tighter text-white">Member Marketplace</h2>
-                   <p className="text-[12px] text-muted-foreground uppercase tracking-[0.2em] mt-1">Exclusive Skills & Merch from the Network</p>
+                  <h1 className="text-4xl font-black tracking-tighter text-white">Member Central</h1>
+                  <p className="mt-1 text-sm uppercase tracking-[0.3em] text-muted-foreground">
+                    Global Marketplace Identity
+                  </p>
                 </div>
-                <div className="flex gap-2">
-                   <div className="p-2 rounded-lg bg-card border border-border/60"><ArrowLeft className="h-4 w-4 opacity-40" /></div>
-                   <div className="p-2 rounded-lg bg-card border border-border/60"><ChevronRight className="h-4 w-4" /></div>
+              </div>
+
+              <p className="mt-6 max-w-2xl leading-relaxed text-muted-foreground">
+                This profile is separate from company membership and board access. Use it to choose whether
+                you participate as a Member or apply to become a Partner provider in the AMX ecosystem.
+              </p>
+
+              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-border/60 bg-background/40 p-5">
+                  <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
+                    <CreditCard className="h-4 w-4 text-amber-500" />
+                    LMS Credits
+                  </div>
+                  <div className="mt-3 text-3xl font-black text-amber-500">{profile.lmsCredits}</div>
+                  <Button
+                    variant="outline"
+                    className="mt-4 w-full text-[11px] font-black uppercase tracking-widest"
+                    onClick={() => topUpCreditsMutation.mutate()}
+                    disabled={topUpCreditsMutation.isPending}
+                  >
+                    Add 250 Credits
+                  </Button>
                 </div>
-             </div>
 
-             <div className="flex gap-5 overflow-x-auto pb-6 scrollbar-hide">
-                {MOCK_MARKET_ITEMS.map((item) => (
-                   <MarketItemCard 
-                      key={item.id} 
-                      item={item} 
-                      onBuy={(it) => alert(`Contract Initiated: ${it.name}\nProcessing 10% AMX Platform Fee...`)} 
-                    />
-                ))}
-             </div>
-          </div>
+                <div className="rounded-2xl border border-border/60 bg-background/40 p-5">
+                  <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
+                    <Wallet className="h-4 w-4 text-primary" />
+                    AMX Tokens
+                  </div>
+                  <div className="mt-3 text-3xl font-black text-primary">{profile.amxTokenBalance}</div>
+                  <Button
+                    variant="outline"
+                    className="mt-4 w-full text-[11px] font-black uppercase tracking-widest"
+                    onClick={() => topUpTokensMutation.mutate()}
+                    disabled={topUpTokensMutation.isPending}
+                  >
+                    Add 120 Tokens
+                  </Button>
+                </div>
+              </div>
+            </div>
 
-          <div className="mt-20 text-center">
-             <p className="text-[11px] font-black text-muted-foreground uppercase tracking-[0.4em] mb-4">Secured by AMX Smart Contracts</p>
-             <Link to="/home">
-                <Button variant="ghost" className="text-muted-foreground hover:text-white px-8 h-12 gap-2 font-black uppercase tracking-widest group">
-                   <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" /> Back to Network
+            <div className="rounded-3xl border border-border/60 bg-card/70 p-8">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
+                <Trophy className="h-4 w-4 text-primary" />
+                TECH AT NITE Eligibility
+              </div>
+              <div className="mt-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Completed milestones</span>
+                  <span className="font-black text-foreground">{eligibility.completedEnrollments}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Certificates</span>
+                  <span className="font-black text-foreground">{eligibility.totalCertificates}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Hours trained</span>
+                  <span className="font-black text-foreground">{eligibility.totalHoursTrained}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Partner eligibility</span>
+                  <span className={`font-black uppercase ${eligibility.eligibleForPartner ? "text-emerald-400" : "text-amber-400"}`}>
+                    {eligibility.eligibleForPartner ? "eligible" : "ineligible"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-border/50 bg-background/30 p-4 text-sm leading-relaxed text-muted-foreground">
+                Complete at least one required workshop or simulation bundle in TECH AT NITE before partner
+                application becomes available.
+              </div>
+              <div className={`mt-4 rounded-2xl border p-4 text-sm leading-relaxed ${guidance.requiredChecklistComplete ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100" : "border-amber-500/20 bg-amber-500/10 text-amber-100"}`}>
+                {guidance.requiredChecklistComplete
+                  ? "Required LMS onboarding guidance is complete."
+                  : guidance.nextRecommendedStep ?? "Complete the required TECH AT NITE onboarding guidance to unlock the Partner application."}
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-3xl border border-border/60 bg-card/70 p-8">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
+                <UserCheck className="h-4 w-4 text-primary" />
+                Choose Your Path
+              </div>
+
+              <div className="mt-6 grid gap-4">
+                <div className={`rounded-2xl border p-5 ${profile.roleIntent === "member" ? "border-primary bg-primary/10" : "border-border/50 bg-background/30"}`}>
+                  <h3 className="text-lg font-black text-white">Member</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Access the LMS, buy credits, track certifications, and browse the marketplace without provider tools.
+                  </p>
+                  <Button
+                    className="mt-4 text-[11px] font-black uppercase tracking-widest"
+                    variant={profile.roleIntent === "member" ? "default" : "outline"}
+                    onClick={() => chooseRoleMutation.mutate("member")}
+                    disabled={chooseRoleMutation.isPending}
+                  >
+                    Select Member
+                  </Button>
+                </div>
+
+                <div className={`rounded-2xl border p-5 ${profile.roleIntent === "partner" || profile.partnerStatus !== "none" ? "border-primary bg-primary/10" : "border-border/50 bg-background/30"}`}>
+                  <h3 className="text-lg font-black text-white">Partner</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Sell AI Agents, Co-op Pairs, and Full Teams after LMS eligibility and admin approval.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-widest">
+                    <span className="rounded-full bg-background/60 px-3 py-1 text-muted-foreground">AI Agents</span>
+                    <span className="rounded-full bg-background/60 px-3 py-1 text-muted-foreground">Co-op Pairs</span>
+                    <span className="rounded-full bg-background/60 px-3 py-1 text-muted-foreground">Full Teams</span>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <Button
+                      variant={profile.roleIntent === "partner" ? "default" : "outline"}
+                      className="text-[11px] font-black uppercase tracking-widest"
+                      onClick={() => chooseRoleMutation.mutate("partner")}
+                      disabled={chooseRoleMutation.isPending}
+                    >
+                      Select Partner
+                    </Button>
+                    <Button
+                      className="text-[11px] font-black uppercase tracking-widest"
+                      onClick={() => partnerApplicationMutation.mutate()}
+                      disabled={!canApply || partnerApplicationMutation.isPending}
+                    >
+                      {profile.partnerStatus === "pending" ? "Pending Review" : "Apply"}
+                    </Button>
+                  </div>
+                  {!guidance.requiredChecklistComplete && (
+                    <p className="mt-3 text-xs leading-relaxed text-amber-300">
+                      Finish the required TECH AT NITE onboarding checklist before applying as a Partner.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-border/60 bg-card/70 p-8">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
+                <ShieldCheck className={`h-4 w-4 ${profile.partnerStatus === "active" ? "text-emerald-500" : "text-amber-500"}`} />
+                Review State
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Role intent</span>
+                  <span className="font-black uppercase text-primary">{profile.roleIntent}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Partner status</span>
+                  <span className="font-black uppercase text-primary">{profile.partnerStatus}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Application submitted</span>
+                  <span className="font-black text-foreground">
+                    {profile.applicationSubmittedAt ? new Date(profile.applicationSubmittedAt).toLocaleDateString() : "Not submitted"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Reviewed</span>
+                  <span className="font-black text-foreground">
+                    {profile.reviewedAt ? new Date(profile.reviewedAt).toLocaleDateString() : "Awaiting review"}
+                  </span>
+                </div>
+              </div>
+
+              {profile.reviewReason && (
+                <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm leading-relaxed text-amber-100">
+                  <div className="mb-2 flex items-center gap-2 font-black uppercase tracking-widest text-amber-400">
+                    <BadgeCheck className="h-4 w-4" />
+                    Review note
+                  </div>
+                  {profile.reviewReason}
+                </div>
+              )}
+
+              <div className="mt-6 flex gap-3">
+                <Link to="/lms/dashboard">
+                  <Button variant="outline" className="text-[11px] font-black uppercase tracking-widest">
+                    TECH AT NITE
+                  </Button>
+                </Link>
+                <Link to="/xp/exchange">
+                  <Button className="text-[11px] font-black uppercase tracking-widest">
+                    Marketplace
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-border/60 bg-card/70 p-8">
+            <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
+              <Store className="h-4 w-4 text-primary" />
+              Provider Profile
+            </div>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Fill in the fields used for marketplace listings and partner review. These controls do not change
+              company membership permissions.
+            </p>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <Input
+                placeholder="Display name"
+                value={form.displayName}
+                onChange={(event) => setForm((current) => ({ ...current, displayName: event.target.value }))}
+              />
+              <Input
+                placeholder="Headline"
+                value={form.headline}
+                onChange={(event) => setForm((current) => ({ ...current, headline: event.target.value }))}
+              />
+              <Input
+                placeholder="Location"
+                value={form.location}
+                onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
+              />
+              <Input
+                placeholder="Availability"
+                value={form.availability}
+                onChange={(event) => setForm((current) => ({ ...current, availability: event.target.value }))}
+              />
+              <Input
+                placeholder="Skills (comma separated)"
+                value={form.skills}
+                onChange={(event) => setForm((current) => ({ ...current, skills: event.target.value }))}
+              />
+              <Input
+                placeholder="Badges / certifications"
+                value={form.badges}
+                onChange={(event) => setForm((current) => ({ ...current, badges: event.target.value }))}
+              />
+              <Input
+                placeholder="Supported run phases"
+                value={form.supportedRunPhases}
+                onChange={(event) => setForm((current) => ({ ...current, supportedRunPhases: event.target.value }))}
+              />
+              <Input
+                placeholder="Payout wallet"
+                value={form.payoutWallet}
+                onChange={(event) => setForm((current) => ({ ...current, payoutWallet: event.target.value }))}
+              />
+            </div>
+
+            <Textarea
+              className="mt-4"
+              rows={5}
+              placeholder="Bio"
+              value={form.bio}
+              onChange={(event) => setForm((current) => ({ ...current, bio: event.target.value }))}
+            />
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button
+                className="text-[11px] font-black uppercase tracking-widest"
+                onClick={() => updateProfileMutation.mutate()}
+                disabled={updateProfileMutation.isPending}
+              >
+                {updateProfileMutation.isPending ? "Saving..." : "Save Profile"}
+              </Button>
+              <Link to="/home">
+                <Button variant="ghost" className="gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground hover:text-white">
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to Network
                 </Button>
-             </Link>
-          </div>
+              </Link>
+            </div>
+          </section>
         </div>
       </div>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}} />
     </PublicLayout>
   );
 }

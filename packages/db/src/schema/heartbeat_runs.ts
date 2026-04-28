@@ -39,6 +39,7 @@ export const heartbeatRuns = pgTable(
     processLossRetryCount: integer("process_loss_retry_count").notNull().default(0),
     contextSnapshot: jsonb("context_snapshot").$type<Record<string, unknown>>(),
     runMode: text("run_mode").notNull().default("live"),
+    environment: text("environment").notNull().default("live"),
     swarmBatchId: text("swarm_batch_id"),
     promotedFromRunId: uuid("promoted_from_run_id").references((): AnyPgColumn => heartbeatRuns.id, {
       onDelete: "set null",
@@ -49,6 +50,7 @@ export const heartbeatRuns = pgTable(
   (table) => ({
     companyAgentStartedIdx: index("heartbeat_runs_company_agent_started_idx").on(
       table.companyId,
+      table.environment,
       table.agentId,
       table.startedAt,
     ),

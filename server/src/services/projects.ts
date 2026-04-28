@@ -100,6 +100,7 @@ function toRuntimeService(row: WorkspaceRuntimeServiceRow): WorkspaceRuntimeServ
   return {
     id: row.id,
     companyId: row.companyId,
+    operatingEnvironment: row.operatingEnvironment === "simulation" ? "simulation" : "live",
     projectId: row.projectId ?? null,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
     executionWorkspaceId: row.executionWorkspaceId ?? null,

@@ -19,6 +19,7 @@ import {
   logActivity,
   workProductService,
 } from "../services/index.js";
+import { autoDownloadDeliverable } from "../services/auto-download.js";
 import type { StorageService } from "../storage/types.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 
@@ -118,6 +119,10 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     assertBoard(req);
     const detail = await workProducts.getDetailById(req.params.id as string);
     if (!detail) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    
+    // Intelligently auto-save to work folder if it's approved and requested
+    autoDownloadDeliverable(detail).catch(console.error);
+
     res.json(detail);
   });
 
@@ -129,6 +134,15 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     if (healthStatus) patch.healthStatus = healthStatus;
     const updated = await workProducts.update(req.params.id as string, patch as any);
     if (!updated) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    
+    // Intelligently auto-save to work folder if it was just approved
+    if (reviewState === "approved") {
+      const detail = await workProducts.getDetailById(req.params.id as string);
+      if (detail) { // Refetch full detail to populate fields for auto-download
+        autoDownloadDeliverable(detail).catch(console.error);
+      }
+    }
+
     res.json(updated);
   });
 

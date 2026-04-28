@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Copy,
   Loader2,
   Rocket,
   Shield,
@@ -57,6 +58,16 @@ function StepDot({ active, done, label }: { active: boolean; done: boolean; labe
   );
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function swarmStatusColor(status: string): string {
+  if (status === "running") return "text-blue-400";
+  if (status === "succeeded") return "text-green-400";
+  if (status === "failed" || status === "timed_out") return "text-red-400";
+  if (status === "cancelled") return "text-orange-400";
+  return "text-muted-foreground";
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export function SwarmLauncherDialog() {
@@ -70,7 +81,7 @@ export function SwarmLauncherDialog() {
   const [taskRequest, setTaskRequest] = React.useState("");
   const [runMode, setRunMode] = React.useState<RunMode>("sim");
   const [failureThreshold, setFailureThreshold] = React.useState(50);
-  const [maxConcurrentAgents, setMaxConcurrentAgents] = React.useState<number | "">(""); // "" = all at once
+  const [maxConcurrentAgents, setMaxConcurrentAgents] = React.useState<number | "">(4); // "" = all at once
   const [lastSwarm, setLastSwarm] = React.useState<SwarmState | null>(null);
 
   // Reset on close
@@ -81,7 +92,7 @@ export function SwarmLauncherDialog() {
       setTaskRequest("");
       setRunMode("sim");
       setFailureThreshold(50);
-      setMaxConcurrentAgents("");
+      setMaxConcurrentAgents(4);
       setLastSwarm(null);
     }
   }, [swarmLauncherOpen]);
@@ -89,7 +100,7 @@ export function SwarmLauncherDialog() {
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && swarmLauncherOpen,
+    enabled: !!selectedCompanyId,
   });
 
   const activeAgents = React.useMemo(
@@ -99,28 +110,36 @@ export function SwarmLauncherDialog() {
 
   // Live runs to drive the monitor after launch
   const { data: liveRuns } = useQuery({
-    queryKey: queryKeys.liveRuns(selectedCompanyId!),
-    queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
+    queryKey: [
+      ...queryKeys.liveRuns(selectedCompanyId!),
+      lastSwarm?.batchId ?? null,
+      lastSwarm?.agentIds.length ?? 0,
+    ],
+    queryFn: () =>
+      heartbeatsApi.liveRunsForCompany(selectedCompanyId!, {
+        minCount: lastSwarm?.agentIds.length,
+        swarmBatchId: lastSwarm?.batchId ?? undefined,
+      }),
     enabled: !!selectedCompanyId && !!lastSwarm,
     refetchInterval: lastSwarm ? 3000 : false,
   });
 
   // Swarm stats derived from live runs
   const swarmRuns = React.useMemo<LiveRunForIssue[]>(() => {
-    if (!lastSwarm?.batchId || !lastSwarm.startedAt) return [];
-    const cutoff = lastSwarm.startedAt.getTime() - 5000;
+    if (!lastSwarm?.batchId) return [];
     return (liveRuns ?? []).filter(
       (r) =>
         lastSwarm.agentIds.includes(r.agentId) &&
-        r.startedAt != null &&
-        new Date(r.startedAt).getTime() >= cutoff,
+        r.swarmBatchId === lastSwarm.batchId,
     );
   }, [liveRuns, lastSwarm]);
 
   const swarmStats = React.useMemo(() => {
     const running = swarmRuns.filter((r) => r.status === "running").length;
     const done = swarmRuns.filter((r) => r.status === "succeeded").length;
-    const failed = swarmRuns.filter((r) => r.status === "failed" || r.status === "timed_out").length;
+    const failed = swarmRuns.filter(
+      (r) => r.status === "failed" || r.status === "timed_out" || r.status === "cancelled",
+    ).length;
     const total = lastSwarm?.agentIds.length ?? 0;
     const queued = swarmRuns.filter((r) => r.status === "queued").length;
     return { running, done, failed, total, queued, progress: total > 0 ? (done + failed) / total : 0 };
@@ -156,7 +175,10 @@ export function SwarmLauncherDialog() {
       });
       setStep(4); // monitor step
     },
-    onError: () => pushToast({ tone: "warn", title: "Swarm failed to launch" }),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      pushToast({ tone: "warn", title: "Swarm failed to launch", body: msg });
+    },
   });
 
   // Promote mutation
@@ -176,7 +198,10 @@ export function SwarmLauncherDialog() {
       queryClient.invalidateQueries({ queryKey: queryKeys.liveRuns(selectedCompanyId!) });
       pushToast({ title: `Promoted ${result.runs.length} runs → Live` });
     },
-    onError: () => pushToast({ tone: "warn", title: "Promotion failed" }),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      pushToast({ tone: "warn", title: "Promotion failed", body: msg });
+    },
   });
 
   const toggleAgent = (id: string) => {
@@ -358,7 +383,7 @@ export function SwarmLauncherDialog() {
                       type="number"
                       min={1}
                       max={100}
-                      placeholder="All"
+                      placeholder="4"
                       value={maxConcurrentAgents}
                       onChange={(e) => setMaxConcurrentAgents(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-16 rounded-md border border-border/60 bg-background px-2 py-1 text-sm text-center"
@@ -399,7 +424,42 @@ export function SwarmLauncherDialog() {
                     {lastSwarm.runMode === "sim" ? "SIM" : "LIVE"}
                   </span>
                 </div>
-                <span className="text-xs text-muted-foreground">{swarmStats.done + swarmStats.failed}/{swarmStats.total} done</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{swarmStats.done + swarmStats.failed}/{swarmStats.total} done</span>
+                  <button
+                    type="button"
+                    title="Copy swarm report to clipboard"
+                    className="p-1 rounded hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => {
+                      const lines: string[] = [
+                        "Swarm Report",
+                        "============",
+                        `Batch:    ${lastSwarm.batchId?.slice(0, 8) ?? "unknown"}`,
+                        `Mode:     ${lastSwarm.runMode === "sim" ? "SIMULATION" : "LIVE"}`,
+                        `Agents:   ${swarmStats.total}`,
+                        `Done:     ${swarmStats.done}`,
+                        `Failed:   ${swarmStats.failed}`,
+                        `Running:  ${swarmStats.running}`,
+                        `Queued:   ${swarmStats.queued}`,
+                        "",
+                        "Agent Results:",
+                      ];
+                      for (const agentId of lastSwarm.agentIds) {
+                        const run = swarmRuns.find((r) => r.agentId === agentId);
+                        const name = agents?.find((a) => a.id === agentId)?.name ?? agentId.slice(0, 8);
+                        const status = run?.status ?? "queued";
+                        const durSec = run?.startedAt
+                          ? Math.round((Date.now() - new Date(run.startedAt).getTime()) / 1000)
+                          : null;
+                        lines.push(`- ${name}: ${status}${durSec !== null ? ` [${durSec}s]` : ""}`);
+                      }
+                      navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
+                      pushToast({ title: "Report copied to clipboard" });
+                    }}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               {/* Progress bar */}
@@ -442,6 +502,37 @@ export function SwarmLauncherDialog() {
                   );
                 })}
               </div>
+
+              {/* Audit panel */}
+              <details className="mt-1">
+                <summary className="text-[11px] font-semibold text-muted-foreground cursor-pointer select-none px-1 py-1 hover:text-foreground list-none flex items-center gap-1">
+                  <span className="opacity-50">▶</span> Audit ({swarmRuns.length} runs)
+                </summary>
+                <div className="mt-1.5 space-y-0.5 rounded-lg border border-border/40 bg-accent/5 p-2 max-h-44 overflow-y-auto">
+                  {lastSwarm.agentIds.map((agentId) => {
+                    const run = swarmRuns.find((r) => r.agentId === agentId);
+                    const agentName = agents?.find((a) => a.id === agentId)?.name ?? agentId.slice(0, 8);
+                    const status = run?.status ?? "queued";
+                    const durSec = run?.startedAt
+                      ? Math.round((Date.now() - new Date(run.startedAt).getTime()) / 1000)
+                      : null;
+                    return (
+                      <div key={agentId} className="flex items-start gap-2 text-[10px] px-1 py-0.5">
+                        <span className={cn("shrink-0 font-bold uppercase w-16 truncate", swarmStatusColor(status))}>
+                          {status}
+                        </span>
+                        <span className="truncate text-muted-foreground flex-1">{agentName}</span>
+                        {durSec !== null && (
+                          <span className="shrink-0 text-muted-foreground/60 tabular-nums">{durSec}s</span>
+                        )}
+                        {(status === "failed" || status === "timed_out") && (
+                          <span className="text-red-400 text-[9px] shrink-0">{status}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
 
               {/* Promote to live (shown when all sim runs finish) */}
               {allSimDone && (

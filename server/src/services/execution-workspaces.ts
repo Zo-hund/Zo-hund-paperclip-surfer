@@ -9,6 +9,7 @@ function toExecutionWorkspace(row: ExecutionWorkspaceRow): ExecutionWorkspace {
   return {
     id: row.id,
     companyId: row.companyId,
+    operatingEnvironment: row.operatingEnvironment === "simulation" ? "simulation" : "live",
     projectId: row.projectId,
     projectWorkspaceId: row.projectWorkspaceId ?? null,
     sourceIssueId: row.sourceIssueId ?? null,

@@ -68,4 +68,5 @@ export { collectives, electives, communityBoards, boardCollaborations } from "./
 export { rqSubmissions, rqAgentConfigs } from "./rq_factory.js";
 export { lmsWorkshops, lmsEnrollments, lmsSimulations } from "./lms_training.js";
 export { auditVerifications } from "./audit_verifications.js";
+export { agentChatMessages } from "./agent_chat_messages.js";
 //# sourceMappingURL=index.js.map

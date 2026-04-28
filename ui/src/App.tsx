@@ -6,6 +6,7 @@ import { OnboardingWizard } from "./components/OnboardingWizard";
 import { authApi } from "./api/auth";
 import { healthApi } from "./api/health";
 import { Dashboard } from "./pages/Dashboard";
+import { CommandCenter } from "./pages/CommandCenter";
 import { Companies } from "./pages/Companies";
 import { Agents } from "./pages/Agents";
 import { AgentDetail } from "./pages/AgentDetail";
@@ -28,6 +29,7 @@ import { CompanySettings } from "./pages/CompanySettings";
 import { CompanySkills } from "./pages/CompanySkills";
 import { McpServers } from "./pages/McpServers";
 import { Analytics } from "./pages/Analytics";
+import { Memories } from "./pages/Memories";
 import { CompanyExport } from "./pages/CompanyExport";
 import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
@@ -46,6 +48,7 @@ import { RqPortal } from "./pages/RqPortal";
 import { LmsDashboard } from "./pages/LmsDashboard";
 import { AmxChain } from "./pages/AmxChain";
 import { XpWallet } from "./pages/XpWallet";
+import { PitStop } from "./pages/PitStop";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
@@ -60,6 +63,8 @@ import { PublicAgentProfile } from "./pages/PublicAgentProfile";
 import { PublicCompanyProfile } from "./pages/PublicCompanyProfile";
 import { ServiceRequest } from "./pages/ServiceRequest";
 import { MemberProfile } from "./pages/MemberProfile";
+import { RegisterPage } from "./pages/Register";
+import { PricingPage } from "./pages/Pricing";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { useDialog } from "./context/DialogContext";
@@ -138,6 +143,7 @@ function boardRoutes() {
     <>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<Dashboard />} />
+      <Route path="cockpit" element={<CommandCenter />} />
       <Route path="onboarding" element={<OnboardingRoutePage />} />
       <Route path="companies" element={<Companies />} />
       <Route path="company/settings" element={<CompanySettings />} />
@@ -146,6 +152,8 @@ function boardRoutes() {
       <Route path="skills/*" element={<CompanySkills />} />
       <Route path="mcp-servers" element={<McpServers />} />
       <Route path="analytics" element={<Analytics />} />
+      <Route path="analytics/:tab" element={<Analytics />} />
+      <Route path="memories" element={<Memories />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
       <Route path="plugins/:pluginId" element={<PluginPage />} />
@@ -166,6 +174,8 @@ function boardRoutes() {
       <Route path="projects/:projectId/issues/:filter" element={<ProjectDetail />} />
       <Route path="projects/:projectId/configuration" element={<ProjectDetail />} />
       <Route path="projects/:projectId/budget" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/calendar" element={<ProjectDetail />} />
+      <Route path="projects/:projectId/roadmap" element={<ProjectDetail />} />
       <Route path="issues" element={<Issues />} />
       <Route path="issues/all" element={<Navigate to="/issues" replace />} />
       <Route path="issues/active" element={<Navigate to="/issues" replace />} />
@@ -198,6 +208,7 @@ function boardRoutes() {
       <Route path="xp/wallet" element={<XpWallet />} />
       <Route path="rq/portal" element={<RqPortal />} />
       <Route path="lms/dashboard" element={<LmsDashboard />} />
+      <Route path="pit-stop" element={<PitStop />} />
       <Route path="amx/chain" element={<AmxChain />} />
       <Route path="audit/team" element={<AuditTeam />} />
       <Route path="briefcase" element={<BoardDeliverables />} />
@@ -275,7 +286,7 @@ function CompanyRootRedirect() {
         hasCompanies: false,
       })
     ) {
-      return <Navigate to="/profile" replace />;
+      return <Navigate to="/onboarding" replace />;
     }
     return <Navigate to="/profile" replace />;
   }
@@ -299,7 +310,7 @@ function UnprefixedBoardRedirect() {
         hasCompanies: false,
       })
     ) {
-      return <Navigate to="/profile" replace />;
+      return <Navigate to="/onboarding" replace />;
     }
     return <Navigate to="/profile" replace />;
   }
@@ -341,6 +352,8 @@ export function App() {
         <Route path="request" element={<ServiceRequest />} />
         <Route path="join" element={<ServiceRequest />} />
         <Route path="profile" element={<MemberProfile />} />
+        <Route path="register" element={<RegisterPage />} />
+        <Route path="pricing" element={<PricingPage />} />
 
         {/* ── Auth-required routes ── */}
         <Route path="auth" element={<AuthPage />} />
@@ -361,6 +374,7 @@ export function App() {
             <Route path="plugins/:pluginId" element={<PluginSettings />} />
           </Route>
           <Route path="dashboard" element={<UnprefixedBoardRedirect />} />
+          <Route path="cockpit" element={<UnprefixedBoardRedirect />} />
           <Route path="companies" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
@@ -380,6 +394,8 @@ export function App() {
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/calendar" element={<UnprefixedBoardRedirect />} />
+          <Route path="projects/:projectId/roadmap" element={<UnprefixedBoardRedirect />} />
           <Route path="xp/exchange" element={<UnprefixedBoardRedirect />} />
           <Route path="xp/wallet" element={<UnprefixedBoardRedirect />} />
           <Route path="rq/portal" element={<UnprefixedBoardRedirect />} />
@@ -388,6 +404,7 @@ export function App() {
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path="mcp-servers" element={<UnprefixedBoardRedirect />} />
           <Route path="analytics" element={<UnprefixedBoardRedirect />} />
+          <Route path="memories" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace/agent/:marketplaceAgentId" element={<UnprefixedBoardRedirect />} />
           

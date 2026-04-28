@@ -6,6 +6,7 @@ import type {
   JoinRequestStatus,
   JoinRequestType,
   MembershipStatus,
+  OperatingEnvironment,
   PermissionKey,
   PrincipalType,
 } from "../constants.js";
@@ -36,6 +37,7 @@ export interface PrincipalPermissionGrant {
 export interface Invite {
   id: string;
   companyId: string | null;
+  operatingEnvironment: OperatingEnvironment;
   inviteType: InviteType;
   tokenHash: string;
   allowedJoinTypes: InviteJoinType;
@@ -52,6 +54,7 @@ export interface JoinRequest {
   id: string;
   inviteId: string;
   companyId: string;
+  operatingEnvironment: OperatingEnvironment;
   requestType: JoinRequestType;
   status: JoinRequestStatus;
   requestIp: string;

@@ -203,6 +203,7 @@ export function agentService(db: Db) {
   function normalizeAgentRow(row: typeof agents.$inferSelect) {
     return withUrlKey({
       ...row,
+      environment: row.environment === "simulation" ? "simulation" : "live",
       permissions: normalizeAgentPermissions(row.permissions, row.role),
     });
   }

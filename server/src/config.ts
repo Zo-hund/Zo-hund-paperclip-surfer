@@ -50,6 +50,7 @@ export interface Config {
   authBaseUrlMode: AuthBaseUrlMode;
   authPublicBaseUrl: string | undefined;
   authDisableSignUp: boolean;
+  authRequireEmailVerification: boolean;
   databaseMode: DatabaseMode;
   databaseUrl: string | undefined;
   embeddedPostgresDataDir: string;
@@ -73,6 +74,15 @@ export interface Config {
   heartbeatSchedulerEnabled: boolean;
   heartbeatSchedulerIntervalMs: number;
   companyDeletionEnabled: boolean;
+  portAutoScalingDisabled?: boolean;
+  instanceId?: string;
+  hostVersion?: string;
+  localPluginDir?: string;
+  uiMode?: string;
+  geminiApiKey?: string;
+  resendApiKey?: string;
+  emailFrom?: string;
+  emailReplyTo?: string;
 }
 
 export function loadConfig(): Config {
@@ -160,6 +170,11 @@ export function loadConfig(): Config {
     disableSignUpFromEnv !== undefined
       ? disableSignUpFromEnv === "true"
       : (fileConfig?.auth?.disableSignUp ?? false);
+  const requireEmailVerificationFromEnv = process.env.PAPERCLIP_AUTH_REQUIRE_EMAIL_VERIFICATION;
+  const authRequireEmailVerification =
+    requireEmailVerificationFromEnv !== undefined
+      ? requireEmailVerificationFromEnv === "true"
+      : false;
   const allowedHostnamesFromEnvRaw = process.env.PAPERCLIP_ALLOWED_HOSTNAMES;
   const allowedHostnamesFromEnv = allowedHostnamesFromEnvRaw
     ? allowedHostnamesFromEnvRaw
@@ -222,6 +237,7 @@ export function loadConfig(): Config {
     authBaseUrlMode,
     authPublicBaseUrl,
     authDisableSignUp,
+    authRequireEmailVerification,
     databaseMode: fileDatabaseMode,
     databaseUrl: process.env.DATABASE_URL ?? fileDbUrl,
     embeddedPostgresDataDir: resolveHomeAwarePath(
@@ -253,7 +269,15 @@ export function loadConfig(): Config {
     storageS3Prefix,
     storageS3ForcePathStyle,
     heartbeatSchedulerEnabled: process.env.HEARTBEAT_SCHEDULER_ENABLED !== "false",
-    heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
+    heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.PAPERCLIP_HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
     companyDeletionEnabled,
+    instanceId: process.env.PAPERCLIP_INSTANCE_ID,
+    hostVersion: process.env.PAPERCLIP_HOST_VERSION,
+    localPluginDir: process.env.PAPERCLIP_LOCAL_PLUGIN_DIR,
+    portAutoScalingDisabled: process.env.PAPERCLIP_PORT_AUTO_SCALING_DISABLED === "true",
+    geminiApiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY,
+    resendApiKey: process.env.RESEND_API_KEY?.trim() || undefined,
+    emailFrom: process.env.PAPERCLIP_EMAIL_FROM?.trim() || undefined,
+    emailReplyTo: process.env.PAPERCLIP_EMAIL_REPLY_TO?.trim() || undefined,
   };
 }

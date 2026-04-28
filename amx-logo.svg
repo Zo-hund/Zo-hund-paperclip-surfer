@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect width="200" height="200" rx="32" fill="#4F6BF4"/>
+  <!-- Circuit node accent dots -->
+  <circle cx="28" cy="28" r="4" fill="rgba(255,255,255,0.15)"/>
+  <circle cx="172" cy="28" r="4" fill="rgba(255,255,255,0.15)"/>
+  <circle cx="28" cy="172" r="4" fill="rgba(255,255,255,0.15)"/>
+  <circle cx="172" cy="172" r="4" fill="rgba(255,255,255,0.15)"/>
+  <!-- Subtle diagonal accent line -->
+  <line x1="0" y1="200" x2="200" y2="0" stroke="rgba(255,255,255,0.06)" stroke-width="40"/>
+  <!-- AMX text -->
+  <text
+    x="100"
+    y="118"
+    font-family="'Arial Black', 'Arial', sans-serif"
+    font-weight="900"
+    font-size="72"
+    letter-spacing="-2"
+    fill="white"
+    text-anchor="middle"
+    dominant-baseline="auto"
+  >AMX</text>
+  <!-- LABS label -->
+  <text
+    x="100"
+    y="152"
+    font-family="'Arial', sans-serif"
+    font-weight="400"
+    font-size="22"
+    letter-spacing="8"
+    fill="rgba(255,255,255,0.75)"
+    text-anchor="middle"
+    dominant-baseline="auto"
+  >LABS</text>
+</svg>

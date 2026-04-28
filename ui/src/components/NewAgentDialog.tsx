@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
 import { HermesIcon } from "./HermesIcon";
+import { DEFAULT_ONBOARDING_ADAPTER } from "../lib/local-adapter-readiness";
 
 type AdvancedAdapterType =
   | "claude_local"
@@ -31,7 +32,8 @@ type AdvancedAdapterType =
   | "pi_local"
   | "cursor"
   | "openclaw_gateway"
-  | "hermes_local";
+  | "hermes_local"
+  | "hermes_advanced";
 
 const ADVANCED_ADAPTER_OPTIONS: Array<{
   value: AdvancedAdapterType;
@@ -45,7 +47,6 @@ const ADVANCED_ADAPTER_OPTIONS: Array<{
     label: "Claude Code",
     icon: Sparkles,
     desc: "Local Claude agent",
-    recommended: true,
   },
   {
     value: "codex_local",
@@ -65,12 +66,19 @@ const ADVANCED_ADAPTER_OPTIONS: Array<{
     label: "OpenCode",
     icon: OpenCodeLogoIcon,
     desc: "Local multi-provider agent",
+    recommended: true,
   },
   {
     value: "hermes_local",
     label: "Hermes Agent",
     icon: HermesIcon,
     desc: "Local multi-provider agent",
+  },
+  {
+    value: "hermes_advanced",
+    label: "Hermes Advanced (Nous)",
+    icon: HermesIcon,
+    desc: "Hermes adapter for profile management",
   },
   {
     value: "pi_local",
@@ -201,7 +209,11 @@ export function NewAgentDialog() {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                {ADVANCED_ADAPTER_OPTIONS.map((opt) => (
+                {[...ADVANCED_ADAPTER_OPTIONS].sort((a, b) => {
+                  if (a.value === DEFAULT_ONBOARDING_ADAPTER) return -1;
+                  if (b.value === DEFAULT_ONBOARDING_ADAPTER) return 1;
+                  return 0;
+                }).map((opt) => (
                   <button
                     key={opt.value}
                     className={cn(

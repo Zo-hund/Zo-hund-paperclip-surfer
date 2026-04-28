@@ -4,13 +4,19 @@ import {
   INVITE_JOIN_TYPES,
   JOIN_REQUEST_STATUSES,
   JOIN_REQUEST_TYPES,
+  OPERATING_ENVIRONMENTS,
   PERMISSION_KEYS,
 } from "../constants.js";
 
 export const createCompanyInviteSchema = z.object({
   allowedJoinTypes: z.enum(INVITE_JOIN_TYPES).default("both"),
+  targetEnvironment: z.enum(OPERATING_ENVIRONMENTS).default("simulation"),
   defaultsPayload: z.record(z.string(), z.unknown()).optional().nullable(),
   agentMessage: z.string().max(4000).optional().nullable(),
+  inviteeEmail: z.preprocess(
+    (value) => typeof value === "string" ? value.trim() : value,
+    z.union([z.string().max(320).email(), z.literal("")]).optional().nullable(),
+  ),
 });
 
 export type CreateCompanyInvite = z.infer<typeof createCompanyInviteSchema>;

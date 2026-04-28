@@ -28,6 +28,7 @@ import { AgentPerformanceTab } from "../components/AgentPerformanceTab";
 import { AgentMcpTab } from "../components/AgentMcpTab";
 import { AgentSkillsTab } from "../components/AgentSkillsTab";
 import { AgentOnboardingLMS } from "../components/AgentOnboardingLMS";
+import { AgentBookingSchedule } from "../components/AgentBookingSchedule";
 import { AgentChatPanel } from "../components/AgentChatPanel";
 import { PageTabBar } from "../components/PageTabBar";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
@@ -228,7 +229,7 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps" | "onboarding" | "chat";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps" | "onboarding" | "chat" | "schedule";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "chat") return "chat";
@@ -240,6 +241,7 @@ function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "performance") return "performance";
   if (value === "mcps") return "mcps";
   if (value === "onboarding") return "onboarding";
+  if (value === "schedule") return "schedule";
   if (value === "runs") return value;
   return "dashboard";
 }
@@ -934,6 +936,7 @@ export function AgentDetail() {
           <PageTabBar
             items={[
               { value: "dashboard", label: "Dashboard" },
+              { value: "schedule", label: "Schedule" },
               { value: "chat", label: "Chat" },
               { value: "instructions", label: "Instructions" },
               { value: "skills", label: "Skills" },
@@ -1090,6 +1093,10 @@ export function AgentDetail() {
 
       {activeView === "onboarding" && resolvedCompanyId && (
         <AgentOnboardingLMS agentId={agent.id} />
+      )}
+
+      {activeView === "schedule" && (
+        <AgentBookingSchedule agentId={agent.id} />
       )}
 
       {activeView === "budget" && resolvedCompanyId ? (

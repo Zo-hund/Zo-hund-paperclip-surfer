@@ -1,0 +1,7 @@
+Set-Location ''C:\Users\Techa\.paperclip\tmp_surfers\server''
+$env:TEMP = ''G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\15_BACKUPS\paperclip-runtime-temp''
+$env:TMP = ''G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\15_BACKUPS\paperclip-runtime-temp''
+$env:PORT = ''3114''
+$env:HEARTBEAT_SCHEDULER_ENABLED = ''false''
+$env:PAPERCLIP_DB_BACKUP_ENABLED = ''false''
+pnpm dev *>> ''C:\Users\Techa\.paperclip\tmp_surfers\tmp_server_3114.out.log''

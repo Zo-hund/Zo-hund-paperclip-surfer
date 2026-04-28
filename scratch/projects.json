@@ -1,0 +1,436 @@
+﻿{
+    "value":  [
+                  {
+                      "id":  "4fe86d94-a04c-435a-8bfa-446ebfba8bd1",
+                      "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                      "goalId":  "cb11b725-c55c-4376-a0e2-d9d691849c44",
+                      "name":  "Onboarding",
+                      "description":  null,
+                      "status":  "in_progress",
+                      "leadAgentId":  null,
+                      "targetDate":  null,
+                      "color":  "#6366f1",
+                      "pauseReason":  null,
+                      "pausedAt":  null,
+                      "executionWorkspacePolicy":  null,
+                      "archivedAt":  null,
+                      "createdAt":  "2026-03-31T22:46:32.399Z",
+                      "updatedAt":  "2026-03-31T22:46:32.399Z",
+                      "urlKey":  "onboarding",
+                      "goalIds":  [
+                                      "cb11b725-c55c-4376-a0e2-d9d691849c44"
+                                  ],
+                      "goals":  [
+                                    {
+                                        "id":  "cb11b725-c55c-4376-a0e2-d9d691849c44",
+                                        "title":  "1MILLION MRR AI MICRO SKILLD SERVICES -SOCIAL, WEB, PRINT , AGENTS,SKILLS,WORKFLOWS, DIGITAL, PHYSICAL, HYBRID COMAPY BUILDS."
+                                    }
+                                ],
+                      "codebase":  {
+                                       "workspaceId":  "d5a81088-6f7d-49be-8299-1f4b29e07297",
+                                       "repoUrl":  null,
+                                       "repoRef":  null,
+                                       "defaultRef":  null,
+                                       "repoName":  null,
+                                       "localFolder":  "C:\\Users\\Techa\\OneDrive\\Apps\\AMX-AIR-HUB-FOLDER-OPPRRC",
+                                       "managedFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\4fe86d94-a04c-435a-8bfa-446ebfba8bd1\\_default",
+                                       "effectiveLocalFolder":  "C:\\Users\\Techa\\OneDrive\\Apps\\AMX-AIR-HUB-FOLDER-OPPRRC",
+                                       "origin":  "local_folder"
+                                   },
+                      "workspaces":  [
+                                         {
+                                             "id":  "d5a81088-6f7d-49be-8299-1f4b29e07297",
+                                             "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                                             "projectId":  "4fe86d94-a04c-435a-8bfa-446ebfba8bd1",
+                                             "name":  "AMX-AIR-HUB-FOLDER-OPPRRC",
+                                             "sourceType":  "local_path",
+                                             "cwd":  "C:\\Users\\Techa\\OneDrive\\Apps\\AMX-AIR-HUB-FOLDER-OPPRRC",
+                                             "repoUrl":  null,
+                                             "repoRef":  null,
+                                             "defaultRef":  null,
+                                             "visibility":  "default",
+                                             "setupCommand":  null,
+                                             "cleanupCommand":  null,
+                                             "remoteProvider":  null,
+                                             "remoteWorkspaceRef":  null,
+                                             "sharedWorkspaceKey":  null,
+                                             "metadata":  null,
+                                             "isPrimary":  true,
+                                             "runtimeServices":  [
+
+                                                                 ],
+                                             "createdAt":  "2026-04-06T08:14:05.430Z",
+                                             "updatedAt":  "2026-04-06T08:14:05.430Z"
+                                         }
+                                     ],
+                      "primaryWorkspace":  {
+                                               "id":  "d5a81088-6f7d-49be-8299-1f4b29e07297",
+                                               "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                                               "projectId":  "4fe86d94-a04c-435a-8bfa-446ebfba8bd1",
+                                               "name":  "AMX-AIR-HUB-FOLDER-OPPRRC",
+                                               "sourceType":  "local_path",
+                                               "cwd":  "C:\\Users\\Techa\\OneDrive\\Apps\\AMX-AIR-HUB-FOLDER-OPPRRC",
+                                               "repoUrl":  null,
+                                               "repoRef":  null,
+                                               "defaultRef":  null,
+                                               "visibility":  "default",
+                                               "setupCommand":  null,
+                                               "cleanupCommand":  null,
+                                               "remoteProvider":  null,
+                                               "remoteWorkspaceRef":  null,
+                                               "sharedWorkspaceKey":  null,
+                                               "metadata":  null,
+                                               "isPrimary":  true,
+                                               "runtimeServices":  [
+
+                                                                   ],
+                                               "createdAt":  "2026-04-06T08:14:05.430Z",
+                                               "updatedAt":  "2026-04-06T08:14:05.430Z"
+                                           }
+                  },
+                  {
+                      "id":  "9c6dd9f6-2486-4bc2-89a4-00e9bbb2c16e",
+                      "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                      "goalId":  null,
+                      "name":  "New Day Summer Camp : AI+XR+STEM \u0026 STEAM EXPO",
+                      "description":  "New Day Summer Camp :\u0026#x20;\n\nDear Mr. Mario,\n\nI hope you are doing well. We are excited to have you work with us for this summer!\n\nAs we prepare for our summer program, we are requesting a few items from you to complete our planning and documentation:\n\n* A **quote letter** for your services\n* A brief **letter describing your business purpose**\n* Details on **what activities or instruction you will be providing for our students**\n* The **amount of time you will spend with students on the day selected.**\n* The **number of days you will be working with students** between **June 10, 2026 and July 17, 2026**\n\n**I am also attaching a D@F form that needs to be filled out**\n\n[https://docs.google.com/document/d/1y\\_qJBxI5qMdL6ih62XtIheIGzER9sVQ-W5kqEPCXZhY/edit?usp\\=sharing](https://docs.google.com/document/d/1y_qJBxI5qMdL6ih62XtIheIGzER9sVQ-W5kqEPCXZhY/edit?usp=sharing)\n\nPlease let us know if you have any questions or need additional information from us. We look forward to working together and providing a great experience for our students.\n\n\n\nI\u0027ll create a comprehensive summary with an actionable checklist for you:---\n\n## **🎯 Bottom Line**\n\nYou have **everything in place** to succeed with this opportunity:\n\n✅ **3+ year proven relationship** with Toderick Moore\n✅ **Approved JCPS vendor** with existing contract revenue\n✅ **Track record of service delivery** (with documented history of fixing issues)\n✅ **Strategic positioning opportunity** for premium pricing ($10K-$100K+ range)\n\n⚠️ **What you need NOW:**\n\n1. **Complete the JCPS D@F form** — this is the gate-keeper. Charles Burns showed you how to win it.\n2. **Package your unique value** — XR + LMS + workforce \\= rare bundle no one else offers\n3. **Submit by deadline** — assume 1-2 weeks from Mar 30 request\n\nThe checklist above is your roadmap. Use the positioning strategy to make the case that Tech At Nite is the **only vendor** who can deliver this. Once JCPS approves the no-bid justification, the rest becomes administrative.\n\n**Recommendation:** Start with the D@F form today — that\u0027s your leverage point. Would you like me to help you draft any of these documents?",
+                      "status":  "planned",
+                      "leadAgentId":  null,
+                      "targetDate":  null,
+                      "color":  "#14b8a6",
+                      "pauseReason":  null,
+                      "pausedAt":  null,
+                      "executionWorkspacePolicy":  null,
+                      "archivedAt":  null,
+                      "createdAt":  "2026-04-01T15:52:46.734Z",
+                      "updatedAt":  "2026-04-01T15:52:46.734Z",
+                      "urlKey":  "new-day-summer-camp-ai-xr-stem-steam-expo",
+                      "goalIds":  [
+
+                                  ],
+                      "goals":  [
+
+                                ],
+                      "codebase":  {
+                                       "workspaceId":  "065e92ca-0efd-48c4-931d-174a917545b0",
+                                       "repoUrl":  null,
+                                       "repoRef":  null,
+                                       "defaultRef":  null,
+                                       "repoName":  null,
+                                       "localFolder":  "C:\\Users\\Techa\\OneDrive\\Apps\\AIR-HUB-DCA-NDM",
+                                       "managedFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\9c6dd9f6-2486-4bc2-89a4-00e9bbb2c16e\\_default",
+                                       "effectiveLocalFolder":  "C:\\Users\\Techa\\OneDrive\\Apps\\AIR-HUB-DCA-NDM",
+                                       "origin":  "local_folder"
+                                   },
+                      "workspaces":  [
+                                         {
+                                             "id":  "065e92ca-0efd-48c4-931d-174a917545b0",
+                                             "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                                             "projectId":  "9c6dd9f6-2486-4bc2-89a4-00e9bbb2c16e",
+                                             "name":  "AIR-HUB-DCA-NDM",
+                                             "sourceType":  "local_path",
+                                             "cwd":  "C:\\Users\\Techa\\OneDrive\\Apps\\AIR-HUB-DCA-NDM",
+                                             "repoUrl":  null,
+                                             "repoRef":  null,
+                                             "defaultRef":  null,
+                                             "visibility":  "default",
+                                             "setupCommand":  null,
+                                             "cleanupCommand":  null,
+                                             "remoteProvider":  null,
+                                             "remoteWorkspaceRef":  null,
+                                             "sharedWorkspaceKey":  null,
+                                             "metadata":  null,
+                                             "isPrimary":  true,
+                                             "runtimeServices":  [
+
+                                                                 ],
+                                             "createdAt":  "2026-04-01T16:19:54.330Z",
+                                             "updatedAt":  "2026-04-01T16:19:54.330Z"
+                                         }
+                                     ],
+                      "primaryWorkspace":  {
+                                               "id":  "065e92ca-0efd-48c4-931d-174a917545b0",
+                                               "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                                               "projectId":  "9c6dd9f6-2486-4bc2-89a4-00e9bbb2c16e",
+                                               "name":  "AIR-HUB-DCA-NDM",
+                                               "sourceType":  "local_path",
+                                               "cwd":  "C:\\Users\\Techa\\OneDrive\\Apps\\AIR-HUB-DCA-NDM",
+                                               "repoUrl":  null,
+                                               "repoRef":  null,
+                                               "defaultRef":  null,
+                                               "visibility":  "default",
+                                               "setupCommand":  null,
+                                               "cleanupCommand":  null,
+                                               "remoteProvider":  null,
+                                               "remoteWorkspaceRef":  null,
+                                               "sharedWorkspaceKey":  null,
+                                               "metadata":  null,
+                                               "isPrimary":  true,
+                                               "runtimeServices":  [
+
+                                                                   ],
+                                               "createdAt":  "2026-04-01T16:19:54.330Z",
+                                               "updatedAt":  "2026-04-01T16:19:54.330Z"
+                                           }
+                  },
+                  {
+                      "id":  "0ccc200c-fe9b-4dae-82a2-0943324e3b5b",
+                      "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                      "goalId":  "6ca82c63-4a6a-4595-8acd-98713608fce1",
+                      "name":  "REVENUE-CLIMB-90",
+                      "description":  null,
+                      "status":  "in_progress",
+                      "leadAgentId":  "482b3bd0-f6c3-44b6-82b4-83c2c97187d7",
+                      "targetDate":  null,
+                      "color":  "#8b5cf6",
+                      "pauseReason":  null,
+                      "pausedAt":  null,
+                      "executionWorkspacePolicy":  null,
+                      "archivedAt":  null,
+                      "createdAt":  "2026-04-06T13:22:42.238Z",
+                      "updatedAt":  "2026-04-06T13:22:42.238Z",
+                      "urlKey":  "revenue-climb-90",
+                      "goalIds":  [
+                                      "6ca82c63-4a6a-4595-8acd-98713608fce1"
+                                  ],
+                      "goals":  [
+                                    {
+                                        "id":  "6ca82c63-4a6a-4595-8acd-98713608fce1",
+                                        "title":  "Pipeline Velocity"
+                                    }
+                                ],
+                      "codebase":  {
+                                       "workspaceId":  null,
+                                       "repoUrl":  null,
+                                       "repoRef":  null,
+                                       "defaultRef":  null,
+                                       "repoName":  null,
+                                       "localFolder":  null,
+                                       "managedFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\0ccc200c-fe9b-4dae-82a2-0943324e3b5b\\_default",
+                                       "effectiveLocalFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\0ccc200c-fe9b-4dae-82a2-0943324e3b5b\\_default",
+                                       "origin":  "managed_checkout"
+                                   },
+                      "workspaces":  [
+
+                                     ],
+                      "primaryWorkspace":  null
+                  },
+                  {
+                      "id":  "4abaca7f-b5f5-4ca5-8f0f-a56b2aee5dec",
+                      "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                      "goalId":  "03a446cc-cf19-4e0a-bf7e-b9214a53e67f",
+                      "name":  "AIR-HUB-STABILIZATION",
+                      "description":  null,
+                      "status":  "in_progress",
+                      "leadAgentId":  "f11ec0c8-577c-43ab-baf6-b7be5492168d",
+                      "targetDate":  null,
+                      "color":  "#ec4899",
+                      "pauseReason":  null,
+                      "pausedAt":  null,
+                      "executionWorkspacePolicy":  null,
+                      "archivedAt":  null,
+                      "createdAt":  "2026-04-06T13:22:42.280Z",
+                      "updatedAt":  "2026-04-06T13:22:42.280Z",
+                      "urlKey":  "air-hub-stabilization",
+                      "goalIds":  [
+                                      "03a446cc-cf19-4e0a-bf7e-b9214a53e67f"
+                                  ],
+                      "goals":  [
+                                    {
+                                        "id":  "03a446cc-cf19-4e0a-bf7e-b9214a53e67f",
+                                        "title":  "Infrastructure Stability"
+                                    }
+                                ],
+                      "codebase":  {
+                                       "workspaceId":  null,
+                                       "repoUrl":  null,
+                                       "repoRef":  null,
+                                       "defaultRef":  null,
+                                       "repoName":  null,
+                                       "localFolder":  null,
+                                       "managedFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\4abaca7f-b5f5-4ca5-8f0f-a56b2aee5dec\\_default",
+                                       "effectiveLocalFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\4abaca7f-b5f5-4ca5-8f0f-a56b2aee5dec\\_default",
+                                       "origin":  "managed_checkout"
+                                   },
+                      "workspaces":  [
+
+                                     ],
+                      "primaryWorkspace":  null
+                  },
+                  {
+                      "id":  "623cad87-a670-42f8-aad6-5a4da0c9d92d",
+                      "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                      "goalId":  "e9db893e-a713-4875-92c7-ca54aff49d43",
+                      "name":  "MARKET-POSITIONING-Q2",
+                      "description":  "from PIL import Image, ImageDraw, ImageFont\n\nfrom textwrap import wrap\n\n\n\nW, H \\= 2000, 1400\n\nimg \\= Image.new(\"RGB\", (W, H), (6, 12, 24))\n\ndraw \\= ImageDraw.Draw(img)\n\n\n\n\\# Fonts\n\nfont\\_bold \\= \"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf\"\n\nfont\\_reg \\= \"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf\"\n\ntitle\\_font \\= ImageFont.truetype(font\\_bold, 56)\n\nsub\\_font \\= ImageFont.truetype(font\\_reg, 28)\n\nsection\\_font \\= ImageFont.truetype(font\\_bold, 30)\n\nbody\\_font \\= ImageFont.truetype(font\\_reg, 22)\n\nsmall\\_font \\= ImageFont.truetype(font\\_reg, 18)\n\ntiny\\_font \\= ImageFont.truetype(font\\_reg, 16)\n\n\n\n\\# Colors inspired by the prior graphic / brand-kit style\n\nBG \\= (6, 12, 24)\n\nWHITE \\= (240, 246, 252)\n\nCYAN \\= (92, 220, 255)\n\nGREEN \\= (110, 232, 170)\n\nGOLD \\= (255, 206, 94)\n\nBLUE \\= (18, 37, 63)\n\nMID \\= (24, 50, 82)\n\nPANEL \\= (12, 27, 46)\n\nPURPLE \\= (148, 116, 255)\n\nORANGE \\= (255, 173, 79)\n\nRED \\= (255, 110, 110)\n\nLINE \\= (109, 178, 255)\n\n\n\ndef rounded\\_box(x1, y1, x2, y2, fill, outline\\=None, width\\=3, radius\\=22):\n\n\u0026#x20;   draw.rounded\\_rectangle((x1, y1, x2, y2), radius\\=radius, fill\\=fill, outline\\=outline, width\\=width)\n\n\n\ndef fit\\_lines(text, font, max\\_width):\n\n\u0026#x20;   words \\= text.split()\n\n\u0026#x20;   lines \\= \\[]\n\n\u0026#x20;   current \\= \"\"\n\n\u0026#x20;   for word in words:\n\n\u0026#x20;       test \\= (current + \" \" + word).strip()\n\n\u0026#x20;       if draw.textlength(test, font\\=font) \\\u003c\\= max\\_width:\n\n\u0026#x20;           current \\= test\n\n\u0026#x20;       else:\n\n\u0026#x20;           if current:\n\n\u0026#x20;               lines.append(current)\n\n\u0026#x20;           current \\= word\n\n\u0026#x20;   if current:\n\n\u0026#x20;       lines.append(current)\n\n\u0026#x20;   return lines\n\n\n\ndef centered\\_block(text, box, font, fill\\=WHITE, line\\_spacing\\=6, pad\\=12):\n\n\u0026#x20;   x1, y1, x2, y2 \\= box\n\n\u0026#x20;   lines \\= \\[]\n\n\u0026#x20;   for paragraph in text.split(\"\\n\"):\n\n\u0026#x20;       lines.extend(fit\\_lines(paragraph, font, x2-x1-pad\\*2))\n\n\u0026#x20;   line\\_h \\= font.getbbox(\"Ag\")\\[3] - font.getbbox(\"Ag\")\\[1]\n\n\u0026#x20;   total\\_h \\= len(lines) \\* line\\_h + (len(lines)-1) \\* line\\_spacing\n\n\u0026#x20;   y \\= y1 + ((y2-y1) - total\\_h) / 2\n\n\u0026#x20;   for line in lines:\n\n\u0026#x20;       w \\= draw.textlength(line, font\\=font)\n\n\u0026#x20;       x \\= x1 + ((x2-x1) - w)/2\n\n\u0026#x20;       draw.text((x, y), line, font\\=font, fill\\=fill)\n\n\u0026#x20;       y +\\= line\\_h + line\\_spacing\n\n\n\ndef left\\_block(title, items, box, title\\_color\\=GOLD, bullet\\_color\\=GREEN):\n\n\u0026#x20;   x1, y1, x2, y2 \\= box\n\n\u0026#x20;   rounded\\_box(x1, y1, x2, y2, fill\\=PANEL, outline\\=LINE, width\\=2, radius\\=24)\n\n\u0026#x20;   draw.text((x1+18, y1+14), title, font\\=section\\_font, fill\\=title\\_color)\n\n\u0026#x20;   y \\= y1 + 58\n\n\u0026#x20;   for item in items:\n\n\u0026#x20;       wrapped \\= fit\\_lines(item, body\\_font, x2-x1-50)\n\n\u0026#x20;       first \\= True\n\n\u0026#x20;       for line in wrapped:\n\n\u0026#x20;           if first:\n\n\u0026#x20;               draw.text((x1+20, y), \"•\", font\\=body\\_font, fill\\=bullet\\_color)\n\n\u0026#x20;               draw.text((x1+40, y), line, font\\=body\\_font, fill\\=WHITE)\n\n\u0026#x20;               first \\= False\n\n\u0026#x20;           else:\n\n\u0026#x20;               draw.text((x1+40, y), line, font\\=body\\_font, fill\\=WHITE)\n\n\u0026#x20;           y +\\= 28\n\n\u0026#x20;       y +\\= 8\n\n\n\ndef role\\_card(x1, y1, x2, y2, title, subtitle, color):\n\n\u0026#x20;   rounded\\_box(x1, y1, x2, y2, fill\\=BLUE, outline\\=color, width\\=3, radius\\=22)\n\n\u0026#x20;   centered\\_block(title, (x1+10, y1+10, x2-10, y1+55), section\\_font, fill\\=color)\n\n\u0026#x20;   centered\\_block(subtitle, (x1+15, y1+60, x2-15, y2-12), body\\_font, fill\\=WHITE)\n\n\n\ndef small\\_card(x1, y1, x2, y2, title, subtitle, color):\n\n\u0026#x20;   rounded\\_box(x1, y1, x2, y2, fill\\=PANEL, outline\\=color, width\\=2, radius\\=20)\n\n\u0026#x20;   centered\\_block(title, (x1+10, y1+8, x2-10, y1+40), body\\_font, fill\\=color)\n\n\u0026#x20;   centered\\_block(subtitle, (x1+10, y1+42, x2-10, y2-10), small\\_font, fill\\=WHITE)\n\n\n\n\\# Header\n\ndraw.text((60, 40), \"H3AT SOLUTIONS\", font\\=title\\_font, fill\\=WHITE)\n\ndraw.text((60, 108), \"Laser Beam Growth \u0026 Communication Organization Diagram\", font\\=sub\\_font, fill\\=CYAN)\n\ndraw.text((60, 145), \"Business • Marketing • Sales Management • Human-Centric Agentic Workflow Solutions\", font\\=sub\\_font, fill\\=GREEN)\n\n\n\n\\# Mission and identity\n\nrounded\\_box(1420, 30, 1940, 170, fill\\=BLUE, outline\\=CYAN)\n\ndraw.text((1450, 50), \"REAL DATA ANCHORS\", font\\=section\\_font, fill\\=GOLD)\n\ncentered\\_block(\n\n\u0026#x20;   \"Company: H3AT Consulting \u0026 Development (DBA: H3AT Solutions)\\n\"\n\n\u0026#x20;   \"Location: Louisville, Kentucky\\n\"\n\n\u0026#x20;   \"Website: h3atsolutions.com\\n\"\n\n\u0026#x20;   \"Phone: 502-709-7413\",\n\n\u0026#x20;   (1440, 82, 1925, 160),\n\n\u0026#x20;   small\\_font,\n\n\u0026#x20;   fill\\=WHITE,\n\n)\n\n\n\n\\# Beam\n\ndraw.line((70, 210, 1930, 210), fill\\=CYAN, width\\=5)\n\ndraw.ellipse((990, 195, 1010, 215), fill\\=WHITE)\n\n\n\n\\# Central leadership\n\nrounded\\_box(700, 235, 1300, 335, fill\\=MID, outline\\=GOLD, width\\=3)\n\ncentered\\_block(\"FOUNDER / STRATEGIC DIRECTION\", (715, 248, 1285, 285), section\\_font, fill\\=WHITE)\n\ncentered\\_block(\"Mission, partnerships, enterprise growth, and solution design\", (725, 286, 1275, 322), body\\_font, fill\\=GREEN)\n\n\n\n\\# Side panels\n\nleft\\_block(\n\n\u0026#x20;   \"LASER GROWTH FRAMEWORK\",\n\n\u0026#x20;   \\[\n\n\u0026#x20;       \"Focus: identify the right markets, clients, and operational pain points\",\n\n\u0026#x20;       \"Align: connect humans, agents, systems, and service delivery\",\n\n\u0026#x20;       \"Amplify: scale repeatable wins using AI workflows and dashboards\",\n\n\u0026#x20;       \"Scale: turn strong execution into durable revenue and partnerships\",\n\n\u0026#x20;   ],\n\n\u0026#x20;   (40, 260, 430, 760),\n\n\u0026#x20;   title\\_color\\=GOLD,\n\n)\n\nleft\\_block(\n\n\u0026#x20;   \"COMMUNICATION FLOW\",\n\n\u0026#x20;   \\[\n\n\u0026#x20;       \"Inform: the right message to the right stakeholder at the right time\",\n\n\u0026#x20;       \"Align: shared visibility across business, marketing, sales, and operations\",\n\n\u0026#x20;       \"Act: route approvals, follow-ups, tasks, and escalations clearly\",\n\n\u0026#x20;   ],\n\n\u0026#x20;   (40, 790, 430, 1130),\n\n\u0026#x20;   title\\_color\\=CYAN,\n\n\u0026#x20;   bullet\\_color\\=CYAN,\n\n)\n\nleft\\_block(\n\n\u0026#x20;   \"BRAND KIT\",\n\n\u0026#x20;   \\[\n\n\u0026#x20;       \"Voice: strategic, human-led, execution-driven, future-focused\",\n\n\u0026#x20;       \"Primary colors: Deep Navy, Electric Cyan, Growth Green, Signal Gold\",\n\n\u0026#x20;       \"Use cases: decks, dashboards, AMX talent posts, proposals, sales one-pagers\",\n\n\u0026#x20;       \"Visual rule: clean structure, bright emphasis, one-message-at-a-time clarity\",\n\n\u0026#x20;   ],\n\n\u0026#x20;   (1550, 790, 1950, 1220),\n\n\u0026#x20;   title\\_color\\=GREEN,\n\n\u0026#x20;   bullet\\_color\\=GOLD,\n\n)\n\n\n\nleft\\_block(\n\n\u0026#x20;   \"SALES MANAGEMENT\",\n\n\u0026#x20;   \\[\n\n\u0026#x20;       \"Attract: AI-assisted marketing and demand generation\",\n\n\u0026#x20;       \"Qualify: route the best opportunities with data and scoring\",\n\n\u0026#x20;       \"Present: human-led conversations powered by agent insights\",\n\n\u0026#x20;       \"Close: streamlined proposals, approvals, onboarding, and reporting\",\n\n\u0026#x20;       \"Grow: customer success, renewals, referrals, and expansion\",\n\n\u0026#x20;   ],\n\n\u0026#x20;   (1550, 260, 1950, 760),\n\n\u0026#x20;   title\\_color\\=GOLD,\n\n\u0026#x20;   bullet\\_color\\=GREEN,\n\n)\n\n\n\n\\# Leadership layer roles based on actual H3AT service areas\n\ncards \\= \\[\n\n\u0026#x20;   (\"Business Development\\n\u0026 Infrastructure\", \"Entity structure, partnerships,\\ncontracts, compliance\", CYAN),\n\n\u0026#x20;   (\"Strategic Consulting\\n\u0026 Advisory\", \"Growth plans, revenue design,\\nmarket positioning\", GREEN),\n\n\u0026#x20;   (\"AI \u0026 Generative AI\\nSolutions\", \"Automation, custom GPTs,\\nAI dashboards, insights\", PURPLE),\n\n\u0026#x20;   (\"Systems Development\\n\u0026 Integration\", \"CRM, databases, APIs,\\ncloud and workflow systems\", ORANGE),\n\n\u0026#x20;   (\"Communications\\n\u0026 Client Success\", \"Messaging, reporting,\\nonboarding, retention\", GOLD),\n\n]\n\nx\\_positions \\= \\[470, 690, 910, 1130, 1350]\n\nfor x, (t, s, c) in zip(x\\_positions, cards):\n\n\u0026#x20;   role\\_card(x, 390, x+190, 590, t, s, c)\n\n\n\n\\# Connect from center\n\nfor x in \\[565, 785, 1005, 1225, 1445]:\n\n\u0026#x20;   draw.line((1000, 335, x, 370), fill\\=LINE, width\\=3)\n\n\u0026#x20;   draw.line((x, 370, x, 390), fill\\=LINE, width\\=3)\n\n\n\n\\# Human + AI layer\n\nrounded\\_box(470, 650, 1535, 850, fill\\=PANEL, outline\\=CYAN, width\\=3)\n\ncentered\\_block(\"HUMAN + AI AGENT COLLABORATION LAYER\", (520, 665, 1485, 705), section\\_font, fill\\=CYAN)\n\ncentered\\_block(\n\n\u0026#x20;   \"Humans own judgment, empathy, approvals, and relationship leadership.\\n\"\n\n\u0026#x20;   \"Agents handle research, drafting, routing, reporting, and workflow scale.\",\n\n\u0026#x20;   (520, 710, 1485, 760),\n\n\u0026#x20;   body\\_font,\n\n\u0026#x20;   fill\\=WHITE,\n\n)\n\n\n\nagent\\_titles \\= \\[\n\n\u0026#x20;   (\"Research Agent\", CYAN),\n\n\u0026#x20;   (\"Content Agent\", GREEN),\n\n\u0026#x20;   (\"CRM \u0026 Data Agent\", ORANGE),\n\n\u0026#x20;   (\"Sales Assist Agent\", PURPLE),\n\n\u0026#x20;   (\"PMO Agent\", GOLD),\n\n\u0026#x20;   (\"Support Agent\", RED),\n\n]\n\nax \\= 500\n\nfor title, color in agent\\_titles:\n\n\u0026#x20;   small\\_card(ax, 770, ax+155, 830, title, \"Agentic support\", color)\n\n\u0026#x20;   ax +\\= 170\n\n\n\n\\# Connect leadership cards to human+AI layer\n\nfor x in \\[565, 785, 1005, 1225, 1445]:\n\n\u0026#x20;   draw.line((x, 590, x, 650), fill\\=LINE, width\\=3)\n\n\n\n\\# Pods\n\nrounded\\_box(470, 920, 1535, 1250, fill\\=BLUE, outline\\=LINE, width\\=3)\n\ncentered\\_block(\"LEAN PODS FOR GROWTH, DELIVERY, AND REVENUE\", (540, 935, 1465, 970), section\\_font, fill\\=WHITE)\n\n\n\npod\\_specs \\= \\[\n\n\u0026#x20;   (\"Growth Pod\", \"Market strategy,\\npartnerships,\\nnew opportunities\", CYAN),\n\n\u0026#x20;   (\"Demand Pod\", \"Brand, content,\\ncampaigns,\\nlead generation\", GREEN),\n\n\u0026#x20;   (\"Revenue Pod\", \"Sales process,\\nproposals,\\naccount growth\", PURPLE),\n\n\u0026#x20;   (\"Delivery Pod\", \"Implementation,\\noperations,\\nsupport success\", ORANGE),\n\n]\n\npx \\= 520\n\nfor title, subtitle, color in pod\\_specs:\n\n\u0026#x20;   role\\_card(px, 995, px+225, 1185, title, subtitle, color)\n\n\u0026#x20;   px +\\= 250\n\n\n\nfor x in \\[632, 882, 1132, 1382]:\n\n\u0026#x20;   draw.line((x, 850, x, 995), fill\\=LINE, width\\=3)\n\n\n\n\\# Footer band\n\nrounded\\_box(470, 1275, 1535, 1350, fill\\=PANEL, outline\\=GREEN, width\\=2)\n\ncentered\\_block(\n\n\u0026#x20;   \"One mission. One team. One system. Business + marketing + sales + delivery in one beam.\",\n\n\u0026#x20;   (500, 1290, 1505, 1335),\n\n\u0026#x20;   body\\_font,\n\n\u0026#x20;   fill\\=WHITE,\n\n)\n\n\n\nout \\= \"/mnt/data/h3at\\_real\\_data\\_org\\_diagram\\_brand\\_kit.png\"\n\nimg.save(out)\n\nprint(out)",
+                      "status":  "in_progress",
+                      "leadAgentId":  "696f77ba-3f81-438f-b77d-2c338fffd323",
+                      "targetDate":  null,
+                      "color":  "#ef4444",
+                      "pauseReason":  null,
+                      "pausedAt":  null,
+                      "executionWorkspacePolicy":  null,
+                      "archivedAt":  null,
+                      "createdAt":  "2026-04-06T13:22:42.324Z",
+                      "updatedAt":  "2026-04-10T00:11:25.469Z",
+                      "urlKey":  "market-positioning-q2",
+                      "goalIds":  [
+                                      "cb11b725-c55c-4376-a0e2-d9d691849c44",
+                                      "e9db893e-a713-4875-92c7-ca54aff49d43"
+                                  ],
+                      "goals":  [
+                                    {
+                                        "id":  "cb11b725-c55c-4376-a0e2-d9d691849c44",
+                                        "title":  "1MILLION MRR AI MICRO SKILLD SERVICES -SOCIAL, WEB, PRINT , AGENTS,SKILLS,WORKFLOWS, DIGITAL, PHYSICAL, HYBRID COMAPY BUILDS."
+                                    },
+                                    {
+                                        "id":  "e9db893e-a713-4875-92c7-ca54aff49d43",
+                                        "title":  "Market Positioning"
+                                    }
+                                ],
+                      "codebase":  {
+                                       "workspaceId":  null,
+                                       "repoUrl":  null,
+                                       "repoRef":  null,
+                                       "defaultRef":  null,
+                                       "repoName":  null,
+                                       "localFolder":  null,
+                                       "managedFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\623cad87-a670-42f8-aad6-5a4da0c9d92d\\_default",
+                                       "effectiveLocalFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\623cad87-a670-42f8-aad6-5a4da0c9d92d\\_default",
+                                       "origin":  "managed_checkout"
+                                   },
+                      "workspaces":  [
+
+                                     ],
+                      "primaryWorkspace":  null
+                  },
+                  {
+                      "id":  "009bfcad-987b-445f-8347-9c5e759c261c",
+                      "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                      "goalId":  null,
+                      "name":  "BOARD-TEMPLATES",
+                      "description":  "Agent-ready Trello-style board templates. 8 templates: Hub Activation, Grant Pipeline, Content Campaign, Tech Sprint, Event Planning, Program Delivery, Revenue Pod, Partner Onboarding. Clone any template issue to spin up a new project board.",
+                      "status":  "backlog",
+                      "leadAgentId":  null,
+                      "targetDate":  null,
+                      "color":  "#f97316",
+                      "pauseReason":  null,
+                      "pausedAt":  null,
+                      "executionWorkspacePolicy":  null,
+                      "archivedAt":  null,
+                      "createdAt":  "2026-04-09T20:39:53.003Z",
+                      "updatedAt":  "2026-04-09T20:39:53.003Z",
+                      "urlKey":  "board-templates",
+                      "goalIds":  [
+
+                                  ],
+                      "goals":  [
+
+                                ],
+                      "codebase":  {
+                                       "workspaceId":  "38c39485-ebec-4619-b447-c8bb99877f7d",
+                                       "repoUrl":  null,
+                                       "repoRef":  null,
+                                       "defaultRef":  null,
+                                       "repoName":  null,
+                                       "localFolder":  "C:/Users/Techa/.paperclip/tmp_surfers",
+                                       "managedFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\009bfcad-987b-445f-8347-9c5e759c261c\\_default",
+                                       "effectiveLocalFolder":  "C:/Users/Techa/.paperclip/tmp_surfers",
+                                       "origin":  "local_folder"
+                                   },
+                      "workspaces":  [
+                                         {
+                                             "id":  "38c39485-ebec-4619-b447-c8bb99877f7d",
+                                             "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                                             "projectId":  "009bfcad-987b-445f-8347-9c5e759c261c",
+                                             "name":  "Paperclip Repo Skills",
+                                             "sourceType":  "local_path",
+                                             "cwd":  "C:/Users/Techa/.paperclip/tmp_surfers",
+                                             "repoUrl":  null,
+                                             "repoRef":  null,
+                                             "defaultRef":  null,
+                                             "visibility":  "default",
+                                             "setupCommand":  null,
+                                             "cleanupCommand":  null,
+                                             "remoteProvider":  null,
+                                             "remoteWorkspaceRef":  null,
+                                             "sharedWorkspaceKey":  null,
+                                             "metadata":  null,
+                                             "isPrimary":  true,
+                                             "runtimeServices":  [
+
+                                                                 ],
+                                             "createdAt":  "2026-04-10T19:55:25.674Z",
+                                             "updatedAt":  "2026-04-10T19:55:25.674Z"
+                                         }
+                                     ],
+                      "primaryWorkspace":  {
+                                               "id":  "38c39485-ebec-4619-b447-c8bb99877f7d",
+                                               "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                                               "projectId":  "009bfcad-987b-445f-8347-9c5e759c261c",
+                                               "name":  "Paperclip Repo Skills",
+                                               "sourceType":  "local_path",
+                                               "cwd":  "C:/Users/Techa/.paperclip/tmp_surfers",
+                                               "repoUrl":  null,
+                                               "repoRef":  null,
+                                               "defaultRef":  null,
+                                               "visibility":  "default",
+                                               "setupCommand":  null,
+                                               "cleanupCommand":  null,
+                                               "remoteProvider":  null,
+                                               "remoteWorkspaceRef":  null,
+                                               "sharedWorkspaceKey":  null,
+                                               "metadata":  null,
+                                               "isPrimary":  true,
+                                               "runtimeServices":  [
+
+                                                                   ],
+                                               "createdAt":  "2026-04-10T19:55:25.674Z",
+                                               "updatedAt":  "2026-04-10T19:55:25.674Z"
+                                           }
+                  },
+                  {
+                      "id":  "e48524e1-d8e4-414f-a86d-f0faea095993",
+                      "companyId":  "dece557d-8849-4040-b8ad-e0e235a54b52",
+                      "goalId":  "cbe76238-5436-4690-9b21-5f36b2d0c001",
+                      "name":  "Research \u0026 Development  for website traffic https://l3idesignsolutions.com/",
+                      "description":  "Research \u0026 Development  for website traffic [https://l3idesignsolutions.com/](https://l3idesignsolutions.com/) ,\u0026#x20;\n\n\n\n1. Need Report  + Company Profile\n2. Task Action Plans\u0026#x20;\n3. budget\n4. Roadmaps\n5. Goals\n6. Milestones",
+                      "status":  "in_progress",
+                      "leadAgentId":  null,
+                      "targetDate":  "2026-04-13",
+                      "color":  "#ef4444",
+                      "pauseReason":  null,
+                      "pausedAt":  null,
+                      "executionWorkspacePolicy":  null,
+                      "archivedAt":  null,
+                      "createdAt":  "2026-04-13T11:36:11.307Z",
+                      "updatedAt":  "2026-04-13T11:36:11.307Z",
+                      "urlKey":  "research-development-for-website-traffic-https-l3idesignsolutions-com",
+                      "goalIds":  [
+                                      "cbe76238-5436-4690-9b21-5f36b2d0c001"
+                                  ],
+                      "goals":  [
+                                    {
+                                        "id":  "cbe76238-5436-4690-9b21-5f36b2d0c001",
+                                        "title":  "Pillar 1: Revenue Growth ($1M MRR)"
+                                    }
+                                ],
+                      "codebase":  {
+                                       "workspaceId":  null,
+                                       "repoUrl":  null,
+                                       "repoRef":  null,
+                                       "defaultRef":  null,
+                                       "repoName":  null,
+                                       "localFolder":  null,
+                                       "managedFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\e48524e1-d8e4-414f-a86d-f0faea095993\\_default",
+                                       "effectiveLocalFolder":  "C:\\Users\\Techa\\.paperclip\\instances\\default\\projects\\dece557d-8849-4040-b8ad-e0e235a54b52\\e48524e1-d8e4-414f-a86d-f0faea095993\\_default",
+                                       "origin":  "managed_checkout"
+                                   },
+                      "workspaces":  [
+
+                                     ],
+                      "primaryWorkspace":  null
+                  }
+              ],
+    "Count":  7
+}

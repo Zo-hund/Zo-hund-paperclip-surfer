@@ -103,7 +103,7 @@ export declare const plugins: import("drizzle-orm/pg-core").PgTableWithColumns<{
             tableName: "plugins";
             dataType: "json";
             columnType: "PgJsonb";
-            data: ("automation" | "connector" | "workspace" | "ui")[];
+            data: ("workspace" | "automation" | "connector" | "ui")[];
             driverParam: unknown;
             notNull: true;
             hasDefault: true;
@@ -115,7 +115,7 @@ export declare const plugins: import("drizzle-orm/pg-core").PgTableWithColumns<{
             identity: undefined;
             generated: undefined;
         }, {}, {
-            $type: ("automation" | "connector" | "workspace" | "ui")[];
+            $type: ("workspace" | "automation" | "connector" | "ui")[];
         }>;
         manifestJson: import("drizzle-orm/pg-core").PgColumn<{
             name: "manifest_json";
@@ -141,7 +141,7 @@ export declare const plugins: import("drizzle-orm/pg-core").PgTableWithColumns<{
             tableName: "plugins";
             dataType: "string";
             columnType: "PgText";
-            data: "error" | "installed" | "ready" | "disabled" | "upgrade_pending" | "uninstalled";
+            data: "error" | "ready" | "installed" | "disabled" | "upgrade_pending" | "uninstalled";
             driverParam: string;
             notNull: true;
             hasDefault: true;
@@ -153,7 +153,7 @@ export declare const plugins: import("drizzle-orm/pg-core").PgTableWithColumns<{
             identity: undefined;
             generated: undefined;
         }, {}, {
-            $type: "error" | "installed" | "ready" | "disabled" | "upgrade_pending" | "uninstalled";
+            $type: "error" | "ready" | "installed" | "disabled" | "upgrade_pending" | "uninstalled";
         }>;
         installOrder: import("drizzle-orm/pg-core").PgColumn<{
             name: "install_order";

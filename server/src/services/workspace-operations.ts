@@ -14,6 +14,7 @@ function toWorkspaceOperation(row: WorkspaceOperationRow): WorkspaceOperation {
   return {
     id: row.id,
     companyId: row.companyId,
+    operatingEnvironment: row.operatingEnvironment === "simulation" ? "simulation" : "live",
     executionWorkspaceId: row.executionWorkspaceId ?? null,
     heartbeatRunId: row.heartbeatRunId ?? null,
     phase: row.phase as WorkspaceOperationPhase,
@@ -87,6 +88,7 @@ export function workspaceOperationService(db: Db) {
 
     createRecorder(input: {
       companyId: string;
+      operatingEnvironment?: "simulation" | "live";
       heartbeatRunId?: string | null;
       executionWorkspaceId?: string | null;
     }): WorkspaceOperationRecorder {
@@ -134,6 +136,7 @@ export function workspaceOperationService(db: Db) {
           await db.insert(workspaceOperations).values({
             id,
             companyId: input.companyId,
+            operatingEnvironment: input.operatingEnvironment ?? "live",
             executionWorkspaceId,
             heartbeatRunId: input.heartbeatRunId ?? null,
             phase: recordInput.phase,

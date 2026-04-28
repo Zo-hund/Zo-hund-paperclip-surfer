@@ -775,6 +775,7 @@ describe("ensureRuntimeServicesForRun", () => {
 
     const first = await ensureRuntimeServicesForRun({
       runId: run1,
+      operatingEnvironment: "live",
       agent: {
         id: "agent-1",
         name: "Codex Coder",
@@ -794,6 +795,7 @@ describe("ensureRuntimeServicesForRun", () => {
 
     const second = await ensureRuntimeServicesForRun({
       runId: run2,
+      operatingEnvironment: "live",
       agent: {
         id: "agent-1",
         name: "Codex Coder",
@@ -818,6 +820,7 @@ describe("ensureRuntimeServicesForRun", () => {
     leasedRunIds.add(run3);
     const third = await ensureRuntimeServicesForRun({
       runId: run3,
+      operatingEnvironment: "live",
       agent: {
         id: "agent-1",
         name: "Codex Coder",
@@ -866,6 +869,7 @@ describe("ensureRuntimeServicesForRun", () => {
 
     const services = await ensureRuntimeServicesForRun({
       runId,
+      operatingEnvironment: "live",
       agent: {
         id: "agent-1",
         name: "Codex Coder",
@@ -922,6 +926,7 @@ describe("ensureRuntimeServicesForRun", () => {
 
     const services = await ensureRuntimeServicesForRun({
       runId,
+      operatingEnvironment: "live",
       agent: {
         id: "agent-1",
         name: "Codex Coder",
@@ -981,6 +986,7 @@ describe("ensureRuntimeServicesForRun", () => {
 
     const services = await ensureRuntimeServicesForRun({
       runId,
+      operatingEnvironment: "live",
       agent: {
         id: "agent-1",
         name: "Codex Coder",

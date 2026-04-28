@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, jsonb, index, } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, timestamp, jsonb, index, } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 export const agents = pgTable("agents", {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -19,11 +19,16 @@ export const agents = pgTable("agents", {
     pausedAt: timestamp("paused_at", { withTimezone: true }),
     permissions: jsonb("permissions").$type().notNull().default({}),
     lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
+    cronExpression: text("cron_expression"),
+    scheduleTimezone: text("schedule_timezone"),
+    nextScheduledAt: timestamp("next_scheduled_at", { withTimezone: true }),
     metadata: jsonb("metadata").$type(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
     companyStatusIdx: index("agents_company_status_idx").on(table.companyId, table.status),
     companyReportsToIdx: index("agents_company_reports_to_idx").on(table.companyId, table.reportsTo),
+    scheduleIdx: index("agents_schedule_idx").on(table.scheduleEnabled, table.nextScheduledAt),
 }));
 //# sourceMappingURL=agents.js.map

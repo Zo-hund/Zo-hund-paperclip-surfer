@@ -22,6 +22,7 @@ export const amxLedger = pgTable(
     companyId: uuid("company_id").notNull().references(() => companies.id),
     principalType: text("principal_type").notNull(), // 'user', 'agent', 'collective'
     principalId: text("principal_id").notNull(),
+    operatingEnvironment: text("operating_environment"),
     tokenBalance: integer("token_balance").notNull().default(0), // Production Tokens
     creditBalance: integer("credit_balance").notNull().default(0), // Learning Credits
     walletAddress: text("wallet_address"), // External MetaMask address
@@ -30,7 +31,12 @@ export const amxLedger = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    principalUniqueIdx: uniqueIndex("amx_ledger_principal_idx").on(table.companyId, table.principalType, table.principalId),
+    principalUniqueIdx: uniqueIndex("amx_ledger_principal_idx").on(
+      table.companyId,
+      table.principalType,
+      table.principalId,
+      table.operatingEnvironment,
+    ),
   }),
 );
 

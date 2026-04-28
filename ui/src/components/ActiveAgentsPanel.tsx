@@ -7,6 +7,7 @@ import { issuesApi } from "../api/issues";
 import type { TranscriptEntry } from "../adapters";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, relativeTime } from "../lib/utils";
+import { agentColor } from "../lib/agent-colors";
 import { ExternalLink } from "lucide-react";
 import { Identity } from "./Identity";
 import { RunTranscriptView } from "./transcript/RunTranscriptView";
@@ -89,13 +90,16 @@ function AgentRunCard({
   hasOutput: boolean;
   isActive: boolean;
 }) {
+  const color = agentColor(run.agentId);
   return (
-    <div className={cn(
-      "flex h-[320px] flex-col overflow-hidden rounded-xl border shadow-sm",
-      isActive
-        ? "border-cyan-500/25 bg-cyan-500/[0.04] shadow-[0_16px_40px_rgba(6,182,212,0.08)]"
-        : "border-border bg-background/70",
-    )}>
+    <div
+      className="flex h-[320px] flex-col overflow-hidden rounded-xl border shadow-sm"
+      style={{
+        borderColor: `${color}40`,
+        background: `linear-gradient(135deg, ${color}0d 0%, transparent 65%)`,
+        boxShadow: isActive ? `0 8px 32px ${color}28` : undefined,
+      }}
+    >
       <div className="border-b border-border/60 px-3 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">

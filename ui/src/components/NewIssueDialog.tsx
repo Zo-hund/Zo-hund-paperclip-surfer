@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type DragEvent } from "react";
+import { ApiError } from "../api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { pickTextColorForSolidBg } from "@/lib/color-contrast";
 import { useDialog } from "../context/DialogContext";
@@ -633,6 +634,7 @@ export function NewIssueDialog() {
 
   function handleSubmit() {
     if (!effectiveCompanyId || !title.trim() || createIssue.isPending) return;
+    createIssue.reset();
     const assigneeAdapterOverrides = buildAssigneeAdapterOverrides({
       adapterType: assigneeAdapterType,
       modelOverride: assigneeModelOverride,
@@ -812,8 +814,21 @@ export function NewIssueDialog() {
   const savedDraft = loadDraft();
   const hasSavedDraft = Boolean(savedDraft?.title.trim() || savedDraft?.description.trim());
   const canDiscardDraft = hasDraft || hasSavedDraft;
-  const createIssueErrorMessage =
-    createIssue.error instanceof Error ? createIssue.error.message : "Failed to create issue. Try again.";
+  const createIssueErrorMessage = (() => {
+    const err = createIssue.error;
+    if (!err) return "";
+    if (err instanceof ApiError) {
+      if (err.status === 0) return err.message;
+      if (err.status === 401) return "Session expired — please refresh and log in again.";
+      if (err.status === 403) return "You don't have permission to create issues here.";
+      if (err.status >= 500) return "Server error — try again in a moment.";
+      return err.message;
+    }
+    if (err instanceof Error && (err.message === "Failed to fetch" || err.message.includes("NetworkError"))) {
+      return "Server unreachable — check your connection and try again.";
+    }
+    return err instanceof Error ? err.message : "Failed to create issue. Try again.";
+  })();
   const stagedDocuments = stagedFiles.filter((file) => file.kind === "document");
   const stagedAttachments = stagedFiles.filter((file) => file.kind === "attachment");
 

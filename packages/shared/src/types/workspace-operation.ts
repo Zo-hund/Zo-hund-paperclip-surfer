@@ -1,3 +1,5 @@
+import type { OperatingEnvironment } from "../constants.js";
+
 export type WorkspaceOperationPhase =
   | "worktree_prepare"
   | "workspace_provision"
@@ -9,6 +11,7 @@ export type WorkspaceOperationStatus = "running" | "succeeded" | "failed" | "ski
 export interface WorkspaceOperation {
   id: string;
   companyId: string;
+  operatingEnvironment: OperatingEnvironment;
   executionWorkspaceId: string | null;
   heartbeatRunId: string | null;
   phase: WorkspaceOperationPhase;

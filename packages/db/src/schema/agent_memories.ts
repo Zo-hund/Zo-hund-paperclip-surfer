@@ -9,6 +9,7 @@ export const agentMemories = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
     companyId: uuid("company_id").notNull().references(() => companies.id),
+    operatingEnvironment: text("operating_environment").notNull().default("live"),
     scope: text("scope").notNull().$type<"global" | "project">(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
     category: text("category").notNull().$type<"pattern" | "preference" | "decision" | "learning" | "feedback">(),
@@ -22,6 +23,10 @@ export const agentMemories = pgTable(
   (table) => ({
     agentScopeIdx: index("agent_memories_agent_scope_idx").on(table.agentId, table.scope),
     agentProjectIdx: index("agent_memories_agent_project_idx").on(table.agentId, table.projectId),
+    companyEnvironmentIdx: index("agent_memories_company_environment_idx").on(
+      table.companyId,
+      table.operatingEnvironment,
+    ),
     companyIdx: index("agent_memories_company_idx").on(table.companyId),
   }),
 );

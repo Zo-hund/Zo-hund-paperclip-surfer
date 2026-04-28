@@ -14,6 +14,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agentApiKeys,
   authUsers,
+  companies,
   invites,
   joinRequests
 } from "@paperclipai/db";
@@ -29,7 +30,11 @@ import {
   updateUserCompanyAccessSchema,
   PERMISSION_KEYS
 } from "@paperclipai/shared";
-import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
+import type {
+  DeploymentExposure,
+  DeploymentMode,
+  OperatingEnvironment,
+} from "@paperclipai/shared";
 import {
   forbidden,
   conflict,
@@ -39,6 +44,7 @@ import {
 } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { validate } from "../middleware/validate.js";
+import { loadConfig } from "../config.js";
 import {
   accessService,
   agentService,
@@ -47,6 +53,7 @@ import {
   logActivity,
   notifyHireApproved
 } from "../services/index.js";
+import { createEmailService } from "../services/email.js";
 import { assertCompanyAccess } from "./authz.js";
 import {
   claimBoardOwnership,
@@ -214,6 +221,13 @@ function listAvailableSkills(): AvailableSkill[] {
 function toJoinRequestResponse(row: typeof joinRequests.$inferSelect) {
   const { claimSecretHash: _claimSecretHash, ...safe } = row;
   return safe;
+}
+
+function normalizeOperatingEnvironment(
+  value: unknown,
+  fallback: OperatingEnvironment = "simulation",
+): OperatingEnvironment {
+  return value === "live" ? "live" : fallback;
 }
 
 type JoinDiagnostic = {
@@ -865,6 +879,7 @@ function toInviteSummaryResponse(
   return {
     id: invite.id,
     companyId: invite.companyId,
+    operatingEnvironment: normalizeOperatingEnvironment(invite.operatingEnvironment),
     inviteType: invite.inviteType,
     allowedJoinTypes: invite.allowedJoinTypes,
     expiresAt: invite.expiresAt,
@@ -1129,6 +1144,7 @@ export function buildInviteOnboardingTextDocument(
 
     ## Invite
     - inviteType: ${invite.inviteType}
+    - operatingEnvironment: ${normalizeOperatingEnvironment(invite.operatingEnvironment)}
     - allowedJoinTypes: ${invite.allowedJoinTypes}
     - expiresAt: ${invite.expiresAt.toISOString()}
   `);
@@ -1562,6 +1578,7 @@ export function accessRoutes(
   }
 ) {
   const router = Router();
+  const emailService = createEmailService(loadConfig());
   const access = accessService(db);
   const boardAuth = boardAuthService(db);
   const agents = agentService(db);
@@ -1834,15 +1851,19 @@ export function accessRoutes(
     req: Request;
     companyId: string;
     allowedJoinTypes: "human" | "agent" | "both";
+    targetEnvironment: OperatingEnvironment;
     defaultsPayload?: Record<string, unknown> | null;
     agentMessage?: string | null;
+    tx?: any;
   }) {
+    const executor = input.tx ?? db;
     const normalizedAgentMessage =
       typeof input.agentMessage === "string"
         ? input.agentMessage.trim() || null
         : null;
     const insertValues = {
       companyId: input.companyId,
+      operatingEnvironment: input.targetEnvironment,
       inviteType: "company_join" as const,
       allowedJoinTypes: input.allowedJoinTypes,
       defaultsPayload: mergeInviteDefaults(
@@ -1858,14 +1879,14 @@ export function accessRoutes(
     for (let attempt = 0; attempt < INVITE_TOKEN_MAX_RETRIES; attempt += 1) {
       const candidateToken = createInviteToken();
       try {
-        const row = await db
+        const row = await executor
           .insert(invites)
           .values({
             ...insertValues,
             tokenHash: hashToken(candidateToken)
           })
           .returning()
-          .then((rows) => rows[0]);
+          .then((rows: Array<typeof invites.$inferSelect>) => rows[0]);
         token = candidateToken;
         created = row;
         break;
@@ -1880,6 +1901,21 @@ export function accessRoutes(
     }
 
     return { token, created, normalizedAgentMessage };
+  }
+
+  function normalizeInviteeEmail(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const normalized = value.trim().toLowerCase();
+    return normalized || null;
+  }
+
+  async function lookupCompanyName(executor: any, companyId: string): Promise<string | null> {
+    const company = await executor
+      .select({ name: companies.name })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .then((rows: Array<{ name: string }>) => rows[0] ?? null);
+    return company?.name ?? null;
   }
 
   router.get("/skills/available", (_req, res) => {
@@ -1915,14 +1951,112 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       await assertCompanyPermission(req, companyId, "users:invite");
-      const { token, created, normalizedAgentMessage } =
-        await createCompanyInviteForCompany({
+      const normalizedInviteeEmail = normalizeInviteeEmail(req.body.inviteeEmail);
+      let token: string;
+      let created: typeof invites.$inferSelect;
+      let normalizedAgentMessage: string | null;
+      let inviteSummary: ReturnType<typeof toInviteSummaryResponse>;
+      let delivery:
+        | {
+            attempted: false;
+          }
+        | {
+            attempted: true;
+            accepted: boolean;
+            recipient: string;
+            provider: "resend";
+            messageId: string | null;
+            subject: string;
+          };
+
+      if (normalizedInviteeEmail) {
+        ({
+          token,
+          created,
+          normalizedAgentMessage,
+          inviteSummary,
+          delivery,
+        } = await db.transaction(async (tx) => {
+          const createdInvite = await createCompanyInviteForCompany({
+            req,
+            companyId,
+            allowedJoinTypes: req.body.allowedJoinTypes,
+            targetEnvironment: req.body.targetEnvironment,
+            defaultsPayload: req.body.defaultsPayload ?? null,
+            agentMessage: req.body.agentMessage ?? null,
+            tx,
+          });
+          const nextInviteSummary = toInviteSummaryResponse(req, createdInvite.token, createdInvite.created);
+          const companyName = await lookupCompanyName(tx, companyId);
+          const baseUrl = requestBaseUrl(req);
+          const inviteUrl = baseUrl
+            ? `${baseUrl}/invite/${createdInvite.token}`
+            : `/invite/${createdInvite.token}`;
+          let delivery:
+            | {
+                attempted: true;
+                accepted: boolean;
+                recipient: string;
+                provider: "resend";
+                messageId: string | null;
+                subject: string;
+              };
+          try {
+            const deliveryResult = await emailService.sendCompanyInviteEmail({
+              email: normalizedInviteeEmail,
+              companyName,
+              inviteUrl,
+              onboardingTextUrl: nextInviteSummary.onboardingTextUrl ?? nextInviteSummary.onboardingTextPath,
+            });
+            logger.info(
+              {
+                companyId,
+                inviteId: createdInvite.created.id,
+                recipientEmail: normalizedInviteeEmail,
+                messageId: deliveryResult.messageId,
+                subject: deliveryResult.subject,
+                provider: deliveryResult.provider,
+              },
+              "Company invite email sent",
+            );
+            delivery = {
+              attempted: true,
+              accepted: deliveryResult.accepted,
+              recipient: deliveryResult.recipient,
+              provider: deliveryResult.provider,
+              messageId: deliveryResult.messageId,
+              subject: deliveryResult.subject,
+            };
+          } catch (err) {
+            logger.error(
+              {
+                err,
+                companyId,
+                inviteId: createdInvite.created.id,
+                recipientEmail: normalizedInviteeEmail,
+              },
+              "Company invite email failed",
+            );
+            throw err;
+          }
+          return { ...createdInvite, inviteSummary: nextInviteSummary, delivery };
+        }));
+      } else {
+        ({
+          token,
+          created,
+          normalizedAgentMessage,
+        } = await createCompanyInviteForCompany({
           req,
           companyId,
           allowedJoinTypes: req.body.allowedJoinTypes,
+          targetEnvironment: req.body.targetEnvironment,
           defaultsPayload: req.body.defaultsPayload ?? null,
           agentMessage: req.body.agentMessage ?? null
-        });
+        }));
+        inviteSummary = toInviteSummaryResponse(req, token, created);
+        delivery = { attempted: false };
+      }
 
       await logActivity(db, {
         companyId,
@@ -1936,20 +2070,22 @@ export function accessRoutes(
         entityId: created.id,
         details: {
           inviteType: created.inviteType,
+          operatingEnvironment: normalizeOperatingEnvironment(created.operatingEnvironment),
           allowedJoinTypes: created.allowedJoinTypes,
           expiresAt: created.expiresAt.toISOString(),
-          hasAgentMessage: Boolean(normalizedAgentMessage)
+          hasAgentMessage: Boolean(normalizedAgentMessage),
+          emailedInvite: Boolean(normalizedInviteeEmail),
         }
       });
 
-      const inviteSummary = toInviteSummaryResponse(req, token, created);
       res.status(201).json({
         ...created,
         token,
         inviteUrl: `/invite/${token}`,
         onboardingTextPath: inviteSummary.onboardingTextPath,
         onboardingTextUrl: inviteSummary.onboardingTextUrl,
-        inviteMessage: inviteSummary.inviteMessage
+        inviteMessage: inviteSummary.inviteMessage,
+        delivery,
       });
     }
   );
@@ -1965,6 +2101,7 @@ export function accessRoutes(
           req,
           companyId,
           allowedJoinTypes: "agent",
+          targetEnvironment: "simulation",
           defaultsPayload: null,
           agentMessage: req.body.agentMessage ?? null
         });
@@ -1981,6 +2118,7 @@ export function accessRoutes(
         entityId: created.id,
         details: {
           inviteType: created.inviteType,
+          operatingEnvironment: normalizeOperatingEnvironment(created.operatingEnvironment),
           allowedJoinTypes: created.allowedJoinTypes,
           expiresAt: created.expiresAt.toISOString(),
           hasAgentMessage: Boolean(normalizedAgentMessage)
@@ -2279,9 +2417,10 @@ export function accessRoutes(
 
             const row = await tx
               .insert(joinRequests)
-              .values({
+          .values({
                 inviteId: invite.id,
                 companyId,
+                operatingEnvironment: normalizeOperatingEnvironment(invite.operatingEnvironment),
                 requestType,
                 status: "pending_approval",
                 requestIp: requestIp(req),
@@ -2310,6 +2449,10 @@ export function accessRoutes(
             .update(joinRequests)
             .set({
               requestIp: requestIp(req),
+              operatingEnvironment: normalizeOperatingEnvironment(
+                existingJoinRequestForInvite?.operatingEnvironment,
+                normalizeOperatingEnvironment(invite.operatingEnvironment),
+              ),
               agentName:
                 requestType === "agent"
                   ? req.body.agentName ??
@@ -2451,6 +2594,7 @@ export function accessRoutes(
         entityId: created.id,
         details: {
           requestType,
+          operatingEnvironment: normalizeOperatingEnvironment(created.operatingEnvironment),
           requestIp: created.requestIp,
           inviteReplay: inviteAlreadyAccepted
         }
@@ -2610,6 +2754,7 @@ export function accessRoutes(
         );
 
         const created = await agents.create(companyId, {
+          environment: normalizeOperatingEnvironment(existing.operatingEnvironment),
           name: agentName,
           role: "general",
           title: null,
@@ -2670,7 +2815,11 @@ export function accessRoutes(
         action: "join.approved",
         entityType: "join_request",
         entityId: requestId,
-        details: { requestType: existing.requestType, createdAgentId }
+        details: {
+          requestType: existing.requestType,
+          createdAgentId,
+          operatingEnvironment: normalizeOperatingEnvironment(existing.operatingEnvironment),
+        }
       });
 
       if (createdAgentId) {

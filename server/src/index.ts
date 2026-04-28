@@ -18,6 +18,7 @@ import {
   reconcilePendingMigrationHistory,
   formatDatabaseBackupResult,
   runDatabaseBackup,
+  runDatabaseRestore,
   authUsers,
   companies,
   companyMemberships,
@@ -28,11 +29,13 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { logger } from "./middleware/logger.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
+import { setupGeminiLiveWebSocketServer } from "./realtime/gemini-live-ws.js";
 import { heartbeatService, reconcilePersistedRuntimeServicesOnStartup, routineService } from "./services/index.js";
 import { createStorageServiceFromConfig } from "./storage/index.js";
 import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
+import { executeSqlFileViaDrizzle } from "./restore-util.js";
 
 type BetterAuthSessionUser = {
   id: string;
@@ -407,7 +410,7 @@ export async function startServer(): Promise<StartedServer> {
       logger.info("Created embedded PostgreSQL database: paperclip");
     }
   
-    const embeddedConnectionString = `postgres://paperclip:paperclip@127.0.0.1:${port}/paperclip`;
+    const embeddedConnectionString = `postgres://paperclip:paperclip@localhost:${port}/paperclip`;
     const shouldAutoApplyFirstRunMigrations = !clusterAlreadyInitialized || dbStatus === "created";
     if (shouldAutoApplyFirstRunMigrations) {
       logger.info("Detected first-run embedded PostgreSQL setup; applying pending migrations automatically");
@@ -418,6 +421,17 @@ export async function startServer(): Promise<StartedServer> {
   
     db = createDb(embeddedConnectionString);
     logger.info("Embedded PostgreSQL ready");
+
+    if (process.env.PAPERCLIP_RESTORE_ON_STARTUP_FILE) {
+      logger.info({ backupFile: process.env.PAPERCLIP_RESTORE_ON_STARTUP_FILE }, "Bootstrap: Restoring database on startup");
+      try {
+        await executeSqlFileViaDrizzle(db, process.env.PAPERCLIP_RESTORE_ON_STARTUP_FILE);
+        logger.info("Bootstrap: Database restore completed successfully");
+      } catch (err) {
+        logger.error({ err }, "Bootstrap: Database restore failed");
+      }
+    }
+
     activeDatabaseConnectionString = embeddedConnectionString;
     resolvedEmbeddedPostgresPort = port;
     startupDbInfo = { mode: "embedded-postgres", dataDir, port };
@@ -497,27 +511,38 @@ export async function startServer(): Promise<StartedServer> {
     resolveSession = (req) => resolveBetterAuthSession(auth, req);
     resolveSessionFromHeaders = (headers) => resolveBetterAuthSessionFromHeaders(auth, headers);
     await initializeBoardClaimChallenge(db as any, { deploymentMode: config.deploymentMode });
+
+    if (process.env.PAPERCLIP_BOOTSTRAP_ADMIN === "true") {
+      const allUsers = await (db as any).select({ id: authUsers.id, email: authUsers.email }).from(authUsers);
+      for (const user of allUsers) {
+        const existing = await (db as any)
+          .select()
+          .from(instanceUserRoles)
+          .where(and(eq(instanceUserRoles.userId, user.id), eq(instanceUserRoles.role, "instance_admin")))
+          .then((rows: any[]) => rows[0]);
+        if (!existing) {
+          await (db as any).insert(instanceUserRoles).values({ userId: user.id, role: "instance_admin" });
+          logger.info({ email: user.email }, "Bootstrap: Promoted user to instance_admin");
+        }
+      }
+    }
+
     authReady = true;
   }
   
-  const listenPort = await detectPort(config.port);
-  if (listenPort !== config.port) {
-    config.port = listenPort;
-  }
-  if (resolvedEmbeddedPostgresPort !== null && resolvedEmbeddedPostgresPort !== config.embeddedPostgresPort) {
-    config.embeddedPostgresPort = resolvedEmbeddedPostgresPort;
-  }
-  if (config.authBaseUrlMode === "explicit" && config.authPublicBaseUrl) {
-    config.authPublicBaseUrl = rewriteLocalUrlPort(config.authPublicBaseUrl, listenPort);
-  }
-  maybePersistWorktreeRuntimePorts({
-    serverPort: listenPort,
-    databasePort: resolvedEmbeddedPostgresPort,
-  });
-  const uiMode = config.uiDevMiddleware ? "vite-dev" : config.serveUi ? "static" : "none";
+  const detectListenPort = async (): Promise<number> => {
+    if (config.portAutoScalingDisabled) return config.port;
+    const port = await detectPort(config.port);
+    return port;
+  };
+  const listenPort = await detectListenPort();
+  const runtimeApiHost = config.host === "0.0.0.0" || config.host === "::" ? "127.0.0.1" : config.host;
+  
   const storageService = createStorageServiceFromConfig(config);
+  const server = createServer();
+
   const app = await createApp(db as any, {
-    uiMode,
+    uiMode: config.uiDevMiddleware ? "vite-dev" : config.serveUi ? "static" : "none",
     serverPort: listenPort,
     storageService,
     deploymentMode: config.deploymentMode,
@@ -526,59 +551,41 @@ export async function startServer(): Promise<StartedServer> {
     bindHost: config.host,
     authReady,
     companyDeletionEnabled: config.companyDeletionEnabled,
+    instanceId: config.instanceId,
+    hostVersion: config.hostVersion,
+    localPluginDir: config.localPluginDir,
     betterAuthHandler,
     resolveSession,
+    httpServer: server,
   });
-  const server = createServer(app as unknown as Parameters<typeof createServer>[0]);
   
-  if (listenPort !== config.port) {
-    logger.warn(`Requested port is busy; using next free port (requestedPort=${config.port}, selectedPort=${listenPort})`);
-  }
-  
-  const runtimeListenHost = config.host;
-  const runtimeApiHost =
-    runtimeListenHost === "0.0.0.0" || runtimeListenHost === "::"
-      ? "localhost"
-      : runtimeListenHost;
-  process.env.PAPERCLIP_LISTEN_HOST = runtimeListenHost;
-  process.env.PAPERCLIP_LISTEN_PORT = String(listenPort);
-  process.env.PAPERCLIP_API_URL = `http://${runtimeApiHost}:${listenPort}`;
+  server.on("request", app);
   
   setupLiveEventsWebSocketServer(server, db as any, {
     deploymentMode: config.deploymentMode,
     resolveSessionFromHeaders,
   });
+  setupGeminiLiveWebSocketServer(server, db as any, {
+    deploymentMode: config.deploymentMode,
+    geminiApiKey: config.geminiApiKey,
+  });
   
-  // Delegate HMR upgrades to Vite if in dev mode
-  (server as any).on("upgrade", (req: any, socket: any, head: any) => {
-    const vite = (app as any).viteServer;
-    if (vite && typeof vite.ws?.handleUpgrade === "function") {
-      try {
-        vite.ws.handleUpgrade(req, socket, head);
-      } catch (err) {
-        logger.error({ err }, "failed vite hmr upgrade delegation");
-      }
-    }
+  await maybePersistWorktreeRuntimePorts({ 
+    serverPort: listenPort,
+    databasePort: resolvedEmbeddedPostgresPort,
   });
 
-  void reconcilePersistedRuntimeServicesOnStartup(db as any)
-    .then((result) => {
-      if (result.reconciled > 0) {
-        logger.warn(
-          { reconciled: result.reconciled },
-          "reconciled persisted runtime services from a previous server process",
-        );
-      }
-    })
-    .catch((err) => {
-      logger.error({ err }, "startup reconciliation of persisted runtime services failed");
+  const routines = routineService(db as any);
+  const heartbeat = heartbeatService(db as any);
+  
+  const skipInternalServices = process.env.PAPERCLIP_SKIP_INTERNAL_SERVICES === "true";
+  if (!skipInternalServices) {
+    // on startup, reconcile any persisted runtime services that might have been 
+    // left in a weird state from a previous crash.
+    void reconcilePersistedRuntimeServicesOnStartup(db as any).catch((err) => {
+      logger.error({ err }, "persisted runtime services reconciliation failed");
     });
-  
-  if (config.heartbeatSchedulerEnabled) {
-    const heartbeat = heartbeatService(db as any);
-    const routines = routineService(db as any);
-  
-    // Reap orphaned running runs at startup while in-memory execution state is empty,
+    
     // then resume any persisted queued runs that were waiting on the previous process.
     void heartbeat
       .reapOrphanedRuns()
@@ -586,6 +593,7 @@ export async function startServer(): Promise<StartedServer> {
       .catch((err) => {
         logger.error({ err }, "startup heartbeat recovery failed");
       });
+
     setInterval(() => {
       void heartbeat
         .tickTimers(new Date())
@@ -708,7 +716,7 @@ export async function startServer(): Promise<StartedServer> {
         authReady,
         requestedPort: config.port,
         listenPort,
-        uiMode,
+        uiMode: config.uiDevMiddleware ? "vite-dev" : config.serveUi ? "static" : "none",
         db: startupDbInfo,
         migrationSummary,
         heartbeatSchedulerEnabled: config.heartbeatSchedulerEnabled,

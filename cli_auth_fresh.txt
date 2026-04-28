@@ -1,0 +1,14 @@
+
+> paperclip@ paperclipai C:\Users\Techa\.paperclip\tmp_surfers
+> node cli/node_modules/tsx/dist/cli.mjs cli/src/index.ts "auth" "login" "--api-base" "http://localhost:3100"
+
+Board authentication required
+Open this URL in your browser to approve CLI access:
+http://localhost:3100/cli-auth/b60f7176-0b81-4642-863c-35bc9e0cdba7?token=pcp_cli_auth_e047082529754a679f4ad6f717bd136133d03fe93cc1b8cf
+Opened the approval page in your browser.
+{
+  "ok": true,
+  "apiBase": "http://localhost:3100",
+  "userId": "local-board",
+  "approvalUrl": "http://localhost:3100/cli-auth/b60f7176-0b81-4642-863c-35bc9e0cdba7?token=pcp_cli_auth_e047082529754a679f4ad6f717bd136133d03fe93cc1b8cf"
+}

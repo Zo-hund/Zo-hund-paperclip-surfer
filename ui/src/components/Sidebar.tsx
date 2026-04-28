@@ -22,6 +22,8 @@ import {
   Store,
   Briefcase,
   ClipboardCheck,
+  Brain,
+  TrafficCone,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -63,9 +65,12 @@ export function Sidebar() {
         <div className="flex items-center px-4 h-14 bg-accent/5">
           <div className="flex items-center gap-2">
             <img src="/brand-logo.png" alt="AMX LABS Logo" className="w-6 h-6 object-contain hover:drop-shadow-[0_0_16px_var(--primary)] hover:scale-110 transition-all duration-300" />
-            <div className="flex flex-col">
-              <span className="text-[12px] font-black tracking-widest uppercase text-foreground/90 leading-none pt-1">
-                AMX LABS x AMX-AIR-HUBS
+            <div className="flex flex-col -gap-1">
+              <span className="text-[14px] font-bold tracking-tight text-foreground leading-none">
+                AMX-AIR-HUBS
+              </span>
+              <span className="text-[10px] font-medium tracking-widest uppercase text-muted-foreground leading-normal pt-0.5">
+                BY AMX LABS
               </span>
             </div>
           </div>
@@ -101,6 +106,7 @@ export function Sidebar() {
               <SquarePen className="h-4 w-4 shrink-0" />
               <span className="truncate">New Issue</span>
             </button>
+            <SidebarNavItem to="/cockpit" label="Command Center" icon={Zap} textBadge="Cockpit" textBadgeTone="amber" />
             <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
             <SidebarNavItem to="/meetings" label="Meetings" icon={Mic} textBadge="New" textBadgeTone="amber" />
             <SidebarNavItem
@@ -127,6 +133,7 @@ export function Sidebar() {
           <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
           <SidebarNavItem to="/mcp-servers" label="MCPs" icon={Plug} />
           <SidebarNavItem to="/analytics" label="Analytics" icon={BarChart3} />
+          <SidebarNavItem to="/memories" label="Memories" icon={Brain} />
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
@@ -137,6 +144,7 @@ export function Sidebar() {
           <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" className="group" iconClassName="group-hover:animate-flash-shake group-hover:text-amber-300 drop-shadow-[0_0_4px_rgba(251,191,36,0.3)] transition-colors duration-200 text-amber-500" />
           <SidebarNavItem to="/rq/portal" label="RQ Portal" icon={Factory} />
           <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
+          <SidebarNavItem to="/pit-stop" label="Pit Stop" icon={TrafficCone} textBadge="Loop" textBadgeTone="amber" />
           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
           <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />
           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />

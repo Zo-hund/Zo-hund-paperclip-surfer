@@ -7,6 +7,8 @@ import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
+import { buildCreateCompanyInviteInput } from "../lib/company-invites";
+import { InviteDeliverySummary } from "../components/InviteDeliverySummary";
 import { Button } from "@/components/ui/button";
 import { Settings, Check, Download, Upload } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
@@ -52,6 +54,27 @@ export function CompanySettings() {
   const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
+  const [standardInviteError, setStandardInviteError] = useState<string | null>(null);
+  const [standardInviteEmail, setStandardInviteEmail] = useState("");
+  const [standardInviteJoinType, setStandardInviteJoinType] = useState<"human" | "agent" | "both">("human");
+  const [standardInviteEnvironment, setStandardInviteEnvironment] = useState<"simulation" | "live">("simulation");
+  const [standardInviteUrl, setStandardInviteUrl] = useState<string | null>(null);
+  const [standardInviteResultEnvironment, setStandardInviteResultEnvironment] = useState<"simulation" | "live" | null>(null);
+  const [standardInviteCopied, setStandardInviteCopied] = useState(false);
+  const [standardInviteDelivery, setStandardInviteDelivery] = useState<
+    | {
+        attempted: false;
+      }
+    | {
+        attempted: true;
+        accepted: boolean;
+        recipient: string;
+        provider: "resend";
+        messageId: string | null;
+        subject: string;
+      }
+    | undefined
+  >(undefined);
 
   const generalDirty =
     !!selectedCompany &&
@@ -133,6 +156,43 @@ export function CompanySettings() {
     }
   });
 
+  const standardInviteMutation = useMutation({
+    mutationFn: () =>
+      accessApi.createCompanyInvite(
+        selectedCompanyId!,
+        buildCreateCompanyInviteInput({
+          allowedJoinTypes: standardInviteJoinType,
+          targetEnvironment: standardInviteEnvironment,
+          inviteeEmail: standardInviteEmail,
+        }),
+      ),
+    onSuccess: (invite) => {
+      setStandardInviteError(null);
+      const base = window.location.origin.replace(/\/+$/, "");
+      const nextInviteUrl = invite.inviteUrl.startsWith("http")
+        ? invite.inviteUrl
+        : `${base}${invite.inviteUrl}`;
+      setStandardInviteUrl(nextInviteUrl);
+      setStandardInviteResultEnvironment(invite.operatingEnvironment);
+      setStandardInviteCopied(false);
+      setStandardInviteDelivery(invite.delivery);
+      pushToast({
+        tone: "success",
+        title: invite.delivery?.attempted
+          ? "Invite email sent"
+          : "Invite link created",
+        body: invite.delivery?.attempted
+          ? `Invite sent to ${invite.delivery.recipient}. Subject: ${invite.delivery.subject}`
+          : `A new ${invite.operatingEnvironment} invite link is ready to copy.`,
+      });
+    },
+    onError: (err) => {
+      setStandardInviteError(
+        err instanceof Error ? err.message : "Failed to create invite",
+      );
+    },
+  });
+
   const syncLogoState = (nextLogoUrl: string | null) => {
     setLogoUrl(nextLogoUrl ?? "");
     void queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
@@ -174,6 +234,14 @@ export function CompanySettings() {
     setInviteSnippet(null);
     setSnippetCopied(false);
     setSnippetCopyDelightId(0);
+    setStandardInviteError(null);
+    setStandardInviteUrl(null);
+    setStandardInviteCopied(false);
+    setStandardInviteResultEnvironment(null);
+    setStandardInviteEmail("");
+    setStandardInviteJoinType("human");
+    setStandardInviteEnvironment("simulation");
+    setStandardInviteDelivery(undefined);
   }, [selectedCompanyId]);
 
   const archiveMutation = useMutation({
@@ -397,6 +465,112 @@ export function CompanySettings() {
           Invites
         </div>
         <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="space-y-3 rounded-md border border-border/60 bg-background/40 p-3">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Standard invite</div>
+              <p className="text-xs text-muted-foreground">
+                Create a standard company invite link. Add a recipient email to
+                send it immediately through Resend.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[12rem_12rem_minmax(0,1fr)]">
+              <Field
+                label="Join type"
+                hint="Controls who can accept this invite."
+              >
+                <select
+                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                  value={standardInviteJoinType}
+                  onChange={(e) =>
+                    setStandardInviteJoinType(
+                      e.target.value as "human" | "agent" | "both",
+                    )}
+                >
+                  <option value="human">Human</option>
+                  <option value="agent">Agent</option>
+                  <option value="both">Human or agent</option>
+                </select>
+              </Field>
+              <Field
+                label="Environment"
+                hint="Simulation is the default onboarding path. Live should be used only for production access."
+              >
+                <select
+                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                  value={standardInviteEnvironment}
+                  onChange={(e) =>
+                    setStandardInviteEnvironment(
+                      e.target.value as "simulation" | "live",
+                    )}
+                >
+                  <option value="simulation">Simulation</option>
+                  <option value="live">Live</option>
+                </select>
+              </Field>
+              <Field
+                label="Recipient email"
+                hint="Optional. If provided, Paperclip sends the invite email and the request fails if delivery fails."
+              >
+                <input
+                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                  type="email"
+                  placeholder="teammate@example.com"
+                  value={standardInviteEmail}
+                  onChange={(e) => setStandardInviteEmail(e.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => standardInviteMutation.mutate()}
+                disabled={standardInviteMutation.isPending}
+              >
+                {standardInviteMutation.isPending
+                  ? standardInviteEmail.trim()
+                    ? "Sending..."
+                    : "Creating..."
+                  : standardInviteEmail.trim()
+                  ? "Send invite email"
+                  : "Create invite link"}
+              </Button>
+            </div>
+            {standardInviteError && (
+              <p className="text-sm text-destructive">{standardInviteError}</p>
+            )}
+            {standardInviteUrl && (
+              <div className="rounded-md border border-border bg-muted/30 p-2">
+                <div className="text-xs text-muted-foreground">
+                  Latest standard invite{standardInviteResultEnvironment ? ` · ${standardInviteResultEnvironment}` : ""}
+                </div>
+                <div className="mt-1 space-y-2">
+                  <InviteDeliverySummary delivery={standardInviteDelivery} />
+                  <div className="flex flex-col gap-2 md:flex-row">
+                  <input
+                    className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none"
+                    readOnly
+                    value={standardInviteUrl}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(standardInviteUrl);
+                        setStandardInviteCopied(true);
+                        setTimeout(() => setStandardInviteCopied(false), 2000);
+                      } catch {
+                        /* clipboard may not be available */
+                      }
+                    }}
+                  >
+                    {standardInviteCopied ? "Copied link" : "Copy link"}
+                  </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">
               Generate an OpenClaw agent invite snippet.

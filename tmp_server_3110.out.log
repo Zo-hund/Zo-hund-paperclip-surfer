@@ -1,0 +1,274 @@
+
+> @paperclipai/server@0.3.1 dev C:\Users\Techa\.paperclip\tmp_surfers\server
+> tsx src/index.ts
+
+[16:33:34] [33mWARN[39m: [36mEmbedded PostgreSQL already running; reusing existing process (pid=8312, port=54329)[39m
+[16:33:34] [32mINFO[39m: [36mEmbedded PostgreSQL ready[39m
+
+[36m██████╗  █████╗ ██████╗ ███████╗██████╗  ██████╗██╗     ██╗██████╗ [0m
+[36m██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔════╝██║     ██║██╔══██╗[0m
+[36m██████╔╝███████║██████╔╝█████╗  ██████╔╝██║     ██║     ██║██████╔╝[0m
+[36m██╔═══╝ ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗██║     ██║     ██║██╔═══╝ [0m
+[36m██║     ██║  ██║██║     ███████╗██║  ██║╚██████╗███████╗██║██║     [0m
+[36m╚═╝     ╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝╚═╝     [0m
+[34m  ───────────────────────────────────────────────────────[0m
+[2mMode            [0m [32membedded-postgres[0m  |  [35mstatic-ui[0m
+[2mDeploy          [0m local_trusted (private)
+[2mAuth            [0m [32mready[0m
+[2mServer          [0m 3110
+[2mAPI             [0m http://127.0.0.1:3110/api [2m(health: http://127.0.0.1:3110/api/health)[0m
+[2mUI              [0m http://127.0.0.1:3110
+[2mDatabase        [0m C:\Users\Techa\.paperclip\instances\default\db [2m(pg:54329)[0m
+[2mMigrations      [0m already applied
+[2mAgent JWT       [0m [32mset[0m
+[2mHeartbeat       [0m enabled [2m(30000ms)[0m
+[2mDB Backup       [0m enabled [2m(every 360m, keep 2d)[0m
+[2mBackup Dir      [0m C:\Users\Techa\.paperclip\instances\default\data\backups
+[2mConfig          [0m C:\Users\Techa\.paperclip\instances\default\config.json
+[34m  ───────────────────────────────────────────────────────[0m
+
+[16:33:34] [32mINFO[39m: [36mplugin job coordinator started — listening to lifecycle events[39m [90m{"service":"plugin-job-coordinator"}[39m
+[16:33:34] [32mINFO[39m: [36mplugin job scheduler started[39m [90m{"service":"plugin-job-scheduler","tickIntervalMs":30000,"maxConcurrentJobs":10}[39m
+[16:33:34] [32mINFO[39m: [36minitializing plugin tool dispatcher[39m [90m{"service":"plugin-tool-dispatcher"}[39m
+[16:33:34] [32mINFO[39m: [36mplugin-loader: loading all ready plugins[39m [90m{"service":"plugin-loader"}[39m
+[16:33:34] [32mINFO[39m: [36mAutomatic database backups enabled[39m [90m{"intervalMinutes":360,"retentionDays":2,"backupDir":"C:\Users\Techa\.paperclip\instances\default\data\backups"}[39m
+[16:33:34] [32mINFO[39m: [36mServer listening on 127.0.0.1:3110[39m
+[16:33:34] [32mINFO[39m: [36mloaded tools from ready plugins[39m [90m{"service":"plugin-tool-dispatcher","readyPlugins":0,"registeredTools":0}[39m
+[16:33:34] [32mINFO[39m: [36mplugin tool dispatcher initialized[39m [90m{"service":"plugin-tool-dispatcher","totalTools":0}[39m
+[16:33:34] [32mINFO[39m: [36mplugin-loader: no ready plugins to load[39m [90m{"service":"plugin-loader"}[39m
+[16:34:12] [32mINFO[39m: [36mGET / 200[39m
+[16:34:12] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces?memberUserId=local-board 200[39m
+[16:34:33] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces?memberUserId=local-board 200[39m
+[16:34:51] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/ingest-run 201[39m
+[16:35:11] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/ingest-run 201[39m
+[16:35:12] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/ingest-run 201[39m
+[16:35:12] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/ingest-run 201[39m
+[16:35:25] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces?memberUserId=local-board 200[39m
+[16:35:39] [32mINFO[39m: [36mPATCH /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d 200[39m
+[16:35:48] [33mWARN[39m: [36mPOST /api/companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/feb4756c-f20f-4cbc-9171-aeead3f6c148/package-promotion 422[39m [90m{"routePath":"/companies/:companyId/pit-stop/workspaces/:workspaceId/package-promotion"}[39m
+[16:35:48] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d/package-promotion 201[39m
+[16:35:57] [32mINFO[39m: [36mPOST /approvals/701cadf0-47cc-4b15-b54f-228b1aeddc45/request-revision 200[39m
+[16:36:04] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[16:36:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"52161fe9-a9c1-4fac-a95d-74c39cc9bc29","memoryCount":4}[39m
+[16:36:05] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"52161fe9-a9c1-4fac-a95d-74c39cc9bc29"}[39m
+[16:36:05] [31mERROR[39m: [36mheartbeat execution failed[39m [90m{"runId":"52161fe9-a9c1-4fac-a95d-74c39cc9bc29"}[39m
+    err: {
+      "type": "Error",
+      "message": "Could not create working directory \"G:\\My Drive\\AMX-AIR-HUBS-HQ-ROOT\\AMX-AIR-HUB-FOLDER-OPPRRC\\AMX-LABS\": ENOENT: no such file or directory, mkdir '\\\\?'",
+      "stack":
+          Error: Could not create working directory "G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\AMX-LABS": ENOENT: no such file or directory, mkdir '\\?'
+              at ensureAbsoluteDirectory (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapter-utils\src\server-utils.ts:342:11)
+              at async Object.execute (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapters\opencode-local\src\server\execute.ts:119:3)
+              at async executeRun (C:\Users\Techa\.paperclip\tmp_surfers\server\src\services\heartbeat.ts:2723:29)
+    }
+[16:36:08] [32mINFO[39m: [36mPATCH /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d 200[39m
+[16:36:08] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d/package-promotion 201[39m
+[16:36:22] [32mINFO[39m: [36mPOST /agents/482b3bd0-f6c3-44b6-82b4-83c2c97187d7/resume 200[39m
+[16:36:22] [32mINFO[39m: [36mPATCH /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d 200[39m
+[16:36:22] [32mINFO[39m: [36mPOST /approvals/5f6a0690-3502-4260-8e14-f0a5b775660d/approve 200[39m
+[16:36:22] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"33a29165-f1df-4e10-a859-765b952ad363","memoryCount":4}[39m
+[16:36:22] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"33a29165-f1df-4e10-a859-765b952ad363"}[39m
+[16:36:22] [31mERROR[39m: [36mheartbeat execution failed[39m [90m{"runId":"33a29165-f1df-4e10-a859-765b952ad363"}[39m
+    err: {
+      "type": "Error",
+      "message": "Could not create working directory \"G:\\My Drive\\AMX-AIR-HUBS-HQ-ROOT\\AMX-AIR-HUB-FOLDER-OPPRRC\\AMX-LABS\": ENOENT: no such file or directory, mkdir '\\\\?'",
+      "stack":
+          Error: Could not create working directory "G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\AMX-LABS": ENOENT: no such file or directory, mkdir '\\?'
+              at ensureAbsoluteDirectory (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapter-utils\src\server-utils.ts:342:11)
+              at async Object.execute (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapters\opencode-local\src\server\execute.ts:119:3)
+              at async executeRun (C:\Users\Techa\.paperclip\tmp_surfers\server\src\services\heartbeat.ts:2723:29)
+    }
+[16:36:36] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d 200[39m
+[16:36:36] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/heartbeat-runs?agentId=482b3bd0-f6c3-44b6-82b4-83c2c97187d7&limit=10 200[39m
+[16:36:44] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d/package-promotion 201[39m
+[16:36:45] [32mINFO[39m: [36mPOST /approvals/a71c13db-6858-42c8-bd3d-cf240c155b4f/reject 200[39m
+[16:37:03] [32mINFO[39m: [36mGET /pit-stop 200[39m
+[16:37:03] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/f3b559cd-7295-4924-84c9-b62fa447768d 200[39m
+[16:44:05] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":2,"skipped":0}[39m
+[16:44:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"d375d156-abb3-4f8c-a1e6-d264da32a9f1","runId":"7af1a2fa-f73f-4875-8147-271a2f89ddac","memoryCount":0}[39m
+[16:44:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"696f77ba-3f81-438f-b77d-2c338fffd323","runId":"deb6adf5-48ca-4dad-80ac-0ba492de27dd","memoryCount":4}[39m
+[16:44:05] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"d375d156-abb3-4f8c-a1e6-d264da32a9f1","runId":"7af1a2fa-f73f-4875-8147-271a2f89ddac"}[39m
+[16:44:05] [31mERROR[39m: [36mheartbeat execution failed[39m [90m{"runId":"7af1a2fa-f73f-4875-8147-271a2f89ddac"}[39m
+    err: {
+      "type": "Error",
+      "message": "Could not create working directory \"G:\\My Drive\\AMX-AIR-HUBS-HQ-ROOT\\AMX-AIR-HUB-FOLDER-OPPRRC\\AMX-LABS\\02_PROGRAMS\\C-SUITE\\CSO\": ENOENT: no such file or directory, mkdir '\\\\?'",
+      "stack":
+          Error: Could not create working directory "G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\AMX-LABS\02_PROGRAMS\C-SUITE\CSO": ENOENT: no such file or directory, mkdir '\\?'
+              at ensureAbsoluteDirectory (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapter-utils\src\server-utils.ts:342:11)
+              at async Object.execute (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapters\opencode-local\src\server\execute.ts:119:3)
+              at async executeRun (C:\Users\Techa\.paperclip\tmp_surfers\server\src\services\heartbeat.ts:2723:29)
+    }
+[16:44:05] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"696f77ba-3f81-438f-b77d-2c338fffd323","runId":"deb6adf5-48ca-4dad-80ac-0ba492de27dd"}[39m
+[16:44:05] [31mERROR[39m: [36mheartbeat execution failed[39m [90m{"runId":"deb6adf5-48ca-4dad-80ac-0ba492de27dd"}[39m
+    err: {
+      "type": "Error",
+      "message": "Could not create working directory \"G:\\My Drive\\AMX-AIR-HUBS-HQ-ROOT\\AMX-AIR-HUB-FOLDER-OPPRRC\\AMX-LABS\\02_PROGRAMS\\BOARD-INTERNAL\": ENOENT: no such file or directory, mkdir '\\\\?'",
+      "stack":
+          Error: Could not create working directory "G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AIR-HUB-FOLDER-OPPRRC\AMX-LABS\02_PROGRAMS\BOARD-INTERNAL": ENOENT: no such file or directory, mkdir '\\?'
+              at ensureAbsoluteDirectory (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapter-utils\src\server-utils.ts:342:11)
+              at async Object.execute (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapters\opencode-local\src\server\execute.ts:119:3)
+              at async executeRun (C:\Users\Techa\.paperclip\tmp_surfers\server\src\services\heartbeat.ts:2723:29)
+    }
+[16:44:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[16:44:35] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"9959d1bd-0e20-469b-a636-70093fa7b1b4","runId":"356dfb1e-618c-4b85-961d-b9f63a2b12dd","memoryCount":0}[39m
+[16:44:35] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"9959d1bd-0e20-469b-a636-70093fa7b1b4","runId":"356dfb1e-618c-4b85-961d-b9f63a2b12dd"}[39m
+[16:44:46] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"9959d1bd-0e20-469b-a636-70093fa7b1b4","runId":"356dfb1e-618c-4b85-961d-b9f63a2b12dd","outcome":"succeeded"}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"072967ef-ad88-4486-a11e-e99fc1fe4c04","runId":"6370dce7-0715-4648-9596-11633f5766a2","memoryCount":0}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting MCP config into agent run[39m [90m{"agentId":"072967ef-ad88-4486-a11e-e99fc1fe4c04","runId":"6370dce7-0715-4648-9596-11633f5766a2","mcpServerCount":2,"configPath":"C:\Users\Techa\AppData\Local\Temp\paperclip-mcp-9Z6xL3\mcp-config.json"}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"f11ec0c8-577c-43ab-baf6-b7be5492168d","runId":"0fada16a-1576-454c-9980-21abb69f3c3a","memoryCount":4}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"f6f13b0a-c2a2-4952-94a3-cfa05a61f34c","runId":"d82d8024-e728-450d-aab9-447d71f5bca6","memoryCount":0}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting MCP config into agent run[39m [90m{"agentId":"f11ec0c8-577c-43ab-baf6-b7be5492168d","runId":"0fada16a-1576-454c-9980-21abb69f3c3a","mcpServerCount":6,"configPath":"C:\Users\Techa\AppData\Local\Temp\paperclip-mcp-zrZkIC\mcp-config.json"}[39m
+[16:45:05] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"f6f13b0a-c2a2-4952-94a3-cfa05a61f34c","runId":"d82d8024-e728-450d-aab9-447d71f5bca6"}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"fff292e0-d837-439c-9594-ba86ce9f0b01","runId":"aab54ec8-a764-4113-b4ad-6bdb58f6ea89","memoryCount":0}[39m
+[16:45:05] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":6,"skipped":0}[39m
+[16:45:05] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"fff292e0-d837-439c-9594-ba86ce9f0b01","runId":"aab54ec8-a764-4113-b4ad-6bdb58f6ea89"}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"55f45c39-de0b-4e0e-a8e2-c0ac8d3f3f36","runId":"7d76f829-907e-4d3d-b52c-386d00920272","memoryCount":0}[39m
+[16:45:05] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"1a7f6cad-c466-4b6e-956d-241b7fba53e5","runId":"3a2a0356-a741-4c2b-98cd-8560dc33f635","memoryCount":0}[39m
+[16:45:05] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"55f45c39-de0b-4e0e-a8e2-c0ac8d3f3f36","runId":"7d76f829-907e-4d3d-b52c-386d00920272"}[39m
+[16:45:05] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"1a7f6cad-c466-4b6e-956d-241b7fba53e5","runId":"3a2a0356-a741-4c2b-98cd-8560dc33f635"}[39m
+[16:45:18] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"072967ef-ad88-4486-a11e-e99fc1fe4c04","runId":"6370dce7-0715-4648-9596-11633f5766a2","outcome":"succeeded"}[39m
+[16:45:21] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"fff292e0-d837-439c-9594-ba86ce9f0b01","runId":"aab54ec8-a764-4113-b4ad-6bdb58f6ea89","outcome":"failed"}[39m
+[16:45:30] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"f11ec0c8-577c-43ab-baf6-b7be5492168d","runId":"0fada16a-1576-454c-9980-21abb69f3c3a","outcome":"succeeded"}[39m
+[16:45:30] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"f6f13b0a-c2a2-4952-94a3-cfa05a61f34c","runId":"d82d8024-e728-450d-aab9-447d71f5bca6","outcome":"succeeded"}[39m
+[16:45:32] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"55f45c39-de0b-4e0e-a8e2-c0ac8d3f3f36","runId":"7d76f829-907e-4d3d-b52c-386d00920272","outcome":"succeeded"}[39m
+[16:45:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[16:46:02] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"1a7f6cad-c466-4b6e-956d-241b7fba53e5","runId":"3a2a0356-a741-4c2b-98cd-8560dc33f635","outcome":"succeeded"}[39m
+[16:46:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[16:46:35] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"1d300325-1313-4f45-ba45-b26504d5d32c","memoryCount":4}[39m
+[16:46:35] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"1d300325-1313-4f45-ba45-b26504d5d32c"}[39m
+[16:47:05] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[16:47:12] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"1d300325-1313-4f45-ba45-b26504d5d32c","outcome":"succeeded"}[39m
+[16:57:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[16:57:35] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"96b89a43-ce65-455f-9000-00cc759797c8","memoryCount":4}[39m
+[16:57:35] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"96b89a43-ce65-455f-9000-00cc759797c8"}[39m
+[16:58:05] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[16:58:14] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"96b89a43-ce65-455f-9000-00cc759797c8","outcome":"succeeded"}[39m
+[17:00:05] [33mWARN[39m: [36mfailed to wake assignee on issue assignment[39m [90m{"issueId":"9c3d909c-cae6-4933-b108-360759d98fe8"}[39m
+    err: {
+      "type": "PostgresError",
+      "message": "duplicate key value violates unique constraint \"issues_open_routine_execution_uq\"",
+      "stack":
+          PostgresError: duplicate key value violates unique constraint "issues_open_routine_execution_uq"
+              at ErrorResponse (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:815:30)
+              at handle (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:489:6)
+              at Socket.data (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:324:9)
+              at Socket.emit (node:events:518:28)
+              at addChunk (node:internal/streams/readable:561:12)
+              at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+              at Readable.push (node:internal/streams/readable:392:5)
+              at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+      "name": "PostgresError",
+      "severity_local": "ERROR",
+      "severity": "ERROR",
+      "code": "23505",
+      "detail": "Key (company_id, origin_kind, origin_id)=(dece557d-8849-4040-b8ad-e0e235a54b52, routine_execution, 59e203f2-48ff-41ed-9445-49f72c3fca4f) already exists.",
+      "schema_name": "public",
+      "table_name": "issues",
+      "constraint_name": "issues_open_routine_execution_uq",
+      "file": "nbtinsert.c",
+      "line": "673",
+      "routine": "_bt_check_unique"
+    }
+[17:00:05] [33mWARN[39m: [36mfailed to wake assignee on issue assignment[39m [90m{"issueId":"66471676-8cad-4031-8535-7eb44bebba11"}[39m
+    err: {
+      "type": "PostgresError",
+      "message": "duplicate key value violates unique constraint \"issues_open_routine_execution_uq\"",
+      "stack":
+          PostgresError: duplicate key value violates unique constraint "issues_open_routine_execution_uq"
+              at ErrorResponse (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:815:30)
+              at handle (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:489:6)
+              at Socket.data (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:324:9)
+              at Socket.emit (node:events:518:28)
+              at addChunk (node:internal/streams/readable:561:12)
+              at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+              at Readable.push (node:internal/streams/readable:392:5)
+              at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+      "name": "PostgresError",
+      "severity_local": "ERROR",
+      "severity": "ERROR",
+      "code": "23505",
+      "detail": "Key (company_id, origin_kind, origin_id)=(dece557d-8849-4040-b8ad-e0e235a54b52, routine_execution, 59e203f2-48ff-41ed-9445-49f72c3fca4f) already exists.",
+      "schema_name": "public",
+      "table_name": "issues",
+      "constraint_name": "issues_open_routine_execution_uq",
+      "file": "nbtinsert.c",
+      "line": "673",
+      "routine": "_bt_check_unique"
+    }
+[17:00:05] [32mINFO[39m: [36mroutine scheduler tick enqueued runs[39m [90m{"triggered":2}[39m
+[17:08:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:08:35] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"0e831d04-c76e-4bbb-9523-c2548c4efd01","memoryCount":4}[39m
+[17:08:35] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"0e831d04-c76e-4bbb-9523-c2548c4efd01"}[39m
+[17:09:05] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:09:16] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"0e831d04-c76e-4bbb-9523-c2548c4efd01","outcome":"succeeded"}[39m
+[17:19:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:19:36] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"74e97eb9-c105-4542-89fb-8a0a2327ccb9","memoryCount":4}[39m
+[17:19:36] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"74e97eb9-c105-4542-89fb-8a0a2327ccb9"}[39m
+[17:20:05] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:20:16] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"74e97eb9-c105-4542-89fb-8a0a2327ccb9","outcome":"succeeded"}[39m
+[17:30:06] [33mWARN[39m: [36mfailed to wake assignee on issue assignment[39m [90m{"issueId":"2100c8c9-e5f3-4208-8e8b-4f8647aef774"}[39m
+    err: {
+      "type": "PostgresError",
+      "message": "duplicate key value violates unique constraint \"issues_open_routine_execution_uq\"",
+      "stack":
+          PostgresError: duplicate key value violates unique constraint "issues_open_routine_execution_uq"
+              at ErrorResponse (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:815:30)
+              at handle (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:489:6)
+              at Socket.data (file:///C:/Users/Techa/.paperclip/tmp_surfers/node_modules/.pnpm/postgres@3.4.8/node_modules/postgres/src/connection.js:324:9)
+              at Socket.emit (node:events:518:28)
+              at addChunk (node:internal/streams/readable:561:12)
+              at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+              at Readable.push (node:internal/streams/readable:392:5)
+              at TCP.onStreamRead (node:internal/stream_base_commons:189:23)
+      "name": "PostgresError",
+      "severity_local": "ERROR",
+      "severity": "ERROR",
+      "code": "23505",
+      "detail": "Key (company_id, origin_kind, origin_id)=(dece557d-8849-4040-b8ad-e0e235a54b52, routine_execution, 59e203f2-48ff-41ed-9445-49f72c3fca4f) already exists.",
+      "schema_name": "public",
+      "table_name": "issues",
+      "constraint_name": "issues_open_routine_execution_uq",
+      "file": "nbtinsert.c",
+      "line": "673",
+      "routine": "_bt_check_unique"
+    }
+[17:30:06] [32mINFO[39m: [36mroutine scheduler tick enqueued runs[39m [90m{"triggered":1}[39m
+[17:30:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:30:36] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"8057799d-4c33-4b0e-8f5d-40f50dd20f0a","memoryCount":4}[39m
+[17:30:36] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"8057799d-4c33-4b0e-8f5d-40f50dd20f0a"}[39m
+[17:31:05] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:31:35] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:31:38] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"8057799d-4c33-4b0e-8f5d-40f50dd20f0a","outcome":"succeeded"}[39m
+[17:42:06] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":1,"skipped":0}[39m
+[17:42:07] [33mWARN[39m: [36mV2: failed to load agent memories[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"be84ed56-1513-44d9-ab7a-36eb74e3a296"}[39m
+    err: {
+      "type": "Error",
+      "message": "ENOSPC: no space left on device, write",
+      "stack":
+          Error: ENOSPC: no space left on device, write
+              at Module.writeFileSync (node:fs:2426:20)
+              at executeRun (C:\Users\Techa\.paperclip\tmp_surfers\server\src\services\heartbeat.ts:2651:16)
+      "errno": -4055,
+      "code": "ENOSPC",
+      "syscall": "write"
+    }
+[17:42:07] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"be84ed56-1513-44d9-ab7a-36eb74e3a296"}[39m
+[17:42:07] [31mERROR[39m: [36mheartbeat execution failed[39m [90m{"runId":"be84ed56-1513-44d9-ab7a-36eb74e3a296"}[39m
+    err: {
+      "type": "Error",
+      "message": "ENOSPC: no space left on device, copyfile 'C:\\Users\\Techa\\.config\\opencode\\bun.lock' -> 'C:\\Users\\Techa\\AppData\\Local\\Temp\\paperclip-opencode-config-hjeuEK\\opencode\\bun.lock'",
+      "stack":
+          Error: ENOSPC: no space left on device, copyfile 'C:\Users\Techa\.config\opencode\bun.lock' -> 'C:\Users\Techa\AppData\Local\Temp\paperclip-opencode-config-hjeuEK\opencode\bun.lock'
+              at async copyFile (node:internal/fs/promises:620:10)
+              at async _copyFile (node:internal/fs/cp/cp:260:3)
+              at async copyDir (node:internal/fs/cp/cp:320:19)
+              at async prepareOpenCodeRuntimeConfig (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapters\opencode-local\src\server\runtime-config.ts:54:5)
+              at async Object.execute (C:\Users\Techa\.paperclip\tmp_surfers\packages\adapters\opencode-local\src\server\execute.ts:181:33)
+              at async executeRun (C:\Users\Techa\.paperclip\tmp_surfers\server\src\services\heartbeat.ts:2723:29)
+      "errno": -4055,
+      "code": "ENOSPC",
+      "syscall": "copyfile",
+      "path": "C:\\Users\\Techa\\.config\\opencode\\bun.lock",
+      "dest": "C:\\Users\\Techa\\AppData\\Local\\Temp\\paperclip-opencode-config-hjeuEK\\opencode\\bun.lock"
+    }
+[17:44:06] [32mINFO[39m: [36mheartbeat timer tick enqueued runs[39m [90m{"checked":10,"enqueued":2,"skipped":0}[39m

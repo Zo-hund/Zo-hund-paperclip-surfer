@@ -12,6 +12,7 @@ export const financeEvents = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id),
+    operatingEnvironment: text("operating_environment"),
     agentId: uuid("agent_id").references(() => agents.id),
     issueId: uuid("issue_id").references(() => issues.id),
     projectId: uuid("project_id").references(() => projects.id),
@@ -40,6 +41,11 @@ export const financeEvents = pgTable(
   },
   (table) => ({
     companyOccurredIdx: index("finance_events_company_occurred_idx").on(table.companyId, table.occurredAt),
+    companyEnvironmentOccurredIdx: index("finance_events_company_environment_occurred_idx").on(
+      table.companyId,
+      table.operatingEnvironment,
+      table.occurredAt,
+    ),
     companyBillerOccurredIdx: index("finance_events_company_biller_occurred_idx").on(
       table.companyId,
       table.biller,

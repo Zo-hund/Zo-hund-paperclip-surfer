@@ -12,6 +12,7 @@ interface EntityRowProps {
   to?: string;
   onClick?: () => void;
   className?: string;
+  accentColor?: string;
 }
 
 export function EntityRow({
@@ -24,14 +25,21 @@ export function EntityRow({
   to,
   onClick,
   className,
+  accentColor,
 }: EntityRowProps) {
   const isClickable = !!(to || onClick);
   const classes = cn(
     "flex items-center gap-3 px-4 py-2 text-sm border-b border-border last:border-b-0 transition-colors",
-    isClickable && "cursor-pointer hover:bg-accent/50",
-    selected && "bg-accent/30",
+    isClickable && "cursor-pointer hover:bg-accent/70",
+    selected && "bg-accent/40",
     className
   );
+  const rowStyle = accentColor
+    ? {
+        borderLeft: `2px solid ${accentColor}`,
+        background: `linear-gradient(to right, ${accentColor}12 0%, transparent 55%)`,
+      }
+    : undefined;
 
   const content = (
     <>
@@ -55,14 +63,14 @@ export function EntityRow({
 
   if (to) {
     return (
-      <Link to={to} className={cn(classes, "no-underline text-inherit")} onClick={onClick}>
+      <Link to={to} className={cn(classes, "no-underline text-inherit")} style={rowStyle} onClick={onClick}>
         {content}
       </Link>
     );
   }
 
   return (
-    <div className={classes} onClick={onClick}>
+    <div className={classes} style={rowStyle} onClick={onClick}>
       {content}
     </div>
   );

@@ -3,10 +3,10 @@ import {
   Wallet, Zap, Send, ArrowDownLeft, ShieldCheck, Sparkles, Download,
   Coins, History, Loader2, Plus, CreditCard, TrendingUp, Users,
   UserCheck, Bot, Package, ChevronRight, CheckCircle2, Clock, X,
-  BadgeCheck, Flame, ArrowRight, Layers, ArrowUpRight
+  BadgeCheck, Flame, ArrowRight, Layers, ArrowUpRight, Gift
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { amxApi } from "@/api/amx";
 import { useCompany } from "@/context/CompanyContext";
 import { useNavigate } from "@/lib/router";
@@ -27,11 +27,34 @@ const HIRE_MODES = [
   { id: "team",        label: "Full Team / Group",   icon: Layers,    color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20",   costRange: "800–2,400 cr/hr",  marketplaceTab: "team"   },
 ];
 
+// ── Cost calculator helper ────────────────────────────────────────────────────
+const CALC_MODES = [
+  { id: "solo-agent", label: "Solo AI Agent",     low: 25,  high: 80  },
+  { id: "solo-human", label: "Solo Human Expert", low: 550, high: 950 },
+  { id: "coop",       label: "Co-op Team",        low: 200, high: 600 },
+  { id: "team",       label: "Full Team",         low: 800, high: 2400},
+];
+
 // ── Buy Credits Modal ─────────────────────────────────────────────────────────
 export function BuyCreditsModal({ onClose, currency }: { onClose: () => void; currency: string }) {
   const [selected, setSelected] = useState("pro");
   const [step, setStep] = useState<"pick" | "checkout" | "success">("pick");
+  const [calcMode, setCalcMode] = useState(CALC_MODES[0].id);
+  const [calcHours, setCalcHours] = useState(5);
+  const { selectedCompanyId } = useCompany();
+  const queryClient = useQueryClient();
   const tier = CREDIT_TIERS.find((t) => t.id === selected)!;
+
+  const topUpMutation = useMutation({
+    mutationFn: () => amxApi.topUpWallet(selectedCompanyId!, { 
+      tierId: tier.id, 
+      amount: tier.credits 
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["amx", "wallet", selectedCompanyId] });
+      setStep("success");
+    }
+  });
 
   if (step === "success") return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
@@ -59,8 +82,63 @@ export function BuyCreditsModal({ onClose, currency }: { onClose: () => void; cu
         </div>
 
         {step === "pick" ? (
-          <div className="p-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-7">
+          <div className="p-8 overflow-y-auto max-h-[80vh]">
+            {/* Free trial credits notice */}
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 mb-6">
+              <Gift className="h-4 w-4 text-emerald-400 shrink-0" />
+              <p className="text-[12px] text-emerald-400 font-bold">New accounts get <span className="font-black">250 free trial credits</span> — try before you buy.</p>
+            </div>
+
+            {/* Cost calculator */}
+            <div className="rounded-2xl border border-border/40 bg-card/40 p-5 mb-6">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                <TrendingUp className="h-3.5 w-3.5" /> Credit Calculator
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Service type</label>
+                  <select
+                    value={calcMode}
+                    onChange={(e) => setCalcMode(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border border-border/60 bg-background text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    {CALC_MODES.map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Hours needed</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={calcHours}
+                    onChange={(e) => setCalcHours(Math.max(1, Number(e.target.value)))}
+                    className="w-full h-9 px-3 rounded-lg border border-border/60 bg-background text-[12px] font-medium focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+              {(() => {
+                const mode = CALC_MODES.find((m) => m.id === calcMode)!;
+                const lowCredits = mode.low * calcHours;
+                const highCredits = mode.high * calcHours;
+                const lowCost = (lowCredits * 0.009).toFixed(2);
+                const highCost = (highCredits * 0.009).toFixed(2);
+                return (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/20">
+                    <span className="text-[11px] text-muted-foreground">{calcHours}h of {mode.label}</span>
+                    <div className="text-right">
+                      <p className="text-[13px] font-black text-foreground">{lowCredits.toLocaleString()}–{highCredits.toLocaleString()} credits</p>
+                      <p className="text-[10px] text-muted-foreground">≈ ${lowCost}–${highCost} USD</p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Tier picker */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {CREDIT_TIERS.map((t) => (
                 <button key={t.id} onClick={() => setSelected(t.id)}
                   className={`relative flex flex-col p-4 rounded-2xl border bg-gradient-to-b ${t.color} ${t.border} transition-all duration-200 text-left ${selected === t.id ? "ring-2 ring-primary/60 shadow-lg shadow-primary/10" : ""}`}>
@@ -110,8 +188,13 @@ export function BuyCreditsModal({ onClose, currency }: { onClose: () => void; cu
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> AMX Chain secured · Stripe-grade encryption
             </div>
             <div className="flex gap-3">
-              <Button onClick={() => setStep("success")} className="flex-1 h-12 font-black uppercase tracking-widest text-[12px] gap-2 shadow-lg shadow-primary/20">
-                <Zap className="h-4 w-4" /> Pay ${tier.price} Now
+              <Button 
+                onClick={() => topUpMutation.mutate()} 
+                disabled={topUpMutation.isPending}
+                className="flex-1 h-12 font-black uppercase tracking-widest text-[12px] gap-2 shadow-lg shadow-primary/20"
+              >
+                {topUpMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} 
+                Pay ${tier.price} Now
               </Button>
               <Button variant="ghost" onClick={() => setStep("pick")} className="h-12 px-6 font-black text-[11px]">← Back</Button>
             </div>
@@ -202,8 +285,9 @@ export function XpWallet() {
   );
 
   const transactions = data?.transactions ?? [];
-  const balance = data?.balance ?? 0;
-  const currency = data?.currency ?? "SIMS";
+  const balance = data?.tokenBalance ?? data?.balance ?? 0;
+  const creditBalance = data?.creditBalance ?? 0;
+  const currency = data?.currency ?? "AMX";
 
   return (
     <div className="flex flex-col min-h-screen bg-background/50 animate-in fade-in duration-500">
@@ -259,6 +343,9 @@ export function XpWallet() {
               </div>
               <div className="text-[12px] text-emerald-500 font-bold flex items-center gap-1 mb-5">
                 <TrendingUp className="h-3.5 w-3.5" /> Funded · Ready to Deploy
+              </div>
+              <div className="text-[11px] text-muted-foreground mb-5">
+                Learning credits: {creditBalance.toLocaleString()}
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => setShowBuyModal(true)} className="flex-1 h-10 font-black text-[11px] uppercase tracking-widest gap-1.5">

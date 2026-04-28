@@ -19,6 +19,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Bot, Plus, List, GitBranch, SlidersHorizontal } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import { agentColor } from "../lib/agent-colors";
 
 const adapterLabels: Record<string, string> = {
   claude_local: "Claude",
@@ -27,6 +28,7 @@ const adapterLabels: Record<string, string> = {
   opencode_local: "OpenCode",
   cursor: "Cursor",
   hermes_local: "Hermes",
+  hermes_advanced: "Hermes Advanced",
   openclaw_gateway: "OpenClaw Gateway",
   process: "Process",
   http: "HTTP",
@@ -234,6 +236,7 @@ export function Agents() {
                 title={agent.name}
                 subtitle={`${roleLabels[agent.role] ?? agent.role}${agent.title ? ` - ${agent.title}` : ""}`}
                 to={agentUrl(agent)}
+                accentColor={agentColor(agent.id)}
                 leading={
                   <span className="relative flex h-2.5 w-2.5">
                     <span
@@ -329,7 +332,11 @@ function OrgTreeNode({
     <div style={{ paddingLeft: depth * 24 }}>
       <Link
         to={agent ? agentUrl(agent) : `/agents/${node.id}`}
-        className="flex items-center gap-3 px-3 py-2 hover:bg-accent/30 transition-colors w-full text-left no-underline text-inherit"
+        className="flex items-center gap-3 px-3 py-2 hover:bg-accent/70 transition-colors w-full text-left no-underline text-inherit"
+        style={{
+          borderLeft: `2px solid ${agentColor(node.id)}`,
+          background: `linear-gradient(to right, ${agentColor(node.id)}12 0%, transparent 55%)`,
+        }}
       >
         <span className="relative flex h-2.5 w-2.5 shrink-0">
           <span className={`absolute inline-flex h-full w-full rounded-full ${statusColor}`} />

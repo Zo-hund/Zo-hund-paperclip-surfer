@@ -18,6 +18,9 @@ import { InlineEditor } from "../components/InlineEditor";
 import { StatusBadge } from "../components/StatusBadge";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
+import { ProjectCalendar } from "../components/ProjectCalendar";
+import { ProjectRoadmap } from "../components/ProjectRoadmap";
+import { ProjectBudgetBuilder } from "../components/ProjectBudgetBuilder";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { projectRouteRef, cn } from "../lib/utils";
@@ -27,7 +30,7 @@ import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slo
 
 /* ── Top-level tab types ── */
 
-type ProjectBaseTab = "overview" | "list" | "configuration" | "budget";
+type ProjectBaseTab = "overview" | "list" | "configuration" | "budget" | "calendar" | "roadmap";
 type ProjectPluginTab = `plugin:${string}`;
 type ProjectTab = ProjectBaseTab | ProjectPluginTab;
 
@@ -44,6 +47,8 @@ function resolveProjectTab(pathname: string, projectId: string): ProjectTab | nu
   if (tab === "configuration") return "configuration";
   if (tab === "budget") return "budget";
   if (tab === "issues") return "list";
+  if (tab === "calendar") return "calendar";
+  if (tab === "roadmap") return "roadmap";
   return null;
 }
 
@@ -200,6 +205,68 @@ function ProjectIssuesList({ projectId, companyId }: { projectId: string; compan
   );
 }
 
+/* ── Calendar tab content ── */
+
+function useProjectIssuesMutation(companyId: string, projectId: string) {
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      issuesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(companyId) });
+    },
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error ? err.message : "Failed to update issue";
+      pushToast({ title: message, tone: "error" });
+      // Refresh so any optimistic updates are reverted
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.listByProject(companyId, projectId) });
+    },
+  });
+}
+
+function ProjectCalendarTab({ projectId, companyId }: { projectId: string; companyId: string }) {
+  const { data: issues, isLoading } = useQuery({
+    queryKey: queryKeys.issues.listByProject(companyId, projectId),
+    queryFn: () => issuesApi.list(companyId, { projectId }),
+    enabled: !!companyId,
+  });
+
+  const updateIssue = useProjectIssuesMutation(companyId, projectId);
+
+  if (isLoading) return <PageSkeleton variant="detail" />;
+  return (
+    <ProjectCalendar
+      issues={issues ?? []}
+      projectId={projectId}
+      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+    />
+  );
+}
+
+/* ── Roadmap tab content ── */
+
+function ProjectRoadmapTab({ projectId, companyId }: { projectId: string; companyId: string }) {
+  const { data: issues, isLoading } = useQuery({
+    queryKey: queryKeys.issues.listByProject(companyId, projectId),
+    queryFn: () => issuesApi.list(companyId, { projectId }),
+    enabled: !!companyId,
+  });
+
+  const updateIssue = useProjectIssuesMutation(companyId, projectId);
+
+  if (isLoading) return <PageSkeleton variant="detail" />;
+  return (
+    <ProjectRoadmap
+      issues={issues ?? []}
+      projectId={projectId}
+      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+    />
+  );
+}
+
 /* ── Main project page ── */
 
 export function ProjectDetail() {
@@ -311,6 +378,13 @@ export function ProjectDetail() {
     },
   });
 
+  const { data: projectIssues } = useQuery({
+    queryKey: queryKeys.issues.listByProject(resolvedCompanyId ?? "__none__", project?.id ?? "__none__"),
+    queryFn: () => issuesApi.list(resolvedCompanyId!, { projectId: project!.id }),
+    enabled: activeTab === "budget" && !!resolvedCompanyId && !!project?.id,
+    staleTime: 30_000,
+  });
+
   const { data: budgetOverview } = useQuery({
     queryKey: queryKeys.budgets.overview(resolvedCompanyId ?? "__none__"),
     queryFn: () => budgetsApi.overview(resolvedCompanyId!),
@@ -343,6 +417,14 @@ export function ProjectDetail() {
     }
     if (activeTab === "budget") {
       navigate(`/projects/${canonicalProjectRef}/budget`, { replace: true });
+      return;
+    }
+    if (activeTab === "calendar") {
+      navigate(`/projects/${canonicalProjectRef}/calendar`, { replace: true });
+      return;
+    }
+    if (activeTab === "roadmap") {
+      navigate(`/projects/${canonicalProjectRef}/roadmap`, { replace: true });
       return;
     }
     if (activeTab === "list") {
@@ -470,6 +552,12 @@ export function ProjectDetail() {
     if (cachedTab === "budget") {
       return <Navigate to={`/projects/${canonicalProjectRef}/budget`} replace />;
     }
+    if (cachedTab === "calendar") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/calendar`} replace />;
+    }
+    if (cachedTab === "roadmap") {
+      return <Navigate to={`/projects/${canonicalProjectRef}/roadmap`} replace />;
+    }
     if (isProjectPluginTab(cachedTab)) {
       return <Navigate to={`/projects/${canonicalProjectRef}?tab=${encodeURIComponent(cachedTab)}`} replace />;
     }
@@ -495,6 +583,10 @@ export function ProjectDetail() {
       navigate(`/projects/${canonicalProjectRef}/budget`);
     } else if (tab === "configuration") {
       navigate(`/projects/${canonicalProjectRef}/configuration`);
+    } else if (tab === "calendar") {
+      navigate(`/projects/${canonicalProjectRef}/calendar`);
+    } else if (tab === "roadmap") {
+      navigate(`/projects/${canonicalProjectRef}/roadmap`);
     } else {
       navigate(`/projects/${canonicalProjectRef}/issues`);
     }
@@ -560,6 +652,8 @@ export function ProjectDetail() {
         <PageTabBar
           items={[
             { value: "list", label: "Issues" },
+            { value: "calendar", label: "Calendar" },
+            { value: "roadmap", label: "Roadmap" },
             { value: "overview", label: "Overview" },
             { value: "configuration", label: "Configuration" },
             { value: "budget", label: "Budget" },
@@ -602,16 +696,36 @@ export function ProjectDetail() {
         </div>
       )}
 
-      {activeTab === "budget" && resolvedCompanyId ? (
-        <div className="max-w-3xl">
-          <BudgetPolicyCard
-            summary={projectBudgetSummary}
-            variant="plain"
-            isSaving={budgetMutation.isPending}
-            onSave={(amount) => budgetMutation.mutate(amount)}
-          />
-        </div>
+      {activeTab === "budget" && resolvedCompanyId && project?.id ? (
+        <ProjectBudgetBuilder
+          summary={projectBudgetSummary}
+          isSaving={budgetMutation.isPending}
+          onSave={(amount) => budgetMutation.mutate(amount)}
+          issues={projectIssues ?? []}
+          companyId={resolvedCompanyId}
+          projectId={project.id}
+          projectName={project.name}
+          companyPrefix={
+            companies.find((c) => c.id === resolvedCompanyId)?.issuePrefix ?? "AMXA"
+          }
+          budgetPolicies={(budgetOverview?.policies ?? []).map((p) => ({
+            name: p.scopeName,
+            observed: p.observedAmount,
+            amount: p.amount,
+            utilizationPercent: p.utilizationPercent,
+            status: p.status,
+            scopeType: p.scopeType,
+          }))}
+        />
       ) : null}
+
+      {activeTab === "calendar" && project?.id && resolvedCompanyId && (
+        <ProjectCalendarTab projectId={project.id} companyId={resolvedCompanyId} />
+      )}
+
+      {activeTab === "roadmap" && project?.id && resolvedCompanyId && (
+        <ProjectRoadmapTab projectId={project.id} companyId={resolvedCompanyId} />
+      )}
 
       {activePluginTab && (
         <PluginSlotMount

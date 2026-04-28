@@ -1,5 +1,7 @@
 import type {
   AgentRole,
+  HeartbeatRunMode,
+  OperatingEnvironment,
   AgentStatus,
   HeartbeatInvocationSource,
   HeartbeatRunStatus,
@@ -38,7 +40,8 @@ export interface HeartbeatRun {
   retryOfRunId: string | null;
   processLossRetryCount: number;
   contextSnapshot: Record<string, unknown> | null;
-  runMode: string;
+  runMode: HeartbeatRunMode;
+  environment: OperatingEnvironment;
   swarmBatchId: string | null;
   promotedFromRunId: string | null;
   createdAt: Date;

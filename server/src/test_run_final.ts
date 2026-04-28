@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { companies, agents, issues, issueWorkProducts } from "../../packages/db/src/schema/index.js";
+import { companies, agents, issues, issueWorkProducts } from "@paperclipai/db";
 import { randomUUID } from "node:crypto";
 
 const connectionString = process.env.DATABASE_URL || "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
@@ -27,7 +27,6 @@ async function main() {
     name: "AdStrategy-GPT",
     role: "content",
     status: "active",
-    type: "worker",
     adapterType: "gemini_local",
     adapterConfig: {},
     runtimeConfig: {},
@@ -54,6 +53,7 @@ async function main() {
     id: randomUUID(),
     companyId: company.id,
     issueId: issue.id,
+    provider: "internal",
     type: "preview",
     title: "Facebook Carousel Ad - Draft v1",
     url: "https://facebook.com/ads/preview/fb-101",

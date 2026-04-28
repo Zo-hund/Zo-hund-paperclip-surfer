@@ -1,8 +1,15 @@
-import type { AgentAdapterType, FinanceDirection, FinanceEventKind, FinanceUnit } from "../constants.js";
+import type {
+  AgentAdapterType,
+  FinanceDirection,
+  FinanceEventKind,
+  FinanceUnit,
+  OperatingEnvironment,
+} from "../constants.js";
 
 export interface FinanceEvent {
   id: string;
   companyId: string;
+  operatingEnvironment: OperatingEnvironment | null;
   agentId: string | null;
   issueId: string | null;
   projectId: string | null;
@@ -32,6 +39,7 @@ export interface FinanceEvent {
 
 export interface FinanceSummary {
   companyId: string;
+  operatingEnvironment: OperatingEnvironment | null;
   debitCents: number;
   creditCents: number;
   netCents: number;
@@ -41,6 +49,7 @@ export interface FinanceSummary {
 
 export interface FinanceByBiller {
   biller: string;
+  operatingEnvironment: OperatingEnvironment | null;
   debitCents: number;
   creditCents: number;
   netCents: number;
@@ -51,6 +60,7 @@ export interface FinanceByBiller {
 
 export interface FinanceByKind {
   eventKind: FinanceEventKind;
+  operatingEnvironment: OperatingEnvironment | null;
   debitCents: number;
   creditCents: number;
   netCents: number;

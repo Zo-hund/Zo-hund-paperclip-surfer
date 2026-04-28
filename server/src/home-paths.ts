@@ -59,6 +59,10 @@ export function resolveDefaultAgentWorkspaceDir(agentId: string): string {
   if (!PATH_SEGMENT_RE.test(trimmed)) {
     throw new Error(`Invalid agent id for workspace path '${agentId}'.`);
   }
+  const customRoot = process.env.AMX_AGENT_WORK_FOLDER?.trim();
+  if (customRoot) {
+    return path.resolve(expandHomePrefix(customRoot), "workspaces", trimmed);
+  }
   return path.resolve(resolvePaperclipInstanceRoot(), "workspaces", trimmed);
 }
 
@@ -81,9 +85,12 @@ export function resolveManagedProjectWorkspaceDir(input: {
   if (!companyId || !projectId) {
     throw new Error("Managed project workspace path requires companyId and projectId.");
   }
+  
+  const customRoot = process.env.AMX_AGENT_WORK_FOLDER?.trim();
+  const baseRoot = customRoot ? path.resolve(expandHomePrefix(customRoot)) : path.resolve(resolvePaperclipInstanceRoot(), "projects");
+
   return path.resolve(
-    resolvePaperclipInstanceRoot(),
-    "projects",
+    baseRoot,
     sanitizeFriendlyPathSegment(companyId, "company"),
     sanitizeFriendlyPathSegment(projectId, "project"),
     sanitizeFriendlyPathSegment(input.repoName, "_default"),

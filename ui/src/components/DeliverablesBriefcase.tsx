@@ -5,7 +5,9 @@ import {
   Image, Music, Palette, BadgeCheck, ShieldCheck, ChevronRight,
   Loader2, Eye, ThumbsUp, ThumbsDown, RotateCcw, X, Tag, Zap,
   GitPullRequest, GitBranch, GitCommit, Globe, PackageOpen,
+  Download, FolderOpen,
 } from "lucide-react";
+import { getDriveFolderUrl } from "../lib/opprrc-drive";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -295,10 +297,25 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
             )}
 
             {/* Board actions */}
-            <div className="flex items-center gap-2 px-6 py-4 border-t border-border/40 bg-accent/5">
-              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mr-2">Board Review</span>
+            <div className="flex items-center flex-wrap gap-2 px-6 py-4 border-t border-border/40 bg-accent/5">
+              {/* Download */}
+              {(dl.url || dl.summary) && (
+                <Button size="sm" variant="outline"
+                  className="gap-1.5 text-primary border-primary/30 hover:bg-primary/10"
+                  onClick={() => downloadDeliverable(dl)}>
+                  <Download className="h-3.5 w-3.5" />Download
+                </Button>
+              )}
+              {/* Open Drive folder */}
+              <Button size="sm" variant="outline" asChild
+                className="gap-1.5 text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10">
+                <a href={getDriveFolderUrl(getOpprcInfo(dl.type).folder)} target="_blank" rel="noopener noreferrer">
+                  <FolderOpen className="h-3.5 w-3.5" />OPPRRC Drive
+                </a>
+              </Button>
+              <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-auto">Board Review</span>
               <ReviewBadge state={dl.reviewState} />
-              <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline"
                   className="gap-1.5 text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10"
                   disabled={reviewMutation.isPending || dl.reviewState === "approved"}
@@ -353,6 +370,24 @@ function slugifyTitle(title: string): string {
     .slice(0, 40);
 }
 
+/** Download a deliverable — opens URL in new tab or creates a blob download from summary text. */
+function downloadDeliverable(dl: any) {
+  if (dl.url && dl.url.startsWith("http")) {
+    window.open(dl.url, "_blank", "noopener");
+    return;
+  }
+  if (dl.summary) {
+    const ext = dl.type === "code" ? "ts" : "md";
+    const slug = (dl.issueIdentifier ?? "amx") + "_" + slugifyTitle(dl.title);
+    const blob = new Blob([dl.summary], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${slug}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+}
+
 function FolderPathTicker({ dl }: { dl: any }) {
   const { folder, ext, color } = getOpprcInfo(dl.type);
   const slug = dl.issueIdentifier
@@ -365,9 +400,13 @@ function FolderPathTicker({ dl }: { dl: any }) {
   const display = `${fullPath}   ·   ${fullPath}   ·   ${fullPath}`;
 
   return (
-    <div
-      className="folder-path-ticker-wrap relative overflow-hidden bg-black/20 border-b border-border/20 h-5 flex items-center"
-      title={fullPath}
+    <a
+      href={getDriveFolderUrl(folder)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="folder-path-ticker-wrap relative overflow-hidden bg-black/20 border-b border-border/20 h-5 flex items-center hover:bg-emerald-500/10 transition-colors"
+      title={`Open ${fullPath} in Google Drive`}
     >
       {/* Left fade */}
       <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-black/30 to-transparent z-10 pointer-events-none" />
@@ -379,7 +418,7 @@ function FolderPathTicker({ dl }: { dl: any }) {
       </div>
       {/* Right fade */}
       <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-black/30 to-transparent z-10 pointer-events-none" />
-    </div>
+    </a>
   );
 }
 
@@ -388,67 +427,88 @@ function FolderPathTicker({ dl }: { dl: any }) {
 function DeliverableCard({ dl, onClick, index }: { dl: any; onClick: () => void; index: number }) {
   const cfg = typeConfig(dl.type);
   const TypeIcon = cfg.icon;
-  const showDonePill = dl.reviewState === "approved" || dl.reviewState === "needs_board_review" || dl.reviewState === "pending";
 
   return (
     <div
       onClick={onClick}
-      className="briefcase-card-enter group relative flex flex-col bg-card/60 backdrop-blur-xl rounded-2xl border border-border/60 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 overflow-hidden cursor-pointer"
+      className="briefcase-card-enter group relative flex flex-col rounded-2xl border border-border/60 bg-card transition-all duration-300 hover:border-primary/40 hover:shadow-lg cursor-pointer"
       style={{ animationDelay: `${index * 55}ms` }}
     >
-      {/* Top color strip by type */}
-      <div className={`h-0.5 w-full ${cfg.bg.replace("/10", "/40")}`} />
-
-      {/* OPPRRC folder path ticker */}
-      <FolderPathTicker dl={dl} />
+      <div className={`h-1 w-full ${cfg.bg.replace("/10", "/40")}`} />
 
       <div className="p-5">
-        {/* Row 1: type + date + done pill */}
-        <div className="flex items-center gap-2 mb-3">
-          <div className={`p-1.5 rounded-lg ${cfg.bg}`}>
-            <TypeIcon className={`h-3.5 w-3.5 ${cfg.color}`} />
-          </div>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${cfg.color}`}>{cfg.label}</span>
-          {dl.isPrimary && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 uppercase tracking-widest">Primary</span>
-          )}
-          {showDonePill ? (
-            <div className="ml-auto">
-              <DonePill state={dl.reviewState} />
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className={`rounded-lg p-1.5 ${cfg.bg}`}>
+              <TypeIcon className={`h-3.5 w-3.5 ${cfg.color}`} />
             </div>
-          ) : (
-            <span className="ml-auto text-[10px] text-muted-foreground flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {new Date(dl.updatedAt).toLocaleDateString()}
-            </span>
-          )}
+            <span className={`text-[10px] font-black uppercase tracking-widest ${cfg.color}`}>{cfg.label}</span>
+            {dl.isPrimary && (
+              <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                Primary
+              </span>
+            )}
+          </div>
+          <ReviewBadge state={dl.reviewState} />
         </div>
 
-        {/* Title */}
-        <h3 className="text-sm font-bold text-foreground mb-1 group-hover:text-primary transition-colors leading-tight line-clamp-2">
+        <h3 className="text-base font-black leading-tight text-foreground transition-colors group-hover:text-primary">
           {dl.title}
         </h3>
-
-        {/* Issue ref */}
-        <p className="text-[11px] text-muted-foreground truncate mb-3">
-          <span className="font-mono text-muted-foreground/60 mr-1">{dl.issueIdentifier}</span>
-          {dl.issueTitle}
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          <span className="font-mono">{dl.issueIdentifier}</span>
+          {dl.issueTitle ? ` · ${dl.issueTitle}` : ""}
         </p>
 
-        {/* Summary preview */}
         {dl.summary && (
-          <p className="text-[11px] text-muted-foreground/70 line-clamp-2 mb-3 leading-relaxed">{dl.summary}</p>
+          <p className="mt-3 line-clamp-3 text-[12px] leading-relaxed text-muted-foreground">
+            {dl.summary}
+          </p>
         )}
 
-        {/* Footer row */}
-        <div className="flex items-center gap-2 pt-3 border-t border-border/30">
-          <User className="h-3 w-3 text-muted-foreground shrink-0" />
-          <span className="text-[11px] text-muted-foreground truncate flex-1">{dl.agentName ?? "Unassigned"}</span>
-          <ReviewBadge state={dl.reviewState} />
-          {dl.certificateFootprint && (
-            <BadgeCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-label="AMX Certified" />
-          )}
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary transition-colors shrink-0" />
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-border/40 bg-accent/5 p-3 text-[11px]">
+          <div>
+            <div className="font-black uppercase tracking-widest text-muted-foreground">Agent</div>
+            <div className="mt-1 truncate text-foreground">{dl.agentName ?? "Unassigned"}</div>
+          </div>
+          <div>
+            <div className="font-black uppercase tracking-widest text-muted-foreground">Updated</div>
+            <div className="mt-1 text-foreground">{new Date(dl.updatedAt).toLocaleDateString()}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-border/30 pt-4">
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className={`p-1.5 rounded-lg ${cfg.bg}`}>
+              <TypeIcon className={`h-3.5 w-3.5 ${cfg.color}`} />
+            </div>
+            <span>{folderForType(dl.type).toUpperCase()}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {(dl.url || dl.summary) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); downloadDeliverable(dl); }}
+                className="flex min-h-[34px] items-center gap-1 rounded-lg border border-border/50 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/10"
+                title="Download artifact"
+              >
+                <Download className="h-3 w-3" />
+                Download
+              </button>
+            )}
+            <a
+              href={getDriveFolderUrl(getOpprcInfo(dl.type).folder)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex min-h-[34px] items-center gap-1 rounded-lg border border-border/50 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-400 transition-colors hover:bg-emerald-500/10"
+              title="Open OPPRRC folder in Google Drive"
+            >
+              <FolderOpen className="h-3 w-3" />
+              Drive
+            </a>
+            <ChevronRight className="h-4 w-4 text-muted-foreground/40 transition-colors group-hover:text-primary" />
+          </div>
         </div>
       </div>
     </div>
@@ -551,6 +611,8 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
   }, [deliverables, folderView]);
 
   const allItems = deliverables as any[];
+  const needsReview = filtered.filter((item) => item.reviewState === "needs_board_review" || item.reviewState === "pending");
+  const recentDeliverables = filtered.filter((item) => !needsReview.some((reviewItem) => reviewItem.id === item.id));
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-5 duration-500">
@@ -561,7 +623,7 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
             { label: "Total Assets",  value: metrics.total,                             icon: Briefcase,    color: "text-foreground" },
             { label: "Throughput/mo", value: metrics.throughput,                         icon: BarChart3,    color: "text-amber-400" },
             { label: "Avg Health",    value: `${Math.round(metrics.avgHealth * 100)}%`,  icon: CheckCircle2, color: "text-emerald-400" },
-            { label: "Approved",      value: metrics.statusCounts?.active ?? 0,          icon: ShieldCheck,  color: "text-primary" },
+            { label: "Approved",      value: metrics.statusCounts?.approved ?? 0,        icon: ShieldCheck,  color: "text-primary" },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="flex flex-col gap-1">
               <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-muted-foreground">
@@ -717,15 +779,36 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((dl: any, i: number) => (
-            <DeliverableCard
-              key={dl.id}
-              dl={dl}
-              index={i}
-              onClick={() => setSelectedId(dl.id)}
-            />
-          ))}
+        <div className="space-y-8">
+          {needsReview.length > 0 && (
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <h3 className="text-[11px] font-black uppercase tracking-[0.25em] text-amber-500">Needs Review</h3>
+                <div className="h-px flex-1 bg-border/30" />
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {needsReview.map((dl: any, i: number) => (
+                  <DeliverableCard key={dl.id} dl={dl} index={i} onClick={() => setSelectedId(dl.id)} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {recentDeliverables.length > 0 && (
+            <section>
+              <div className="mb-3 flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" />
+                <h3 className="text-[11px] font-black uppercase tracking-[0.25em] text-primary">Recent Deliverables</h3>
+                <div className="h-px flex-1 bg-border/30" />
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {recentDeliverables.map((dl: any, i: number) => (
+                  <DeliverableCard key={dl.id} dl={dl} index={i} onClick={() => setSelectedId(dl.id)} />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
 

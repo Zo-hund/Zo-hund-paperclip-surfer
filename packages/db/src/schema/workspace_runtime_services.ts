@@ -20,6 +20,7 @@ export const workspaceRuntimeServices = pgTable(
   {
     id: uuid("id").primaryKey(),
     companyId: uuid("company_id").notNull().references(() => companies.id),
+    operatingEnvironment: text("operating_environment").notNull().default("live"),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     projectWorkspaceId: uuid("project_workspace_id").references(() => projectWorkspaces.id, { onDelete: "set null" }),
     executionWorkspaceId: uuid("execution_workspace_id").references(() => executionWorkspaces.id, { onDelete: "set null" }),
@@ -49,6 +50,7 @@ export const workspaceRuntimeServices = pgTable(
   (table) => ({
     companyWorkspaceStatusIdx: index("workspace_runtime_services_company_workspace_status_idx").on(
       table.companyId,
+      table.operatingEnvironment,
       table.projectWorkspaceId,
       table.status,
     ),

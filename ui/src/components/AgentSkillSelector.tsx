@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { companySkillsApi } from "../api/companySkills";
 import { queryKeys } from "../lib/queryKeys";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
-import { Search, Package } from "lucide-react";
+import { Search, Package, Check } from "lucide-react";
 
 interface AgentSkillSelectorProps {
   companyId: string;
@@ -23,6 +23,18 @@ export function AgentSkillSelector({
 }: AgentSkillSelectorProps) {
   const [search, setSearch] = useState("");
   const [localSelection, setLocalSelection] = useState<string[]>(selectedSkills);
+
+  // Synchronize local state when the server's actual values change.
+  // Uses deep comparison (sorted JSON) to avoid resetting on React Query's
+  // background refetches which produce new array references with identical values.
+  const prevServerRef = useRef<string>("");
+  useEffect(() => {
+    const serialized = JSON.stringify([...selectedSkills].sort());
+    if (serialized !== prevServerRef.current) {
+      prevServerRef.current = serialized;
+      setLocalSelection(selectedSkills);
+    }
+  }, [selectedSkills]);
 
   const skillsQuery = useQuery({
     queryKey: queryKeys.companySkills.list(companyId),
@@ -41,15 +53,18 @@ export function AgentSkillSelector({
     );
   }, [skills, search]);
 
-  function toggleSkill(skillName: string) {
+  function toggleSkill(skillKey: string) {
     setLocalSelection((prev) =>
-      prev.includes(skillName) ? prev.filter((s) => s !== skillName) : [...prev, skillName],
+      prev.includes(skillKey) ? prev.filter((s) => s !== skillKey) : [...prev, skillKey],
     );
   }
 
-  const hasChanges =
-    localSelection.length !== selectedSkills.length ||
-    !localSelection.every((s) => selectedSkills.includes(s));
+  const hasChanges = useMemo(() => {
+    if (localSelection.length !== selectedSkills.length) return true;
+    const sortedLocal = [...localSelection].sort();
+    const sortedProp = [...selectedSkills].sort();
+    return sortedLocal.some((s, i) => s !== sortedProp[i]);
+  }, [localSelection, selectedSkills]);
 
   return (
     <div className="space-y-4">
@@ -88,20 +103,21 @@ export function AgentSkillSelector({
       ) : (
         <div className="space-y-1 max-h-80 overflow-y-auto">
           {filtered.map((skill) => {
-            const isSelected = localSelection.includes(skill.name);
+            const isSelected = localSelection.includes(skill.key);
             return (
               <Card
-                key={skill.id ?? skill.name}
+                key={skill.id ?? skill.key}
                 className={`p-3 cursor-pointer transition-colors hover:bg-muted/30 ${
                   isSelected ? "border-primary/50 bg-primary/5" : ""
                 }`}
-                onClick={() => toggleSkill(skill.name)}
+                onClick={() => toggleSkill(skill.key)}
               >
                 <div className="flex items-start gap-3">
                   <Checkbox
                     checked={isSelected}
-                    onCheckedChange={() => toggleSkill(skill.name)}
-                    className="mt-0.5"
+                    // The Card handle the click; we disable the checkbox's internal 
+                    // interaction to prevent "Double Toggle" bug during event bubbling.
+                    className="mt-0.5 pointer-events-none" 
                   />
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-medium truncate">{skill.name}</h4>

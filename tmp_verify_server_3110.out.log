@@ -1,0 +1,7 @@
+
+> @paperclipai/server@0.3.1 dev C:\Users\Techa\.paperclip\tmp_surfers\server
+> tsx src/index.ts
+
+C:\Users\Techa\.paperclip\tmp_surfers\server:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @paperclipai/server@0.3.1 dev: `tsx src/index.ts`
+Exit status 1

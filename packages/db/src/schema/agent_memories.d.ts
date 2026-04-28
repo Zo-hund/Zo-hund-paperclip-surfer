@@ -147,7 +147,7 @@ export declare const agentMemories: import("drizzle-orm/pg-core").PgTableWithCol
             tableName: "agent_memories";
             dataType: "string";
             columnType: "PgText";
-            data: "board" | "ceo" | "human" | "self";
+            data: "board" | "ceo" | "self" | "human";
             driverParam: string;
             notNull: true;
             hasDefault: false;
@@ -159,7 +159,7 @@ export declare const agentMemories: import("drizzle-orm/pg-core").PgTableWithCol
             identity: undefined;
             generated: undefined;
         }, {}, {
-            $type: "board" | "ceo" | "human" | "self";
+            $type: "board" | "ceo" | "self" | "human";
         }>;
         confidence: import("drizzle-orm/pg-core").PgColumn<{
             name: "confidence";

@@ -89,7 +89,9 @@ export function agentChatService(db: Db) {
 
       // Build context snapshot with agent memories + recent chat history
       const memLoader = memoryLoaderService(db);
-      const memories = await memLoader.loadMemories(input.agentId);
+      const memories = await memLoader.loadMemories(input.agentId, null, {
+        operatingEnvironment: agent.environment === "simulation" ? "simulation" : "live",
+      });
       const memoryContext = memories.slice(0, 30).map((m) => ({
         category: m.category,
         title: m.title,

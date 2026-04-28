@@ -72,7 +72,7 @@ export declare const pluginEntities: import("drizzle-orm/pg-core").PgTableWithCo
             tableName: "plugin_entities";
             dataType: "string";
             columnType: "PgText";
-            data: "company" | "agent" | "project" | "issue" | "goal" | "run" | "instance" | "project_workspace";
+            data: "company" | "project" | "agent" | "run" | "issue" | "project_workspace" | "goal" | "instance";
             driverParam: string;
             notNull: true;
             hasDefault: false;
@@ -84,7 +84,7 @@ export declare const pluginEntities: import("drizzle-orm/pg-core").PgTableWithCo
             identity: undefined;
             generated: undefined;
         }, {}, {
-            $type: "company" | "agent" | "project" | "issue" | "goal" | "run" | "instance" | "project_workspace";
+            $type: "company" | "project" | "agent" | "run" | "issue" | "project_workspace" | "goal" | "instance";
         }>;
         scopeId: import("drizzle-orm/pg-core").PgColumn<{
             name: "scope_id";

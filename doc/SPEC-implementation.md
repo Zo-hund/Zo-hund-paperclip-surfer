@@ -872,3 +872,19 @@ Export/import behavior in V1:
 - import supports collision strategies: `rename`, `skip`, `replace`
 - import supports preview (dry-run) before apply
 - GitHub imports warn on unpinned refs instead of blocking
+
+## 22. Deliverables Output System (V1.1)
+
+All agents are configured to store their work products in a cloud-synced Google Drive folder structure. This ensures deliverables are instantly available to both human operators and other agents, while maintaining a unified project source of truth.
+
+**Folder Structure**:
+- Base: `G:\My Drive\AMX-AIR-HUBS-HQ-ROOT\AMX-AGENT-DELIVERABLES\`
+- Human CEO writes to: `BOARD-INTERNAL\CEO-ZOMORPHESUS\`
+- Agents write to specific subfolders based on their domains (e.g. `BOARD-INTERNAL\CTO\`, `BOARD-INTERNAL\CMO\`, `BOARD-INTERNAL\AUDIT\`, `CLIENTS-EXTERNAL\MEDIA\`).
+- Cross-agent collaboration uses `BOARD-INTERNAL\SHARED\`.
+
+**Naming Convention**:
+All work products must adhere to the `OPPRRC` standard:
+`OPPRRC-[TYPE]-[NNN]_[AgentCode]_[Description]_[YYYY-MM-DD].[ext]`
+
+For full operational rules, refer to `doc/DELIVERABLES.md`.

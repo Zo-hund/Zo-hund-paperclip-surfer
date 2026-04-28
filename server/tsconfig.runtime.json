@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@paperclipai/shared": ["packages/shared/dist/index.js"],
+      "@paperclipai/shared/*": ["packages/shared/dist/*.js"],
+      "@paperclipai/db": ["packages/db/dist/index.js"],
+      "@paperclipai/db/*": ["packages/db/dist/*.js"],
+      "@paperclipai/adapter-utils": ["packages/adapter-utils/dist/index.js"],
+      "@paperclipai/adapter-utils/*": ["packages/adapter-utils/dist/*.js"],
+      "@paperclipai/plugin-sdk": ["packages/plugins/sdk/dist/index.js"],
+      "@paperclipai/plugin-sdk/ui": ["packages/plugins/sdk/dist/ui/index.js"],
+      "@paperclipai/plugin-sdk/*": ["packages/plugins/sdk/dist/*.js"],
+      "@paperclipai/adapter-*": ["packages/adapters/*/dist/index.js"],
+      "@paperclipai/adapter-*/server": ["packages/adapters/*/dist/server/index.js"],
+      "@paperclipai/adapter-*/ui": ["packages/adapters/*/dist/ui/index.js"],
+      "@paperclipai/adapter-*/cli": ["packages/adapters/*/dist/cli/index.js"]
+    }
+  }
+}

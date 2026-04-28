@@ -18,6 +18,7 @@ export const workspaceOperations = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id),
+    operatingEnvironment: text("operating_environment").notNull().default("live"),
     executionWorkspaceId: uuid("execution_workspace_id").references(() => executionWorkspaces.id, {
       onDelete: "set null",
     }),
@@ -45,6 +46,7 @@ export const workspaceOperations = pgTable(
   (table) => ({
     companyRunStartedIdx: index("workspace_operations_company_run_started_idx").on(
       table.companyId,
+      table.operatingEnvironment,
       table.heartbeatRunId,
       table.startedAt,
     ),

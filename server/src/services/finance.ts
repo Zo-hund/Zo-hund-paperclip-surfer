@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents, costEvents, financeEvents, goals, heartbeatRuns, issues, projects, amxLedger, amxTransactions } from "@paperclipai/db";
 import { amxChainService } from "./amxChainService.js";
@@ -7,6 +7,20 @@ import { notFound, unprocessable } from "../errors.js";
 export interface FinanceDateRange {
   from?: Date;
   to?: Date;
+}
+
+type OperatingEnvironment = "simulation" | "live";
+
+function environmentCondition(environment?: OperatingEnvironment | null) {
+  if (environment === undefined) return null;
+  if (environment === null) return isNull(financeEvents.operatingEnvironment);
+  return eq(financeEvents.operatingEnvironment, environment);
+}
+
+function ledgerEnvironmentCondition(environment?: OperatingEnvironment | null) {
+  if (environment === undefined) return null;
+  if (environment === null) return isNull(amxLedger.operatingEnvironment);
+  return eq(amxLedger.operatingEnvironment, environment);
 }
 
 async function assertBelongsToCompany(
@@ -28,8 +42,10 @@ async function assertBelongsToCompany(
   }
 }
 
-function rangeConditions(companyId: string, range?: FinanceDateRange) {
+function rangeConditions(companyId: string, range?: FinanceDateRange, environment?: OperatingEnvironment | null) {
   const conditions: ReturnType<typeof eq>[] = [eq(financeEvents.companyId, companyId)];
+  const envCondition = environmentCondition(environment);
+  if (envCondition) conditions.push(envCondition);
   if (range?.from) conditions.push(gte(financeEvents.occurredAt, range.from));
   if (range?.to) conditions.push(lte(financeEvents.occurredAt, range.to));
   return conditions;
@@ -54,6 +70,7 @@ export function financeService(db: Db) {
         .values({
           ...data,
           companyId,
+          operatingEnvironment: data.operatingEnvironment ?? null,
           currency: data.currency ?? "USD",
           direction: data.direction ?? "debit",
           estimated: data.estimated ?? false,
@@ -64,8 +81,8 @@ export function financeService(db: Db) {
       return event;
     },
 
-    summary: async (companyId: string, range?: FinanceDateRange) => {
-      const conditions = rangeConditions(companyId, range);
+    summary: async (companyId: string, range?: FinanceDateRange, environment?: OperatingEnvironment | null) => {
+      const conditions = rangeConditions(companyId, range, environment);
       const [row] = await db
         .select({
           debitCents: debitExpr,
@@ -78,6 +95,7 @@ export function financeService(db: Db) {
 
       return {
         companyId,
+        operatingEnvironment: environment ?? null,
         debitCents: Number(row?.debitCents ?? 0),
         creditCents: Number(row?.creditCents ?? 0),
         netCents: Number(row?.debitCents ?? 0) - Number(row?.creditCents ?? 0),
@@ -86,11 +104,12 @@ export function financeService(db: Db) {
       };
     },
 
-    byBiller: async (companyId: string, range?: FinanceDateRange) => {
-      const conditions = rangeConditions(companyId, range);
+    byBiller: async (companyId: string, range?: FinanceDateRange, environment?: OperatingEnvironment | null) => {
+      const conditions = rangeConditions(companyId, range, environment);
       return db
         .select({
           biller: financeEvents.biller,
+          operatingEnvironment: financeEvents.operatingEnvironment,
           debitCents: debitExpr,
           creditCents: creditExpr,
           estimatedDebitCents: estimatedDebitExpr,
@@ -100,15 +119,16 @@ export function financeService(db: Db) {
         })
         .from(financeEvents)
         .where(and(...conditions))
-        .groupBy(financeEvents.biller)
+        .groupBy(financeEvents.biller, financeEvents.operatingEnvironment)
         .orderBy(desc(sql`(${debitExpr} - ${creditExpr})::int`), financeEvents.biller);
     },
 
-    byKind: async (companyId: string, range?: FinanceDateRange) => {
-      const conditions = rangeConditions(companyId, range);
+    byKind: async (companyId: string, range?: FinanceDateRange, environment?: OperatingEnvironment | null) => {
+      const conditions = rangeConditions(companyId, range, environment);
       return db
         .select({
           eventKind: financeEvents.eventKind,
+          operatingEnvironment: financeEvents.operatingEnvironment,
           debitCents: debitExpr,
           creditCents: creditExpr,
           estimatedDebitCents: estimatedDebitExpr,
@@ -118,12 +138,17 @@ export function financeService(db: Db) {
         })
         .from(financeEvents)
         .where(and(...conditions))
-        .groupBy(financeEvents.eventKind)
+        .groupBy(financeEvents.eventKind, financeEvents.operatingEnvironment)
         .orderBy(desc(sql`(${debitExpr} - ${creditExpr})::int`), financeEvents.eventKind);
     },
 
-    list: async (companyId: string, range?: FinanceDateRange, limit: number = 100) => {
-      const conditions = rangeConditions(companyId, range);
+    list: async (
+      companyId: string,
+      range?: FinanceDateRange,
+      limit: number = 100,
+      environment?: OperatingEnvironment | null,
+    ) => {
+      const conditions = rangeConditions(companyId, range, environment);
       return db
         .select()
         .from(financeEvents)
@@ -132,26 +157,38 @@ export function financeService(db: Db) {
         .limit(limit);
     },
 
-    getLedger: async (companyId: string, principalType: string, principalId: string) => {
+    getLedger: async (
+      companyId: string,
+      principalType: string,
+      principalId: string,
+      environment?: OperatingEnvironment | null,
+    ) => {
       return db
         .select()
         .from(amxLedger)
         .where(and(
           eq(amxLedger.companyId, companyId),
           eq(amxLedger.principalType, principalType),
-          eq(amxLedger.principalId, principalId)
+          eq(amxLedger.principalId, principalId),
+          ...(ledgerEnvironmentCondition(environment) ? [ledgerEnvironmentCondition(environment)!] : [])
         ))
         .then(rows => rows[0] ?? null);
     },
 
-    ensureLedger: async (companyId: string, principalType: string, principalId: string) => {
+    ensureLedger: async (
+      companyId: string,
+      principalType: string,
+      principalId: string,
+      environment?: OperatingEnvironment | null,
+    ) => {
       const existing = await db
         .select()
         .from(amxLedger)
         .where(and(
           eq(amxLedger.companyId, companyId),
           eq(amxLedger.principalType, principalType),
-          eq(amxLedger.principalId, principalId)
+          eq(amxLedger.principalId, principalId),
+          ...(ledgerEnvironmentCondition(environment) ? [ledgerEnvironmentCondition(environment)!] : [])
         ))
         .then(rows => rows[0] ?? null);
       
@@ -161,14 +198,15 @@ export function financeService(db: Db) {
         companyId,
         principalType,
         principalId,
+        operatingEnvironment: environment ?? null,
         tokenBalance: 0,
         creditBalance: 0,
       }).returning().then(rows => rows[0]);
     },
 
     transferTokens: async (
-      from: { companyId: string, type: string, id: string },
-      to: { companyId: string, type: string, id: string },
+      from: { companyId: string, type: string, id: string, environment?: OperatingEnvironment | null },
+      to: { companyId: string, type: string, id: string, environment?: OperatingEnvironment | null },
       amount: number,
       transactionType: string,
       metadata?: Record<string, unknown>
@@ -177,7 +215,8 @@ export function financeService(db: Db) {
         const fromLedger = await tx.select().from(amxLedger).where(and(
           eq(amxLedger.companyId, from.companyId),
           eq(amxLedger.principalType, from.type),
-          eq(amxLedger.principalId, from.id)
+          eq(amxLedger.principalId, from.id),
+          ...(ledgerEnvironmentCondition(from.environment) ? [ledgerEnvironmentCondition(from.environment)!] : [])
         )).then(rows => rows[0]);
 
         if (!fromLedger || fromLedger.tokenBalance < amount) {
@@ -193,7 +232,8 @@ export function financeService(db: Db) {
         let toLedger = await tx.select().from(amxLedger).where(and(
           eq(amxLedger.companyId, to.companyId),
           eq(amxLedger.principalType, to.type),
-          eq(amxLedger.principalId, to.id)
+          eq(amxLedger.principalId, to.id),
+          ...(ledgerEnvironmentCondition(to.environment) ? [ledgerEnvironmentCondition(to.environment)!] : [])
         )).then(rows => rows[0]);
 
         if (!toLedger) {
@@ -201,6 +241,7 @@ export function financeService(db: Db) {
             companyId: to.companyId,
             principalType: to.type,
             principalId: to.id,
+            operatingEnvironment: to.environment ?? null,
             tokenBalance: 0,
             creditBalance: 0,
           }).returning().then(rows => rows[0]);

@@ -36,6 +36,12 @@ import {
 } from "@paperclipai/adapter-codex-local";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
+import {
+  DEFAULT_ONBOARDING_ADAPTER,
+  LOCAL_ADAPTER_FALLBACK_ORDER,
+  getDefaultModelForAdapter,
+  type PreferredLocalAdapterType,
+} from "../lib/local-adapter-readiness";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
@@ -54,7 +60,8 @@ import {
   Check,
   Loader2,
   ChevronDown,
-  X
+  X,
+  AlertTriangle
 } from "lucide-react";
 import { HermesIcon } from "./HermesIcon";
 
@@ -64,6 +71,7 @@ type AdapterType =
   | "codex_local"
   | "gemini_local"
   | "hermes_local"
+  | "hermes_advanced"
   | "opencode_local"
   | "pi_local"
   | "cursor"
@@ -75,6 +83,21 @@ const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the
 - hire a founding engineer
 - write a hiring plan
 - break the roadmap into concrete tasks and start delegating work`;
+
+const MICROSERVICE_SKILL_SLUGS = [
+  "image-microservice-router",
+  "video-microservice-router",
+  "audio-microservice-router",
+  "ondemand-webhook-intake",
+];
+
+interface AdapterRecommendation {
+  type: PreferredLocalAdapterType;
+  label: string;
+  model: string;
+  reason: string;
+  environmentResult: AdapterEnvironmentTestResult;
+}
 
 export function OnboardingWizard() {
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
@@ -114,7 +137,7 @@ export function OnboardingWizard() {
 
   // Step 2
   const [agentName, setAgentName] = useState("CEO");
-  const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
+  const [adapterType, setAdapterType] = useState<AdapterType>(DEFAULT_ONBOARDING_ADAPTER);
   const [model, setModel] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
@@ -127,6 +150,13 @@ export function OnboardingWizard() {
     useState(false);
   const [unsetAnthropicLoading, setUnsetAnthropicLoading] = useState(false);
   const [showMoreAdapters, setShowMoreAdapters] = useState(false);
+  const [enableMicroserviceTooling, setEnableMicroserviceTooling] = useState(true);
+  const [manualAdapterSelection, setManualAdapterSelection] = useState(false);
+  const [autoRecommendationLoading, setAutoRecommendationLoading] = useState(false);
+  const [autoRecommendationAttempted, setAutoRecommendationAttempted] = useState(false);
+  const [recommendedAdapter, setRecommendedAdapter] = useState<AdapterRecommendation | null>(null);
+  const manualAdapterSelectionRef = useRef(false);
+  const autoRecommendationRequestRef = useRef(0);
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState(
@@ -176,6 +206,18 @@ export function OnboardingWizard() {
     setCreatedProjectId(null);
     setCreatedAgentId(null);
     setCreatedIssueRef(null);
+    setAdapterType(DEFAULT_ONBOARDING_ADAPTER);
+    setModel("");
+    setCommand("");
+    setArgs("");
+    setUrl("");
+    setAdapterEnvResult(null);
+    setAdapterEnvError(null);
+    setForceUnsetAnthropicApiKey(false);
+    setManualAdapterSelection(false);
+    setAutoRecommendationLoading(false);
+    setAutoRecommendationAttempted(false);
+    setRecommendedAdapter(null);
   }, [
     effectiveOnboardingOpen,
     effectiveOnboardingOptions.companyId,
@@ -211,6 +253,7 @@ export function OnboardingWizard() {
     adapterType === "codex_local" ||
     adapterType === "gemini_local" ||
     adapterType === "hermes_local" ||
+    adapterType === "hermes_advanced" ||
     adapterType === "opencode_local" ||
     adapterType === "pi_local" ||
     adapterType === "cursor";
@@ -220,7 +263,7 @@ export function OnboardingWizard() {
       ? "codex"
       : adapterType === "gemini_local"
         ? "gemini"
-      : adapterType === "hermes_local"
+      : adapterType === "hermes_local" || adapterType === "hermes_advanced"
         ? "hermes"
       : adapterType === "pi_local"
       ? "pi"
@@ -231,10 +274,68 @@ export function OnboardingWizard() {
       : "claude");
 
   useEffect(() => {
-    if (step !== 2) return;
-    setAdapterEnvResult(null);
-    setAdapterEnvError(null);
-  }, [step, adapterType, model, command, args, url]);
+    if (step === 2) {
+      setAdapterEnvResult(null);
+      setAdapterEnvError(null);
+    }
+  }, [step]);
+
+  useEffect(() => {
+    manualAdapterSelectionRef.current = manualAdapterSelection;
+  }, [manualAdapterSelection]);
+
+  useEffect(() => {
+    if (!effectiveOnboardingOpen || step !== 2 || !createdCompanyId) return;
+    if (autoRecommendationAttempted) return;
+
+    const requestId = ++autoRecommendationRequestRef.current;
+    let cancelled = false;
+
+    void (async () => {
+      setAutoRecommendationLoading(true);
+      setError(null);
+      try {
+        const recommendation = await recommendRunnableLocalAdapter(createdCompanyId);
+        if (cancelled || autoRecommendationRequestRef.current !== requestId) return;
+        setAutoRecommendationAttempted(true);
+        if (recommendation) {
+          if (manualAdapterSelectionRef.current) {
+            setRecommendedAdapter(recommendation);
+          } else {
+            applyRecommendedAdapter(recommendation);
+          }
+        } else {
+          setRecommendedAdapter(null);
+          setAdapterEnvResult(null);
+          setAdapterEnvError(
+            "No runnable local adapters were detected automatically. Pick an adapter and fix its setup before continuing.",
+          );
+        }
+      } catch (err) {
+        if (cancelled || autoRecommendationRequestRef.current !== requestId) return;
+        setAutoRecommendationAttempted(true);
+        setRecommendedAdapter(null);
+        setAdapterEnvResult(null);
+        setAdapterEnvError(
+          err instanceof Error ? err.message : "Failed to check local adapter readiness.",
+        );
+      } finally {
+        if (!cancelled) {
+          setAutoRecommendationLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoRecommendationAttempted,
+    createdCompanyId,
+    effectiveOnboardingOpen,
+    manualAdapterSelection,
+    step,
+  ]);
 
   const selectedModel = (adapterModels ?? []).find((m) => m.id === model);
   const hasAnthropicApiKeyOverrideCheck =
@@ -282,6 +383,142 @@ export function OnboardingWizard() {
       }));
   }, [filteredModels, adapterType]);
 
+  function buildAdapterConfigFor(
+    nextAdapterType: AdapterType,
+    options?: {
+      model?: string;
+      command?: string;
+      args?: string;
+      url?: string;
+      forceUnsetAnthropicApiKey?: boolean;
+    },
+  ): Record<string, unknown> {
+    const adapter = getUIAdapter(nextAdapterType);
+    const nextModel =
+      options?.model ??
+      (nextAdapterType === "codex_local"
+        ? model || DEFAULT_CODEX_LOCAL_MODEL
+        : nextAdapterType === "gemini_local"
+          ? model || DEFAULT_GEMINI_LOCAL_MODEL
+          : nextAdapterType === "cursor"
+            ? model || DEFAULT_CURSOR_LOCAL_MODEL
+            : model);
+    const config = adapter.buildAdapterConfig({
+      ...defaultCreateValues,
+      adapterType: nextAdapterType,
+      model: nextModel,
+      command: options?.command ?? command,
+      args: options?.args ?? args,
+      url: options?.url ?? url,
+      dangerouslySkipPermissions:
+        nextAdapterType === "claude_local" || nextAdapterType === "opencode_local",
+      dangerouslyBypassSandbox:
+        nextAdapterType === "codex_local"
+          ? DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX
+          : defaultCreateValues.dangerouslyBypassSandbox,
+    });
+    if (nextAdapterType === "claude_local" && options?.forceUnsetAnthropicApiKey) {
+      const env =
+        typeof config.env === "object" &&
+        config.env !== null &&
+        !Array.isArray(config.env)
+          ? { ...(config.env as Record<string, unknown>) }
+          : {};
+      env.ANTHROPIC_API_KEY = { type: "plain", value: "" };
+      config.env = env;
+    }
+    if (enableMicroserviceTooling && createdCompanyId) {
+      const paperclipSkillSync =
+        typeof config.paperclipSkillSync === "object" &&
+        config.paperclipSkillSync !== null &&
+        !Array.isArray(config.paperclipSkillSync)
+          ? { ...(config.paperclipSkillSync as Record<string, unknown>) }
+          : {};
+      const currentDesired = Array.isArray(paperclipSkillSync.desiredSkills)
+        ? paperclipSkillSync.desiredSkills.filter((skill): skill is string => typeof skill === "string")
+        : [];
+      const nextDesired = new Set([
+        ...currentDesired,
+        "paperclipai/paperclip/firecrawl",
+        "paperclipai/paperclip/page-agent",
+        ...MICROSERVICE_SKILL_SLUGS.map((slug) => `company/${createdCompanyId}/${slug}`),
+      ]);
+      config.paperclipSkillSync = {
+        ...paperclipSkillSync,
+        desiredSkills: Array.from(nextDesired),
+      };
+    }
+    return config;
+  }
+
+  async function recommendRunnableLocalAdapter(companyId: string): Promise<AdapterRecommendation | null> {
+    for (const candidate of LOCAL_ADAPTER_FALLBACK_ORDER) {
+      let candidateModel = getDefaultModelForAdapter(candidate.type);
+      if (candidate.type === "opencode_local") {
+        const detected = await agentsApi.detectModel(companyId, candidate.type);
+        candidateModel = detected?.model?.trim() || "";
+        if (!candidateModel) continue;
+      }
+      const environmentResult = await agentsApi.testEnvironment(companyId, candidate.type, {
+        adapterConfig: buildAdapterConfigFor(candidate.type, {
+          model: candidateModel,
+          forceUnsetAnthropicApiKey: candidate.type === "claude_local" ? forceUnsetAnthropicApiKey : false,
+        }),
+      });
+      if (environmentResult.status !== "fail") {
+        return {
+          type: candidate.type,
+          label: candidate.label,
+          model: candidateModel,
+          reason: candidate.type === "opencode_local"
+            ? `Detected ${candidateModel} and passed the local environment check.`
+            : `${candidate.label} passed the local environment check.`,
+          environmentResult,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function applyRecommendedAdapter(recommendation: AdapterRecommendation, markManualSelection = false) {
+    setAdapterType(recommendation.type);
+    setModel(recommendation.model);
+    setAdapterEnvError(null);
+    setAdapterEnvResult(recommendation.environmentResult);
+    setRecommendedAdapter(recommendation);
+    setManualAdapterSelection(markManualSelection);
+    setForceUnsetAnthropicApiKey(false);
+  }
+
+  function handleAdapterTypeSelection(nextType: AdapterType) {
+    setManualAdapterSelection(true);
+    setAdapterType(nextType);
+    setAdapterEnvError(null);
+    setForceUnsetAnthropicApiKey(false);
+
+    if (recommendedAdapter?.type === nextType) {
+      setAdapterEnvResult(recommendedAdapter.environmentResult);
+      setModel(recommendedAdapter.model);
+      return;
+    }
+
+    setAdapterEnvResult(null);
+    if (nextType === "codex_local") {
+      setModel(DEFAULT_CODEX_LOCAL_MODEL);
+      return;
+    }
+    if (nextType === "gemini_local") {
+      setModel(DEFAULT_GEMINI_LOCAL_MODEL);
+      return;
+    }
+    if (nextType === "cursor") {
+      setModel(DEFAULT_CURSOR_LOCAL_MODEL);
+      return;
+    }
+    setModel("");
+  }
+
   function reset() {
     setStep(1);
     setLoading(false);
@@ -289,7 +526,7 @@ export function OnboardingWizard() {
     setCompanyName("");
     setCompanyGoal("");
     setAgentName("CEO");
-    setAdapterType("claude_local");
+    setAdapterType(DEFAULT_ONBOARDING_ADAPTER);
     setModel("");
     setCommand("");
     setArgs("");
@@ -299,6 +536,11 @@ export function OnboardingWizard() {
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     setUnsetAnthropicLoading(false);
+    setEnableMicroserviceTooling(true);
+    setManualAdapterSelection(false);
+    setAutoRecommendationLoading(false);
+    setAutoRecommendationAttempted(false);
+    setRecommendedAdapter(null);
     setTaskTitle("Hire your first engineer and create a hiring plan");
     setTaskDescription(DEFAULT_TASK_DESCRIPTION);
     setCreatedCompanyId(null);
@@ -315,39 +557,9 @@ export function OnboardingWizard() {
   }
 
   function buildAdapterConfig(): Record<string, unknown> {
-    const adapter = getUIAdapter(adapterType);
-    const config = adapter.buildAdapterConfig({
-      ...defaultCreateValues,
-      adapterType,
-      model:
-        adapterType === "codex_local"
-          ? model || DEFAULT_CODEX_LOCAL_MODEL
-          : adapterType === "gemini_local"
-            ? model || DEFAULT_GEMINI_LOCAL_MODEL
-          : adapterType === "cursor"
-          ? model || DEFAULT_CURSOR_LOCAL_MODEL
-          : model,
-      command,
-      args,
-      url,
-      dangerouslySkipPermissions:
-        adapterType === "claude_local" || adapterType === "opencode_local",
-      dangerouslyBypassSandbox:
-        adapterType === "codex_local"
-          ? DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX
-          : defaultCreateValues.dangerouslyBypassSandbox
+    return buildAdapterConfigFor(adapterType, {
+      forceUnsetAnthropicApiKey,
     });
-    if (adapterType === "claude_local" && forceUnsetAnthropicApiKey) {
-      const env =
-        typeof config.env === "object" &&
-        config.env !== null &&
-        !Array.isArray(config.env)
-          ? { ...(config.env as Record<string, unknown>) }
-          : {};
-      env.ANTHROPIC_API_KEY = { type: "plain", value: "" };
-      config.env = env;
-    }
-    return config;
   }
 
   async function runAdapterEnvironmentTest(
@@ -422,6 +634,10 @@ export function OnboardingWizard() {
     setLoading(true);
     setError(null);
     try {
+      if (autoRecommendationLoading) {
+        setError("Adapter readiness is still being checked. Please wait.");
+        return;
+      }
       if (adapterType === "opencode_local") {
         const selectedModelId = model.trim();
         if (!selectedModelId) {
@@ -458,6 +674,18 @@ export function OnboardingWizard() {
       if (isLocalAdapter) {
         const result = adapterEnvResult ?? (await runAdapterEnvironmentTest());
         if (!result) return;
+        if (result.status === "fail") {
+          const alternateLabel =
+            recommendedAdapter && recommendedAdapter.type !== adapterType
+              ? recommendedAdapter.label
+              : null;
+          setError(
+            alternateLabel
+              ? `${getUIAdapter(adapterType).label} is not ready on this machine. Switch to ${alternateLabel} or finish setup before continuing.`
+              : `${getUIAdapter(adapterType).label} is not ready on this machine. Fix the adapter setup before continuing.`,
+          );
+          return;
+        }
       }
 
       const agent = await agentsApi.create(createdCompanyId, {
@@ -591,8 +819,8 @@ export function OnboardingWizard() {
       closeOnboarding();
       navigate(
         createdCompanyPrefix
-          ? `/${createdCompanyPrefix}/issues/${issueRef}`
-          : `/issues/${issueRef}`
+          ? `/${createdCompanyPrefix}/lms/dashboard`
+          : "/lms/dashboard"
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create task");
@@ -744,14 +972,78 @@ export function OnboardingWizard() {
                     <label className="text-xs text-muted-foreground mb-1 block">
                       Agent name
                     </label>
+                      <input
+                        className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                        placeholder="CEO"
+                        value={agentName}
+                        onChange={(e) => setAgentName(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+
+                    {(autoRecommendationLoading || recommendedAdapter || adapterEnvError) && (
+                      <div
+                        className={cn(
+                          "rounded-md border px-3 py-2 text-xs",
+                          autoRecommendationLoading
+                            ? "border-border bg-muted/20 text-muted-foreground"
+                            : recommendedAdapter
+                              ? "border-green-300/60 bg-green-50/50 text-green-800 dark:border-green-500/40 dark:bg-green-500/10 dark:text-green-300"
+                              : "border-amber-300/60 bg-amber-50/50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300",
+                        )}
+                      >
+                        {autoRecommendationLoading ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Checking local adapter readiness and selecting the best default…</span>
+                          </div>
+                        ) : recommendedAdapter ? (
+                          <div className="space-y-2">
+                            <div className="flex items-start gap-2">
+                              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              <div>
+                                <p className="font-medium">
+                                  Recommended adapter: {recommendedAdapter.label}
+                                </p>
+                                <p className="leading-relaxed">
+                                  {recommendedAdapter.reason}
+                                </p>
+                              </div>
+                            </div>
+                            {manualAdapterSelection && recommendedAdapter.type !== adapterType && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-[11px]"
+                                onClick={() => applyRecommendedAdapter(recommendedAdapter)}
+                              >
+                                Switch to {recommendedAdapter.label}
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                            <span>{adapterEnvError}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <label className="flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
                     <input
-                      className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder="CEO"
-                      value={agentName}
-                      onChange={(e) => setAgentName(e.target.value)}
-                      autoFocus
+                      type="checkbox"
+                      className="mt-1"
+                      checked={enableMicroserviceTooling}
+                      onChange={(event) => setEnableMicroserviceTooling(event.target.checked)}
                     />
-                  </div>
+                    <span>
+                      <span className="block font-medium">Enable AMX microservices tooling</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        Adds page-agent, Firecrawl, and AMX image/video/audio/webhook router skills so this agent can be hired for on-demand microservice work.
+                      </span>
+                    </span>
+                  </label>
 
                   {/* Adapter type radio cards */}
                   <div>
@@ -761,10 +1053,10 @@ export function OnboardingWizard() {
                     <div className="grid grid-cols-2 gap-2">
                       {[
                         {
-                          value: "claude_local" as const,
-                          label: "Claude Code",
-                          icon: Sparkles,
-                          desc: "Local Claude agent",
+                          value: "opencode_local" as const,
+                          label: "OpenCode",
+                          icon: OpenCodeLogoIcon,
+                          desc: "Local multi-provider agent",
                           recommended: true
                         },
                         {
@@ -772,7 +1064,6 @@ export function OnboardingWizard() {
                           label: "Codex",
                           icon: Code,
                           desc: "Local Codex agent",
-                          recommended: true
                         }
                       ].map((opt) => (
                         <button
@@ -783,16 +1074,7 @@ export function OnboardingWizard() {
                               ? "border-foreground bg-accent"
                               : "border-border hover:bg-accent/50"
                           )}
-                          onClick={() => {
-                            const nextType = opt.value as AdapterType;
-                            setAdapterType(nextType);
-                            if (nextType === "codex_local" && !model) {
-                              setModel(DEFAULT_CODEX_LOCAL_MODEL);
-                            }
-                            if (nextType !== "codex_local") {
-                              setModel("");
-                            }
-                          }}
+                            onClick={() => handleAdapterTypeSelection(opt.value)}
                         >
                           {opt.recommended && (
                             <span className="absolute -top-1.5 right-1.5 bg-green-500 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
@@ -825,6 +1107,12 @@ export function OnboardingWizard() {
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         {[
                           {
+                            value: "claude_local" as const,
+                            label: "Claude Code",
+                            icon: Sparkles,
+                            desc: "Local Claude agent"
+                          },
+                          {
                             value: "gemini_local" as const,
                             label: "Gemini CLI",
                             icon: Gem,
@@ -855,6 +1143,12 @@ export function OnboardingWizard() {
                             desc: "Local multi-provider agent"
                           },
                           {
+                            value: "hermes_advanced" as const,
+                            label: "Hermes Advanced (Nous)",
+                            icon: HermesIcon,
+                            desc: "Hermes adapter for profile management"
+                          },
+                          {
                             value: "openclaw_gateway" as const,
                             label: "OpenClaw Gateway",
                             icon: Bot,
@@ -874,26 +1168,10 @@ export function OnboardingWizard() {
                                 ? "border-foreground bg-accent"
                                 : "border-border hover:bg-accent/50"
                             )}
-                            onClick={() => {
-                              if (opt.comingSoon) return;
-                              const nextType = opt.value as AdapterType;
-                              setAdapterType(nextType);
-                              if (nextType === "gemini_local" && !model) {
-                                setModel(DEFAULT_GEMINI_LOCAL_MODEL);
-                                return;
-                              }
-                              if (nextType === "cursor" && !model) {
-                                setModel(DEFAULT_CURSOR_LOCAL_MODEL);
-                                return;
-                              }
-                              if (nextType === "opencode_local") {
-                                if (!model.includes("/")) {
-                                  setModel("");
-                                }
-                                return;
-                              }
-                              setModel("");
-                            }}
+                              onClick={() => {
+                                if (opt.comingSoon) return;
+                                handleAdapterTypeSelection(opt.value);
+                              }}
                           >
                             <opt.icon className="h-4 w-4" />
                             <span className="font-medium">{opt.label}</span>
@@ -914,6 +1192,7 @@ export function OnboardingWizard() {
                     adapterType === "codex_local" ||
                     adapterType === "gemini_local" ||
                     adapterType === "hermes_local" ||
+                    adapterType === "hermes_advanced" ||
                     adapterType === "opencode_local" ||
                     adapterType === "pi_local" ||
                     adapterType === "cursor") && (
@@ -1083,6 +1362,16 @@ export function OnboardingWizard() {
 
                       {adapterEnvResult && adapterEnvResult.status === "fail" && (
                         <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-[11px] space-y-1.5">
+                          {recommendedAdapter && recommendedAdapter.type !== adapterType && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2.5 text-[11px]"
+                              onClick={() => applyRecommendedAdapter(recommendedAdapter)}
+                            >
+                              Switch to {recommendedAdapter.label}
+                            </Button>
+                          )}
                           <p className="font-medium">Manual debug</p>
                           <p className="text-muted-foreground font-mono break-all">
                             {adapterType === "cursor"
@@ -1292,7 +1581,11 @@ export function OnboardingWizard() {
                     <Button
                       size="sm"
                       disabled={
-                        !agentName.trim() || loading || adapterEnvLoading
+                        !agentName.trim() ||
+                        loading ||
+                        adapterEnvLoading ||
+                        autoRecommendationLoading ||
+                        adapterEnvResult?.status === "fail"
                       }
                       onClick={handleStep2Next}
                     >

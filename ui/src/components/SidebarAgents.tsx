@@ -10,6 +10,7 @@ import { authApi } from "../api/auth";
 import { heartbeatsApi } from "../api/heartbeats";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
+import { agentColor } from "../lib/agent-colors";
 import { useAgentOrder } from "../hooks/useAgentOrder";
 import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
@@ -112,10 +113,15 @@ export function SidebarAgents() {
                   "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
                   activeAgentId === agentRouteRef(agent)
                     ? "bg-accent text-foreground"
-                    : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
+                    : "text-foreground/80 hover:bg-accent/70 hover:text-foreground"
                 )}
+                style={{
+                  borderLeft: `2px solid ${agentColor(agent.id)}${activeAgentId === agentRouteRef(agent) ? "ff" : "70"}`,
+                }}
               >
-                <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
+                <span style={{ color: agentColor(agent.id) }} className="shrink-0 flex items-center">
+                  <AgentIcon icon={agent.icon} className="h-3.5 w-3.5" />
+                </span>
                 <span className="flex-1 truncate">{agent.name}</span>
                 {(agent.pauseReason === "budget" || runCount > 0) && (
                   <span className="ml-auto flex items-center gap-1.5 shrink-0">

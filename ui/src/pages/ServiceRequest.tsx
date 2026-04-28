@@ -109,8 +109,8 @@ export function ServiceRequest() {
           <p className="text-[12px] text-muted-foreground mb-8">Check your inbox for a confirmation. Mark <code className="bg-accent/20 px-1 rounded">hello@amxplatform.ai</code> as safe.</p>
           <div className="flex flex-col gap-3">
             <Link to="/home"><Button className="w-full h-12 font-black uppercase tracking-widest">Return to Home</Button></Link>
-            <Link to="/join"><Button variant="outline" className="w-full h-12 font-black uppercase tracking-widest border-border/60">
-              <Zap className="h-4 w-4 mr-2" /> Join as a Member
+            <Link to="/register"><Button variant="outline" className="w-full h-12 font-black uppercase tracking-widest border-border/60">
+              <Zap className="h-4 w-4 mr-2" /> Create Free Account
             </Button></Link>
           </div>
         </div>
@@ -173,16 +173,26 @@ export function ServiceRequest() {
             </div>
 
             <div>
-              <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground block mb-2">I am a… (membership type)</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {MEMBER_TYPE_OPTIONS.map((t) => (
+              <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground block mb-2">I'm here to…</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { id: "agent",        icon: "🤖", label: "Build with AI",         desc: "Deploy agents & automate workflows" },
+                  { id: "human-agent",  icon: "🧑‍💼", label: "Hire Human Experts",  desc: "Access skilled consultants & devs" },
+                  { id: "learner",      icon: "📚", label: "Learn & Explore",       desc: "Browse the network & grow skills" },
+                  { id: "sponsor",      icon: "🤝", label: "Partner or Sponsor",    desc: "Support or co-brand with AMX" },
+                ].map((t) => (
                   <button key={t.id} onClick={() => set("memberType", t.id)}
-                    className={`flex items-center gap-2 p-3 rounded-xl border text-left transition-all ${form.memberType === t.id ? "border-primary/50 bg-primary/5" : "border-border/40 hover:border-border bg-card/40"}`}>
-                    <span className="text-base">{t.icon}</span>
-                    <span className="text-[11px] font-black">{t.label}</span>
+                    className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${form.memberType === t.id ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30" : "border-border/40 hover:border-border bg-card/40"}`}>
+                    <span className="text-xl shrink-0">{t.icon}</span>
+                    <div>
+                      <p className="text-[12px] font-black">{t.label}</p>
+                      <p className="text-[10px] text-muted-foreground">{t.desc}</p>
+                    </div>
+                    {form.memberType === t.id && <CheckCircle2 className="h-4 w-4 text-emerald-500 ml-auto shrink-0" />}
                   </button>
                 ))}
               </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Optional · You can change this later in your profile</p>
             </div>
           </div>
         )}

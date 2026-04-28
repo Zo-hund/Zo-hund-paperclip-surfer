@@ -1,5 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+/* ── Typography ─────────────────────────────────────────────────────────────
+   Inter for UI, Inter Tight for display headings.
+   Base: 14px with tighter tracking for dense project-management layout.
+   ─────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-size: 14px;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;   /* 13.125px — comfortable density */
+    line-height: 1.55;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+  }
+  /* Improve small text legibility */
+  .text-xs { font-size: 0.75rem; line-height: 1.5; }
+  .text-sm { font-size: 0.8125rem; line-height: 1.5; letter-spacing: -0.005em; }
+  /* Monospace elements */
+  code, kbd, pre, samp { font-family: var(--font-mono); }
+}
 
 @custom-variant dark (&:is(.dark *));
 
@@ -330,6 +364,25 @@
 }
 .briefcase-card-enter {
   animation: card-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Live project review ring (amber pulse on in-review cards) ───────────── */
+@keyframes live-review-pulse {
+  0%   { transform: scale(1);   opacity: 0.7; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+.live-review-ring {
+  animation: live-review-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background: rgba(245, 158, 11, 0.35); /* amber-500/35 */
+}
+
+/* ── Live review card glow border ────────────────────────────────────────── */
+@keyframes review-border-pulse {
+  0%, 100% { border-color: rgba(245, 158, 11, 0.35); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50%       { border-color: rgba(245, 158, 11, 0.6);  box-shadow: 0 0 12px 2px rgba(245, 158, 11, 0.12); }
+}
+.briefcase-card-live-review {
+  animation: review-border-pulse 2.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -874,4 +927,64 @@ a.paperclip-project-mention-chip {
 
 .animate-flash-shake {
   animation: flash-shake 0.5s ease-in-out infinite;
+}
+
+/* ─── AMX Labs Design System ──────────────────────────────────────────────────
+   Scoped to --amx-* namespace. Does not override existing Tailwind tokens.
+   Used exclusively by PublicHome.tsx (the /home marketing page).
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Brand core */
+  --amx-cyan:          #27E8FB;
+  --amx-cyan-bright:   #5CF2FF;
+  --amx-cyan-dim:      #0FB9D4;
+  --amx-magenta:       #FF27FF;
+  --amx-magenta-bright:#FF7BFF;
+  --amx-purple:        #B566E8;
+
+  /* Neutral ink scale (deep navy, never pure black) */
+  --amx-ink-0: #020612;
+  --amx-ink-1: #070B1C;
+  --amx-ink-2: #0D1330;
+  --amx-ink-3: #181E45;
+  --amx-ink-4: #2A3266;
+  --amx-ink-5: #4A5496;
+  --amx-ink-6: #8C95C9;
+  --amx-ink-7: #C9CEEC;
+  --amx-ink-8: #F2F4FF;
+
+  /* Gradients */
+  --amx-grad-brand:    linear-gradient(180deg,#27E8FB 0%,#B566E8 55%,#FF27FF 100%);
+  --amx-grad-brand-h:  linear-gradient(90deg, #27E8FB 0%,#B566E8 50%,#FF27FF 100%);
+  --amx-grad-wordmark: linear-gradient(90deg, #F2F4FF 0%,#F2F4FF 42%,#27E8FB 58%,#27E8FB 100%);
+  --amx-grad-surface:  radial-gradient(ellipse at 50% 0%,#0D1330 0%,#020612 70%);
+
+  /* Neon glow shadows (2–3 layer stacks) */
+  --amx-glow-cyan-sm:    0 0 6px rgba(39,232,251,.55), 0 0 12px rgba(39,232,251,.28);
+  --amx-glow-cyan-md:    0 0 10px rgba(39,232,251,.6),  0 0 24px rgba(39,232,251,.35), 0 0 48px rgba(39,232,251,.18);
+  --amx-glow-magenta-sm: 0 0 6px rgba(255,39,255,.55), 0 0 12px rgba(255,39,255,.28);
+
+  /* Borders */
+  --amx-border-subtle:    rgba(74,84,150,.22);
+  --amx-border-default:   rgba(74,84,150,.38);
+  --amx-border-glow-cyan: rgba(39,232,251,.45);
+
+  /* Elevation */
+  --amx-shadow-2: 0 4px 12px rgba(0,0,0,.55), 0 0 0 1px rgba(74,84,150,.22);
+
+  /* Motion */
+  --amx-ease-out: cubic-bezier(0.2,0.8,0.2,1);
+
+  /* Typography */
+  --amx-font-display: 'Chakra Petch','Eurostile',ui-sans-serif,system-ui,sans-serif;
+  --amx-font-mono:    'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+
+@keyframes amx-breathe {
+  0%,100% { opacity:.92; transform:scale(1); }
+  50%      { opacity:1;   transform:scale(1.015); }
+}
+@keyframes amx-ticker {
+  0%   { transform:translateX(0); }
+  100% { transform:translateX(-33.33%); }
 }

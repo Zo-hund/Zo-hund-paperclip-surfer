@@ -66,6 +66,7 @@ For the atomic fact YAML schema and memory decay rules, see [references/schemas.
 Raw timeline of events -- the "when" layer.
 
 - Write continuously during conversations.
+- (System) On new days, Paperclip auto-initializes this file if it's missing during heartbeat runs.
 - Extract durable facts to Layer 1 during heartbeats.
 
 ### Layer 3: Tacit Knowledge (`$AGENT_HOME/MEMORY.md`)

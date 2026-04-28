@@ -11,6 +11,7 @@ import {
   authVerifications,
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
+import { createEmailService } from "../services/email.js";
 
 export type BetterAuthSessionUser = {
   id: string;
@@ -24,6 +25,13 @@ export type BetterAuthSessionResult = {
 };
 
 type BetterAuthInstance = ReturnType<typeof betterAuth>;
+type BetterAuthEmailCallbackInput = {
+  user: {
+    email?: string | null;
+    name?: string | null;
+  };
+  url: string;
+};
 
 function headersFromNodeHeaders(rawHeaders: IncomingHttpHeaders): Headers {
   const headers = new Headers();
@@ -59,6 +67,10 @@ export function deriveAuthTrustedOrigins(config: Config): string[] {
       if (!trimmed) continue;
       trustedOrigins.add(`https://${trimmed}`);
       trustedOrigins.add(`http://${trimmed}`);
+      if (config.port !== 80 && config.port !== 443) {
+        trustedOrigins.add(`https://${trimmed}:${config.port}`);
+        trustedOrigins.add(`http://${trimmed}:${config.port}`);
+      }
     }
   }
 
@@ -69,6 +81,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
   const baseUrl = config.authBaseUrlMode === "explicit" ? config.authPublicBaseUrl : undefined;
   const secret = process.env.BETTER_AUTH_SECRET ?? process.env.PAPERCLIP_AGENT_JWT_SECRET ?? "paperclip-dev-secret";
   const effectiveTrustedOrigins = trustedOrigins ?? deriveAuthTrustedOrigins(config);
+  const emailService = createEmailService(config);
 
   const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? baseUrl;
   const isHttpOnly = publicUrl ? publicUrl.startsWith("http://") : false;
@@ -88,8 +101,25 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
     }),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: false,
+      requireEmailVerification: config.authRequireEmailVerification,
       disableSignUp: config.authDisableSignUp,
+      sendResetPassword: async ({ user, url }: BetterAuthEmailCallbackInput) => {
+        await emailService.sendPasswordResetEmail({
+          email: user.email,
+          name: user.name,
+          url,
+        });
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: config.authRequireEmailVerification,
+      sendVerificationEmail: async ({ user, url }: BetterAuthEmailCallbackInput) => {
+        await emailService.sendVerificationEmail({
+          email: user.email,
+          name: user.name,
+          url,
+        });
+      },
     },
     ...(isHttpOnly ? { advanced: { useSecureCookies: false } } : {}),
   };

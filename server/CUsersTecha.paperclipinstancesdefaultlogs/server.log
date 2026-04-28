@@ -1,0 +1,13 @@
+[01:25:37] INFO: Using embedded PostgreSQL because no DATABASE_URL set (dataDir=/mnt/c/Users/Techa/.paperclip/tmp_surfers/server/C:\Users\Techa\.paperclip\instances\default\db, port=54329)
+[01:25:39] ERROR: Embedded PostgreSQL failed; showing buffered startup logs {"phase":"initialise","recentLogs":["The files belonging to this database system will be owned by user \"techa\".","This user must also own the server process.","The database cluster will be initialized with locale \"C\".","The default text search configuration will be set to \"english\".","Data page checksums are enabled.","creating directory /mnt/c/Users/Techa/.paperclip/tmp_surfers/server/C:\Users\Techa\.paperclip\instances\default\db ...","ok","creating subdirectories ...","ok","selecting dynamic shared memory implementation ... posix","selecting default \"max_connections\" ...","20","selecting default \"shared_buffers\" ...","400kB","selecting default time zone ...","America/New_York","creating configuration files ...","ok","running bootstrap script ..."]}
+    err: "Postgres init script exited with code 1. Please check the logs for extra info. The data directory might already exist."
+[01:25:39] ERROR: Paperclip server failed to start 
+    err: {
+      "type": "Error",
+      "message": "Failed to initialize embedded PostgreSQL cluster in /mnt/c/Users/Techa/.paperclip/tmp_surfers/server/C:\\Users\\Techa\\.paperclip\\instances\\default\\db on port 54329: Postgres init script exited with code 1. Please check the logs for extra info. The data directory might already exist. Recent embedded Postgres logs: 20 | selecting default \"shared_buffers\" ... | 400kB | selecting default time zone ... | America/New_York | creating configuration files ... | ok | running bootstrap script ...",
+      "stack":
+          Error: Failed to initialize embedded PostgreSQL cluster in /mnt/c/Users/Techa/.paperclip/tmp_surfers/server/C:\Users\Techa\.paperclip\instances\default\db on port 54329: Postgres init script exited with code 1. Please check the logs for extra info. The data directory might already exist. Recent embedded Postgres logs: 20 | selecting default "shared_buffers" ... | 400kB | selecting default time zone ... | America/New_York | creating configuration files ... | ok | running bootstrap script ...
+              at formatEmbeddedPostgresError (/mnt/c/Users/Techa/.paperclip/tmp_surfers/packages/db/src/embedded-postgres-error.ts:88:10)
+              at startServer (/mnt/c/Users/Techa/.paperclip/tmp_surfers/server/src/index.ts:381:19)
+              at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    }

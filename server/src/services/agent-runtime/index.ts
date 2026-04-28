@@ -10,6 +10,7 @@ export interface AgentRunContext {
   agentId: string;
   companyId: string;
   adapterType: string;
+  operatingEnvironment?: "simulation" | "live";
   projectId?: string | null;
   runId?: string | null;
   desiredSkills?: string[];
@@ -64,7 +65,9 @@ export function agentRuntimeService(db: Db) {
       );
 
       // 2. Load memory (global + project-scoped)
-      const memories = await memory.loadMemories(context.agentId, context.projectId);
+      const memories = await memory.loadMemories(context.agentId, context.projectId, {
+        operatingEnvironment: context.operatingEnvironment === "simulation" ? "simulation" : "live",
+      });
 
       // 3. Resolve MCP config
       const mcpServers = await mcp.resolveMcpConfig(context.agentId, context.companyId);

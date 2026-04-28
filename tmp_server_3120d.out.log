@@ -1,0 +1,148 @@
+
+> @paperclipai/server@0.3.1 dev C:\Users\Techa\.paperclip\tmp_surfers\server
+> tsx src/index.ts
+
+[02:29:11] [32mINFO[39m: [36mUsing embedded PostgreSQL because no DATABASE_URL set (dataDir=C:\Users\Techa\.paperclip\instances\default\db, port=54329)[39m
+[02:29:11] [32mINFO[39m: [36mEmbedded PostgreSQL cluster already exists (C:\Users\Techa\.paperclip\instances\default\db\PG_VERSION); skipping init[39m
+[02:29:11] [33mWARN[39m: [36mRemoving stale embedded PostgreSQL lock file[39m
+
+[36m██████╗  █████╗ ██████╗ ███████╗██████╗  ██████╗██╗     ██╗██████╗ [0m
+[36m██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔════╝██║     ██║██╔══██╗[0m
+[36m██████╔╝███████║██████╔╝█████╗  ██████╔╝██║     ██║     ██║██████╔╝[0m
+[36m██╔═══╝ ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗██║     ██║     ██║██╔═══╝ [0m
+[36m██║     ██║  ██║██║     ███████╗██║  ██║╚██████╗███████╗██║██║     [0m
+[36m╚═╝     ╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝╚═╝     [0m
+[34m  ───────────────────────────────────────────────────────[0m
+[2mMode            [0m [32membedded-postgres[0m  |  [35mstatic-ui[0m
+[2mDeploy          [0m local_trusted (private)
+[2mAuth            [0m [32mready[0m
+[2mServer          [0m 3120
+[2mAPI             [0m http://127.0.0.1:3120/api [2m(health: http://127.0.0.1:3120/api/health)[0m
+[2mUI              [0m http://127.0.0.1:3120
+[2mDatabase        [0m C:\Users\Techa\.paperclip\instances\default\db [2m(pg:54329)[0m
+[2mMigrations      [0m already applied
+[2mAgent JWT       [0m [32mset[0m
+[2mHeartbeat       [0m [33mdisabled[0m
+[2mDB Backup       [0m [33mdisabled[0m
+[2mBackup Dir      [0m C:\Users\Techa\.paperclip\instances\default\data\backups
+[2mConfig          [0m C:\Users\Techa\.paperclip\instances\default\config.json
+[34m  ───────────────────────────────────────────────────────[0m
+
+[02:29:17] [32mINFO[39m: [36mEmbedded PostgreSQL ready[39m
+[02:29:17] [32mINFO[39m: [36mplugin job coordinator started — listening to lifecycle events[39m [90m{"service":"plugin-job-coordinator"}[39m
+[02:29:17] [32mINFO[39m: [36mplugin job scheduler started[39m [90m{"service":"plugin-job-scheduler","tickIntervalMs":30000,"maxConcurrentJobs":10}[39m
+[02:29:17] [32mINFO[39m: [36minitializing plugin tool dispatcher[39m [90m{"service":"plugin-tool-dispatcher"}[39m
+[02:29:17] [32mINFO[39m: [36mplugin-loader: loading all ready plugins[39m [90m{"service":"plugin-loader"}[39m
+[02:29:17] [32mINFO[39m: [36mServer listening on 127.0.0.1:3120[39m
+[02:29:17] [32mINFO[39m: [36mloaded tools from ready plugins[39m [90m{"service":"plugin-tool-dispatcher","readyPlugins":0,"registeredTools":0}[39m
+[02:29:17] [32mINFO[39m: [36mplugin tool dispatcher initialized[39m [90m{"service":"plugin-tool-dispatcher","totalTools":0}[39m
+[02:29:17] [32mINFO[39m: [36mplugin-loader: no ready plugins to load[39m [90m{"service":"plugin-loader"}[39m
+[02:29:17] [32mINFO[39m: [36mGET / 200[39m
+[02:29:28] [32mINFO[39m: [36mGET / 200[39m
+[02:29:40] [32mINFO[39m: [36mPOST /agents/482b3bd0-f6c3-44b6-82b4-83c2c97187d7/wakeup?runMode=sim 202[39m
+[02:29:40] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"b71ea107-8b2e-46cb-8d8a-45b62aee2e39","memoryCount":4}[39m
+[02:29:40] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"b71ea107-8b2e-46cb-8d8a-45b62aee2e39"}[39m
+[02:29:49] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:29:54] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:29:59] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:04] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:09] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:14] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:19] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:24] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:29] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:34] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:39] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:43] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"b71ea107-8b2e-46cb-8d8a-45b62aee2e39","outcome":"succeeded"}[39m
+[02:30:44] [32mINFO[39m: [36mGET /heartbeat-runs/b71ea107-8b2e-46cb-8d8a-45b62aee2e39 200[39m
+[02:30:55] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces?memberUserId=local-board 200[39m
+[02:31:06] [32mINFO[39m: [36mPOST /agents/482b3bd0-f6c3-44b6-82b4-83c2c97187d7/wakeup?runMode=sim 202[39m
+[02:31:06] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"2d92c555-d7a7-4c40-9a14-08364629a213","memoryCount":4}[39m
+[02:31:06] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"2d92c555-d7a7-4c40-9a14-08364629a213"}[39m
+[02:31:19] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:24] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:29] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:34] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:39] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:44] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:49] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:54] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:31:59] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:04] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:09] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:14] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:19] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:24] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:29] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:34] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:39] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:44] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:49] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:54] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:32:59] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:33:04] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:33:07] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"2d92c555-d7a7-4c40-9a14-08364629a213","outcome":"succeeded"}[39m
+[02:33:09] [32mINFO[39m: [36mGET /heartbeat-runs/2d92c555-d7a7-4c40-9a14-08364629a213 200[39m
+[02:33:09] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces?memberUserId=local-board 200[39m
+[02:33:39] [32mINFO[39m: [36mPATCH /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/d5ed803c-f48a-47bb-8a10-91c3f0b9ce12 200[39m
+[02:33:39] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/d5ed803c-f48a-47bb-8a10-91c3f0b9ce12/package-promotion 201[39m
+[02:33:51] [32mINFO[39m: [36mPATCH /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/d5ed803c-f48a-47bb-8a10-91c3f0b9ce12 200[39m
+[02:33:51] [32mINFO[39m: [36mPOST /approvals/11da2cb3-48c5-428a-906a-a8bd251414e9/approve 200[39m
+[02:33:52] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"7e582e69-d648-46ad-bcb7-1066da504a7e","memoryCount":4}[39m
+[02:33:52] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"7e582e69-d648-46ad-bcb7-1066da504a7e"}[39m
+[02:34:01] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/d5ed803c-f48a-47bb-8a10-91c3f0b9ce12 200[39m
+[02:34:13] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:34:18] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:34:23] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:34:28] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:34:33] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:34:38] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:34:43] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:34:46] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"7e582e69-d648-46ad-bcb7-1066da504a7e","outcome":"succeeded"}[39m
+[02:34:48] [32mINFO[39m: [36mGET /heartbeat-runs/7e582e69-d648-46ad-bcb7-1066da504a7e 200[39m
+[02:35:13] [33mWARN[39m: [36mPOST /api/companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/feb4756c-f20f-4cbc-9171-aeead3f6c148/package-promotion 422[39m [90m{"routePath":"/companies/:companyId/pit-stop/workspaces/:workspaceId/package-promotion"}[39m
+[02:35:13] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/d5ed803c-f48a-47bb-8a10-91c3f0b9ce12/package-promotion 201[39m
+[02:35:13] [32mINFO[39m: [36mPOST /approvals/a587c484-e877-4e38-9f55-8415afb036af/request-revision 200[39m
+[02:35:13] [32mINFO[39m: [36mPOST /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/d5ed803c-f48a-47bb-8a10-91c3f0b9ce12/package-promotion 201[39m
+[02:35:13] [32mINFO[39m: [36mPOST /approvals/c46663cf-62c7-4857-b47b-554a4ea39f7f/reject 200[39m
+[02:35:13] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces/d5ed803c-f48a-47bb-8a10-91c3f0b9ce12 200[39m
+[02:35:26] [32mINFO[39m: [36mPOST /agents/482b3bd0-f6c3-44b6-82b4-83c2c97187d7/wakeup?runMode=sim 202[39m
+[02:35:26] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"74dc6e44-70b7-4573-99e0-c6b5b4bcaa24","memoryCount":4}[39m
+[02:35:26] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"74dc6e44-70b7-4573-99e0-c6b5b4bcaa24"}[39m
+[02:35:39] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:35:44] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:35:49] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:35:54] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:35:59] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:04] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:09] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:14] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:19] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:24] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:29] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:34] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:39] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:44] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:49] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:54] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:36:59] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:05] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:10] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:15] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:20] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:25] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:30] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:35] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:40] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:45] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:50] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:37:55] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:00] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:05] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:10] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:15] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:20] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:25] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:26] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"74dc6e44-70b7-4573-99e0-c6b5b4bcaa24","outcome":"failed"}[39m
+[02:38:30] [32mINFO[39m: [36mGET /heartbeat-runs/74dc6e44-70b7-4573-99e0-c6b5b4bcaa24 200[39m
+[02:38:30] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces?memberUserId=local-board 200[39m

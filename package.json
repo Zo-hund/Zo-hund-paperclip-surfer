@@ -24,15 +24,20 @@
     "release:github": "./scripts/create-github-release.sh",
     "release:rollback": "./scripts/rollback-latest.sh",
     "check:tokens": "node scripts/check-forbidden-tokens.mjs",
+    "clean:source-artifacts": "node scripts/clean-source-build-artifacts.mjs --write",
+    "check:source-artifacts": "node scripts/clean-source-build-artifacts.mjs",
     "docs:dev": "cd docs && npx mintlify dev",
     "smoke:openclaw-join": "./scripts/smoke/openclaw-join.sh",
     "smoke:openclaw-docker-ui": "./scripts/smoke/openclaw-docker-ui.sh",
     "smoke:openclaw-sse-standalone": "./scripts/smoke/openclaw-sse-standalone.sh",
     "test:e2e": "npx playwright test --config tests/e2e/playwright.config.ts",
     "test:e2e:headed": "npx playwright test --config tests/e2e/playwright.config.ts --headed",
+    "test:e2e:install": "npx playwright install chromium",
+    "test:e2e:ui": "npx playwright test --config tests/e2e/playwright.config.ts --ui",
     "evals:smoke": "cd evals/promptfoo && npx promptfoo@0.103.3 eval",
     "test:release-smoke": "npx playwright test --config tests/release-smoke/playwright.config.ts",
-    "test:release-smoke:headed": "npx playwright test --config tests/release-smoke/playwright.config.ts --headed"
+    "test:release-smoke:headed": "npx playwright test --config tests/release-smoke/playwright.config.ts --headed",
+    "test:release-smoke:install": "npx playwright install chromium"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -46,6 +51,9 @@
   },
   "packageManager": "pnpm@9.15.4",
   "pnpm": {
+    "overrides": {
+      "drizzle-orm": "0.38.4"
+    },
     "patchedDependencies": {
       "embedded-postgres@18.1.0-beta.16": "patches/embedded-postgres@18.1.0-beta.16.patch"
     }

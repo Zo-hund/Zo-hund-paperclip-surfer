@@ -8,7 +8,10 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 
 const MODELS_CACHE_TTL_MS = 60_000;
-const MODELS_DISCOVERY_TIMEOUT_MS = 20_000;
+// 45s (was 20s) — generous headroom for a cold `opencode models` spawn on
+// Windows under SQLite lock contention. The in-flight dedupe below means only
+// one spawn runs per {command,env} key at a time, so this isn't multiplied.
+const MODELS_DISCOVERY_TIMEOUT_MS = 45_000;
 
 function resolveOpenCodeCommand(input: unknown): string {
   const envOverride =
@@ -20,6 +23,11 @@ function resolveOpenCodeCommand(input: unknown): string {
 }
 
 const discoveryCache = new Map<string, { expiresAt: number; models: AdapterModel[] }>();
+// In-flight promise map: coalesces concurrent cache-miss callers onto a single
+// `opencode models` invocation. Without this, a thundering herd of heartbeat
+// ticks (20+ agents waking simultaneously) spawn 20+ CLI processes that
+// contend on OpenCode's shared SQLite DB, pushing each past the 20s budget.
+const discoveryInFlight = new Map<string, Promise<AdapterModel[]>>();
 const VOLATILE_ENV_KEY_PREFIXES = ["PAPERCLIP_", "npm_", "NPM_"] as const;
 const VOLATILE_ENV_KEY_EXACT = new Set(["PWD", "OLDPWD", "SHLVL", "_", "TERM_SESSION_ID", "HOME"]);
 
@@ -85,13 +93,17 @@ function hashValue(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function discoveryCacheKey(command: string, cwd: string, env: Record<string, string>) {
+function discoveryCacheKey(command: string, _cwd: string, env: Record<string, string>) {
+  // cwd is intentionally excluded from the cache key: model availability depends
+  // on provider auth (env vars / user config), not on the working directory.
+  // Including cwd caused every agent with a different cwd to spawn its own
+  // `opencode models` process simultaneously, contending on the shared SQLite DB.
   const envKey = Object.entries(env)
     .filter(([key]) => !isVolatileEnvKey(key))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, value]) => `${key}=${hashValue(value)}`)
     .join("\n");
-  return `${command}\n${cwd}\n${envKey}`;
+  return `${command}\n${envKey}`;
 }
 
 function pruneExpiredDiscoveryCache(now: number) {
@@ -161,9 +173,21 @@ export async function discoverOpenCodeModelsCached(input: {
   const cached = discoveryCache.get(key);
   if (cached && cached.expiresAt > now) return cached.models;
 
-  const models = await discoverOpenCodeModels({ command, cwd, env });
-  discoveryCache.set(key, { expiresAt: now + MODELS_CACHE_TTL_MS, models });
-  return models;
+  // Coalesce concurrent cache-miss callers onto a single CLI spawn.
+  const existing = discoveryInFlight.get(key);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    try {
+      const models = await discoverOpenCodeModels({ command, cwd, env });
+      discoveryCache.set(key, { expiresAt: Date.now() + MODELS_CACHE_TTL_MS, models });
+      return models;
+    } finally {
+      discoveryInFlight.delete(key);
+    }
+  })();
+  discoveryInFlight.set(key, pending);
+  return pending;
 }
 
 export async function ensureOpenCodeModelConfiguredAndAvailable(input: {

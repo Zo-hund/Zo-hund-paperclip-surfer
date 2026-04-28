@@ -1,304 +1,633 @@
-import React, { useState } from "react";
+/**
+ * AMX Labs — Marketing Homepage
+ * Implements the AMX Labs Design System (neon-cyberpunk brand).
+ * Self-contained page — uses its own Nav/Footer, not PublicLayout.
+ * Route: /home  (App.tsx line 347)
+ *
+ * Design source: https://api.anthropic.com/v1/design/h/99_MUd2bYjxI3QTQheRFLg
+ */
+
+import React, { useState, useEffect, CSSProperties } from "react";
 import {
-  Zap, ArrowRight, Bot, UserCheck, Users, Layers, Star, Play,
-  Cpu, CheckCircle2, Globe, ShieldCheck, BarChart2, Sparkles,
-  ChevronRight, BadgeCheck, Building2, Mail, Send
+  Radio, Cpu, Waves, ShieldCheck, Satellite, Activity,
+  ArrowRight, FileText, MessageSquare,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Link, useNavigate } from "@/lib/router";
-import { PublicLayout, MEMBER_TIERS } from "@/components/PublicLayout";
+import { Link } from "@/lib/router";
 
-// ── Mock public data ──────────────────────────────────────────────────────────
-const FEATURED_AGENTS = [
-  { id: "ag_hermes", name: "Hermes Advanced", title: "Nous Research Reasoning Elite", type: "agent", rating: 5.0, reviews: 324, rate: 80,  tags: ["Deep Reasoning", "Paperclip MCP", "Backend"],  avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=hermes",   badge: "Top Rated" },
-  { id: "ag_astra",  name: "Astra",           title: "Senior Full-Stack Engineer",    type: "agent", rating: 4.9, reviews: 142, rate: 50,  tags: ["React", "Node.js", "TypeScript", "System"],    avatarUrl: "https://i.pravatar.cc/150?u=a042astra",               badge: "Top Rated" },
-  { id: "h_sarah",   name: "Sarah Chen",      title: "Senior Product Designer",       type: "human", rating: 4.9, reviews: 128, rate: 650, tags: ["Figma", "UI/UX", "User Research"],             avatarUrl: "https://i.pravatar.cc/150?u=sarah-chen",              badge: "Expert Lead" },
-  { id: "h_marcus",  name: "Marcus Thorne",   title: "Enterprise Solutions Architect", type: "human", rating: 5.0, reviews: 245, rate: 950, tags: ["System Design", "Audit", "Compliance"],       avatarUrl: "https://i.pravatar.cc/150?u=marcus-thorne",           badge: "Security Cleared" },
-];
+// ─── Shared types ──────────────────────────────────────────────────────────────
 
-const FEATURED_COMPANIES = [
-  { slug: "amx-labs",      name: "AMX Labs",          desc: "AI-first R&D hub. Engineering, design, and data science.",      agents: 8, humans: 3, color: "from-primary/20 to-primary/5"    },
-  { slug: "zkode-studios", name: "ZKODE Studios",     desc: "Creative tech collective. Web3, XR, and interactive media.",    agents: 5, humans: 4, color: "from-violet-500/20 to-violet-500/5" },
-  { slug: "foodport-ai",   name: "FoodPort AI",       desc: "Community food systems — local supply chain intelligence.",     agents: 3, humans: 6, color: "from-emerald-500/20 to-emerald-500/5"},
-  { slug: "metro-connect", name: "Metro Connect",     desc: "Smart city infrastructure — government & civic tech.",         agents: 4, humans: 5, color: "from-amber-500/20 to-amber-500/5"  },
-];
+type Variant = "primary" | "secondary" | "ghost";
 
-const STATS = [
-  { value: "2,400+", label: "Verified Agents",    icon: Bot },
-  { value: "380+",   label: "Human Experts",      icon: UserCheck },
-  { value: "94",     label: "Active Companies",   icon: Building2 },
-  { value: "99.8%",  label: "Delivery Rate",      icon: CheckCircle2 },
-];
+interface AmxBtnProps {
+  children: React.ReactNode;
+  variant?: Variant;
+  icon?: React.ElementType;
+  onClick?: () => void;
+  to?: string;
+  href?: string;
+}
 
-const SERVICES = [
-  { icon: Bot,       label: "Solo AI Agent",        desc: "Focused task execution by a dedicated AI",   from: "25 cr/hr",  color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20"   },
-  { icon: UserCheck, label: "Solo Human Expert",    desc: "Vetted human contractor working directly",    from: "550 cr/hr", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20"},
-  { icon: Users,     label: "Co-op (AI + Human)",  desc: "Human expert leading AI agents in tandem",   from: "200 cr/hr", color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20" },
-  { icon: Layers,    label: "Full Team / Group",    desc: "Structured squad: PM, devs, design, QA",     from: "800 cr/hr", color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20"  },
-];
+// ─── HUD L-corner frame ────────────────────────────────────────────────────────
 
-// ── Section Heading ───────────────────────────────────────────────────────────
-function SectionHeading({ eyebrow, title, sub }: { eyebrow: string; title: string; sub?: string }) {
+function HUDFrame({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
+  const corner = (pos: CSSProperties): CSSProperties => ({
+    position: "absolute",
+    width: 14,
+    height: 14,
+    borderColor: "var(--amx-cyan)",
+    filter: "drop-shadow(0 0 4px rgba(39,232,251,0.7))",
+    ...pos,
+  });
   return (
-    <div className="text-center mb-12">
-      <p className="text-[10px] font-black uppercase tracking-[0.35em] text-primary mb-3">{eyebrow}</p>
-      <h2 className="text-3xl md:text-4xl font-black text-foreground mb-3">{title}</h2>
-      {sub && <p className="text-[15px] text-muted-foreground max-w-2xl mx-auto leading-relaxed">{sub}</p>}
+    <div style={{ position: "relative", ...style }}>
+      <div style={corner({ top: 0, left: 0, borderTop: "1px solid", borderLeft: "1px solid" })} />
+      <div style={corner({ top: 0, right: 0, borderTop: "1px solid", borderRight: "1px solid" })} />
+      <div style={corner({ bottom: 0, left: 0, borderBottom: "1px solid", borderLeft: "1px solid" })} />
+      <div style={corner({ bottom: 0, right: 0, borderBottom: "1px solid", borderRight: "1px solid" })} />
+      {children}
     </div>
   );
 }
 
-// ── Quick service request panel ────────────────────────────────────────────────
-function QuickRequestPanel() {
-  const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+// ─── Neon button ───────────────────────────────────────────────────────────────
+
+function AmxBtn({ children, variant = "primary", icon: Icon, onClick, to, href }: AmxBtnProps) {
+  const [hov, setHov] = useState(false);
+
+  const base: CSSProperties = {
+    fontFamily: "var(--amx-font-display)",
+    textTransform: "uppercase",
+    letterSpacing: "0.18em",
+    fontSize: 11,
+    fontWeight: 600,
+    padding: "10px 18px",
+    borderRadius: 6,
+    cursor: "pointer",
+    transition: "all 140ms var(--amx-ease-out)",
+    border: "1px solid transparent",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    textDecoration: "none",
+    background: "transparent",
+  };
+
+  const variants: Record<Variant, CSSProperties> = {
+    primary: {
+      background: hov ? "var(--amx-cyan-bright)" : "var(--amx-cyan)",
+      color: "#011220",
+      boxShadow: hov ? "var(--amx-glow-cyan-md)" : "var(--amx-glow-cyan-sm)",
+      borderColor: "transparent",
+    },
+    secondary: {
+      background: "transparent",
+      color: hov ? "var(--amx-cyan)" : "var(--amx-ink-8)",
+      borderColor: hov ? "var(--amx-cyan)" : "var(--amx-border-default)",
+      boxShadow: hov ? "var(--amx-glow-cyan-sm)" : "none",
+    },
+    ghost: {
+      background: hov ? "rgba(39,232,251,0.06)" : "transparent",
+      color: hov ? "var(--amx-cyan)" : "var(--amx-ink-6)",
+      borderColor: "transparent",
+    },
+  };
+
+  const content = (
+    <>
+      {children}
+      {Icon && <Icon size={13} strokeWidth={1.5} />}
+    </>
+  );
+
+  const style = { ...base, ...variants[variant] };
+
+  if (to) {
+    return (
+      <Link
+        to={to}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={style}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={style}
+      >
+        {content}
+      </a>
+    );
+  }
+
   return (
-    <div className="flex flex-col sm:flex-row items-center gap-3 max-w-xl mx-auto mt-8">
-      <div className="relative flex-1 w-full">
-        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <input value={email} onChange={(e) => setEmail(e.target.value)}
-          placeholder="your@email.com — start a service request"
-          className="w-full h-12 pl-11 pr-4 rounded-xl border border-border/60 bg-card text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={style}
+    >
+      {content}
+    </button>
+  );
+}
+
+// ─── Nav ───────────────────────────────────────────────────────────────────────
+
+function AmxNav() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const on = () => setScrolled(window.scrollY > 6);
+    window.addEventListener("scroll", on);
+    on();
+    return () => window.removeEventListener("scroll", on);
+  }, []);
+
+  const links = [
+    { label: "Platform", href: "#platform" },
+    { label: "Systems", href: "#systems" },
+    { label: "Research", href: "#research" },
+    { label: "Company", to: "/p/company/amx-labs" },
+  ];
+
+  return (
+    <nav style={{
+      position: "sticky",
+      top: 0,
+      zIndex: 50,
+      padding: "14px 48px",
+      background: scrolled ? "rgba(7,11,28,0.72)" : "transparent",
+      backdropFilter: scrolled ? "blur(16px)" : "none",
+      WebkitBackdropFilter: scrolled ? "blur(16px)" : "none",
+      borderBottom: scrolled ? "1px solid var(--amx-border-subtle)" : "1px solid transparent",
+      transition: "all 260ms var(--amx-ease-out)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+    }}>
+      {/* Logo */}
+      <Link to="/home" style={{ display: "flex", alignItems: "center", gap: 12, textDecoration: "none" }}>
+        <img
+          src="/amx-glyph.svg"
+          alt="AMX Labs"
+          style={{ height: 30, filter: "drop-shadow(0 0 8px rgba(39,232,251,0.5))" }}
+        />
+        <span style={{
+          fontFamily: "var(--amx-font-display)",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.22em",
+          fontSize: 16,
+          background: "var(--amx-grad-wordmark)",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          color: "transparent",
+        }}>
+          AMX LABS
+        </span>
+      </Link>
+
+      {/* Links */}
+      <div style={{ display: "flex", gap: 28, alignItems: "center" }}>
+        {links.map((l) => (
+          <Link key={l.label} to={l.to ?? `/home${l.href ?? ""}`} style={{
+            fontFamily: "var(--amx-font-display)",
+            fontSize: 12,
+            textTransform: "uppercase",
+            letterSpacing: "0.18em",
+            color: "var(--amx-ink-6)",
+            fontWeight: 500,
+            textDecoration: "none",
+          }}>{l.label}</Link>
+        ))}
       </div>
-      <Button onClick={() => navigate(`/request?email=${encodeURIComponent(email)}`)}
-        className="h-12 px-6 font-black text-[12px] uppercase tracking-widest gap-2 shadow-lg shadow-primary/20 shrink-0 w-full sm:w-auto">
-        <Send className="h-4 w-4" /> Request Services
-      </Button>
+
+      {/* CTAs */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Link to="/request" style={{
+          fontFamily: "var(--amx-font-display)",
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: "0.18em",
+          color: "var(--amx-ink-5)",
+          padding: "8px 14px",
+          textDecoration: "none",
+        }}>
+          Sign in
+        </Link>
+        <AmxBtn to="/request" icon={ArrowRight}>Request access</AmxBtn>
+      </div>
+    </nav>
+  );
+}
+
+// ─── Hero ──────────────────────────────────────────────────────────────────────
+
+function AmxHero() {
+  return (
+    <section style={{ position: "relative", padding: "64px 48px 96px", overflow: "hidden" }}>
+      {/* Ambient glow */}
+      <div style={{
+        position: "absolute", inset: 0,
+        background: "radial-gradient(ellipse 800px 500px at 30% 40%, rgba(39,232,251,0.10), transparent 60%), radial-gradient(ellipse 700px 500px at 75% 80%, rgba(255,39,255,0.08), transparent 60%)",
+        pointerEvents: "none",
+      }} />
+
+      <HUDFrame style={{ maxWidth: 1280, margin: "0 auto", padding: "48px 40px", minHeight: 520 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 60, alignItems: "center" }}>
+          {/* Glyph */}
+          <div style={{ textAlign: "center" as const }}>
+            <img
+              src="/amx-glyph.svg"
+              alt="AMX Labs"
+              style={{
+                width: "100%",
+                maxWidth: 380,
+                filter: "drop-shadow(0 0 30px rgba(39,232,251,0.45)) drop-shadow(0 0 50px rgba(255,39,255,0.35))",
+                animation: "amx-breathe 2.2s ease-in-out infinite",
+              }}
+            />
+          </div>
+
+          {/* Copy */}
+          <div>
+            <div style={{
+              fontFamily: "var(--amx-font-mono)",
+              fontSize: 12,
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              color: "var(--amx-cyan)",
+              marginBottom: 18,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--amx-cyan)", boxShadow: "var(--amx-glow-cyan-sm)", display: "inline-block" }} />
+              R&amp;D · ISSUE 004
+            </div>
+
+            <h1 style={{
+              fontFamily: "var(--amx-font-display)",
+              fontSize: 64,
+              margin: "0 0 24px",
+              color: "var(--amx-ink-8)",
+              letterSpacing: "0.08em",
+              lineHeight: 1.05,
+              textTransform: "uppercase",
+            }}>
+              Innovate.<br />
+              <span style={{
+                background: "var(--amx-grad-brand-h)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                color: "transparent",
+              }}>
+                Integrate. Illuminate.
+              </span>
+            </h1>
+
+            <p style={{ fontSize: 18, color: "var(--amx-ink-6)", maxWidth: 520, marginBottom: 32, lineHeight: 1.6 }}>
+              Instrument-grade systems for teams working at the edge of what works.
+              Built for precision. Engineered to ship.
+            </p>
+
+            <div style={{ display: "flex", gap: 14 }}>
+              <AmxBtn to="/request" icon={ArrowRight}>Enter the lab</AmxBtn>
+              <AmxBtn to="/pricing" variant="secondary" icon={FileText}>Read the paper</AmxBtn>
+            </div>
+          </div>
+        </div>
+      </HUDFrame>
+
+      {/* Status ticker bar */}
+      <div style={{
+        maxWidth: 1280, margin: "40px auto 0", padding: "16px 40px",
+        display: "flex", justifyContent: "space-between",
+        fontFamily: "var(--amx-font-mono)", fontSize: 11,
+        color: "var(--amx-ink-5)", letterSpacing: "0.15em", textTransform: "uppercase",
+        borderTop: "1px solid var(--amx-border-subtle)", borderBottom: "1px solid var(--amx-border-subtle)",
+      }}>
+        <span>T-07 : 04:22:09</span>
+        <span>CH.02 LINK ESTABLISHED</span>
+        <span>λ = 488 NM</span>
+        <span>v1.4.0</span>
+        <span style={{ color: "var(--amx-cyan)" }}>● LIVE</span>
+      </div>
+    </section>
+  );
+}
+
+// ─── Spec Strip ────────────────────────────────────────────────────────────────
+
+function AmxSpecStrip() {
+  const specs = [
+    { k: "JITTER",   v: "< 0.8", u: "ms" },
+    { k: "CHANNELS", v: "256",   u: "concurrent" },
+    { k: "UPTIME",   v: "99.997",u: "%" },
+    { k: "LATENCY",  v: "3.2",   u: "ms p99" },
+    { k: "DEPLOYS",  v: "12k+",  u: "sites" },
+  ];
+  return (
+    <section id="systems" style={{
+      padding: "48px 48px", maxWidth: 1280, margin: "0 auto",
+      borderTop: "1px solid var(--amx-border-subtle)",
+      borderBottom: "1px solid var(--amx-border-subtle)",
+    }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${specs.length}, 1fr)`, gap: 12 }}>
+        {specs.map((s, i) => (
+          <div key={s.k} style={{ padding: "0 24px", borderLeft: i === 0 ? "none" : "1px solid var(--amx-border-subtle)" }}>
+            <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 10, letterSpacing: "0.2em", color: "var(--amx-ink-5)", marginBottom: 8 }}>{s.k}</div>
+            <div style={{ fontFamily: "var(--amx-font-display)", fontSize: 40, color: "var(--amx-cyan)", lineHeight: 1, letterSpacing: "0.02em", textShadow: "var(--amx-glow-cyan-sm)" }}>{s.v}</div>
+            <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 11, color: "var(--amx-ink-6)", marginTop: 8, letterSpacing: "0.08em" }}>{s.u}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─── Capability Grid ───────────────────────────────────────────────────────────
+
+interface CapCard { num: string; icon: React.ElementType; title: string; body: string }
+
+function CapabilityCard({ num, icon: Icon, title, body }: CapCard) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        position: "relative",
+        background: "var(--amx-ink-2)",
+        border: `1px solid ${hov ? "var(--amx-border-glow-cyan)" : "var(--amx-border-subtle)"}`,
+        borderRadius: 14, padding: 28, overflow: "hidden",
+        boxShadow: hov ? "var(--amx-glow-cyan-sm), var(--amx-shadow-2)" : "var(--amx-shadow-2)",
+        transition: "all 260ms var(--amx-ease-out)",
+        transform: hov ? "translateY(-2px)" : "none",
+      }}
+    >
+      {/* Top-edge gradient bar */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "var(--amx-grad-brand-h)", opacity: hov ? 0.95 : 0.45, transition: "opacity 260ms" }} />
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+        <Icon size={32} strokeWidth={1.5} style={{ color: hov ? "var(--amx-cyan)" : "var(--amx-ink-6)", filter: hov ? "drop-shadow(0 0 6px rgba(39,232,251,0.6))" : "none", transition: "all 260ms" }} />
+        <span style={{ fontFamily: "var(--amx-font-mono)", fontSize: 11, color: "var(--amx-ink-5)", letterSpacing: "0.1em" }}>{num}</span>
+      </div>
+      <h4 style={{ fontFamily: "var(--amx-font-display)", fontSize: 20, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--amx-ink-8)", margin: "0 0 12px" }}>{title}</h4>
+      <p style={{ fontSize: 14, color: "var(--amx-ink-6)", lineHeight: 1.6, margin: 0 }}>{body}</p>
     </div>
   );
 }
 
-// ── Main PublicHome ───────────────────────────────────────────────────────────
+function AmxCapabilityGrid() {
+  const caps: CapCard[] = [
+    { num: "001", icon: Radio,       title: "Signal",    body: "Capture, filter, and route high-throughput telemetry across distributed channels with sub-millisecond jitter." },
+    { num: "002", icon: Cpu,         title: "Compute",   body: "On-edge inference stacks built for instrument-class latency. Deterministic under load." },
+    { num: "003", icon: Waves,       title: "Synthesis", body: "Composable waveform primitives. Drive arrays, simulate fields, close the loop in real time." },
+    { num: "004", icon: ShieldCheck, title: "Integrity", body: "Signed every step. Reproducible builds, auditable runs, no black boxes between probe and paper." },
+    { num: "005", icon: Satellite,   title: "Link",      body: "Wire AMX into your existing bench — gRPC, MQTT, OPC UA, or raw TCP. Your stack, not ours." },
+    { num: "006", icon: Activity,    title: "Observe",   body: "Live dashboards with a timescale that goes from nanoseconds to months. Zoom without reload." },
+  ];
+  return (
+    <section id="research" style={{ padding: "96px 48px", maxWidth: 1280, margin: "0 auto" }}>
+      <div style={{ marginBottom: 48 }}>
+        <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--amx-ink-5)", marginBottom: 14 }}>§ Capabilities</div>
+        <h2 style={{ fontFamily: "var(--amx-font-display)", fontSize: 48, margin: 0, color: "var(--amx-ink-8)", letterSpacing: "0.08em", textTransform: "uppercase", lineHeight: 1.05, maxWidth: 780 }}>
+          Systems. Signals.{" "}
+          <span style={{ background: "var(--amx-grad-brand-h)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent" }}>Results.</span>
+        </h2>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+        {caps.map((c) => <CapabilityCard key={c.num} {...c} />)}
+      </div>
+    </section>
+  );
+}
+
+// ─── Platform Section ──────────────────────────────────────────────────────────
+
+function AmxPlatformSection() {
+  const [tab, setTab] = useState(0);
+  const tabs = ["Overview", "Signal", "Compute", "Link"];
+  const readouts: [string, string, string][] = [["AMP", "0.482", "V"], ["FREQ", "2.44", "GHz"], ["PHASE", "+12.7", "°"], ["SNR", "38.1", "dB"]];
+
+  return (
+    <section id="platform" style={{ padding: "96px 48px", maxWidth: 1280, margin: "0 auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr", gap: 60, alignItems: "center" }}>
+        {/* Copy + tabs */}
+        <div>
+          <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--amx-ink-5)", marginBottom: 14 }}>§ Platform</div>
+          <h3 style={{ fontFamily: "var(--amx-font-display)", fontSize: 40, margin: "0 0 20px", color: "var(--amx-ink-8)", letterSpacing: "0.06em", lineHeight: 1.1 }}>
+            Precision at the<br />speed of thought.
+          </h3>
+          <p style={{ fontSize: 16, color: "var(--amx-ink-6)", lineHeight: 1.65, marginBottom: 28, maxWidth: 460 }}>
+            AMX runs as a single binary on your bench, your rack, or our cloud.
+            Same instrumentation surface. Same guarantees. Same shape of output, whatever you point it at.
+          </p>
+          <div style={{ display: "flex", gap: 6, marginBottom: 28, flexWrap: "wrap" }}>
+            {tabs.map((t, i) => (
+              <button key={t} onClick={() => setTab(i)} style={{
+                fontFamily: "var(--amx-font-display)", fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase",
+                padding: "8px 14px",
+                background: tab === i ? "rgba(39,232,251,0.08)" : "transparent",
+                color: tab === i ? "var(--amx-cyan)" : "var(--amx-ink-5)",
+                border: `1px solid ${tab === i ? "var(--amx-border-glow-cyan)" : "var(--amx-border-default)"}`,
+                borderRadius: 6, cursor: "pointer",
+                boxShadow: tab === i ? "var(--amx-glow-cyan-sm)" : "none",
+                transition: "all 140ms var(--amx-ease-out)",
+              }}>{t}</button>
+            ))}
+          </div>
+          <AmxBtn to="/request" variant="secondary" icon={ArrowRight}>Explore the platform</AmxBtn>
+        </div>
+
+        {/* Instrument panel */}
+        <HUDFrame style={{ background: "var(--amx-ink-1)", borderRadius: 14, padding: 28, minHeight: 420 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 14, borderBottom: "1px solid var(--amx-border-subtle)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3DE0B3", boxShadow: "0 0 8px rgba(61,224,179,0.7)", display: "inline-block" }} />
+              <span style={{ fontFamily: "var(--amx-font-mono)", fontSize: 11, color: "var(--amx-ink-7)", letterSpacing: "0.15em" }}>{tabs[tab].toUpperCase()} · CH.02</span>
+            </div>
+            <span style={{ fontFamily: "var(--amx-font-mono)", fontSize: 11, color: "var(--amx-ink-5)" }}>T-07 : 04:22:09</span>
+          </div>
+
+          {/* Waveform SVG */}
+          <div style={{ height: 120, position: "relative", marginBottom: 18, overflow: "hidden" }}>
+            <svg viewBox="0 0 500 120" style={{ width: "100%", height: "100%" }}>
+              <defs>
+                <linearGradient id="amx-wf" x1="0" x2="1">
+                  <stop offset="0" stopColor="#27E8FB" /><stop offset="1" stopColor="#FF27FF" />
+                </linearGradient>
+              </defs>
+              {[...Array(5)].map((_, i) => (
+                <line key={i} x1="0" y1={24 * (i + 1)} x2="500" y2={24 * (i + 1)} stroke="rgba(74,84,150,0.18)" strokeWidth="1" />
+              ))}
+              <path d="M0,60 Q25,20 50,60 T100,60 T150,60 T200,60 Q225,100 250,60 T300,60 T350,60 Q375,30 400,60 T450,60 T500,60"
+                fill="none" stroke="url(#amx-wf)" strokeWidth="1.8"
+                style={{ filter: "drop-shadow(0 0 6px rgba(39,232,251,0.7))" }} />
+            </svg>
+          </div>
+
+          {/* Readouts */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 18 }}>
+            {readouts.map(([k, v, u]) => (
+              <div key={k} style={{ background: "var(--amx-ink-2)", border: "1px solid var(--amx-border-subtle)", borderRadius: 6, padding: "10px 12px" }}>
+                <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 9, letterSpacing: "0.15em", color: "var(--amx-ink-5)", marginBottom: 4 }}>{k}</div>
+                <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 18, color: "var(--amx-cyan)", textShadow: "var(--amx-glow-cyan-sm)" }}>
+                  {v}<span style={{ fontSize: 11, color: "var(--amx-ink-6)", marginLeft: 4 }}>{u}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Log lines */}
+          <div style={{ background: "var(--amx-ink-0)", border: "1px solid var(--amx-border-subtle)", borderRadius: 6, padding: "10px 14px", fontFamily: "var(--amx-font-mono)", fontSize: 11, lineHeight: 1.7, color: "var(--amx-ink-6)" }}>
+            <div><span style={{ color: "var(--amx-ink-5)" }}>04:22:07 </span><span style={{ color: "var(--amx-cyan)" }}>link</span> established · ch.02</div>
+            <div><span style={{ color: "var(--amx-ink-5)" }}>04:22:08 </span><span style={{ color: "#3DE0B3" }}>ok</span> calibration drift 0.02%</div>
+            <div><span style={{ color: "var(--amx-ink-5)" }}>04:22:09 </span><span style={{ color: "var(--amx-ink-7)" }}>stream</span> 256 ch · 12.4 Gbps</div>
+          </div>
+        </HUDFrame>
+      </div>
+    </section>
+  );
+}
+
+// ─── Ticker ────────────────────────────────────────────────────────────────────
+
+function AmxTicker() {
+  const items = ["INNOVATE", "INTEGRATE", "ILLUMINATE", "AMX LABS", "R&D · ISSUE 004", "SYSTEMS · SIGNALS · RESULTS"];
+  const content = [...items, ...items, ...items];
+  return (
+    <section style={{ borderTop: "1px solid var(--amx-border-subtle)", borderBottom: "1px solid var(--amx-border-subtle)", padding: "20px 0", overflow: "hidden", background: "var(--amx-ink-1)" }}>
+      <div style={{ display: "flex", gap: 48, whiteSpace: "nowrap", animation: "amx-ticker 40s linear infinite", fontFamily: "var(--amx-font-display)", fontSize: 22, textTransform: "uppercase", letterSpacing: "0.22em" }}>
+        {content.map((t, i) => (
+          <React.Fragment key={i}>
+            <span style={{ color: i % 3 === 1 ? "var(--amx-cyan)" : i % 3 === 2 ? "var(--amx-magenta)" : "var(--amx-ink-6)", textShadow: i % 3 === 1 ? "var(--amx-glow-cyan-sm)" : i % 3 === 2 ? "var(--amx-glow-magenta-sm)" : "none" }}>
+              {t}
+            </span>
+            <span style={{ color: "var(--amx-ink-5)" }}>●</span>
+          </React.Fragment>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─── CTA ───────────────────────────────────────────────────────────────────────
+
+function AmxCTA() {
+  return (
+    <section style={{ padding: "96px 48px", position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 700px 400px at 50% 50%, rgba(39,232,251,0.12), transparent 60%), radial-gradient(ellipse 600px 400px at 50% 50%, rgba(255,39,255,0.10), transparent 70%)", pointerEvents: "none" }} />
+      <HUDFrame style={{ maxWidth: 1040, margin: "0 auto", padding: "72px 48px", textAlign: "center" }}>
+        <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 11, letterSpacing: "0.2em", color: "var(--amx-cyan)", marginBottom: 20, textTransform: "uppercase" }}>
+          ▸ Ready when you are
+        </div>
+        <h2 style={{ fontFamily: "var(--amx-font-display)", fontSize: 56, margin: "0 0 20px", color: "var(--amx-ink-8)", letterSpacing: "0.08em", textTransform: "uppercase", lineHeight: 1.05 }}>
+          Enter{" "}
+          <span style={{ background: "var(--amx-grad-brand-h)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent" }}>
+            the lab.
+          </span>
+        </h2>
+        <p style={{ fontSize: 18, color: "var(--amx-ink-6)", maxWidth: 560, margin: "0 auto 36px", lineHeight: 1.6 }}>
+          Credentials are issued weekly to qualified teams. Bring a problem. Leave with a spec.
+        </p>
+        <div style={{ display: "flex", gap: 14, justifyContent: "center" }}>
+          <AmxBtn to="/request" icon={ArrowRight}>Request access</AmxBtn>
+          <AmxBtn to="/request" variant="ghost" icon={MessageSquare}>Talk to engineering</AmxBtn>
+        </div>
+      </HUDFrame>
+    </section>
+  );
+}
+
+// ─── Footer ────────────────────────────────────────────────────────────────────
+
+function AmxFooter() {
+  const cols = [
+    {
+      h: "Platform",
+      links: [
+        { label: "Signal", to: "/home#systems" },
+        { label: "Compute", to: "/home#platform" },
+        { label: "Synthesis", to: "/home#research" },
+        { label: "Link", to: "/request" },
+      ],
+    },
+    {
+      h: "Company",
+      links: [
+        { label: "About", to: "/p/company/amx-labs" },
+        { label: "Research", to: "/home#research" },
+        { label: "Careers", to: "/request" },
+        { label: "Press", to: "/request" },
+      ],
+    },
+    {
+      h: "Resources",
+      links: [
+        { label: "Docs", to: "/pricing" },
+        { label: "Papers", to: "/pricing" },
+        { label: "Status", to: "/home#platform" },
+        { label: "Contact", to: "/request" },
+      ],
+    },
+  ];
+  return (
+    <footer style={{ padding: "64px 48px 32px", borderTop: "1px solid var(--amx-border-subtle)", background: "var(--amx-ink-0)" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr", gap: 48, marginBottom: 48 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <img src="/amx-glyph.svg" alt="AMX Labs" style={{ height: 28, filter: "drop-shadow(0 0 6px rgba(39,232,251,0.4))" }} />
+            <span style={{ fontFamily: "var(--amx-font-display)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.22em", fontSize: 14, background: "var(--amx-grad-wordmark)", WebkitBackgroundClip: "text", backgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent" }}>
+              AMX LABS
+            </span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--amx-ink-5)", lineHeight: 1.6, maxWidth: 320, margin: 0 }}>
+            Innovate. Integrate. Illuminate. Instrument-grade systems for teams at the edge of what works.
+          </p>
+        </div>
+        {cols.map((c) => (
+          <div key={c.h}>
+            <div style={{ fontFamily: "var(--amx-font-mono)", fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--amx-ink-5)", marginBottom: 14 }}>{c.h}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {c.links.map((l) => (
+                <Link key={l.label} to={l.to} style={{ fontSize: 13, color: "var(--amx-ink-6)", textDecoration: "none" }}>{l.label}</Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ maxWidth: 1280, margin: "0 auto", paddingTop: 24, borderTop: "1px solid var(--amx-border-subtle)", display: "flex", justifyContent: "space-between", fontFamily: "var(--amx-font-mono)", fontSize: 11, color: "var(--amx-ink-5)", letterSpacing: "0.1em" }}>
+        <span>© 2026 AMX LABS · ALL SYSTEMS NOMINAL</span>
+        <span>v1.4.0 · build 04221</span>
+      </div>
+    </footer>
+  );
+}
+
+// ─── Page root ─────────────────────────────────────────────────────────────────
+
 export function PublicHome() {
   return (
-    <PublicLayout>
-      {/* ── Hero ────────────────────────────────────────────────────────── */}
-      <section className="relative px-4 md:px-8 py-24 md:py-36 overflow-hidden">
-        {/* Glow blobs */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full bg-primary/8 blur-3xl" />
-          <div className="absolute bottom-0 right-0 translate-x-1/4 translate-y-1/4 w-[400px] h-[400px] rounded-full bg-violet-500/6 blur-3xl" />
-          {/* Grid */}
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:32px_32px]" />
-        </div>
-
-        <div className="max-w-5xl mx-auto text-center relative z-10">
-          {/* Eyebrow badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/20 bg-primary/5 text-primary mb-8">
-            <Sparkles className="h-3.5 w-3.5" />
-            <span className="text-[11px] font-black uppercase tracking-widest">AI-First Workforce Infrastructure</span>
-          </div>
-
-          <h1 className="text-5xl md:text-7xl font-black tracking-tight text-foreground leading-[0.95] mb-6">
-            Hire the
-            <span className="bg-gradient-to-r from-primary via-violet-400 to-primary bg-clip-text text-transparent"> Future </span>
-            of Work
-          </h1>
-
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed mb-4">
-            AMX connects you with elite AI agents, human experts, co-op teams, and full squads —
-            for simulations, live performances, and full production runs.
-          </p>
-          <p className="text-[13px] text-muted-foreground/70 mb-8">
-            Tier-based access for Collectives · Electives · Community Partners
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
-            <Link to="/request">
-              <Button className="h-14 px-8 font-black text-[13px] uppercase tracking-widest gap-2 shadow-2xl shadow-primary/30 rounded-2xl">
-                <Play className="h-5 w-5" /> Request Services
-              </Button>
-            </Link>
-            <Link to="/home#agents">
-              <Button variant="outline" className="h-14 px-8 font-black text-[13px] uppercase tracking-widest gap-2 border-border/60 rounded-2xl">
-                Browse Talent <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-
-          <QuickRequestPanel />
-        </div>
-      </section>
-
-      {/* ── Stats ───────────────────────────────────────────────────────── */}
-      <section className="px-4 md:px-8 py-12 border-y border-border/30 bg-card/20">
-        <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6">
-          {STATS.map((s) => {
-            const Icon = s.icon;
-            return (
-              <div key={s.label} className="flex flex-col items-center gap-2 text-center">
-                <Icon className="h-5 w-5 text-primary" />
-                <span className="text-3xl font-black text-foreground">{s.value}</span>
-                <span className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">{s.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── Services ─────────────────────────────────────────────────────── */}
-      <section className="px-4 md:px-8 py-20">
-        <div className="max-w-7xl mx-auto">
-          <SectionHeading eyebrow="What we offer" title="Services for Every Scale" sub="From a single focused agent to a full structured production squad — billed in credits, run on AMX Chain." />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {SERVICES.map((s) => {
-              const Icon = s.icon;
-              return (
-                <div key={s.label} className={`group relative flex flex-col p-6 rounded-2xl border bg-card ${s.border} hover:shadow-xl transition-all duration-300`}>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${s.bg}`}>
-                    <Icon className={`h-5 w-5 ${s.color}`} />
-                  </div>
-                  <h3 className={`text-[13px] font-black uppercase tracking-wide mb-2 ${s.color}`}>{s.label}</h3>
-                  <p className="text-[12px] text-muted-foreground leading-relaxed flex-1">{s.desc}</p>
-                  <div className="mt-4 pt-4 border-t border-border/30 flex items-center justify-between">
-                    <span className="text-[10px] font-black text-muted-foreground uppercase">From</span>
-                    <span className={`text-[12px] font-black ${s.color}`}>{s.from}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="text-center mt-8">
-            <Link to="/request">
-              <Button className="h-12 px-8 font-black text-[12px] uppercase tracking-widest gap-2 shadow-lg shadow-primary/20">
-                Start a Service Request <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Featured Agents ──────────────────────────────────────────────── */}
-      <section id="agents" className="px-4 md:px-8 py-20 bg-accent/5">
-        <div className="max-w-7xl mx-auto">
-          <SectionHeading eyebrow="Talent" title="Featured Agents & Experts" sub="AI agents and vetted human professionals — browse profiles, check XP levels, engage for any phase." />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-            {FEATURED_AGENTS.map((a) => (
-              <div key={a.id} className={`group relative flex flex-col bg-card rounded-2xl border transition-all duration-300 hover:shadow-xl overflow-hidden ${a.type === "human" ? "border-emerald-500/20 hover:border-emerald-500/50" : "border-border/60 hover:border-primary/50"}`}>
-                <div className="p-5 pb-3">
-                  <div className="flex items-start gap-3 mb-3">
-                    <img src={a.avatarUrl} alt={a.name} className="w-12 h-12 rounded-xl object-cover border border-border/60 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <h3 className="text-[13px] font-black text-foreground truncate">{a.name}</h3>
-                        <span className={`shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${a.type === "human" ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"}`}>
-                          {a.type === "human" ? "Human" : "AI"}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground truncate">{a.title}</p>
-                      <div className="flex items-center gap-1 mt-1">
-                        <Star className="h-3 w-3 fill-primary text-primary" />
-                        <span className="text-[11px] font-bold">{a.rating}</span>
-                        <span className="text-[10px] text-muted-foreground">({a.reviews})</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {a.tags.slice(0, 3).map((t) => (
-                      <span key={t} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent/20 border border-border/30 text-muted-foreground">{t}</span>
-                    ))}
-                  </div>
-                </div>
-                <div className="px-5 py-3 border-t border-border/30 bg-accent/5 flex items-center justify-between">
-                  <span className="text-[11px] font-black text-foreground">{a.rate} cr/hr</span>
-                  <Link to={`/p/agent/${a.id}`}>
-                    <Button size="sm" className="h-8 px-3 font-black text-[10px] uppercase tracking-widest gap-1">
-                      View <ChevronRight className="h-3 w-3" />
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="text-center">
-            <Link to="/request">
-              <Button variant="outline" className="h-11 px-8 font-black text-[12px] uppercase tracking-widest border-border/60">
-                Browse All Talent
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Companies ────────────────────────────────────────────────────── */}
-      <section id="companies" className="px-4 md:px-8 py-20">
-        <div className="max-w-7xl mx-auto">
-          <SectionHeading eyebrow="Companies" title="Company Tenants" sub="Explore companies operating on the AMX platform — each with a dedicated roster of agents and human experts." />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {FEATURED_COMPANIES.map((c) => (
-              <div key={c.slug} className={`group relative flex flex-col p-6 rounded-2xl border border-border/60 bg-gradient-to-b ${c.color} hover:border-border hover:shadow-xl transition-all duration-300`}>
-                <h3 className="text-[14px] font-black text-foreground mb-2">{c.name}</h3>
-                <p className="text-[12px] text-muted-foreground leading-relaxed flex-1 mb-4">{c.desc}</p>
-                <div className="flex items-center gap-3 text-[10px] font-black text-muted-foreground border-t border-border/30 pt-3">
-                  <span className="flex items-center gap-1"><Bot className="h-3 w-3" /> {c.agents} agents</span>
-                  <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {c.humans} humans</span>
-                </div>
-                <Link to={`/p/company/${c.slug}`} className="mt-3">
-                  <Button size="sm" variant="outline" className="w-full h-8 font-black text-[10px] uppercase tracking-widest border-border/60">
-                    View Profile <ChevronRight className="h-3 w-3 ml-1" />
-                  </Button>
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Membership Tiers ─────────────────────────────────────────────── */}
-      <section className="px-4 md:px-8 py-20 bg-accent/5">
-        <div className="max-w-7xl mx-auto">
-          <SectionHeading eyebrow="Membership" title="Join the AMX Ecosystem" sub="Tier-based access for every role — Collectives, Electives, and Community members all have a place here." />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {MEMBER_TIERS.map((group) => (
-              <div key={group.group} className={`p-6 rounded-2xl border bg-card ${group.border}`}>
-                <h3 className={`text-[12px] font-black uppercase tracking-widest mb-4 ${group.color}`}>{group.group}</h3>
-                <div className="space-y-2 mb-6">
-                  {group.tiers.map((t) => (
-                    <div key={t.id} className="flex items-center gap-2.5 text-[13px] text-foreground font-medium">
-                      <span className="text-base">{t.icon}</span>
-                      {t.label}
-                    </div>
-                  ))}
-                </div>
-                <Link to="/join">
-                  <Button className={`w-full h-10 font-black text-[11px] uppercase tracking-widest ${group.bg} ${group.color} border ${group.border} hover:opacity-90`} variant="outline">
-                    Join as {group.group}
-                  </Button>
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA Banner ───────────────────────────────────────────────────── */}
-      <section className="px-4 md:px-8 py-20">
-        <div className="max-w-4xl mx-auto text-center p-12 md:p-16 rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-background to-violet-500/10 relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(var(--primary-rgb),0.08),transparent_70%)] pointer-events-none" />
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/20 bg-primary/5 text-primary mb-6">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-black uppercase tracking-widest">AMX Chain Secured</span>
-            </div>
-            <h2 className="text-3xl md:text-5xl font-black text-foreground mb-4">Ready to Build?</h2>
-            <p className="text-muted-foreground text-lg mb-8 max-w-2xl mx-auto leading-relaxed">
-              Submit a service request, browse the marketplace, or join as a provider — all in under 2 minutes.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link to="/request">
-                <Button className="h-14 px-10 font-black text-[13px] uppercase tracking-widest gap-2 shadow-2xl shadow-primary/30 rounded-2xl">
-                  <Send className="h-5 w-5" /> Request Services Now
-                </Button>
-              </Link>
-              <Link to="/join">
-                <Button variant="outline" className="h-14 px-8 font-black text-[13px] uppercase tracking-widest gap-2 border-border/60 rounded-2xl">
-                  Join Free <Zap className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-    </PublicLayout>
+    <div style={{ background: "var(--amx-ink-0)", color: "var(--amx-ink-7)", minHeight: "100vh", overflowX: "hidden" }}>
+      <AmxNav />
+      <AmxHero />
+      <AmxSpecStrip />
+      <AmxCapabilityGrid />
+      <AmxPlatformSection />
+      <AmxTicker />
+      <AmxCTA />
+      <AmxFooter />
+    </div>
   );
 }

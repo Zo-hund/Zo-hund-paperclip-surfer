@@ -7,6 +7,8 @@ export interface ActivityFilters {
   agentId?: string;
   entityType?: string;
   entityId?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export function activityService(db: Db) {
@@ -25,7 +27,7 @@ export function activityService(db: Db) {
         conditions.push(eq(activityLog.entityId, filters.entityId));
       }
 
-      return db
+      let query = db
         .select({ activityLog })
         .from(activityLog)
         .leftJoin(
@@ -45,7 +47,16 @@ export function activityService(db: Db) {
           ),
         )
         .orderBy(desc(activityLog.createdAt))
-        .then((rows) => rows.map((r) => r.activityLog));
+        .$dynamic();
+
+      if (filters.limit) {
+        query = query.limit(filters.limit);
+      }
+      if (filters.offset) {
+        query = query.offset(filters.offset);
+      }
+
+      return query.then((rows: any[]) => rows.map((r) => r.activityLog));
     },
 
     forIssue: (issueId: string) =>

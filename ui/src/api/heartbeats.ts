@@ -23,6 +23,9 @@ export interface LiveRunForIssue {
   agentId: string;
   agentName: string;
   adapterType: string;
+  runMode?: string;
+  swarmBatchId?: string | null;
+  promotedFromRunId?: string | null;
   issueId?: string | null;
 }
 
@@ -56,8 +59,17 @@ export const heartbeatsApi = {
     api.get<LiveRunForIssue[]>(`/issues/${issueId}/live-runs`),
   activeRunForIssue: (issueId: string) =>
     api.get<ActiveRunForIssue | null>(`/issues/${issueId}/active-run`),
-  liveRunsForCompany: (companyId: string, minCount?: number) =>
-    api.get<LiveRunForIssue[]>(`/companies/${companyId}/live-runs${minCount ? `?minCount=${minCount}` : ""}`),
+  liveRunsForCompany: (
+    companyId: string,
+    opts?: number | { minCount?: number; swarmBatchId?: string },
+  ) => {
+    const resolvedOpts = typeof opts === "number" ? { minCount: opts } : opts;
+    const searchParams = new URLSearchParams();
+    if (resolvedOpts?.minCount != null) searchParams.set("minCount", String(resolvedOpts.minCount));
+    if (resolvedOpts?.swarmBatchId) searchParams.set("swarmBatchId", resolvedOpts.swarmBatchId);
+    const qs = searchParams.toString();
+    return api.get<LiveRunForIssue[]>(`/companies/${companyId}/live-runs${qs ? `?${qs}` : ""}`);
+  },
   listInstanceSchedulerAgents: () =>
     api.get<InstanceSchedulerHeartbeatAgent[]>("/instance/scheduler-heartbeats"),
 };

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { and, asc, desc, eq, gt, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { nextCronTickInTimeZone, validateCron, assertValidTimeZone } from "./cron.js";
 import type { Db } from "@paperclipai/db";
 import type { BillingType } from "@paperclipai/shared";
@@ -147,6 +147,7 @@ const heartbeatRunListColumns = {
   id: heartbeatRuns.id,
   companyId: heartbeatRuns.companyId,
   agentId: heartbeatRuns.agentId,
+  environment: heartbeatRuns.environment,
   invocationSource: heartbeatRuns.invocationSource,
   triggerDetail: heartbeatRuns.triggerDetail,
   status: heartbeatRuns.status,
@@ -174,6 +175,7 @@ const heartbeatRunListColumns = {
   retryOfRunId: heartbeatRuns.retryOfRunId,
   processLossRetryCount: heartbeatRuns.processLossRetryCount,
   contextSnapshot: heartbeatRuns.contextSnapshot,
+  runMode: heartbeatRuns.runMode,
   createdAt: heartbeatRuns.createdAt,
   updatedAt: heartbeatRuns.updatedAt,
 } as const;
@@ -620,6 +622,21 @@ function enrichWakeContextSnapshot(input: {
   }
   if (!readNonEmptyString(contextSnapshot["wakeTriggerDetail"]) && triggerDetail) {
     contextSnapshot.wakeTriggerDetail = triggerDetail;
+  }
+  if (payload) {
+    for (const key of [
+      "memberUserId",
+      "memberUserName",
+      "scenarioKey",
+      "scenarioLabel",
+      "simulationName",
+      "objectives",
+      "participatingAgentIds",
+    ]) {
+      if (contextSnapshot[key] === undefined && payload[key] !== undefined) {
+        contextSnapshot[key] = payload[key];
+      }
+    }
   }
 
   return {
@@ -1255,6 +1272,28 @@ export function heartbeatService(db: Db) {
       }
     }
 
+    const configuredAgentCwd = readNonEmptyString(parseObject(agent.adapterConfig).cwd);
+    if (configuredAgentCwd) {
+      const configuredAgentCwdExists = await fs
+        .stat(configuredAgentCwd)
+        .then((stats) => stats.isDirectory())
+        .catch(() => false);
+      if (configuredAgentCwdExists) {
+        return {
+          cwd: configuredAgentCwd,
+          source: "agent_home" as const,
+          projectId: resolvedProjectId,
+          workspaceId: null,
+          repoUrl: null,
+          repoRef: null,
+          workspaceHints,
+          warnings: [
+            `Using configured agent adapter cwd "${configuredAgentCwd}" for this run.`,
+          ],
+        };
+      }
+    }
+
     const cwd = resolveDefaultAgentWorkspaceDir(agent.id);
     await fs.mkdir(cwd, { recursive: true });
     const warnings: string[] = [];
@@ -1269,6 +1308,11 @@ export function heartbeatService(db: Db) {
     } else {
       warnings.push(
         `No project or prior session workspace was available. Using fallback workspace "${cwd}" for this run.`,
+      );
+    }
+    if (configuredAgentCwd) {
+      warnings.push(
+        `Configured agent adapter cwd "${configuredAgentCwd}" is not available. Using fallback workspace "${cwd}" for this run.`,
       );
     }
     return {
@@ -1559,6 +1603,8 @@ export function heartbeatService(db: Db) {
           wakeupRequestId: wakeupRequest.id,
           contextSnapshot: retryContextSnapshot,
           sessionIdBefore: sessionBefore,
+          runMode: run.runMode,
+          environment: run.runMode === "sim" ? "simulation" : "live",
           retryOfRunId: run.id,
           processLossRetryCount: (run.processLossRetryCount ?? 0) + 1,
           updatedAt: now,
@@ -1808,6 +1854,14 @@ export function heartbeatService(db: Db) {
         }
       } else {
         await releaseIssueExecutionAndPromote(finalizedRun);
+        if (finalizedRun.runMode === "sim") {
+          try {
+            const { pitStopService } = await import("./pit-stop.js");
+            await pitStopService(db).ingestSimRun(finalizedRun.id);
+          } catch (err) {
+            logger.warn({ err, runId: finalizedRun.id }, "failed to ingest completed sim run into Pit Stop");
+          }
+        }
       }
 
       await appendRunEvent(finalizedRun, await nextRunEventSeq(finalizedRun.id), {
@@ -2105,6 +2159,7 @@ export function heartbeatService(db: Db) {
       issueRef?.executionWorkspaceId ? await executionWorkspacesSvc.getById(issueRef.executionWorkspaceId) : null;
     const workspaceOperationRecorder = workspaceOperationsSvc.createRecorder({
       companyId: agent.companyId,
+      operatingEnvironment: run.runMode === "sim" ? "simulation" : "live",
       heartbeatRunId: run.id,
       executionWorkspaceId: existingExecutionWorkspace?.id ?? null,
     });
@@ -2289,7 +2344,7 @@ export function heartbeatService(db: Db) {
           ]
         : []),
     ];
-    context.paperclipWorkspace = {
+    const paperclipWorkspace = {
       cwd: executionWorkspace.cwd,
       source: executionWorkspace.source,
       mode: executionWorkspaceMode,
@@ -2306,6 +2361,7 @@ export function heartbeatService(db: Db) {
         return home;
       })(),
     };
+    context.paperclipWorkspace = paperclipWorkspace;
 
     // Ensure PARA memory daily note if skill is enabled.
     // desiredSkills may be stored as an array OR as a legacy space-separated string
@@ -2319,7 +2375,7 @@ export function heartbeatService(db: Db) {
         : [];
     if (desiredSkills.some((s) => s.includes("para-memory-files"))) {
       const today = new Date().toISOString().split("T")[0];
-      const memoryDir = path.join(context.paperclipWorkspace.agentHome, "memory");
+      const memoryDir = path.join(paperclipWorkspace.agentHome, "memory");
       const dailyNotePath = path.join(memoryDir, `${today}.md`);
 
       try {
@@ -2505,6 +2561,7 @@ export function heartbeatService(db: Db) {
       const runtimeServices = await ensureRuntimeServicesForRun({
         db,
         runId: run.id,
+        operatingEnvironment: run.runMode === "sim" ? "simulation" : "live",
         agent: {
           id: agent.id,
           name: agent.name,
@@ -2581,7 +2638,9 @@ export function heartbeatService(db: Db) {
       try {
         const { memoryLoaderService } = await import("./agent-runtime/memory-loader.js");
         const memoryLoader = memoryLoaderService(db);
-        const memories = await memoryLoader.loadMemories(agent.id, executionProjectId ?? undefined);
+      const memories = await memoryLoader.loadMemories(agent.id, executionProjectId ?? undefined, {
+        operatingEnvironment: agent.environment === "simulation" ? "simulation" : "live",
+      });
         const os = await import("node:os");
         const fsSync = await import("node:fs");
         const pathMod = await import("node:path");
@@ -2725,6 +2784,7 @@ Keep memories concise and specific. Don't write vague platitudes.`;
             db,
             adapterType: activeAdapterType,
             runId: run.id,
+            operatingEnvironment: run.runMode === "sim" ? "simulation" : "live",
             agent: {
               id: agent.id,
               name: agent.name,
@@ -2883,6 +2943,14 @@ Keep memories concise and specific. Don't write vague platitudes.`;
           },
         });
         await releaseIssueExecutionAndPromote(finalizedRun);
+        if (finalizedRun.runMode === "sim") {
+          try {
+            const { pitStopService } = await import("./pit-stop.js");
+            await pitStopService(db).ingestSimRun(finalizedRun.id);
+          } catch (err) {
+            logger.warn({ err, runId: finalizedRun.id }, "failed to ingest completed sim run into Pit Stop");
+          }
+        }
 
         // V2: Automated Asset Linking for Human-in-the-loop transparency
         if (issueId && outcome === "succeeded") {
@@ -3358,6 +3426,8 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
             wakeupRequestId: deferred.id,
             contextSnapshot: promotedContextSnapshot,
             sessionIdBefore: sessionBefore,
+            runMode: promotedSource === "automation" ? "live" : "live",
+            environment: "live",
           })
           .returning()
           .then((rows) => rows[0]);
@@ -3404,6 +3474,32 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
     });
 
     await startNextQueuedRunForAgent(promotedRun.agentId);
+
+    // Auto-continuation: if this agent has more open assigned issues with no
+    // active execution run, re-wake it immediately so work continues without
+    // waiting for the next heartbeat timer tick.
+    const remainingWork = await db
+      .select({ id: issues.id })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, promotedRun.companyId),
+          eq(issues.assigneeAgentId, promotedRun.agentId),
+          inArray(issues.status, ["open", "in_progress"]),
+          isNull(issues.executionRunId),
+        ),
+      )
+      .limit(1);
+
+    if (remainingWork.length > 0) {
+      await enqueueWakeup(promotedRun.agentId, {
+        source: "on_demand",
+        triggerDetail: "system",
+        reason: "Continuing: more assigned issues in inbox",
+        requestedByActorType: "system",
+        requestedByActorId: "heartbeat_auto_continuation",
+      }).catch(() => undefined);
+    }
   }
 
   async function enqueueWakeup(agentId: string, opts: WakeupOptions = {}) {
@@ -3412,6 +3508,17 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
     const contextSnapshot: Record<string, unknown> = { ...(opts.contextSnapshot ?? {}) };
     const reason = opts.reason ?? null;
     const payload = opts.payload ?? null;
+    const requestedRunMode = opts.runMode ?? "live";
+    const requestedEnvironment = requestedRunMode === "sim" ? "simulation" : "live";
+    if (!readNonEmptyString(contextSnapshot.requestedRunMode)) {
+      contextSnapshot.requestedRunMode = requestedRunMode;
+    }
+    if (!readNonEmptyString(contextSnapshot.requestedByActorType) && opts.requestedByActorType) {
+      contextSnapshot.requestedByActorType = opts.requestedByActorType;
+    }
+    if (!readNonEmptyString(contextSnapshot.requestedByActorId) && opts.requestedByActorId) {
+      contextSnapshot.requestedByActorId = opts.requestedByActorId;
+    }
     const {
       contextSnapshot: enrichedContextSnapshot,
       issueIdFromPayload,
@@ -3553,7 +3660,11 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
             .then((rows) => rows[0] ?? null)
           : null;
 
-        if (activeExecutionRun && activeExecutionRun.status !== "queued" && activeExecutionRun.status !== "running") {
+        if (
+          activeExecutionRun &&
+          ((activeExecutionRun.status !== "queued" && activeExecutionRun.status !== "running") ||
+            activeExecutionRun.runMode !== requestedRunMode)
+        ) {
           activeExecutionRun = null;
         }
 
@@ -3577,6 +3688,7 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
               and(
                 eq(heartbeatRuns.companyId, issue.companyId),
                 inArray(heartbeatRuns.status, ["queued", "running"]),
+                eq(heartbeatRuns.runMode, requestedRunMode),
                 sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issue.id}`,
               ),
             )
@@ -3736,7 +3848,7 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
           .returning()
           .then((rows) => rows[0]);
 
-        const newRun = await tx
+        let newRun = await tx
           .insert(heartbeatRuns)
           .values({
             companyId: agent.companyId,
@@ -3747,12 +3859,26 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
             wakeupRequestId: wakeupRequest.id,
             contextSnapshot: enrichedContextSnapshot,
             sessionIdBefore: sessionBefore,
-            runMode: opts.runMode ?? "live",
+            runMode: requestedRunMode,
+            environment: requestedEnvironment,
             swarmBatchId: opts.swarmBatchId ?? null,
             promotedFromRunId: opts.promotedFromRunId ?? null,
           })
           .returning()
           .then((rows) => rows[0]);
+
+        if (newRun.runMode !== requestedRunMode || newRun.environment !== requestedEnvironment) {
+          newRun = await tx
+            .update(heartbeatRuns)
+            .set({
+              runMode: requestedRunMode,
+              environment: requestedEnvironment,
+              updatedAt: new Date(),
+            })
+            .where(eq(heartbeatRuns.id, newRun.id))
+            .returning()
+            .then((rows) => rows[0] ?? newRun);
+        }
 
         await tx
           .update(agentWakeupRequests)
@@ -3802,10 +3928,16 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
       .orderBy(desc(heartbeatRuns.createdAt));
 
     const sameScopeQueuedRun = activeRuns.find(
-      (candidate) => candidate.status === "queued" && isSameTaskScope(runTaskKey(candidate), taskKey),
+      (candidate) =>
+        candidate.status === "queued" &&
+        candidate.runMode === requestedRunMode &&
+        isSameTaskScope(runTaskKey(candidate), taskKey),
     );
     const sameScopeRunningRun = activeRuns.find(
-      (candidate) => candidate.status === "running" && isSameTaskScope(runTaskKey(candidate), taskKey),
+      (candidate) =>
+        candidate.status === "running" &&
+        candidate.runMode === requestedRunMode &&
+        isSameTaskScope(runTaskKey(candidate), taskKey),
     );
     const shouldQueueFollowupForCommentWake =
       Boolean(wakeCommentId) && Boolean(sameScopeRunningRun) && !sameScopeQueuedRun;
@@ -3875,6 +4007,8 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
         wakeupRequestId: wakeupRequest.id,
         contextSnapshot: enrichedContextSnapshot,
         sessionIdBefore: sessionBefore,
+        runMode: requestedRunMode,
+        environment: requestedEnvironment,
       })
       .returning()
       .then((rows) => rows[0]);

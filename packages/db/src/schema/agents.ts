@@ -16,6 +16,7 @@ export const agents = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     companyId: uuid("company_id").notNull().references(() => companies.id),
+    environment: text("environment").notNull().default("live"),
     name: text("name").notNull(),
     role: text("role").notNull().default("general"),
     title: text("title"),
@@ -41,6 +42,11 @@ export const agents = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    companyEnvironmentStatusIdx: index("agents_company_environment_status_idx").on(
+      table.companyId,
+      table.environment,
+      table.status,
+    ),
     companyStatusIdx: index("agents_company_status_idx").on(table.companyId, table.status),
     companyReportsToIdx: index("agents_company_reports_to_idx").on(table.companyId, table.reportsTo),
     scheduleIdx: index("agents_schedule_idx").on(table.scheduleEnabled, table.nextScheduledAt),

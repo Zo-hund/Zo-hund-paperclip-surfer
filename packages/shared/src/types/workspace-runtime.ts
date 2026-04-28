@@ -1,3 +1,5 @@
+import type { OperatingEnvironment } from "../constants.js";
+
 export type ExecutionWorkspaceStrategyType =
   | "project_primary"
   | "git_worktree"
@@ -62,6 +64,7 @@ export interface IssueExecutionWorkspaceSettings {
 export interface ExecutionWorkspace {
   id: string;
   companyId: string;
+  operatingEnvironment: OperatingEnvironment;
   projectId: string;
   projectWorkspaceId: string | null;
   sourceIssueId: string | null;
@@ -89,6 +92,7 @@ export interface ExecutionWorkspace {
 export interface WorkspaceRuntimeService {
   id: string;
   companyId: string;
+  operatingEnvironment: OperatingEnvironment;
   projectId: string | null;
   projectWorkspaceId: string | null;
   executionWorkspaceId: string | null;

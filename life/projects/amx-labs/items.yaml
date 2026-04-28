@@ -1,0 +1,49 @@
+# AMX Labs Atomic Facts
+
+facts:
+  - id: fleet-health-2026-04-13
+    content: Fleet health is 3/6 operational - CEO, CTO, UXDesigner running; CMO paused; V3 Audit Lead agents in error
+    source: cto-heartbeat-2026-04-13
+    tags:
+      - status
+      - health
+    status: active
+    created: 2026-04-13T23:58:00Z
+
+  - id: stage1-blocker
+    content: STAGE 1 (AMXA-687) blocked because V3 Audit Lead agents are in error state - cannot meet 'no agent in error' criterion
+    source: cto-heartbeat-2026-04-13
+    tags:
+      - blocker
+      - stage1
+    status: active
+    created: 2026-04-13T23:58:00Z
+
+  - id: grants-gov-blocked
+    content: grants.gov submission (AMXA-1012) blocked - needs org registration data from board and FIRECRAWL_API_KEY configured
+    source: prior-cto-comments
+    tags:
+      - blocker
+      - critical
+    status: active
+    created: 2026-04-11T00:15:00Z
+
+  - id: v3-audit-fix-required
+    content: V3 Audit Lead and V3 Audit Lead 2 require adapter configuration fix - CEO needs to resolve
+    source: amxa-788-team-restart-audit
+    tags:
+      - recovery-action
+      - ceo-action-required
+    status: active
+    created: 2026-04-11T00:22:00Z
+
+  - id: health-sweep-completed
+    content: Live health sweep completed - health_sweep_live_cto.md generated with fleet status
+    source: cto-heartbeat-2026-04-13
+    tags:
+      - deliverable
+      - health-report
+    status: active
+    created: 2026-04-13T23:58:00Z
+
+superseded: []

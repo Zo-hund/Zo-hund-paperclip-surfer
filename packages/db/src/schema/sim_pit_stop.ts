@@ -1,0 +1,119 @@
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { approvals } from "./approvals.js";
+import { companies } from "./companies.js";
+import { heartbeatRuns } from "./heartbeat_runs.js";
+import { issueWorkProducts } from "./issue_work_products.js";
+import { issues } from "./issues.js";
+
+export const simNotebooks = pgTable(
+  "sim_notebooks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    memberUserId: text("member_user_id").notNull(),
+    scenarioKey: text("scenario_key").notNull(),
+    scenarioLabel: text("scenario_label").notNull(),
+    issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
+    workProductId: uuid("work_product_id").references(() => issueWorkProducts.id, { onDelete: "set null" }),
+    lastSourceRunId: uuid("last_source_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    latestSectionKey: text("latest_section_key"),
+    currentMarkdown: text("current_markdown").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    companyMemberScenarioIdx: uniqueIndex("sim_notebooks_company_member_scenario_uq").on(
+      table.companyId,
+      table.memberUserId,
+      table.scenarioKey,
+    ),
+    companyUpdatedIdx: index("sim_notebooks_company_updated_idx").on(table.companyId, table.updatedAt),
+  }),
+);
+
+export const pitStopWorkspaces = pgTable(
+  "pit_stop_workspaces",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    notebookId: uuid("notebook_id").notNull().references(() => simNotebooks.id, { onDelete: "cascade" }),
+    memberUserId: text("member_user_id").notNull(),
+    scenarioKey: text("scenario_key").notNull(),
+    latestSimRunId: uuid("latest_sim_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    latestNotebookSectionKey: text("latest_notebook_section_key"),
+    latestRunSummary: jsonb("latest_run_summary").$type<Record<string, unknown>>().notNull().default({}),
+    latestEvalSummary: jsonb("latest_eval_summary").$type<Record<string, unknown>>().notNull().default({}),
+    coachingNotes: text("coaching_notes"),
+    mentorNotes: text("mentor_notes"),
+    sponsorNotes: text("sponsor_notes"),
+    generatedNotes: jsonb("generated_notes").$type<string[]>().notNull().default([]),
+    draftAgentConfig: jsonb("draft_agent_config").$type<Record<string, unknown>>().notNull().default({}),
+    draftAgentDiff: jsonb("draft_agent_diff").$type<Record<string, unknown>>().notNull().default({}),
+    targetAgentIds: jsonb("target_agent_ids").$type<string[]>().notNull().default([]),
+    targetLiveSettings: jsonb("target_live_settings").$type<Record<string, unknown>>().notNull().default({}),
+    targetTrack: text("target_track"),
+    targetRail: text("target_rail"),
+    readinessScore: integer("readiness_score"),
+    thresholdPassed: boolean("threshold_passed").notNull().default(false),
+    blockingIssues: jsonb("blocking_issues").$type<string[]>().notNull().default([]),
+    liveRecommendation: text("live_recommendation"),
+    lastPackagedAt: timestamp("last_packaged_at", { withTimezone: true }),
+    lastApprovalId: uuid("last_approval_id").references(() => approvals.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    notebookIdx: uniqueIndex("pit_stop_workspaces_notebook_uq").on(table.notebookId),
+    companyMemberScenarioIdx: index("pit_stop_workspaces_company_member_scenario_idx").on(
+      table.companyId,
+      table.memberUserId,
+      table.scenarioKey,
+    ),
+  }),
+);
+
+export const pitStopPackages = pgTable(
+  "pit_stop_packages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").references(() => pitStopWorkspaces.id, { onDelete: "set null" }),
+    notebookId: uuid("notebook_id").notNull().references(() => simNotebooks.id, { onDelete: "cascade" }),
+    memberUserId: text("member_user_id").notNull(),
+    scenarioKey: text("scenario_key").notNull(),
+    version: integer("version").notNull().default(1),
+    status: text("status").notNull().default("draft"),
+    sourceSimRunId: uuid("source_sim_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    notebookSectionKey: text("notebook_section_key"),
+    notebookSnapshotMarkdown: text("notebook_snapshot_markdown").notNull().default(""),
+    runSummary: jsonb("run_summary").$type<Record<string, unknown>>().notNull().default({}),
+    evalSummary: jsonb("eval_summary").$type<Record<string, unknown>>().notNull().default({}),
+    coachingNotes: text("coaching_notes"),
+    mentorNotes: text("mentor_notes"),
+    sponsorNotes: text("sponsor_notes"),
+    generatedNotes: jsonb("generated_notes").$type<string[]>().notNull().default([]),
+    draftAgentConfig: jsonb("draft_agent_config").$type<Record<string, unknown>>().notNull().default({}),
+    draftAgentDiff: jsonb("draft_agent_diff").$type<Record<string, unknown>>().notNull().default({}),
+    targetAgentIds: jsonb("target_agent_ids").$type<string[]>().notNull().default([]),
+    targetLiveSettings: jsonb("target_live_settings").$type<Record<string, unknown>>().notNull().default({}),
+    targetTrack: text("target_track"),
+    targetRail: text("target_rail"),
+    readinessScore: integer("readiness_score"),
+    thresholdPassed: boolean("threshold_passed").notNull().default(false),
+    blockingIssues: jsonb("blocking_issues").$type<string[]>().notNull().default([]),
+    liveRecommendation: text("live_recommendation"),
+    approvalId: uuid("approval_id").references(() => approvals.id, { onDelete: "set null" }),
+    approvalOutcome: text("approval_outcome"),
+    approvalNotes: text("approval_notes"),
+    approvalReviewedAt: timestamp("approval_reviewed_at", { withTimezone: true }),
+    promotedLiveRunIds: jsonb("promoted_live_run_ids").$type<string[]>().notNull().default([]),
+    createdByUserId: text("created_by_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    notebookVersionIdx: uniqueIndex("pit_stop_packages_notebook_version_uq").on(table.notebookId, table.version),
+    companyStatusIdx: index("pit_stop_packages_company_status_idx").on(table.companyId, table.status),
+    approvalIdx: index("pit_stop_packages_approval_idx").on(table.approvalId),
+  }),
+);

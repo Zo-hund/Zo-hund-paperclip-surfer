@@ -1,0 +1,30 @@
+const require_esm = require("module").createRequire(__filename);
+let postgres;
+try {
+  postgres = require("postgres");
+} catch (e) {
+  try {
+    postgres = require("./node_modules/postgres");
+  } catch(e) {
+    postgres = require("./packages/db/node_modules/postgres");
+  }
+}
+const fs = require("fs");
+
+async function main() {
+  const url = process.env.DATABASE_URL || "postgres://postgres@localhost:54329/postgres";
+  const sql = postgres(url);
+  
+  const sqlFile = fs.readFileSync("./scratch/update_ux_cwd.sql", "utf-8");
+  
+  console.log("Executing SQL...");
+  await sql.unsafe(sqlFile);
+  
+  console.log("Done!");
+  process.exit(0);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

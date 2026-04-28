@@ -1,0 +1,59 @@
+
+> @paperclipai/server@0.3.1 dev C:\Users\Techa\.paperclip\tmp_surfers\server
+> tsx src/index.ts
+
+[02:17:39] [33mWARN[39m: [36mEmbedded PostgreSQL already running; reusing existing process (pid=21128, port=54329)[39m
+[02:17:41] [32mINFO[39m: [36mEmbedded PostgreSQL ready[39m
+
+[36m██████╗  █████╗ ██████╗ ███████╗██████╗  ██████╗██╗     ██╗██████╗ [0m
+[36m██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔════╝██║     ██║██╔══██╗[0m
+[36m██████╔╝███████║██████╔╝█████╗  ██████╔╝██║     ██║     ██║██████╔╝[0m
+[36m██╔═══╝ ██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗██║     ██║     ██║██╔═══╝ [0m
+[36m██║     ██║  ██║██║     ███████╗██║  ██║╚██████╗███████╗██║██║     [0m
+[36m╚═╝     ╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝╚═╝     [0m
+[34m  ───────────────────────────────────────────────────────[0m
+[2mMode            [0m [32membedded-postgres[0m  |  [35mstatic-ui[0m
+[2mDeploy          [0m local_trusted (private)
+[2mAuth            [0m [32mready[0m
+[2mServer          [0m 3120
+[2mAPI             [0m http://127.0.0.1:3120/api [2m(health: http://127.0.0.1:3120/api/health)[0m
+[2mUI              [0m http://127.0.0.1:3120
+[2mDatabase        [0m C:\Users\Techa\.paperclip\instances\default\db [2m(pg:54329)[0m
+[2mMigrations      [0m already applied
+[2mAgent JWT       [0m [32mset[0m
+[2mHeartbeat       [0m [33mdisabled[0m
+[2mDB Backup       [0m [33mdisabled[0m
+[2mBackup Dir      [0m C:\Users\Techa\.paperclip\instances\default\data\backups
+[2mConfig          [0m C:\Users\Techa\.paperclip\instances\default\config.json
+[34m  ───────────────────────────────────────────────────────[0m
+
+[02:17:41] [32mINFO[39m: [36mplugin job coordinator started — listening to lifecycle events[39m [90m{"service":"plugin-job-coordinator"}[39m
+[02:17:41] [32mINFO[39m: [36mplugin job scheduler started[39m [90m{"service":"plugin-job-scheduler","tickIntervalMs":30000,"maxConcurrentJobs":10}[39m
+[02:17:41] [32mINFO[39m: [36minitializing plugin tool dispatcher[39m [90m{"service":"plugin-tool-dispatcher"}[39m
+[02:17:41] [32mINFO[39m: [36mplugin-loader: loading all ready plugins[39m [90m{"service":"plugin-loader"}[39m
+[02:17:41] [32mINFO[39m: [36mServer listening on 127.0.0.1:3120[39m
+[02:17:41] [32mINFO[39m: [36mloaded tools from ready plugins[39m [90m{"service":"plugin-tool-dispatcher","readyPlugins":0,"registeredTools":0}[39m
+[02:17:41] [32mINFO[39m: [36mplugin tool dispatcher initialized[39m [90m{"service":"plugin-tool-dispatcher","totalTools":0}[39m
+[02:17:42] [32mINFO[39m: [36mplugin-loader: no ready plugins to load[39m [90m{"service":"plugin-loader"}[39m
+[02:18:02] [32mINFO[39m: [36mGET / 200[39m
+[02:18:13] [32mINFO[39m: [36mGET /agents/482b3bd0-f6c3-44b6-82b4-83c2c97187d7 200[39m
+[02:18:13] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces 200[39m
+[02:18:23] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/heartbeat-runs?agentId=482b3bd0-f6c3-44b6-82b4-83c2c97187d7&limit=10 200[39m
+[02:18:35] [32mINFO[39m: [36mPOST /agents/482b3bd0-f6c3-44b6-82b4-83c2c97187d7/resume 200[39m
+[02:18:35] [32mINFO[39m: [36mPOST /agents/482b3bd0-f6c3-44b6-82b4-83c2c97187d7/wakeup?runMode=sim 202[39m
+[02:18:35] [32mINFO[39m: [36mV2: injecting agent memories into run[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"5f6e8efa-87e5-49aa-96ec-7b60a16eca98","memoryCount":4}[39m
+[02:18:35] [32mINFO[39m: [36mV2: no MCP servers resolved for agent[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"5f6e8efa-87e5-49aa-96ec-7b60a16eca98"}[39m
+[02:18:48] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:18:53] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:18:58] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:03] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:08] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:13] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:18] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:23] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:28] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:33] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:38] [32mINFO[39m: [36mV2: recorded post-run KPIs[39m [90m{"agentId":"482b3bd0-f6c3-44b6-82b4-83c2c97187d7","runId":"5f6e8efa-87e5-49aa-96ec-7b60a16eca98","outcome":"succeeded"}[39m
+[02:19:38] [32mINFO[39m: [36mGET /heartbeat-runs/5f6e8efa-87e5-49aa-96ec-7b60a16eca98 200[39m
+[02:19:51] [32mINFO[39m: [36mGET /companies/dece557d-8849-4040-b8ad-e0e235a54b52/pit-stop/workspaces?memberUserId=local-board 200[39m
+ ELIFECYCLE  Command failed with exit code 4294967295.

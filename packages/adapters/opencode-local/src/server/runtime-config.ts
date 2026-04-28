@@ -17,6 +17,25 @@ function resolveXdgConfigHome(env: Record<string, string>): string {
   );
 }
 
+function readNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function resolveRuntimeConfigTempParent(input: {
+  env: Record<string, string>;
+  config: Record<string, unknown>;
+}): string {
+  return (
+    readNonEmptyString(input.config.openCodeRuntimeTempDir) ||
+    readNonEmptyString(input.config.runtimeConfigTempDir) ||
+    readNonEmptyString(input.env.PAPERCLIP_OPENCODE_RUNTIME_TEMP_DIR) ||
+    readNonEmptyString(input.env.PAPERCLIP_RUNTIME_TEMP_DIR) ||
+    readNonEmptyString(process.env.PAPERCLIP_OPENCODE_RUNTIME_TEMP_DIR) ||
+    readNonEmptyString(process.env.PAPERCLIP_RUNTIME_TEMP_DIR) ||
+    os.tmpdir()
+  );
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -45,25 +64,16 @@ export async function prepareOpenCodeRuntimeConfig(input: {
   }
 
   const sourceConfigDir = path.join(resolveXdgConfigHome(input.env), "opencode");
-  const runtimeConfigHome = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-opencode-config-"));
+  const runtimeConfigTempParent = resolveRuntimeConfigTempParent(input);
+  await fs.mkdir(runtimeConfigTempParent, { recursive: true });
+  const runtimeConfigHome = await fs.mkdtemp(
+    path.join(runtimeConfigTempParent, "paperclip-opencode-config-"),
+  );
   const runtimeConfigDir = path.join(runtimeConfigHome, "opencode");
   const runtimeConfigPath = path.join(runtimeConfigDir, "opencode.json");
 
   await fs.mkdir(runtimeConfigDir, { recursive: true });
-  try {
-    await fs.cp(sourceConfigDir, runtimeConfigDir, {
-      recursive: true,
-      force: true,
-      errorOnExist: false,
-      dereference: false,
-    });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException | null)?.code !== "ENOENT") {
-      throw err;
-    }
-  }
-
-  const existingConfig = await readJsonObject(runtimeConfigPath);
+  const existingConfig = await readJsonObject(path.join(sourceConfigDir, "opencode.json"));
   const existingPermission = isPlainObject(existingConfig.permission)
     ? existingConfig.permission
     : {};

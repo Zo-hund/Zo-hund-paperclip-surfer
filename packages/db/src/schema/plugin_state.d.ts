@@ -64,7 +64,7 @@ export declare const pluginState: import("drizzle-orm/pg-core").PgTableWithColum
             tableName: "plugin_state";
             dataType: "string";
             columnType: "PgText";
-            data: "company" | "agent" | "project" | "issue" | "goal" | "run" | "instance" | "project_workspace";
+            data: "company" | "project" | "agent" | "run" | "issue" | "project_workspace" | "goal" | "instance";
             driverParam: string;
             notNull: true;
             hasDefault: false;
@@ -76,7 +76,7 @@ export declare const pluginState: import("drizzle-orm/pg-core").PgTableWithColum
             identity: undefined;
             generated: undefined;
         }, {}, {
-            $type: "company" | "agent" | "project" | "issue" | "goal" | "run" | "instance" | "project_workspace";
+            $type: "company" | "project" | "agent" | "run" | "issue" | "project_workspace" | "goal" | "instance";
         }>;
         scopeId: import("drizzle-orm/pg-core").PgColumn<{
             name: "scope_id";

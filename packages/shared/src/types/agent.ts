@@ -1,5 +1,6 @@
 import type {
   AgentAdapterType,
+  OperatingEnvironment,
   PauseReason,
   AgentRole,
   AgentStatus,
@@ -62,6 +63,7 @@ export interface AgentChainOfCommandEntry {
 export interface Agent {
   id: string;
   companyId: string;
+  environment: OperatingEnvironment;
   name: string;
   urlKey: string;
   role: AgentRole;

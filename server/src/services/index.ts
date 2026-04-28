@@ -46,3 +46,4 @@ export { rqPortalService } from "./rqPortalService.js";
 export { governanceService } from "./governanceService.js";
 export { lmsService } from "./lmsService.js";
 export { meetingAgentService } from "./meetingAgentService.js";
+export { pitStopService } from "./pit-stop.js";

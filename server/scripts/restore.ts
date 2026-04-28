@@ -3,7 +3,7 @@ import fs from "fs";
 
 async function main() {
   const connectionString = "postgres://paperclip:paperclip@127.0.0.1:54329/paperclip";
-  const backupFile = "c:\\Users\\Techa\\.paperclip\\instances\\default\\data\\backups\\paperclip-20260404-091014.sql";
+  const backupFile = "c:\\Users\\Techa\\.paperclip\\instances\\default\\data\\backups\\paperclip-20260409-070036.sql";
 
   console.log(`Restoring database from: ${backupFile}`);
   console.log(`Connecting to: ${connectionString}`);
@@ -16,7 +16,8 @@ async function main() {
     });
     console.log("Database restore completed successfully.");
   } catch (err) {
-    console.error("Database restore failed:", err);
+    console.error("Database restore failed:");
+    console.dir(err, { depth: null });
     process.exit(1);
   }
 }

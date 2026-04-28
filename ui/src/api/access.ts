@@ -4,6 +4,7 @@ import { api } from "./client";
 type InviteSummary = {
   id: string;
   companyId: string | null;
+  operatingEnvironment: "simulation" | "live";
   inviteType: "company_join" | "bootstrap_ceo";
   allowedJoinTypes: "human" | "agent" | "both";
   expiresAt: string;
@@ -84,12 +85,25 @@ type CliAuthChallengeStatus = {
 type CompanyInviteCreated = {
   id: string;
   token: string;
+  operatingEnvironment: "simulation" | "live";
   inviteUrl: string;
   expiresAt: string;
   allowedJoinTypes: "human" | "agent" | "both";
   onboardingTextPath?: string;
   onboardingTextUrl?: string;
   inviteMessage?: string | null;
+  delivery?:
+    | {
+        attempted: false;
+      }
+    | {
+        attempted: true;
+        accepted: boolean;
+        recipient: string;
+        provider: "resend";
+        messageId: string | null;
+        subject: string;
+      };
 };
 
 export const accessApi = {
@@ -97,8 +111,10 @@ export const accessApi = {
     companyId: string,
     input: {
       allowedJoinTypes?: "human" | "agent" | "both";
+      targetEnvironment?: "simulation" | "live";
       defaultsPayload?: Record<string, unknown> | null;
       agentMessage?: string | null;
+      inviteeEmail?: string | null;
     } = {},
   ) =>
     api.post<CompanyInviteCreated>(`/companies/${companyId}/invites`, input),

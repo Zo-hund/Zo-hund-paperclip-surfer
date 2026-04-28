@@ -12,6 +12,9 @@ import { Input } from "@/components/ui/input";
 import { useCompany } from "@/context/CompanyContext";
 import { useQuery } from "@tanstack/react-query";
 import { amxApi } from "@/api/amx";
+import { marketplaceApi } from "@/api/marketplace";
+import type { MarketplaceListing } from "@/api/marketplace";
+import { MarketplaceMicroserviceBooking, isMicroserviceListing } from "@/components/MarketplaceMicroserviceBooking";
 
 // ── Run phases ────────────────────────────────────────────────────────────────
 const RUN_PHASES = [
@@ -200,8 +203,8 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
 }
 
 // ── Talent Card ───────────────────────────────────────────────────────────────
-function TalentCard({ talent, activeTab, balance, currency, companyPrefix }: {
-  talent: any; activeTab: string; balance: number; currency: string; companyPrefix?: string
+function TalentCard({ talent, activeTab, balance, currency, companyPrefix, onBookListing }: {
+  talent: any; activeTab: string; balance: number; currency: string; companyPrefix?: string; onBookListing?: (listing: MarketplaceListing) => void;
 }) {
   const [showEngage, setShowEngage] = useState(false);
   const isHuman = activeTab === "humans";
@@ -284,7 +287,17 @@ function TalentCard({ talent, activeTab, balance, currency, companyPrefix }: {
                 </Button>
               </Link>
             )}
-            <Button onClick={() => setShowEngage(true)} size="sm" className={`h-9 px-4 font-black text-[10px] uppercase tracking-widest gap-1.5 ${isHuman ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20 border-0" : isCoop ? "bg-violet-500 hover:bg-violet-600 shadow-violet-500/20 border-0" : isTeam ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20 border-0 text-black" : ""}`}>
+            <Button
+              onClick={() => {
+                if (talent.marketplaceListing && isMicroserviceListing(talent.marketplaceListing)) {
+                  onBookListing?.(talent.marketplaceListing);
+                  return;
+                }
+                setShowEngage(true);
+              }}
+              size="sm"
+              className={`h-9 px-4 font-black text-[10px] uppercase tracking-widest gap-1.5 ${isHuman ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20 border-0" : isCoop ? "bg-violet-500 hover:bg-violet-600 shadow-violet-500/20 border-0" : isTeam ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20 border-0 text-black" : ""}`}
+            >
               <Play className="h-3 w-3" /> Engage
             </Button>
           </div>
@@ -307,6 +320,7 @@ export function AgentMarketplace() {
   const defaultMode = useModeParam();
   const [activeTab, setActiveTab] = useState<string>(defaultMode);
   const [phaseFilter, setPhaseFilter] = useState<string | null>(null);
+  const [bookingListing, setBookingListing] = useState<MarketplaceListing | null>(null);
 
   // Wallet balance
   const { data: walletData } = useQuery({
@@ -314,11 +328,61 @@ export function AgentMarketplace() {
     queryFn: () => amxApi.getWallet(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
-  const balance  = walletData?.balance ?? 0;
-  const currency = walletData?.currency ?? "SIMS";
+  const balance  = walletData?.tokenBalance ?? walletData?.balance ?? 0;
+  const currency = walletData?.currency ?? "AMX";
+
+  const { data: exchangeData } = useQuery({
+    queryKey: ["amx", "exchange", selectedCompanyId],
+    queryFn: () => amxApi.getExchange(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: profileData } = useQuery({
+    queryKey: ["marketplace", "me"],
+    queryFn: () => marketplaceApi.getMyProfile(),
+  });
+
+  const marketplaceTalent = useMemo(() => {
+    return (exchangeData?.listings ?? []).map((listing) => {
+      const tab =
+        listing.listingType === "agent" ? "agents" :
+        listing.listingType === "coop" ? "coop" :
+        "team";
+      return {
+        id: listing.id,
+        name: listing.name,
+        title: listing.title,
+        role: listing.listingType,
+        rating: 5,
+        reviews: 1,
+        hourlyRateTokens: listing.hourlyRateTokens,
+        skills: listing.skills,
+        available: listing.status === "active",
+        badges: listing.badges,
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(listing.name)}`,
+        description: listing.description,
+        phases: listing.supportedRunPhases.map((phase) =>
+          phase === "simulation" || phase === "learn" ? "sim" :
+          phase === "pit-stop" ? "post" :
+          phase === "content-production" ? "prod" :
+          phase === "live" ? "live" :
+          phase,
+        ),
+        marketplaceListing: listing,
+        marketplaceTab: tab,
+      };
+    });
+  }, [exchangeData?.listings]);
+
+  const microserviceListings = useMemo(
+    () => (exchangeData?.listings ?? []).filter(isMicroserviceListing),
+    [exchangeData?.listings],
+  );
 
   const currentPool = useMemo(() => {
-    const pool = activeTab === "agents" ? MOCK_AGENTS : activeTab === "humans" ? MOCK_HUMANS : activeTab === "coop" ? MOCK_COOP : MOCK_TEAMS;
+    const mockPool = activeTab === "agents" ? MOCK_AGENTS : activeTab === "humans" ? MOCK_HUMANS : activeTab === "coop" ? MOCK_COOP : MOCK_TEAMS;
+    const realPool = marketplaceTalent.filter((talent) => talent.marketplaceTab === activeTab);
+    const pool = [...realPool, ...mockPool];
     let filtered = pool.filter((t) =>
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.skills.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -326,10 +390,15 @@ export function AgentMarketplace() {
     );
     if (phaseFilter) filtered = filtered.filter((t) => (t.phases ?? []).includes(phaseFilter));
     return filtered;
-  }, [activeTab, searchQuery, phaseFilter]);
+  }, [activeTab, marketplaceTalent, searchQuery, phaseFilter]);
 
   return (
     <div className="flex flex-col min-h-screen bg-background animate-in fade-in duration-500">
+      <MarketplaceMicroserviceBooking
+        listing={bookingListing}
+        open={!!bookingListing}
+        onClose={() => setBookingListing(null)}
+      />
 
       {/* Header */}
       <section className="px-4 md:px-8 py-8 border-b border-border/40 bg-gradient-to-br from-accent/10 via-background to-primary/5 relative overflow-hidden">
@@ -357,9 +426,16 @@ export function AgentMarketplace() {
                 <Link to={`/${selectedCompany.issuePrefix}/xp/wallet`} className="text-[10px] text-primary font-black uppercase tracking-widest hover:underline">Add →</Link>
               )}
             </div>
-          </div>
+        </div>
 
-          {/* Mode tabs */}
+        {profileData && !profileData.guidance.requiredChecklistComplete && (
+          <div className="mx-auto mb-6 max-w-4xl rounded-2xl border border-amber-500/20 bg-amber-500/10 px-5 py-4 text-sm text-amber-100">
+            TECH AT NITE onboarding is not complete yet. {profileData.guidance.nextRecommendedStep} Complete the LMS guidance before
+            moving into Partner selling and advanced marketplace workflows.
+          </div>
+        )}
+
+        {/* Mode tabs */}
           <div className="flex justify-center mb-6">
             <div className="flex bg-card/60 p-1 rounded-2xl border border-border/40 backdrop-blur-sm gap-0.5">
               {HIRE_MODE_TABS.map((tab) => {
@@ -409,6 +485,55 @@ export function AgentMarketplace() {
       {/* Talent grid */}
       <main className="px-4 md:px-8 py-8">
         <div className="max-w-7xl mx-auto">
+          {microserviceListings.length > 0 && (
+            <section className="mb-8 rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-primary">
+                    <Sparkles className="h-4 w-4" />
+                    Official Microservices
+                  </div>
+                  <h2 className="text-lg font-black text-foreground">
+                    {microserviceListings[0].title}
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-muted-foreground">
+                    {microserviceListings[0].description}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {microserviceListings[0].skills.map((skill) => (
+                      <span key={skill} className="rounded-md border border-border/50 bg-background px-2 py-1 text-[10px] font-bold text-foreground">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {microserviceListings[0].supportedRunPhases.map((phase) => (
+                      <span key={phase} className="rounded-full bg-background/80 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                        {phase}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col gap-3 rounded-xl border border-border/50 bg-card p-4">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                    Microservice rate
+                  </div>
+                  <div className="text-2xl font-black text-foreground">
+                    {microserviceListings[0].hourlyRateTokens} AMX
+                    <span className="ml-1 text-xs text-muted-foreground">/hr</span>
+                  </div>
+                  <Button
+                    className="h-10 gap-2 text-[11px] font-black uppercase tracking-widest"
+                    onClick={() => setBookingListing(microserviceListings[0])}
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                    Book Microservice
+                  </Button>
+                </div>
+              </div>
+            </section>
+          )}
+
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-[12px] font-black tracking-[0.2em] uppercase text-muted-foreground flex items-center gap-2">
               {HIRE_MODE_TABS.find((t) => t.id === activeTab)?.icon && React.createElement(HIRE_MODE_TABS.find((t) => t.id === activeTab)!.icon, { className: "h-4 w-4" })}
@@ -421,7 +546,15 @@ export function AgentMarketplace() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {currentPool.map((talent) => (
-              <TalentCard key={talent.id} talent={talent} activeTab={activeTab} balance={balance} currency={currency} companyPrefix={selectedCompany?.issuePrefix} />
+              <TalentCard
+                key={talent.id}
+                talent={talent}
+                activeTab={activeTab}
+                balance={balance}
+                currency={currency}
+                companyPrefix={selectedCompany?.issuePrefix}
+                onBookListing={setBookingListing}
+              />
             ))}
           </div>
 

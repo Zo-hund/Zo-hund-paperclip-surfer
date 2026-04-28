@@ -91,7 +91,7 @@ export declare const pluginJobs: import("drizzle-orm/pg-core").PgTableWithColumn
             tableName: "plugin_jobs";
             dataType: "string";
             columnType: "PgText";
-            data: "active" | "paused" | "failed";
+            data: "active" | "failed" | "paused";
             driverParam: string;
             notNull: true;
             hasDefault: true;
@@ -103,7 +103,7 @@ export declare const pluginJobs: import("drizzle-orm/pg-core").PgTableWithColumn
             identity: undefined;
             generated: undefined;
         }, {}, {
-            $type: "active" | "paused" | "failed";
+            $type: "active" | "failed" | "paused";
         }>;
         lastRunAt: import("drizzle-orm/pg-core").PgColumn<{
             name: "last_run_at";
@@ -268,7 +268,7 @@ export declare const pluginJobRuns: import("drizzle-orm/pg-core").PgTableWithCol
             tableName: "plugin_job_runs";
             dataType: "string";
             columnType: "PgText";
-            data: "pending" | "queued" | "running" | "cancelled" | "failed" | "succeeded";
+            data: "pending" | "cancelled" | "queued" | "running" | "failed" | "succeeded";
             driverParam: string;
             notNull: true;
             hasDefault: true;
@@ -280,7 +280,7 @@ export declare const pluginJobRuns: import("drizzle-orm/pg-core").PgTableWithCol
             identity: undefined;
             generated: undefined;
         }, {}, {
-            $type: "pending" | "queued" | "running" | "cancelled" | "failed" | "succeeded";
+            $type: "pending" | "cancelled" | "queued" | "running" | "failed" | "succeeded";
         }>;
         durationMs: import("drizzle-orm/pg-core").PgColumn<{
             name: "duration_ms";

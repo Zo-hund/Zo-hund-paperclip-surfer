@@ -58,8 +58,8 @@ const NAV_LINKS = [
   { label: "Agents",    href: "/home#agents" },
   { label: "Companies", href: "/home#companies" },
   { label: "Services",  href: "/request" },
+  { label: "Pricing",   href: "/pricing" },
   { label: "Pass",      href: "/profile" },
-  { label: "Join",      href: "/join" },
 ];
 
 // ── PublicNav ─────────────────────────────────────────────────────────────────
@@ -95,9 +95,9 @@ function PublicNav() {
           <Link to="/auth">
             <Button variant="ghost" className="h-9 px-4 font-black text-[12px] uppercase tracking-widest">Sign In</Button>
           </Link>
-          <Link to="/join">
+          <Link to="/register">
             <Button className="h-9 px-4 font-black text-[12px] uppercase tracking-widest gap-1.5 shadow-lg shadow-primary/20">
-              Join Free <ChevronRight className="h-3.5 w-3.5" />
+              Sign Up Free <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </Link>
         </div>
@@ -119,7 +119,7 @@ function PublicNav() {
           ))}
           <div className="flex gap-2 pt-2">
             <Link to="/auth" className="flex-1"><Button variant="outline" className="w-full h-10 font-black text-[11px] uppercase">Sign In</Button></Link>
-            <Link to="/join" className="flex-1"><Button className="w-full h-10 font-black text-[11px] uppercase">Join Free</Button></Link>
+            <Link to="/register" className="flex-1"><Button className="w-full h-10 font-black text-[11px] uppercase">Sign Up Free</Button></Link>
           </div>
         </div>
       )}

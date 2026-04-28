@@ -1,0 +1,11 @@
+C:\Users\Techa\.paperclip\tmp_surfers\packages\adapters\claude-local\src\server\parse.ts:2
+import { asString, asNumber, parseObject, parseJson } from "@paperclipai/adapter-utils/server-utils";
+                   ^
+
+SyntaxError: The requested module '@paperclipai/adapter-utils/server-utils' does not provide an export named 'asNumber'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:180:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:263:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:578:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
+
+Node.js v22.14.0

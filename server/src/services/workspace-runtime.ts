@@ -45,6 +45,7 @@ export interface RealizedExecutionWorkspace extends ExecutionWorkspaceInput {
 export interface RuntimeServiceRef {
   id: string;
   companyId: string;
+  operatingEnvironment: "simulation" | "live";
   projectId: string | null;
   projectWorkspaceId: string | null;
   executionWorkspaceId: string | null;
@@ -137,6 +138,7 @@ function toRuntimeServiceRef(record: RuntimeServiceRecord, overrides?: Partial<R
   return {
     id: record.id,
     companyId: record.companyId,
+    operatingEnvironment: record.operatingEnvironment,
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
@@ -940,6 +942,7 @@ function toPersistedWorkspaceRuntimeService(record: RuntimeServiceRecord): typeo
   return {
     id: record.id,
     companyId: record.companyId,
+    operatingEnvironment: record.operatingEnvironment,
     projectId: record.projectId,
     projectWorkspaceId: record.projectWorkspaceId,
     executionWorkspaceId: record.executionWorkspaceId,
@@ -976,6 +979,7 @@ async function persistRuntimeServiceRecord(db: Db | undefined, record: RuntimeSe
     .onConflictDoUpdate({
       target: workspaceRuntimeServices.id,
       set: {
+        operatingEnvironment: values.operatingEnvironment,
         projectId: values.projectId,
         projectWorkspaceId: values.projectWorkspaceId,
         executionWorkspaceId: values.executionWorkspaceId,
@@ -1013,6 +1017,7 @@ function clearIdleTimer(record: RuntimeServiceRecord) {
 export function normalizeAdapterManagedRuntimeServices(input: {
   adapterType: string;
   runId: string;
+  operatingEnvironment: "simulation" | "live";
   agent: ExecutionWorkspaceAgentRef;
   issue: ExecutionWorkspaceIssueRef | null;
   workspace: RealizedExecutionWorkspace;
@@ -1051,6 +1056,7 @@ export function normalizeAdapterManagedRuntimeServices(input: {
         reuseKey: report.reuseKey ?? null,
       }),
       companyId: input.agent.companyId,
+      operatingEnvironment: input.operatingEnvironment,
       projectId: report.projectId ?? input.workspace.projectId,
       projectWorkspaceId: report.projectWorkspaceId ?? input.workspace.workspaceId,
       executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -1082,6 +1088,7 @@ export function normalizeAdapterManagedRuntimeServices(input: {
 async function startLocalRuntimeService(input: {
   db?: Db;
   runId: string;
+  operatingEnvironment: "simulation" | "live";
   agent: ExecutionWorkspaceAgentRef;
   issue: ExecutionWorkspaceIssueRef | null;
   workspace: RealizedExecutionWorkspace;
@@ -1162,6 +1169,7 @@ async function startLocalRuntimeService(input: {
   return {
     id: randomUUID(),
     companyId: input.agent.companyId,
+    operatingEnvironment: input.operatingEnvironment,
     projectId: input.workspace.projectId,
     projectWorkspaceId: input.workspace.workspaceId,
     executionWorkspaceId: input.executionWorkspaceId ?? null,
@@ -1269,6 +1277,7 @@ function registerRuntimeService(db: Db | undefined, record: RuntimeServiceRecord
 export async function ensureRuntimeServicesForRun(input: {
   db?: Db;
   runId: string;
+  operatingEnvironment: "simulation" | "live";
   agent: ExecutionWorkspaceAgentRef;
   issue: ExecutionWorkspaceIssueRef | null;
   workspace: RealizedExecutionWorkspace;
@@ -1322,6 +1331,7 @@ export async function ensureRuntimeServicesForRun(input: {
       const record = await startLocalRuntimeService({
         db: input.db,
         runId: input.runId,
+        operatingEnvironment: input.operatingEnvironment,
         agent: input.agent,
         issue: input.issue,
         workspace: input.workspace,
@@ -1460,6 +1470,7 @@ export async function persistAdapterManagedRuntimeServices(input: {
   db: Db;
   adapterType: string;
   runId: string;
+  operatingEnvironment: "simulation" | "live";
   agent: ExecutionWorkspaceAgentRef;
   issue: ExecutionWorkspaceIssueRef | null;
   workspace: RealizedExecutionWorkspace;
@@ -1484,6 +1495,7 @@ export async function persistAdapterManagedRuntimeServices(input: {
       .values({
         id: ref.id,
         companyId: ref.companyId,
+        operatingEnvironment: ref.operatingEnvironment,
         projectId: ref.projectId,
         projectWorkspaceId: ref.projectWorkspaceId,
         executionWorkspaceId: ref.executionWorkspaceId,
@@ -1514,6 +1526,7 @@ export async function persistAdapterManagedRuntimeServices(input: {
         target: workspaceRuntimeServices.id,
         set: {
           projectId: ref.projectId,
+          operatingEnvironment: ref.operatingEnvironment,
           projectWorkspaceId: ref.projectWorkspaceId,
           executionWorkspaceId: ref.executionWorkspaceId,
           issueId: ref.issueId,

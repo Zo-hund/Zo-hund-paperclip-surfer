@@ -14,6 +14,7 @@ import {
   heartbeatService,
   issueApprovalService,
   logActivity,
+  pitStopService,
   secretService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
@@ -31,6 +32,7 @@ export function approvalRoutes(db: Db) {
   const svc = approvalService(db);
   const heartbeat = heartbeatService(db);
   const issueApprovalsSvc = issueApprovalService(db);
+  const pitStop = pitStopService(db);
   const secretsSvc = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
@@ -131,6 +133,57 @@ export function approvalRoutes(db: Db) {
       const linkedIssues = await issueApprovalsSvc.listIssuesForApproval(approval.id);
       const linkedIssueIds = linkedIssues.map((issue) => issue.id);
       const primaryIssueId = linkedIssueIds[0] ?? null;
+      if (approval.type === "sim_to_live_promotion") {
+        const packageId = typeof approval.payload.packageId === "string" ? approval.payload.packageId : null;
+        if (packageId) {
+          const pkg = await pitStop.getPackageById(packageId);
+          if (!pkg.thresholdPassed || ((pkg.blockingIssues as string[] | null) ?? []).length > 0) {
+            res.status(422).json({ error: "Pit Stop package is blocked and cannot be promoted live." });
+            return;
+          }
+
+          const targetAgentIds = Array.isArray(pkg.targetAgentIds)
+            ? pkg.targetAgentIds.filter((value): value is string => typeof value === "string")
+            : [];
+          const promotedLiveRunIds: string[] = [];
+          for (const agentId of targetAgentIds) {
+            const liveRun = await heartbeat.wakeup(agentId, {
+              source: "on_demand",
+              triggerDetail: "manual",
+              reason: "Pit Stop approved -> live",
+              payload: {
+                ...(((pkg.targetLiveSettings as Record<string, unknown> | null) ?? {})),
+                pitStopPackageId: pkg.id,
+                notebookId: pkg.notebookId,
+                scenarioKey: pkg.scenarioKey,
+                memberUserId: pkg.memberUserId,
+                sourceSimRunId: pkg.sourceSimRunId,
+                approvalId: approval.id,
+                targetTrack: pkg.targetTrack,
+                targetRail: pkg.targetRail,
+              },
+              requestedByActorType: "user",
+              requestedByActorId: req.actor.userId ?? "board",
+              runMode: "live",
+              promotedFromRunId: pkg.sourceSimRunId ?? null,
+              contextSnapshot: {
+                pitStopPackageId: pkg.id,
+                notebookId: pkg.notebookId,
+                scenarioKey: pkg.scenarioKey,
+                memberUserId: pkg.memberUserId,
+                sourceSimRunId: pkg.sourceSimRunId,
+                approvalId: approval.id,
+                targetTrack: pkg.targetTrack,
+                targetRail: pkg.targetRail,
+              },
+            });
+            if (liveRun?.id) {
+              promotedLiveRunIds.push(liveRun.id);
+            }
+          }
+          await pitStop.recordApprovalOutcome(pkg.id, "approved", approval.decisionNote, promotedLiveRunIds);
+        }
+      }
 
       await logActivity(db, {
         companyId: approval.companyId,
@@ -223,6 +276,12 @@ export function approvalRoutes(db: Db) {
     );
 
     if (applied) {
+      if (approval.type === "sim_to_live_promotion") {
+        const packageId = typeof approval.payload.packageId === "string" ? approval.payload.packageId : null;
+        if (packageId) {
+          await pitStop.recordApprovalOutcome(packageId, "rejected", approval.decisionNote);
+        }
+      }
       await logActivity(db, {
         companyId: approval.companyId,
         actorType: "user",
@@ -248,6 +307,12 @@ export function approvalRoutes(db: Db) {
         req.body.decidedByUserId ?? "board",
         req.body.decisionNote,
       );
+      if (approval.type === "sim_to_live_promotion") {
+        const packageId = typeof approval.payload.packageId === "string" ? approval.payload.packageId : null;
+        if (packageId) {
+          await pitStop.recordApprovalOutcome(packageId, "revision_requested", approval.decisionNote);
+        }
+      }
 
       await logActivity(db, {
         companyId: approval.companyId,
@@ -287,6 +352,12 @@ export function approvalRoutes(db: Db) {
         : req.body.payload
       : undefined;
     const approval = await svc.resubmit(id, normalizedPayload);
+    if (approval.type === "sim_to_live_promotion") {
+      const packageId = typeof approval.payload.packageId === "string" ? approval.payload.packageId : null;
+      if (packageId) {
+        await pitStop.recordApprovalOutcome(packageId, "pending_review", null);
+      }
+    }
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId: approval.companyId,

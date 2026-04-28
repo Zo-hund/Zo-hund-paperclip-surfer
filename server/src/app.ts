@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Db } from "@paperclipai/db";
+import { authUsers, instanceUserRoles, companies, companyMemberships } from "@paperclipai/db";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import type { StorageService } from "./storage/types.js";
 import { httpLogger, errorHandler } from "./middleware/index.js";
@@ -39,6 +40,8 @@ import { agentExperimentRoutes } from "./routes/agent-experiments.js";
 import { amxRoutes } from "./routes/amx.js";
 import { lmsRoutes } from "./routes/lms.js";
 import { auditRoutes } from "./routes/audit.js";
+import { marketplaceRoutes } from "./routes/marketplace.js";
+import { pitStopRoutes } from "./routes/pit-stop.js";
 import { skillChangeRoutes } from "./routes/skill-changes.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
@@ -79,6 +82,7 @@ export async function createApp(
     localPluginDir?: string;
     betterAuthHandler?: express.RequestHandler;
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
+    httpServer?: import("node:http").Server;
   },
 ) {
   const app = express();
@@ -91,6 +95,7 @@ export async function createApp(
     },
   }));
   app.use(httpLogger);
+
   const privateHostnameGateEnabled =
     opts.deploymentMode === "authenticated" && opts.deploymentExposure === "private";
   const privateHostnameAllowSet = resolvePrivateHostnameAllowSet({
@@ -132,6 +137,7 @@ export async function createApp(
   }
   app.use(llmRoutes(db));
 
+
   // Mount API routes
   const api = Router();
   api.use(boardMutationGuard());
@@ -168,6 +174,8 @@ export async function createApp(
   api.use(amxRoutes(db));
   api.use(lmsRoutes(db));
   api.use(auditRoutes(db));
+  api.use(marketplaceRoutes(db));
+  api.use(pitStopRoutes(db));
   api.use(skillChangeRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
@@ -244,6 +252,9 @@ export async function createApp(
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "API route not found" });
   });
+
+  // Public static assets (logo, etc.) — no auth required
+  app.use("/public", express.static(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../ui/public")));
   app.use(pluginUiStaticRoutes(db, {
     localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR,
   }));
@@ -260,7 +271,14 @@ export async function createApp(
       const indexHtml = applyUiBranding(fs.readFileSync(path.join(uiDist, "index.html"), "utf-8"));
       app.use(express.static(uiDist));
       app.get(/.*/, (_req, res) => {
-        res.status(200).set("Content-Type", "text/html").end(indexHtml);
+        // Always re-read index.html from disk so new UI builds are served immediately
+        // without a server restart; also prevent browser caching so stale bundles can't load.
+        const freshHtml = applyUiBranding(fs.readFileSync(path.join(uiDist, "index.html"), "utf-8"));
+        res
+          .status(200)
+          .set("Content-Type", "text/html")
+          .set("Cache-Control", "no-store, no-cache, must-revalidate")
+          .end(freshHtml);
       });
     } else {
       console.warn("[paperclip] UI dist not found; running in API-only mode");
@@ -275,10 +293,17 @@ export async function createApp(
       appType: "custom",
       server: {
         middlewareMode: true,
-        hmr: {
-          host: opts.bindHost,
-        },
-        allowedHosts: privateHostnameGateEnabled ? Array.from(privateHostnameAllowSet) : undefined,
+        hmr: process.env.PAPERCLIP_HMR_PUBLIC_HOST
+          ? {
+              host: process.env.PAPERCLIP_HMR_PUBLIC_HOST,
+              clientPort: Number(process.env.PAPERCLIP_HMR_CLIENT_PORT ?? 443),
+              protocol: process.env.PAPERCLIP_HMR_PROTOCOL ?? "wss",
+            }
+          : {
+              host: opts.bindHost,
+              server: opts.httpServer,
+            },
+        allowedHosts: privateHostnameGateEnabled ? Array.from(privateHostnameAllowSet) : true,
       },
     });
 

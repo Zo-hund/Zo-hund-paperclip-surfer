@@ -9,6 +9,18 @@ const enrollSchema = z.object({
   workshopId: z.string().uuid(),
 });
 
+const completeEnrollmentSchema = z.object({
+  score: z.number().int().min(0).max(100).default(100),
+});
+
+const completeGuidanceLessonSchema = z.object({
+  lessonId: z.string().trim().min(1),
+});
+
+const completeGuidanceChecklistSchema = z.object({
+  checklistId: z.string().trim().min(1),
+});
+
 export function lmsRoutes(db: Db) {
   const router = Router();
   const svc = lmsService(db);
@@ -20,24 +32,10 @@ export function lmsRoutes(db: Db) {
   router.get("/companies/:companyId/lms/dashboard", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    
-    // For demo, return the data used in LmsDashboard UI
-    const workshops = [
-      { id: "w_1", name: "AI Production Basics", description: "Learn foundations of AI-agent collaboration.", level: "Beginner", category: "AI", credits: 50 },
-      { id: "w_2", name: "Louisville FoodPort Simulation", description: "Participate in AI-driven food distribution strategy.", level: "Advanced", category: "Simulation", credits: 200 },
-      { id: "w_3", name: "XR Design for Agents", description: "Spatial computing requirements for autonomous earners.", level: "Intermediate", category: "XR", credits: 100 },
-    ];
+    const { actorId } = getActorInfo(req);
 
-    res.json({
-      workshops,
-      userLevel: 4,
-      userCredits: 500,
-      stats: {
-        certificates: 3,
-        simulationsCompleted: 12,
-        hoursTrained: 48
-      }
-    });
+    const dashboard = await svc.getDashboard(companyId, actorId);
+    res.json(dashboard);
   });
 
   /**
@@ -52,6 +50,53 @@ export function lmsRoutes(db: Db) {
     const enrollment = await svc.enroll(companyId, actorId, req.body.workshopId);
     res.status(201).json(enrollment);
   });
+
+  router.post("/companies/:companyId/lms/workshops/:workshopId/launch-simulation", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const workshopId = Array.isArray(req.params.workshopId) ? req.params.workshopId[0] : req.params.workshopId;
+    assertCompanyAccess(req, companyId);
+    const { actorId } = getActorInfo(req);
+
+    const enrollment = await svc.launchSimulation(companyId, actorId, workshopId);
+    res.status(201).json(enrollment);
+  });
+
+  router.post(
+    "/companies/:companyId/lms/enrollments/:enrollmentId/complete",
+    validate(completeEnrollmentSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const enrollmentId = Array.isArray(req.params.enrollmentId) ? req.params.enrollmentId[0] : req.params.enrollmentId;
+      assertCompanyAccess(req, companyId);
+      const { actorId } = getActorInfo(req);
+      const enrollment = await svc.complete(companyId, actorId, enrollmentId, req.body.score);
+      res.status(201).json(enrollment);
+    },
+  );
+
+  router.post(
+    "/companies/:companyId/lms/guidance/lessons/:lessonId/complete",
+    validate(completeGuidanceLessonSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const { actorId } = getActorInfo(req);
+      const profile = await svc.completeGuidanceLesson(companyId, actorId, req.body.lessonId);
+      res.status(201).json(profile);
+    },
+  );
+
+  router.post(
+    "/companies/:companyId/lms/guidance/checklist/:checklistId/complete",
+    validate(completeGuidanceChecklistSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const { actorId } = getActorInfo(req);
+      const profile = await svc.completeGuidanceChecklistItem(companyId, actorId, req.body.checklistId);
+      res.status(201).json(profile);
+    },
+  );
 
   return router;
 }

@@ -72,6 +72,8 @@ export function agentRoutes(db: Db) {
     opencode_local: "instructionsFilePath",
     cursor: "instructionsFilePath",
     pi_local: "instructionsFilePath",
+    hermes_local: "instructionsFilePath",
+    hermes_advanced: "instructionsFilePath",
   };
   const DEFAULT_MANAGED_INSTRUCTIONS_ADAPTER_TYPES = new Set(Object.keys(DEFAULT_INSTRUCTIONS_PATH_KEYS));
   const KNOWN_INSTRUCTIONS_PATH_KEYS = new Set(["instructionsFilePath", "agentsMdPath"]);
@@ -353,6 +355,41 @@ export function agentRoutes(db: Db) {
     if (typeof value !== "string") return null;
     const parsed = Number(value.trim());
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function coerceWakeRunMode(value: unknown): "sim" | "live" | null {
+    return value === "sim" || value === "live" ? value : null;
+  }
+
+  function resolveWakeRunMode(req: Request): "sim" | "live" {
+    const directRunMode =
+      coerceWakeRunMode(req.query.runMode) ??
+      coerceWakeRunMode(req.get("x-paperclip-run-mode")) ??
+      coerceWakeRunMode(req.body?.payload?.runMode);
+
+    const rawBody =
+      (req as unknown as { rawBody?: Buffer }).rawBody instanceof Buffer
+        ? (req as unknown as { rawBody?: Buffer }).rawBody
+        : null;
+    if (rawBody) {
+      try {
+        const parsed = JSON.parse(rawBody.toString("utf8")) as {
+          runMode?: unknown;
+          payload?: { runMode?: unknown } | null;
+        };
+        return (
+          directRunMode ??
+          coerceWakeRunMode(parsed.runMode) ??
+          coerceWakeRunMode(parsed.payload?.runMode) ??
+          coerceWakeRunMode(req.body?.runMode) ??
+          "live"
+        );
+      } catch {
+        return directRunMode ?? coerceWakeRunMode(req.body?.runMode) ?? "live";
+      }
+    }
+
+    return directRunMode ?? coerceWakeRunMode(req.body?.runMode) ?? "live";
   }
 
   function parseSchedulerHeartbeatPolicy(runtimeConfig: unknown) {
@@ -1982,6 +2019,7 @@ export function agentRoutes(db: Db) {
       return;
     }
 
+    const requestedRunMode = resolveWakeRunMode(req);
     const run = await heartbeat.wakeup(id, {
       source: req.body.source,
       triggerDetail: req.body.triggerDetail ?? "manual",
@@ -1990,11 +2028,12 @@ export function agentRoutes(db: Db) {
       idempotencyKey: req.body.idempotencyKey ?? null,
       requestedByActorType: req.actor.type === "agent" ? "agent" : "user",
       requestedByActorId: req.actor.type === "agent" ? req.actor.agentId ?? null : req.actor.userId ?? null,
-      runMode: req.body.runMode === "sim" ? "sim" : "live",
+      runMode: requestedRunMode,
       contextSnapshot: {
         triggeredBy: req.actor.type,
         actorId: req.actor.type === "agent" ? req.actor.agentId : req.actor.userId,
         forceFreshSession: req.body.forceFreshSession === true,
+        requestedRunMode,
       },
     });
 
@@ -2114,11 +2153,13 @@ export function agentRoutes(db: Db) {
     assertCompanyAccess(req, companyId);
 
     const minCountParam = req.query.minCount as string | undefined;
-    const minCount = minCountParam ? Math.max(0, Math.min(20, parseInt(minCountParam, 10) || 0)) : 0;
+    const swarmBatchId = (req.query.swarmBatchId as string | undefined)?.trim() || undefined;
+    const minCount = minCountParam ? Math.max(0, Math.min(100, parseInt(minCountParam, 10) || 0)) : 0;
 
     const columns = {
       id: heartbeatRuns.id,
       status: heartbeatRuns.status,
+      environment: heartbeatRuns.environment,
       invocationSource: heartbeatRuns.invocationSource,
       triggerDetail: heartbeatRuns.triggerDetail,
       startedAt: heartbeatRuns.startedAt,
@@ -2127,19 +2168,35 @@ export function agentRoutes(db: Db) {
       agentId: heartbeatRuns.agentId,
       agentName: agentsTable.name,
       adapterType: agentsTable.adapterType,
+      runMode: heartbeatRuns.runMode,
+      swarmBatchId: heartbeatRuns.swarmBatchId,
+      promotedFromRunId: heartbeatRuns.promotedFromRunId,
       issueId: sql<string | null>`${heartbeatRuns.contextSnapshot} ->> 'issueId'`.as("issueId"),
     };
+
+    const baseWhere = and(
+      eq(heartbeatRuns.companyId, companyId),
+      ...(swarmBatchId ? [eq(heartbeatRuns.swarmBatchId, swarmBatchId)] : []),
+    );
+
+    if (swarmBatchId) {
+      const batchRuns = await db
+        .select(columns)
+        .from(heartbeatRuns)
+        .innerJoin(agentsTable, eq(heartbeatRuns.agentId, agentsTable.id))
+        .where(baseWhere)
+        .orderBy(desc(heartbeatRuns.createdAt))
+        .limit(100);
+
+      res.json(batchRuns);
+      return;
+    }
 
     const liveRuns = await db
       .select(columns)
       .from(heartbeatRuns)
       .innerJoin(agentsTable, eq(heartbeatRuns.agentId, agentsTable.id))
-      .where(
-        and(
-          eq(heartbeatRuns.companyId, companyId),
-          inArray(heartbeatRuns.status, ["queued", "running"]),
-        ),
-      )
+      .where(and(baseWhere, inArray(heartbeatRuns.status, ["queued", "running"])))
       .orderBy(desc(heartbeatRuns.createdAt));
 
     if (minCount > 0 && liveRuns.length < minCount) {
@@ -2189,7 +2246,7 @@ export function agentRoutes(db: Db) {
     }
 
     const batchId = swarmBatchId ?? randomUUID();
-    const mode: "sim" | "live" = runMode === "sim" ? "sim" : "live";
+    const mode: "sim" | "live" = runMode === "live" ? "live" : "sim";
     const maxConcurrent = protections?.maxConcurrentAgents ?? agentIds.length;
 
     // Validate all agents belong to this company
@@ -2283,18 +2340,13 @@ export function agentRoutes(db: Db) {
           eq(heartbeatRuns.companyId, companyId),
           eq(heartbeatRuns.swarmBatchId, swarmBatchId),
           eq(heartbeatRuns.runMode, "sim"),
-          inArray(heartbeatRuns.status, ["completed", "failed"]),
+          inArray(heartbeatRuns.status, ["succeeded", "failed", "timed_out", "cancelled"]),
         ),
       );
 
     const targetRuns = agentIds
       ? simRuns.filter((r) => agentIds.includes(r.agentId))
       : simRuns;
-
-    if (targetRuns.length === 0) {
-      res.status(404).json({ error: "No completed sim runs found for this batch" });
-      return;
-    }
 
     const actor = getActorInfo(req);
     const newBatchId = randomUUID();
