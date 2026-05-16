@@ -80,11 +80,12 @@ export const agentsApi = {
     try {
       return await api.get<AgentDetail>(agentPath(id, companyId));
     } catch (error) {
-      // Backward-compat fallback: if backend shortname lookup reports ambiguity,
-      // resolve using company agent list while ignoring terminated agents.
+      // Backward-compat fallback: if backend shortname lookup reports ambiguity
+      // or misses the slug entirely, resolve using company agent list while
+      // ignoring terminated agents.
       if (
         !(error instanceof ApiError) ||
-        error.status !== 409 ||
+        (error.status !== 409 && error.status !== 404) ||
         !companyId ||
         isUuidLike(id)
       ) {
