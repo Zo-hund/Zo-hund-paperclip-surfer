@@ -88,15 +88,19 @@ export function SwipeToArchive({
       }
     }
 
+    const canPreventDefault = Boolean(
+      (event.nativeEvent as TouchEvent | undefined)?.cancelable ?? event.cancelable,
+    );
+
     if (deltaX >= 0) {
-      if (event.cancelable) event.preventDefault();
+      if (canPreventDefault) event.preventDefault();
       setIsDragging(true);
       setOffsetX(0);
       return;
     }
 
     const maxSwipe = widthRef.current > 0 ? widthRef.current * MAX_SWIPE : Number.POSITIVE_INFINITY;
-    if (event.cancelable) event.preventDefault();
+    if (canPreventDefault) event.preventDefault();
     setIsDragging(true);
     setOffsetX(Math.max(deltaX, -maxSwipe));
   };

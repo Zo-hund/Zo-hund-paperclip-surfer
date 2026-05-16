@@ -323,7 +323,12 @@ export function OrgChart() {
   }, []);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
+    const canPreventDefault = Boolean(
+      (e.nativeEvent as WheelEvent | undefined)?.cancelable ?? e.cancelable,
+    );
+    if (canPreventDefault) {
+      e.preventDefault();
+    }
     const container = containerRef.current;
     if (!container) return;
 
