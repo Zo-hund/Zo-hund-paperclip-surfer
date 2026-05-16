@@ -89,14 +89,14 @@ export function SwipeToArchive({
     }
 
     if (deltaX >= 0) {
-      event.preventDefault();
+      if (event.cancelable) event.preventDefault();
       setIsDragging(true);
       setOffsetX(0);
       return;
     }
 
     const maxSwipe = widthRef.current > 0 ? widthRef.current * MAX_SWIPE : Number.POSITIVE_INFINITY;
-    event.preventDefault();
+    if (event.cancelable) event.preventDefault();
     setIsDragging(true);
     setOffsetX(Math.max(deltaX, -maxSwipe));
   };
