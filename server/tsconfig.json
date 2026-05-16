@@ -2,8 +2,15 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "noEmitOnError": false,
+    "paths": {
+      "@paperclipai/db": ["../packages/db/dist/index.d.ts"],
+      "@paperclipai/db/*": ["../packages/db/dist/*.d.ts"],
+      "@paperclipai/shared": ["../packages/shared/dist/index.d.ts"],
+      "@paperclipai/shared/*": ["../packages/shared/dist/*.d.ts"]
+    }
   },
   "include": ["src"],
-  "exclude": ["src/__tests__"]
+  "exclude": ["src/__tests__", "src/test_run_final.ts"]
 }

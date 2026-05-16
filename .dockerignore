@@ -8,3 +8,8 @@ coverage
 data
 tmp
 *.log
+# OneDrive locks/permissions on these dirs break the Docker build context.
+# None of them are required to build the server or UI image.
+.claude
+.agents
+.env
