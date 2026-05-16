@@ -23,7 +23,28 @@ initPluginBridge(React, ReactDOM);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js");
+    const cleanupFlag = "paperclip.sw.cleanup.v1";
+
+    const registerServiceWorker = async () => {
+      try {
+        // One-time cleanup to evict older service workers and stale caches.
+        if (!window.localStorage.getItem(cleanupFlag)) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map((registration) => registration.unregister()));
+          const cacheKeys = await caches.keys();
+          await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+          window.localStorage.setItem(cleanupFlag, "1");
+        }
+      } catch (error) {
+        console.warn("Service worker cleanup failed", error);
+      }
+
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.warn("Service worker registration failed", error);
+      });
+    };
+
+    void registerServiceWorker();
   });
 }
 

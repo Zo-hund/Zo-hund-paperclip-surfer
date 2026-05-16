@@ -60,6 +60,35 @@ import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
 type UiMode = "none" | "static" | "vite-dev";
 
+const UI_ASSET_EXTENSIONS = new Set([
+  ".js",
+  ".mjs",
+  ".css",
+  ".map",
+  ".ico",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".svg",
+  ".webp",
+  ".avif",
+  ".json",
+  ".txt",
+  ".xml",
+  ".webmanifest",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+]);
+
+function isAssetLikePathname(pathname: string): boolean {
+  if (pathname.startsWith("/assets/")) return true;
+  const ext = path.extname(pathname).toLowerCase();
+  return ext.length > 0 && UI_ASSET_EXTENSIONS.has(ext);
+}
+
 
 
 export async function createApp(
@@ -258,8 +287,21 @@ export async function createApp(
     const uiDist = candidates.find((p) => fs.existsSync(path.join(p, "index.html")));
     if (uiDist) {
       const indexHtml = applyUiBranding(fs.readFileSync(path.join(uiDist, "index.html"), "utf-8"));
+      app.use("/assets", express.static(path.join(uiDist, "assets")));
+      app.use("/assets", (_req, res) => {
+        res.status(404).set("Content-Type", "text/plain").end("Not found");
+      });
       app.use(express.static(uiDist));
-      app.get(/.*/, (_req, res) => {
+      app.get(/.*/, (req, res) => {
+        const requestPath = req.path ?? "";
+        if (requestPath.startsWith("/assets/")) {
+          res.status(404).set("Content-Type", "text/plain").end("Not found");
+          return;
+        }
+        if (isAssetLikePathname(requestPath)) {
+          res.status(404).set("Content-Type", "text/plain").end("Not found");
+          return;
+        }
         res.status(200).set("Content-Type", "text/html").end(indexHtml);
       });
     } else {
@@ -286,6 +328,10 @@ export async function createApp(
     (app as any).viteServer = vite;
     app.get(/.*/, async (req, res, next) => {
       try {
+        if (isAssetLikePathname(req.path)) {
+          res.status(404).set("Content-Type", "text/plain").end("Not found");
+          return;
+        }
         const templatePath = path.resolve(uiRoot, "index.html");
         const template = fs.readFileSync(templatePath, "utf-8");
         const html = applyUiBranding(await vite.transformIndexHtml(req.originalUrl, template));
