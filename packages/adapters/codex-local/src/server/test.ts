@@ -100,7 +100,12 @@ export async function testEnvironment(
 
   const configOpenAiKey = env.OPENAI_API_KEY;
   const hostOpenAiKey = process.env.OPENAI_API_KEY;
-  if (isNonEmpty(configOpenAiKey) || isNonEmpty(hostOpenAiKey)) {
+  const resolvedOpenAiKey = isNonEmpty(configOpenAiKey)
+    ? configOpenAiKey
+    : isNonEmpty(hostOpenAiKey)
+      ? hostOpenAiKey
+      : undefined;
+  if (resolvedOpenAiKey) {
     const source = isNonEmpty(configOpenAiKey) ? "adapter config env" : "server environment";
     checks.push({
       code: "codex_openai_api_key_present",
@@ -156,7 +161,7 @@ export async function testEnvironment(
         return asStringArray(config.args);
       })();
 
-      const args = ["exec", "--json"];
+      const args = ["exec", "--json", "--ignore-user-config", "--skip-git-repo-check"];
       if (search) args.unshift("--search");
       if (bypass) args.push("--dangerously-bypass-approvals-and-sandbox");
       if (model) args.push("--model", model);
@@ -172,7 +177,7 @@ export async function testEnvironment(
         args,
         {
           cwd,
-          env,
+          env: resolvedOpenAiKey ? { ...env, OPENAI_API_KEY: resolvedOpenAiKey } : env,
           timeoutSec: 45,
           graceSec: 5,
           stdin: "Respond with hello.",

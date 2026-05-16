@@ -139,4 +139,46 @@ describe("codex_local environment diagnostics", () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  itWindows("prefers host OPENAI_API_KEY for probe when adapter env value is empty", async () => {
+    const root = path.join(
+      os.tmpdir(),
+      `paperclip-codex-local-probe-hostkey-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    const binDir = path.join(root, "bin");
+    const cwd = path.join(root, "workspace");
+    const fakeCodex = path.join(binDir, "codex.cmd");
+    const script = [
+      "@echo off",
+      "if \"%OPENAI_API_KEY%\"==\"\" exit /b 9",
+      "echo {\"type\":\"thread.started\",\"thread_id\":\"test-thread\"}",
+      "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"hello\"}}",
+      "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1}}",
+      "exit /b 0",
+      "",
+    ].join("\r\n");
+
+    try {
+      await fs.mkdir(binDir, { recursive: true });
+      await fs.writeFile(fakeCodex, script, "utf8");
+      vi.stubEnv("OPENAI_API_KEY", "host-test-key");
+
+      const result = await testEnvironment({
+        companyId: "company-1",
+        adapterType: "codex_local",
+        config: {
+          command: "codex",
+          cwd,
+          env: {
+            OPENAI_API_KEY: "",
+            PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+          },
+        },
+      });
+
+      expect(result.checks.some((check) => check.code === "codex_hello_probe_passed")).toBe(true);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -57,6 +57,17 @@ function hasNonEmptyEnvValue(env: Record<string, string>, key: string): boolean 
   return typeof raw === "string" && raw.trim().length > 0;
 }
 
+function resolveOpenAiApiKey(
+  adapterEnv: Record<string, string>,
+  hostEnv: NodeJS.ProcessEnv,
+): string | null {
+  if (hasNonEmptyEnvValue(adapterEnv, "OPENAI_API_KEY")) {
+    return adapterEnv.OPENAI_API_KEY.trim();
+  }
+  const hostValue = hostEnv.OPENAI_API_KEY;
+  return typeof hostValue === "string" && hostValue.trim().length > 0 ? hostValue.trim() : null;
+}
+
 function resolveCodexBillingType(env: Record<string, string>): "api" | "subscription" {
   // Codex uses API-key auth when OPENAI_API_KEY is present; otherwise rely on local login/session auth.
   return hasNonEmptyEnvValue(env, "OPENAI_API_KEY") ? "api" : "subscription";
@@ -372,6 +383,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   for (const [k, v] of Object.entries(envConfig)) {
     if (typeof v === "string") env[k] = v;
   }
+  const resolvedOpenAiApiKey = resolveOpenAiApiKey(env, process.env);
+  if (resolvedOpenAiApiKey) {
+    env.OPENAI_API_KEY = resolvedOpenAiApiKey;
+  }
   if (!hasExplicitApiKey && authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }
@@ -475,6 +490,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   const buildArgs = (resumeSessionId: string | null) => {
     const args = ["exec", "--json"];
+    if (resolvedOpenAiApiKey) args.push("--ignore-user-config");
     if (search) args.unshift("--search");
     if (bypass) args.push("--dangerously-bypass-approvals-and-sandbox");
     if (model) args.push("--model", model);
