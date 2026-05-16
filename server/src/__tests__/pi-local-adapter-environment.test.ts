@@ -34,6 +34,13 @@ if (process.argv.includes("--list-models")) {
 }
 process.exit(1);
 `;
+  if (process.platform === "win32") {
+    const scriptPath = `${commandPath}.js`;
+    const cmdPath = `${commandPath}.cmd`;
+    await fs.writeFile(scriptPath, script, "utf8");
+    await fs.writeFile(cmdPath, `@echo off\r\nnode "${scriptPath}" %*\r\n`, "utf8");
+    return;
+  }
   await fs.writeFile(commandPath, script, "utf8");
   await fs.chmod(commandPath, 0o755);
 }

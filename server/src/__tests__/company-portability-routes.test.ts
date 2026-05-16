@@ -30,6 +30,9 @@ const mockCompanyPortabilityService = vi.hoisted(() => ({
   previewImport: vi.fn(),
   importBundle: vi.fn(),
 }));
+const mockWorkProductService = vi.hoisted(() => ({
+  listForIssue: vi.fn(),
+}));
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
 
@@ -38,6 +41,7 @@ vi.mock("../services/index.js", () => ({
   agentService: () => mockAgentService,
   budgetService: () => mockBudgetService,
   companyPortabilityService: () => mockCompanyPortabilityService,
+  workProductService: () => mockWorkProductService,
   companyService: () => mockCompanyService,
   logActivity: mockLogActivity,
 }));

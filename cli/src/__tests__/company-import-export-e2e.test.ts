@@ -14,6 +14,7 @@ import { createStoredZipArchive } from "./helpers/zip.js";
 
 const execFileAsync = promisify(execFile);
 type ServerProcess = ReturnType<typeof spawn>;
+const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 async function getAvailablePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -185,9 +186,20 @@ async function api<T>(baseUrl: string, pathname: string, init?: RequestInit): Pr
 
 async function runCliJson<T>(args: string[], opts: { apiBase: string; configPath: string }) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+  const cliEntrypoint = path.join(repoRoot, "cli", "src", "index.ts");
+  const tsxEntrypoint = path.join(repoRoot, "cli", "node_modules", "tsx", "dist", "cli.mjs");
   const result = await execFileAsync(
-    "pnpm",
-    ["--silent", "paperclipai", ...args, "--api-base", opts.apiBase, "--config", opts.configPath, "--json"],
+    process.execPath,
+    [
+      tsxEntrypoint,
+      cliEntrypoint,
+      ...args,
+      "--api-base",
+      opts.apiBase,
+      "--config",
+      opts.configPath,
+      "--json",
+    ],
     {
       cwd: repoRoot,
       env: createCliEnv(),
@@ -252,12 +264,13 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
     const output = { stdout: [] as string[], stderr: [] as string[] };
     const child = spawn(
-      "pnpm",
+      pnpmCommand,
       ["paperclipai", "run", "--config", configPath],
       {
         cwd: repoRoot,
         env: createServerEnv(configPath, port, tempDb.connectionString),
         stdio: ["ignore", "pipe", "pipe"],
+        shell: process.platform === "win32",
       },
     );
     serverProcess = child;
@@ -269,7 +282,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
     });
 
     await waitForServer(apiBase, child, output);
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     await stopServerProcess(serverProcess);

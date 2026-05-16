@@ -42,6 +42,7 @@ const PAPERCLIP_SKILL_ROOT_RELATIVE_CANDIDATES = [
   "../../skills",
   "../../../../../skills",
 ];
+const PAPERCLIP_SKILL_SOURCE_MARKER = ".paperclip-source-path";
 
 export interface PaperclipSkillEntry {
   key: string;
@@ -102,12 +103,12 @@ function buildManagedSkillOrigin(entry: { required?: boolean }): Pick<
   };
 }
 
-function resolveInstalledEntryTarget(
+async function resolveInstalledEntryTarget(
   skillsHome: string,
   entryName: string,
   dirent: Dirent,
   linkedPath: string | null,
-): InstalledSkillTarget {
+): Promise<InstalledSkillTarget> {
   const fullPath = path.join(skillsHome, entryName);
   if (dirent.isSymbolicLink()) {
     return {
@@ -116,6 +117,11 @@ function resolveInstalledEntryTarget(
     };
   }
   if (dirent.isDirectory()) {
+    const markerPath = path.join(fullPath, PAPERCLIP_SKILL_SOURCE_MARKER);
+    const markerValue = await fs.readFile(markerPath, "utf8").catch(() => null);
+    if (typeof markerValue === "string" && markerValue.trim().length > 0) {
+      return { targetPath: markerValue.trim(), kind: "directory" };
+    }
     return { targetPath: fullPath, kind: "directory" };
   }
   return { targetPath: fullPath, kind: "file" };
@@ -392,7 +398,7 @@ export async function readInstalledSkillTargets(skillsHome: string): Promise<Map
   for (const entry of entries) {
     const fullPath = path.join(skillsHome, entry.name);
     const linkedPath = entry.isSymbolicLink() ? await fs.readlink(fullPath).catch(() => null) : null;
-    out.set(entry.name, resolveInstalledEntryTarget(skillsHome, entry.name, entry, linkedPath));
+    out.set(entry.name, await resolveInstalledEntryTarget(skillsHome, entry.name, entry, linkedPath));
   }
   return out;
 }
@@ -639,10 +645,47 @@ export async function ensurePaperclipSkillSymlink(
   linkSkill: (source: string, target: string) => Promise<void> = (linkSource, linkTarget) =>
     fs.symlink(linkSource, linkTarget),
 ): Promise<"created" | "repaired" | "skipped"> {
+  const markCopiedSkillSource = async (copiedDir: string) => {
+    await fs.writeFile(path.join(copiedDir, PAPERCLIP_SKILL_SOURCE_MARKER), source, "utf8");
+  };
+
+  const linkOrCopy = async () => {
+    try {
+      await linkSkill(source, target);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN")) {
+        throw error;
+      }
+      try {
+        await fs.symlink(source, target, "junction");
+        return;
+      } catch {
+        await fs.cp(source, target, { recursive: true });
+        await markCopiedSkillSource(target);
+      }
+    }
+  };
+
   const existing = await fs.lstat(target).catch(() => null);
   if (!existing) {
-    await linkSkill(source, target);
+    await linkOrCopy();
     return "created";
+  }
+
+  if (existing.isDirectory()) {
+    const markerPath = path.join(target, PAPERCLIP_SKILL_SOURCE_MARKER);
+    const markerValue = await fs.readFile(markerPath, "utf8").catch(() => null);
+    if (typeof markerValue === "string" && markerValue.trim() === source) {
+      return "skipped";
+    }
+    if (typeof markerValue === "string" && markerValue.trim().length > 0) {
+      await fs.rm(target, { recursive: true, force: true });
+      await linkOrCopy();
+      return "repaired";
+    }
+    return "skipped";
   }
 
   if (!existing.isSymbolicLink()) {
@@ -659,11 +702,19 @@ export async function ensurePaperclipSkillSymlink(
 
   const linkedPathExists = await fs.stat(resolvedLinkedPath).then(() => true).catch(() => false);
   if (linkedPathExists) {
-    return "skipped";
+    const normalizedLinked = normalizePathSlashes(resolvedLinkedPath).toLowerCase();
+    const normalizedSource = normalizePathSlashes(source).toLowerCase();
+    const sourceSkillName = path.basename(source).toLowerCase();
+    const looksLikePaperclipSkillLink =
+      normalizedLinked.includes(`/skills/${sourceSkillName}`) &&
+      normalizedSource.includes(`/skills/${sourceSkillName}`);
+    if (!looksLikePaperclipSkillLink) {
+      return "skipped";
+    }
   }
 
   await fs.unlink(target);
-  await linkSkill(source, target);
+  await linkOrCopy();
   return "repaired";
 }
 

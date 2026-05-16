@@ -15,7 +15,7 @@
   "scripts": {
     "prebuild": "node ../../../../scripts/ensure-plugin-build-deps.mjs",
     "build": "tsc && node ./scripts/build-ui.mjs",
-    "clean": "rm -rf dist",
+    "clean": "node ../../../../scripts/rm-paths.mjs dist",
     "typecheck": "pnpm --filter @paperclipai/plugin-sdk build && tsc --noEmit"
   },
   "dependencies": {

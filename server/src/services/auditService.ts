@@ -56,7 +56,9 @@ export function auditService(db: Db) {
       actorType: "agent",
       actorId: input.auditorAgentId,
       action: "audit_verification_started",
-      changes: { verificationId: row.id, targetType: input.targetType, targetId: input.targetId },
+      entityType: "audit_verification",
+      entityId: row.id,
+      details: { targetType: input.targetType, targetId: input.targetId },
     });
 
     return row;
@@ -104,7 +106,9 @@ export function auditService(db: Db) {
       actorType: "agent",
       actorId: input.auditorAgentId,
       action: "audit_verification_passed",
-      changes: { verificationId, certificateFootprint: cert.certificateFootprint },
+      entityType: "audit_verification",
+      entityId: verificationId,
+      details: { certificateFootprint: cert.certificateFootprint },
     });
 
     return { verification: row, certificate: cert };
@@ -152,7 +156,9 @@ export function auditService(db: Db) {
       actorType: "agent",
       actorId: input.auditorAgentId,
       action: "audit_verification_failed",
-      changes: { verificationId, status, findings: input.findings },
+      entityType: "audit_verification",
+      entityId: verificationId,
+      details: { status, findings: input.findings },
     });
 
     return row;

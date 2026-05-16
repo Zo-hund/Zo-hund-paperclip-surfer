@@ -90,7 +90,11 @@ function renderPaperclipEnvNote(env: Record<string, string>): string {
 }
 
 function cursorSkillsHome(): string {
-  return path.join(os.homedir(), ".cursor", "skills");
+  const home =
+    (typeof process.env.HOME === "string" && process.env.HOME.trim().length > 0
+      ? process.env.HOME.trim()
+      : os.homedir());
+  return path.join(home, ".cursor", "skills");
 }
 
 type EnsureCursorSkillsInjectedOptions = {

@@ -48,9 +48,10 @@ describe("paperclip skill utils", () => {
     await fs.mkdir(runtimeSkill, { recursive: true });
     await fs.mkdir(customSkill, { recursive: true });
 
-    await fs.symlink(runtimeSkill, path.join(skillsHome, "paperclip"));
-    await fs.symlink(customSkill, path.join(skillsHome, "release-notes"));
-    await fs.symlink(staleMaintainerSkill, path.join(skillsHome, "release"));
+    const linkType = process.platform === "win32" ? "junction" : "dir";
+    await fs.symlink(runtimeSkill, path.join(skillsHome, "paperclip"), linkType);
+    await fs.symlink(customSkill, path.join(skillsHome, "release-notes"), linkType);
+    await fs.symlink(staleMaintainerSkill, path.join(skillsHome, "release"), linkType);
 
     const removed = await removeMaintainerOnlySkillSymlinks(skillsHome, ["paperclip"]);
 

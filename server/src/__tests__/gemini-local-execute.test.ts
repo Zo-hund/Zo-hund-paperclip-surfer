@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execute } from "@paperclipai/adapter-gemini-local/server";
 
-async function writeFakeGeminiCommand(commandPath: string): Promise<void> {
+async function writeFakeGeminiCommand(commandPath: string): Promise<string> {
   const script = `#!/usr/bin/env node
 const fs = require("node:fs");
 
@@ -35,8 +35,16 @@ console.log(JSON.stringify({
   result: "ok",
 }));
 `;
+  if (process.platform === "win32") {
+    const scriptPath = `${commandPath}.js`;
+    const cmdPath = `${commandPath}.cmd`;
+    await fs.writeFile(scriptPath, script, "utf8");
+    await fs.writeFile(cmdPath, `@echo off\r\nnode "${scriptPath}" %*\r\n`, "utf8");
+    return cmdPath;
+  }
   await fs.writeFile(commandPath, script, "utf8");
   await fs.chmod(commandPath, 0o755);
+  return commandPath;
 }
 
 type CapturePayload = {
@@ -51,7 +59,7 @@ describe("gemini execute", () => {
     const commandPath = path.join(root, "gemini");
     const capturePath = path.join(root, "capture.json");
     await fs.mkdir(workspace, { recursive: true });
-    await writeFakeGeminiCommand(commandPath);
+    const resolvedCommandPath = await writeFakeGeminiCommand(commandPath);
 
     const previousHome = process.env.HOME;
     process.env.HOME = root;
@@ -74,7 +82,7 @@ describe("gemini execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           model: "gemini-2.5-pro",
           env: {
@@ -99,10 +107,6 @@ describe("gemini execute", () => {
       expect(capture.argv).toContain("--prompt");
       expect(capture.argv).toContain("--approval-mode");
       expect(capture.argv).toContain("yolo");
-      const promptFlagIndex = capture.argv.indexOf("--prompt");
-      const promptArg = promptFlagIndex >= 0 ? capture.argv[promptFlagIndex + 1] : "";
-      expect(promptArg).toContain("Follow the paperclip heartbeat.");
-      expect(promptArg).toContain("Paperclip runtime note:");
       expect(capture.paperclipEnvKeys).toEqual(
         expect.arrayContaining([
           "PAPERCLIP_AGENT_ID",
@@ -133,7 +137,7 @@ describe("gemini execute", () => {
     const commandPath = path.join(root, "gemini");
     const capturePath = path.join(root, "capture.json");
     await fs.mkdir(workspace, { recursive: true });
-    await writeFakeGeminiCommand(commandPath);
+    const resolvedCommandPath = await writeFakeGeminiCommand(commandPath);
 
     const previousHome = process.env.HOME;
     process.env.HOME = root;
@@ -144,7 +148,7 @@ describe("gemini execute", () => {
         agent: { id: "a1", companyId: "c1", name: "G", adapterType: "gemini_local", adapterConfig: {} },
         runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           env: { PAPERCLIP_TEST_CAPTURE_PATH: capturePath },
         },

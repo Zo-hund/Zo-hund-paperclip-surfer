@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execute } from "@paperclipai/adapter-cursor-local/server";
 
-async function writeFakeCursorCommand(commandPath: string): Promise<void> {
+async function writeFakeCursorCommand(commandPath: string): Promise<string> {
   const script = `#!/usr/bin/env node
 const fs = require("node:fs");
 
@@ -36,8 +36,16 @@ console.log(JSON.stringify({
   result: "ok",
 }));
 `;
+  if (process.platform === "win32") {
+    const scriptPath = `${commandPath}.js`;
+    const cmdPath = `${commandPath}.cmd`;
+    await fs.writeFile(scriptPath, script, "utf8");
+    await fs.writeFile(cmdPath, `@echo off\r\nnode "${scriptPath}" %*\r\n`, "utf8");
+    return cmdPath;
+  }
   await fs.writeFile(commandPath, script, "utf8");
   await fs.chmod(commandPath, 0o755);
+  return commandPath;
 }
 
 type CapturePayload = {
@@ -60,7 +68,7 @@ describe("cursor execute", () => {
     const commandPath = path.join(root, "agent");
     const capturePath = path.join(root, "capture.json");
     await fs.mkdir(workspace, { recursive: true });
-    await writeFakeCursorCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCursorCommand(commandPath);
 
     const previousHome = process.env.HOME;
     process.env.HOME = root;
@@ -83,7 +91,7 @@ describe("cursor execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           model: "auto",
           env: {
@@ -135,7 +143,7 @@ describe("cursor execute", () => {
     const commandPath = path.join(root, "agent");
     const capturePath = path.join(root, "capture.json");
     await fs.mkdir(workspace, { recursive: true });
-    await writeFakeCursorCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCursorCommand(commandPath);
 
     const previousHome = process.env.HOME;
     process.env.HOME = root;
@@ -157,7 +165,7 @@ describe("cursor execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           model: "auto",
           mode: "ask",
@@ -193,7 +201,7 @@ describe("cursor execute", () => {
     const commandPath = path.join(root, "agent");
     const runtimeSkillsRoot = path.join(root, "runtime-skills");
     await fs.mkdir(workspace, { recursive: true });
-    await writeFakeCursorCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCursorCommand(commandPath);
 
     const paperclipDir = await createSkillDir(runtimeSkillsRoot, "paperclip");
     const asciiHeartDir = await createSkillDir(runtimeSkillsRoot, "ascii-heart");
@@ -218,7 +226,7 @@ describe("cursor execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           model: "auto",
           paperclipRuntimeSkills: [

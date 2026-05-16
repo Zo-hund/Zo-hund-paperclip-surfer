@@ -19,7 +19,7 @@ export function agentChatRoutes(db: Db) {
 
   // GET /agents/:agentId/chat/messages
   router.get("/messages", async (req, res) => {
-    const agentId = req.params.agentId as string;
+    const { agentId } = req.params as { agentId: string };
     const agent = await resolveAgent(agentId);
     if (!agent) throw notFound("Agent not found");
     assertCompanyAccess(req, agent.companyId);
@@ -31,7 +31,7 @@ export function agentChatRoutes(db: Db) {
 
   // POST /agents/:agentId/chat/messages
   router.post("/messages", validate(sendChatMessageSchema), async (req, res) => {
-    const agentId = req.params.agentId as string;
+    const { agentId } = req.params as { agentId: string };
     const agent = await resolveAgent(agentId);
     if (!agent) throw notFound("Agent not found");
     assertCompanyAccess(req, agent.companyId);
@@ -54,7 +54,7 @@ export function agentChatRoutes(db: Db) {
   // Callable by the agent during a heartbeat run or by board users.
   // Creates a traceable work order (issue) linked to the chat session.
   router.post("/work-orders", validate(createChatWorkOrderSchema), async (req, res) => {
-    const agentId = req.params.agentId as string;
+    const { agentId } = req.params as { agentId: string };
     const agent = await resolveAgent(agentId);
     if (!agent) throw notFound("Agent not found");
     assertCompanyAccess(req, agent.companyId);

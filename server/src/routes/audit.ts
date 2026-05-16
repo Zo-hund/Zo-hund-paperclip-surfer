@@ -42,8 +42,9 @@ export function auditRoutes(db: Db) {
    * Returns all agents with role="auditor".
    */
   router.get("/companies/:companyId/audit/team", async (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
-    const team = await svc.getAuditTeam(req.params.companyId);
+    const companyId = String(req.params.companyId ?? "");
+    assertCompanyAccess(req, companyId);
+    const team = await svc.getAuditTeam(companyId);
     res.json({ team });
   });
 
@@ -52,8 +53,9 @@ export function auditRoutes(db: Db) {
    * Verification summary stats.
    */
   router.get("/companies/:companyId/audit/stats", async (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
-    const stats = await svc.getStats(req.params.companyId);
+    const companyId = String(req.params.companyId ?? "");
+    assertCompanyAccess(req, companyId);
+    const stats = await svc.getStats(companyId);
     res.json(stats);
   });
 
@@ -62,9 +64,10 @@ export function auditRoutes(db: Db) {
    * All verifications, newest first.
    */
   router.get("/companies/:companyId/audit/verifications", async (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
+    const companyId = String(req.params.companyId ?? "");
+    assertCompanyAccess(req, companyId);
     const limit = Number(req.query.limit) || 50;
-    const verifications = await svc.listVerifications(req.params.companyId, limit);
+    const verifications = await svc.listVerifications(companyId, limit);
     res.json({ verifications });
   });
 
@@ -73,8 +76,9 @@ export function auditRoutes(db: Db) {
    * Start a new verification.
    */
   router.post("/companies/:companyId/audit/verifications", validate(startSchema), async (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
-    const verification = await svc.startVerification(req.params.companyId, req.body);
+    const companyId = String(req.params.companyId ?? "");
+    assertCompanyAccess(req, companyId);
+    const verification = await svc.startVerification(companyId, req.body);
     res.status(201).json(verification);
   });
 
@@ -83,8 +87,10 @@ export function auditRoutes(db: Db) {
    * Mark a verification as passed; issues AMX certificate.
    */
   router.post("/companies/:companyId/audit/verifications/:id/pass", validate(passSchema), async (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
-    const result = await svc.passVerification(req.params.companyId, req.params.id, req.body);
+    const companyId = String(req.params.companyId ?? "");
+    const verificationId = String(req.params.id ?? "");
+    assertCompanyAccess(req, companyId);
+    const result = await svc.passVerification(companyId, verificationId, req.body);
     res.json(result);
   });
 
@@ -93,8 +99,10 @@ export function auditRoutes(db: Db) {
    * Mark a verification as failed/flagged with findings.
    */
   router.post("/companies/:companyId/audit/verifications/:id/fail", validate(failSchema), async (req, res) => {
-    assertCompanyAccess(req, req.params.companyId);
-    const result = await svc.failVerification(req.params.companyId, req.params.id, req.body);
+    const companyId = String(req.params.companyId ?? "");
+    const verificationId = String(req.params.id ?? "");
+    assertCompanyAccess(req, companyId);
+    const result = await svc.failVerification(companyId, verificationId, req.body);
     res.json(result);
   });
 

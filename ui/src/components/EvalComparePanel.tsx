@@ -147,7 +147,7 @@ export function EvalComparePanel({ runs, onClose, onRemove }: Props) {
     return autoScore(template, {
       status: r.status,
       durationSeconds: duration(r),
-      costCents: r.costCents,
+      costCents: r.costCents ?? null,
     });
   });
 

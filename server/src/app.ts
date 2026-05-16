@@ -89,6 +89,14 @@ function isAssetLikePathname(pathname: string): boolean {
   return ext.length > 0 && UI_ASSET_EXTENSIONS.has(ext);
 }
 
+export function resolveViteHmrPort(serverPort: number): number {
+  const preferred = serverPort + 10_000;
+  if (preferred <= 65_535) return Math.max(1_024, preferred);
+  const fallback = serverPort - 10_000;
+  if (fallback >= 1_024) return fallback;
+  return 1_024;
+}
+
 
 
 export async function createApp(
@@ -319,6 +327,7 @@ export async function createApp(
         middlewareMode: true,
         hmr: {
           host: opts.bindHost,
+          port: resolveViteHmrPort(opts.serverPort),
         },
         allowedHosts: privateHostnameGateEnabled ? Array.from(privateHostnameAllowSet) : undefined,
       },

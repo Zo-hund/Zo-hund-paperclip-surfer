@@ -2319,7 +2319,9 @@ export function heartbeatService(db: Db) {
         : [];
     if (desiredSkills.some((s) => s.includes("para-memory-files"))) {
       const today = new Date().toISOString().split("T")[0];
-      const memoryDir = path.join(context.paperclipWorkspace.agentHome, "memory");
+      const workspaceContext = context.paperclipWorkspace as { agentHome?: string } | undefined;
+      const memoryRoot = workspaceContext?.agentHome ?? resolveDefaultAgentWorkspaceDir(agent.id);
+      const memoryDir = path.join(memoryRoot, "memory");
       const dailyNotePath = path.join(memoryDir, `${today}.md`);
 
       try {

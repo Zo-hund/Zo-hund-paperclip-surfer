@@ -11,7 +11,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest",
-    "test:run": "vitest run",
+    "test:run": "vitest run --maxWorkers=1 --testTimeout=120000 --hookTimeout=120000",
     "db:generate": "pnpm --filter @paperclipai/db generate",
     "db:migrate": "pnpm --filter @paperclipai/db migrate",
     "secrets:migrate-inline-env": "tsx scripts/migrate-inline-env-secrets.ts",
@@ -32,7 +32,9 @@
     "test:e2e:headed": "npx playwright test --config tests/e2e/playwright.config.ts --headed",
     "evals:smoke": "cd evals/promptfoo && npx promptfoo@0.103.3 eval",
     "test:release-smoke": "npx playwright test --config tests/release-smoke/playwright.config.ts",
-    "test:release-smoke:headed": "npx playwright test --config tests/release-smoke/playwright.config.ts --headed"
+    "test:release-smoke:headed": "npx playwright test --config tests/release-smoke/playwright.config.ts --headed",
+    "pipeline:smoke": "pnpm -r build && pnpm --filter @paperclipai/server typecheck && pnpm --filter @paperclipai/ui typecheck && pnpm exec vitest run server/src/__tests__/codex-local-adapter-environment.test.ts && pnpm exec vitest run server/src/__tests__/codex-local-execute.test.ts",
+    "pipeline:smoke:twice": "pnpm run pipeline:smoke && pnpm run pipeline:smoke"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

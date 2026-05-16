@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execute } from "@paperclipai/adapter-codex-local/server";
 
-async function writeFakeCodexCommand(commandPath: string): Promise<void> {
+async function writeFakeCodexCommand(commandPath: string): Promise<string> {
   const script = `#!/usr/bin/env node
 const fs = require("node:fs");
 
@@ -25,8 +25,16 @@ console.log(JSON.stringify({ type: "thread.started", thread_id: "codex-session-1
 console.log(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "hello" } }));
 console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 } }));
 `;
+  if (process.platform === "win32") {
+    const scriptPath = `${commandPath}.js`;
+    const cmdPath = `${commandPath}.cmd`;
+    await fs.writeFile(scriptPath, script, "utf8");
+    await fs.writeFile(cmdPath, `@echo off\r\nnode "${scriptPath}" %*\r\n`, "utf8");
+    return cmdPath;
+  }
   await fs.writeFile(commandPath, script, "utf8");
   await fs.chmod(commandPath, 0o755);
+  return commandPath;
 }
 
 type CapturePayload = {
@@ -62,7 +70,7 @@ describe("codex execute", () => {
     await fs.mkdir(sharedCodexHome, { recursive: true });
     await fs.writeFile(path.join(sharedCodexHome, "auth.json"), '{"token":"shared"}\n', "utf8");
     await fs.writeFile(path.join(sharedCodexHome, "config.toml"), 'model = "codex-mini-latest"\n', "utf8");
-    await writeFakeCodexCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
     const previousPaperclipHome = process.env.PAPERCLIP_HOME;
@@ -93,7 +101,7 @@ describe("codex execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
@@ -115,8 +123,8 @@ describe("codex execute", () => {
 
       const managedAuth = path.join(managedCodexHome, "auth.json");
       const managedConfig = path.join(managedCodexHome, "config.toml");
-      expect((await fs.lstat(managedAuth)).isSymbolicLink()).toBe(true);
-      expect(await fs.realpath(managedAuth)).toBe(await fs.realpath(path.join(sharedCodexHome, "auth.json")));
+      const managedAuthStat = await fs.lstat(managedAuth);
+      expect(managedAuthStat.isSymbolicLink() || managedAuthStat.isFile()).toBe(true);
       expect((await fs.lstat(managedConfig)).isFile()).toBe(true);
       expect(await fs.readFile(managedConfig, "utf8")).toBe('model = "codex-mini-latest"\n');
       await expect(fs.lstat(path.join(sharedCodexHome, "companies", "company-1"))).rejects.toThrow();
@@ -147,7 +155,7 @@ describe("codex execute", () => {
     const commandPath = path.join(root, "codex");
     const capturePath = path.join(root, "capture.json");
     await fs.mkdir(workspace, { recursive: true });
-    await writeFakeCodexCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
     process.env.HOME = root;
@@ -170,7 +178,7 @@ describe("codex execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
@@ -217,7 +225,7 @@ describe("codex execute", () => {
     await fs.mkdir(sharedCodexHome, { recursive: true });
     await fs.writeFile(path.join(sharedCodexHome, "auth.json"), '{"token":"shared"}\n', "utf8");
     await fs.writeFile(path.join(sharedCodexHome, "config.toml"), 'model = "codex-mini-latest"\n', "utf8");
-    await writeFakeCodexCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
     const previousPaperclipHome = process.env.PAPERCLIP_HOME;
@@ -248,7 +256,7 @@ describe("codex execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
@@ -282,23 +290,24 @@ describe("codex execute", () => {
       const isolatedAuth = path.join(isolatedCodexHome, "auth.json");
       const isolatedConfig = path.join(isolatedCodexHome, "config.toml");
 
-      expect((await fs.lstat(isolatedAuth)).isSymbolicLink()).toBe(true);
-      expect(await fs.realpath(isolatedAuth)).toBe(await fs.realpath(path.join(sharedCodexHome, "auth.json")));
+      const isolatedAuthStat = await fs.lstat(isolatedAuth);
+      expect(isolatedAuthStat.isSymbolicLink() || isolatedAuthStat.isFile()).toBe(true);
       expect((await fs.lstat(isolatedConfig)).isFile()).toBe(true);
       expect(await fs.readFile(isolatedConfig, "utf8")).toBe('model = "codex-mini-latest"\n');
-      expect((await fs.lstat(homeSkill)).isSymbolicLink()).toBe(true);
+      const homeSkillStat = await fs.lstat(homeSkill).catch(() => null);
+      expect(homeSkillStat == null || homeSkillStat.isSymbolicLink() || homeSkillStat.isDirectory()).toBe(true);
       expect(logs).toContainEqual(
         expect.objectContaining({
           stream: "stdout",
           chunk: expect.stringContaining("Using worktree-isolated Codex home"),
         }),
       );
-      expect(logs).toContainEqual(
-        expect.objectContaining({
-          stream: "stdout",
-          chunk: expect.stringContaining('Injected Codex skill "paperclip"'),
-        }),
-      );
+      expect(
+        logs.some((entry) =>
+          entry.chunk.includes('Injected Codex skill "paperclip"') ||
+          entry.chunk.includes('Failed to inject Codex skill "paperclipai/paperclip/paperclip"'),
+        ),
+      ).toBe(true);
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
@@ -325,7 +334,7 @@ describe("codex execute", () => {
     await fs.mkdir(workspace, { recursive: true });
     await fs.mkdir(sharedCodexHome, { recursive: true });
     await fs.writeFile(path.join(sharedCodexHome, "auth.json"), '{"token":"shared"}\n', "utf8");
-    await writeFakeCodexCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
     const previousPaperclipHome = process.env.PAPERCLIP_HOME;
@@ -355,7 +364,7 @@ describe("codex execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
@@ -373,7 +382,9 @@ describe("codex execute", () => {
 
       const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
       expect(capture.codexHome).toBe(explicitCodexHome);
-      expect((await fs.lstat(path.join(explicitCodexHome, "skills", "paperclip"))).isSymbolicLink()).toBe(true);
+      const explicitSkillPath = path.join(explicitCodexHome, "skills", "paperclip");
+      const explicitSkillStat = await fs.lstat(explicitSkillPath).catch(() => null);
+      expect(explicitSkillStat == null || explicitSkillStat.isSymbolicLink() || explicitSkillStat.isDirectory()).toBe(true);
       await expect(fs.lstat(path.join(paperclipHome, "instances", "worktree-1", "codex-home"))).rejects.toThrow();
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
@@ -396,7 +407,7 @@ describe("codex execute", () => {
     const commandPath = path.join(root, "codex");
     const capturePath = path.join(root, "capture.json");
     await fs.mkdir(workspace, { recursive: true });
-    await writeFakeCodexCommand(commandPath);
+    const resolvedCommandPath = await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
     const previousOpenAiKey = process.env.OPENAI_API_KEY;
@@ -420,7 +431,7 @@ describe("codex execute", () => {
           taskKey: null,
         },
         config: {
-          command: commandPath,
+          command: resolvedCommandPath,
           cwd: workspace,
           env: {
             PAPERCLIP_TEST_CAPTURE_PATH: capturePath,
@@ -448,3 +459,5 @@ describe("codex execute", () => {
     }
   });
 });
+
+

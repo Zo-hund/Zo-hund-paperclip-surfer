@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import net from "node:net";
 import { createHash, randomUUID } from "node:crypto";
@@ -228,6 +228,17 @@ function formatCommandForDisplay(command: string, args: string[]) {
     .join(" ");
 }
 
+function buildShellInvocation(command: string): { shell: string; args: string[] } {
+  if (process.platform === "win32") {
+    const powershell =
+      process.env.PAPERCLIP_POWERSHELL_PATH ||
+      "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    return { shell: powershell, args: ["-NoProfile", "-NonInteractive", "-Command", command] };
+  }
+  const shell = process.env.SHELL?.trim() || "/bin/sh";
+  return { shell, args: ["-c", command] };
+}
+
 async function executeProcess(input: {
   command: string;
   args: string[];
@@ -284,6 +295,13 @@ function terminateChildProcess(child: ChildProcess) {
     } catch {
       // Fall through to the direct child kill.
     }
+  } else {
+    try {
+      spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      return;
+    } catch {
+      // Fall through to direct child kill.
+    }
   }
   if (!child.killed) {
     child.kill("SIGTERM");
@@ -327,10 +345,10 @@ async function runWorkspaceCommand(input: {
   env: NodeJS.ProcessEnv;
   label: string;
 }) {
-  const shell = process.env.SHELL?.trim() || "/bin/sh";
+  const { shell, args } = buildShellInvocation(input.command);
   const proc = await executeProcess({
     command: shell,
-    args: ["-c", input.command],
+    args,
     cwd: input.cwd,
     env: input.env,
   });
@@ -423,10 +441,10 @@ async function recordWorkspaceCommandOperation(
     cwd: input.cwd,
     metadata: input.metadata ?? null,
     run: async () => {
-      const shell = process.env.SHELL?.trim() || "/bin/sh";
+      const { shell, args } = buildShellInvocation(input.command);
       const result = await executeProcess({
         command: shell,
-        args: ["-c", input.command],
+        args,
         cwd: input.cwd,
         env: input.env,
       });
@@ -1122,8 +1140,8 @@ async function startLocalRuntimeService(input: {
     const portEnvKey = asString(portConfig.envKey, "PORT");
     env[portEnvKey] = String(port);
   }
-  const shell = process.env.SHELL?.trim() || "/bin/sh";
-  const child = spawn(shell, ["-lc", command], {
+  const { shell, args } = buildShellInvocation(command);
+  const child = spawn(shell, args, {
     cwd: serviceCwd,
     env,
     detached: process.platform !== "win32",
@@ -1375,6 +1393,7 @@ export async function stopRuntimeServicesForExecutionWorkspace(input: {
   const matchingServiceIds = Array.from(runtimeServicesById.values())
     .filter((record) => {
       if (record.executionWorkspaceId === input.executionWorkspaceId) return true;
+      if (record.scopeType === "execution_workspace" && record.scopeId === input.executionWorkspaceId) return true;
       if (!normalizedWorkspaceCwd || !record.cwd) return false;
       const resolvedCwd = path.resolve(record.cwd);
       return (
