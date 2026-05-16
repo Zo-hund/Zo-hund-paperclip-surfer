@@ -22,6 +22,7 @@ const BOARD_ROUTE_ROOTS = new Set([
   "xp",
   "rq",
   "lms",
+  "pit-stop",
   "marketplace",
   "audit",
   "briefcase",

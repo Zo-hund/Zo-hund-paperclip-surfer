@@ -16,6 +16,7 @@ import {
   agentService,
   heartbeatService,
   logActivity,
+  amxChainService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
@@ -32,6 +33,7 @@ export function costRoutes(db: Db) {
   const budgets = budgetService(db, budgetHooks);
   const companies = companyService(db);
   const agents = agentService(db);
+  const chainSvc = amxChainService(db);
 
   router.post("/companies/:companyId/cost-events", validate(createCostEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -57,6 +59,14 @@ export function costRoutes(db: Db) {
       entityType: "cost_event",
       entityId: event.id,
       details: { costCents: event.costCents, model: event.model },
+    });
+
+    // Record on AMX Chain
+    await chainSvc.recordSecurityEvent(companyId, actor.actorType, actor.actorId, "COST_REPORTED", {
+      eventId: event.id,
+      costCents: event.costCents,
+      model: event.model,
+      agentId: event.agentId,
     });
 
     res.status(201).json(event);
@@ -87,6 +97,14 @@ export function costRoutes(db: Db) {
         eventKind: event.eventKind,
         direction: event.direction,
       },
+    });
+
+    // Record on AMX Chain
+    await chainSvc.recordSecurityEvent(companyId, actor.actorType, actor.actorId, "FINANCE_EVENT_REPORTED", {
+      eventId: event.id,
+      amountCents: event.amountCents,
+      eventKind: event.eventKind,
+      direction: event.direction,
     });
 
     res.status(201).json(event);
@@ -222,6 +240,14 @@ export function costRoutes(db: Db) {
       const companyId = req.params.companyId as string;
       assertCompanyAccess(req, companyId);
       const summary = await budgets.upsertPolicy(companyId, req.body, req.actor.userId ?? "board");
+
+      // Record on AMX Chain
+      await chainSvc.recordSecurityEvent(companyId, "user", req.actor.userId ?? "board", "BUDGET_POLICY_UPDATED", {
+        scopeType: req.body.scopeType,
+        scopeId: req.body.scopeId,
+        amount: req.body.amount,
+      });
+
       res.json(summary);
     },
   );
@@ -235,6 +261,13 @@ export function costRoutes(db: Db) {
       const incidentId = req.params.incidentId as string;
       assertCompanyAccess(req, companyId);
       const incident = await budgets.resolveIncident(companyId, incidentId, req.body, req.actor.userId ?? "board");
+
+      // Record on AMX Chain
+      await chainSvc.recordSecurityEvent(companyId, "user", req.actor.userId ?? "board", "BUDGET_INCIDENT_RESOLVED", {
+        incidentId,
+        resolution: req.body.resolution,
+      });
+
       res.json(incident);
     },
   );

@@ -11,6 +11,77 @@ import type {
 } from "@paperclipai/shared";
 import { api } from "./client";
 
+export type MicroserviceWorkOrderStage = "pre_production" | "production" | "post_generation";
+
+export interface MicroserviceWorkOrderTimeCard {
+  id: string;
+  phase: MicroserviceWorkOrderStage;
+  title: string;
+  hours: number;
+  notes: string | null;
+  recordedAt: string;
+  recordedByUserId: string | null;
+  recordedByAgentId: string | null;
+}
+
+export interface MicroserviceWorkOrderMetadata {
+  kind: "microservice_work_order";
+  version: 1;
+  client: {
+    name: string | null;
+    email: string | null;
+    company: string | null;
+  };
+  task: {
+    listingId: string;
+    transactionId: string | null;
+    taskType: string;
+    runPhase: string;
+    targetUrl: string | null;
+    title: string;
+    instructions: string;
+  };
+  tracking: {
+    currentStage: MicroserviceWorkOrderStage;
+    preProductionNotes: string | null;
+    productionNotes: string | null;
+    postGenerationNotes: string | null;
+    lastUpdatedAt: string;
+  };
+  timeCards: MicroserviceWorkOrderTimeCard[];
+  emailLog: Array<{
+    id: string;
+    to: string;
+    subject: string;
+    stage: MicroserviceWorkOrderStage;
+    sentAt: string;
+    messageId: string | null;
+  }>;
+}
+
+export interface MicroserviceWorkOrderResponse {
+  issue: {
+    id: string;
+    identifier: string | null;
+    title: string;
+    status: string;
+    billingCode: string | null;
+  };
+  workOrder: IssueWorkProduct;
+  metadata: MicroserviceWorkOrderMetadata;
+  summary: string;
+}
+
+export interface PublicTrackStatus {
+  identifier: string | null;
+  title: string;
+  status: string;
+  priority: string | null;
+  agentName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const issuesApi = {
   list: (
     companyId: string,
@@ -61,6 +132,8 @@ export const issuesApi = {
     api.post<Issue>(`/companies/${companyId}/issues`, data),
   update: (id: string, data: Record<string, unknown>) => api.patch<Issue>(`/issues/${id}`, data),
   remove: (id: string) => api.delete<Issue>(`/issues/${id}`),
+  trackPublic: (identifier: string) =>
+    api.get<PublicTrackStatus>(`/public/track/${identifier}`),
   checkout: (id: string, agentId: string) =>
     api.post<Issue>(`/issues/${id}/checkout`, {
       agentId,
@@ -111,6 +184,45 @@ export const issuesApi = {
   updateWorkProduct: (id: string, data: Record<string, unknown>) =>
     api.patch<IssueWorkProduct>(`/work-products/${id}`, data),
   deleteWorkProduct: (id: string) => api.delete<IssueWorkProduct>(`/work-products/${id}`),
+  getMicroserviceWorkOrder: (id: string) =>
+    api.get<MicroserviceWorkOrderResponse>(`/issues/${id}/microservice-work-order`),
+  updateMicroserviceWorkOrder: (
+    id: string,
+    data: Partial<{
+      clientName: string | null;
+      clientEmail: string | null;
+      clientCompany: string | null;
+      currentStage: MicroserviceWorkOrderStage;
+      preProductionNotes: string | null;
+      productionNotes: string | null;
+      postGenerationNotes: string | null;
+    }>,
+  ) => api.put<MicroserviceWorkOrderResponse>(`/issues/${id}/microservice-work-order`, data),
+  addMicroserviceTimeCard: (
+    id: string,
+    data: {
+      phase: MicroserviceWorkOrderStage;
+      title: string;
+      hours: number;
+      notes?: string | null;
+    },
+  ) => api.post<MicroserviceWorkOrderResponse & { timeCard: MicroserviceWorkOrderTimeCard }>(`/issues/${id}/microservice-work-order/time-cards`, data),
+  sendMicroserviceClientUpdate: (
+    id: string,
+    data: {
+      to?: string | null;
+      clientName?: string | null;
+      clientCompany?: string | null;
+      stage?: MicroserviceWorkOrderStage;
+      intro?: string | null;
+      nextStep?: string | null;
+      customMessage?: string | null;
+    },
+  ) =>
+    api.post<MicroserviceWorkOrderResponse & { delivery: { provider: "resend"; accepted: boolean; messageId: string | null; recipient: string; subject: string } }>(
+      `/issues/${id}/microservice-client-update`,
+      data,
+    ),
   bulkUpdate: (
     companyId: string,
     ids: string[],

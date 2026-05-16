@@ -218,15 +218,15 @@ export function MicroServiceBooking({
         priority: "medium",
       });
 
-      const booking: BookingResult = {
+      const bookingResult: BookingResult = {
         issueId: issue.id,
         issueIdentifier: issue.identifier ?? "",
         agentName: agent?.name ?? "Agent",
         taskType: selectedTask.id,
         creditsUsed: cost,
       };
-      setResult(booking);
-      onBooked?.(booking);
+      setResult(bookingResult);
+      onBooked?.(bookingResult);
     } catch (err) {
       pushToast({
         tone: "error",
@@ -307,7 +307,7 @@ export function MicroServiceBooking({
                 <span className="text-sm font-black text-primary">{result.issueIdentifier}</span>
                 <span className="text-[11px] text-muted-foreground">• {result.creditsUsed} credits</span>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-2 flex-wrap justify-center">
                 <Button
                   variant="outline"
                   size="sm"
@@ -316,6 +316,20 @@ export function MicroServiceBooking({
                 >
                   View Task <ExternalLink className="h-3.5 w-3.5" />
                 </Button>
+                <a
+                  href={`/track/${result.issueIdentifier}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={handleClose}
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 font-bold text-[11px] uppercase tracking-widest text-primary border-primary/30 hover:bg-primary/10"
+                  >
+                    Track Order <ExternalLink className="h-3.5 w-3.5" />
+                  </Button>
+                </a>
                 <Button size="sm" onClick={handleClose} className="font-bold text-[11px] uppercase tracking-widest">
                   Done
                 </Button>

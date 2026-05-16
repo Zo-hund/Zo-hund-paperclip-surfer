@@ -51,6 +51,98 @@ function claudeSkillsHome(): string {
   return path.join(os.homedir(), ".claude", "skills");
 }
 
+export type OpenCodeRunClass = "tasking" | "commentary" | "routine";
+
+export type OpenCodeExecutionPlan = {
+  runClass: OpenCodeRunClass;
+  promptStrategy: "full_bootstrap" | "compact_resume" | "handoff_resume";
+  includeInstructions: boolean;
+  includeBootstrapPrompt: boolean;
+  effectiveVariant: string;
+  optimizationNotes: string[];
+};
+
+function normalizeLowerString(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function hasNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export function classifyOpenCodeRunContext(context: Record<string, unknown>): OpenCodeRunClass {
+  const wakeSource = normalizeLowerString(context.wakeSource);
+  const wakeReason = normalizeLowerString(context.wakeReason);
+  const wakeTriggerDetail = normalizeLowerString(context.wakeTriggerDetail);
+  const hasCommentWake =
+    hasNonEmptyString(context.commentId) ||
+    hasNonEmptyString(context.wakeCommentId) ||
+    wakeReason.includes("comment") ||
+    wakeReason.includes("mention");
+
+  if (
+    wakeSource === "timer" ||
+    wakeReason.includes("heartbeat") ||
+    wakeReason.includes("scheduled") ||
+    wakeTriggerDetail === "timer"
+  ) {
+    return "routine";
+  }
+  if (hasCommentWake || wakeReason.includes("approval")) {
+    return "commentary";
+  }
+  return "tasking";
+}
+
+export function planOpenCodeExecution(input: {
+  context: Record<string, unknown>;
+  hasSession: boolean;
+  configuredVariant: string;
+  hasBootstrapPrompt: boolean;
+  hasSessionHandoff: boolean;
+}): OpenCodeExecutionPlan {
+  const runClass = classifyOpenCodeRunContext(input.context);
+  const optimizationNotes: string[] = [];
+  const effectiveVariant = input.configuredVariant || (runClass === "tasking" ? "" : "low");
+
+  if (!input.configuredVariant && effectiveVariant) {
+    optimizationNotes.push(`Applied adaptive OpenCode variant "${effectiveVariant}" for ${runClass} wake.`);
+  }
+
+  if (input.hasSession && runClass !== "tasking") {
+    optimizationNotes.push("Skipped repeated instructions/bootstrap for resumed low-risk wake.");
+    return {
+      runClass,
+      promptStrategy: "compact_resume",
+      includeInstructions: false,
+      includeBootstrapPrompt: false,
+      effectiveVariant,
+      optimizationNotes,
+    };
+  }
+
+  if (!input.hasSession && input.hasSessionHandoff && runClass !== "tasking") {
+    optimizationNotes.push("Used handoff-first prompt assembly after session rotation for low-risk wake.");
+    return {
+      runClass,
+      promptStrategy: "handoff_resume",
+      includeInstructions: true,
+      includeBootstrapPrompt: false,
+      effectiveVariant,
+      optimizationNotes,
+    };
+  }
+
+  return {
+    runClass,
+    promptStrategy: "full_bootstrap",
+    includeInstructions: true,
+    includeBootstrapPrompt: input.hasBootstrapPrompt && !input.hasSession && !input.hasSessionHandoff,
+    effectiveVariant,
+    optimizationNotes,
+  };
+}
+
 async function ensureOpenCodeSkillsInjected(
   onLog: AdapterExecutionContext["onLog"],
   skillsEntries: Array<{ key: string; runtimeName: string; source: string }>,
@@ -98,7 +190,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   );
   const command = asString(config.command, "opencode");
   let model = asString(config.model, "").trim();
-  const variant = asString(config.variant, "").trim();
+  const configuredVariant = asString(config.variant, "").trim();
 
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
@@ -270,25 +362,39 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         ? renderTemplate(bootstrapPromptTemplate, templateData).trim()
         : "";
     const sessionHandoffNote = asString(context.paperclipSessionHandoffMarkdown, "").trim();
+    const executionPlan = planOpenCodeExecution({
+      context,
+      hasSession: Boolean(sessionId),
+      configuredVariant,
+      hasBootstrapPrompt: renderedBootstrapPrompt.length > 0,
+      hasSessionHandoff: sessionHandoffNote.length > 0,
+    });
     const prompt = joinPromptSections([
-      instructionsPrefix,
-      renderedBootstrapPrompt,
+      executionPlan.includeInstructions ? instructionsPrefix : "",
+      executionPlan.includeBootstrapPrompt ? renderedBootstrapPrompt : "",
       sessionHandoffNote,
       renderedPrompt,
     ]);
     const promptMetrics = {
       promptChars: prompt.length,
-      instructionsChars: instructionsPrefix.length,
-      bootstrapPromptChars: renderedBootstrapPrompt.length,
+      instructionsChars: executionPlan.includeInstructions ? instructionsPrefix.length : 0,
+      bootstrapPromptChars: executionPlan.includeBootstrapPrompt ? renderedBootstrapPrompt.length : 0,
       sessionHandoffChars: sessionHandoffNote.length,
       heartbeatPromptChars: renderedPrompt.length,
     };
+    const effectiveVariant = executionPlan.effectiveVariant;
+    const commandNotesWithOptimization = [
+      ...commandNotes,
+      `OpenCode run class: ${executionPlan.runClass}`,
+      `OpenCode prompt strategy: ${executionPlan.promptStrategy}`,
+      ...executionPlan.optimizationNotes,
+    ];
 
     const buildArgs = (resumeSessionId: string | null) => {
       const args = ["run", "--format", "json"];
       if (resumeSessionId) args.push("--session", resumeSessionId);
       if (model) args.push("--model", model);
-      if (variant) args.push("--variant", variant);
+      if (effectiveVariant) args.push("--variant", effectiveVariant);
       if (extraArgs.length > 0) args.push(...extraArgs);
       return args;
     };
@@ -300,7 +406,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
           adapterType: "opencode_local",
           command,
           cwd,
-          commandNotes,
+          commandNotes: commandNotesWithOptimization,
           commandArgs: [...args, `<stdin prompt ${prompt.length} chars>`],
           env: redactEnvForLogs(preparedRuntimeConfig.env),
           prompt,

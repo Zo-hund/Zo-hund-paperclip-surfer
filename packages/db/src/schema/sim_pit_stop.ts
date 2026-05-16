@@ -1,5 +1,6 @@
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { approvals } from "./approvals.js";
+import { agents } from "./agents.js";
 import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issueWorkProducts } from "./issue_work_products.js";
@@ -115,5 +116,41 @@ export const pitStopPackages = pgTable(
     notebookVersionIdx: uniqueIndex("pit_stop_packages_notebook_version_uq").on(table.notebookId, table.version),
     companyStatusIdx: index("pit_stop_packages_company_status_idx").on(table.companyId, table.status),
     approvalIdx: index("pit_stop_packages_approval_idx").on(table.approvalId),
+  }),
+);
+
+export const pitStopOptimizations = pgTable(
+  "pit_stop_optimizations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").references(() => pitStopWorkspaces.id, { onDelete: "set null" }),
+    notebookId: uuid("notebook_id").notNull().references(() => simNotebooks.id, { onDelete: "cascade" }),
+    sourceSimRunId: uuid("source_sim_run_id").notNull().references(() => heartbeatRuns.id, { onDelete: "cascade" }),
+    sourceAgentId: uuid("source_agent_id").references(() => agents.id, { onDelete: "set null" }),
+    sourceRunStatus: text("source_run_status").notNull(),
+    status: text("status").notNull().default("recommended"),
+    triggerReason: text("trigger_reason").notNull(),
+    triggerDetails: jsonb("trigger_details").$type<Record<string, unknown>>().notNull().default({}),
+    currentExecutionPlan: jsonb("current_execution_plan").$type<Record<string, unknown>>().notNull().default({}),
+    currentRuntimeRequirements: jsonb("current_runtime_requirements").$type<Record<string, unknown>>().notNull().default({}),
+    currentAdapterOverride: jsonb("current_adapter_override").$type<Record<string, unknown>>().notNull().default({}),
+    recommendedExecutionPlan: jsonb("recommended_execution_plan").$type<Record<string, unknown>>().notNull().default({}),
+    recommendedRuntimeRequirements: jsonb("recommended_runtime_requirements").$type<Record<string, unknown>>().notNull().default({}),
+    recommendedAdapterOverride: jsonb("recommended_adapter_override").$type<Record<string, unknown>>().notNull().default({}),
+    optimizationActions: jsonb("optimization_actions").$type<string[]>().notNull().default([]),
+    explanation: text("explanation"),
+    estimatedSavings: jsonb("estimated_savings").$type<Record<string, unknown>>().notNull().default({}),
+    relaunchEligible: boolean("relaunch_eligible").notNull().default(false),
+    launchedSimRunId: uuid("launched_sim_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    launchedAt: timestamp("launched_at", { withTimezone: true }),
+    manualNotes: text("manual_notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceRunIdx: uniqueIndex("pit_stop_optimizations_source_sim_run_uq").on(table.sourceSimRunId),
+    workspaceStatusIdx: index("pit_stop_optimizations_workspace_status_idx").on(table.workspaceId, table.status),
+    companyCreatedIdx: index("pit_stop_optimizations_company_created_idx").on(table.companyId, table.createdAt),
   }),
 );

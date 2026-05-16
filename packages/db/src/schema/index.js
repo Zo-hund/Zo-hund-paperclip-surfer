@@ -67,6 +67,8 @@ export { amxChainEvents, amxCertificates } from "./amx_chain.js";
 export { collectives, electives, communityBoards, boardCollaborations } from "./governance_boards.js";
 export { rqSubmissions, rqAgentConfigs } from "./rq_factory.js";
 export { lmsWorkshops, lmsEnrollments, lmsSimulations } from "./lms_training.js";
+export { marketplaceProfiles, marketplaceListings } from "./marketplace.js";
+export { simNotebooks, pitStopWorkspaces, pitStopPackages, pitStopOptimizations } from "./sim_pit_stop.js";
 export { auditVerifications } from "./audit_verifications.js";
 export { agentChatMessages } from "./agent_chat_messages.js";
 //# sourceMappingURL=index.js.map

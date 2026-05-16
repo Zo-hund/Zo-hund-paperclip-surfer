@@ -115,6 +115,9 @@ export interface MarketplaceListing {
   supportedRunPhases: string[];
   payoutWallet: string | null;
   location: string | null;
+  isPromoted: boolean;
+  promotedUntil: string | null;
+  sponsorTag: string | null;
   createdAt: string;
   updatedAt: string;
   provider: {
@@ -164,6 +167,9 @@ export interface MicroserviceBookingInput {
   instructions: string;
   targetUrl?: string | null;
   assignedAgentId?: string | null;
+  clientName?: string | null;
+  clientEmail?: string | null;
+  clientCompany?: string | null;
 }
 
 export interface MicroserviceBookingResult {
@@ -257,8 +263,13 @@ export const marketplaceApi = {
       supportedRunPhases: string[];
       payoutWallet: string | null;
       location: string | null;
+      isPromoted: boolean;
+      promotedUntil: string | null;
+      sponsorTag: string | null;
     }>,
   ) => api.patch<MarketplaceListing>(`/companies/${companyId}/amx/partner-listings/${listingId}`, input),
+  getPublicListings: () =>
+    api.get<{ listings: MarketplaceListing[]; visibleAgents: Array<{ id: string; name: string; title: string | null; role: string | null; companyId: string; metadata: Record<string, unknown> | null; createdAt: string }> }>("/marketplace/public-listings"),
   purchaseListing: (companyId: string, listingId: string, input: { hours: number; runPhase: string }) =>
     api.post<PurchaseResult>(`/companies/${companyId}/amx/partner-listings/${listingId}/purchase`, input),
   bookMicroservice: (companyId: string, input: MicroserviceBookingInput) =>

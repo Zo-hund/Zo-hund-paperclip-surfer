@@ -27,7 +27,8 @@ export const queryKeys = {
       ["agents", companyId, "adapter-models", adapterType] as const,
     detectModel: (companyId: string, adapterType: string) =>
       ["agents", companyId, "detect-model", adapterType] as const,
-    chatMessages: (agentId: string) => ["agents", "chat-messages", agentId] as const,
+    chatMessages: (agentId: string, companyId?: string) =>
+      ["agents", "chat-messages", agentId, companyId ?? "__global__"] as const,
   },
   issues: {
     list: (companyId: string) => ["issues", companyId] as const,
@@ -142,6 +143,8 @@ export const queryKeys = {
     trends: (agentId: string) => ["agent-kpis", agentId, "trends"] as const,
   },
   companyAnalytics: (companyId: string) => ["company-analytics", companyId] as const,
+  traceSummaries: (companyId: string, filters: Record<string, string | number | undefined>) =>
+    ["trace-summaries", companyId, filters] as const,
   observations: {
     list: (companyId: string) => ["observations", companyId] as const,
   },

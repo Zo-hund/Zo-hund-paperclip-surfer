@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { HeartbeatTraceSummary } from "@paperclipai/shared";
 
 export interface AgentKpi {
   id: string;
@@ -102,6 +103,14 @@ export interface ObservationCreateRequest {
   actionNotes?: string;
 }
 
+export interface TraceListFilters {
+  agentId?: string;
+  status?: string;
+  issueId?: string;
+  since?: string;
+  limit?: number;
+}
+
 export const agentKpisApi = {
   list: (agentId: string, params?: { limit?: number }) => {
     let path = `/agents/${encodeURIComponent(agentId)}/kpis`;
@@ -115,6 +124,18 @@ export const agentKpisApi = {
 export const analyticsApi = {
   getCompanyAnalytics: (companyId: string) =>
     api.get<CompanyAnalytics>(`/companies/${encodeURIComponent(companyId)}/analytics`),
+  listTraces: (companyId: string, filters: TraceListFilters = {}) => {
+    const searchParams = new URLSearchParams();
+    if (filters.agentId) searchParams.set("agentId", filters.agentId);
+    if (filters.status) searchParams.set("status", filters.status);
+    if (filters.issueId) searchParams.set("issueId", filters.issueId);
+    if (filters.since) searchParams.set("since", filters.since);
+    if (filters.limit != null) searchParams.set("limit", String(filters.limit));
+    const qs = searchParams.toString();
+    return api.get<HeartbeatTraceSummary[]>(
+      `/companies/${encodeURIComponent(companyId)}/analytics/traces${qs ? `?${qs}` : ""}`,
+    );
+  },
   listObservations: (companyId: string) =>
     api.get<KpiObservation[]>(
       `/companies/${encodeURIComponent(companyId)}/analytics/observations`,

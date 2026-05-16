@@ -5,7 +5,14 @@ import { promisify } from "node:util";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { nextCronTickInTimeZone, validateCron, assertValidTimeZone } from "./cron.js";
 import type { Db } from "@paperclipai/db";
-import type { BillingType } from "@paperclipai/shared";
+import type {
+  BillingType,
+  IssueRuntimeRequirements,
+  RunExecutionAttemptTrace,
+  RunExecutionCandidate,
+  RunExecutionPlan,
+  RunFailoverCategory,
+} from "@paperclipai/shared";
 import {
   agents,
   agentRuntimeState,
@@ -26,6 +33,7 @@ import type { AdapterExecutionResult, AdapterInvocationMeta, AdapterSessionCodec
 import { createLocalAgentJwt } from "../agent-auth-jwt.js";
 import { parseObject, asBoolean, asNumber, appendWithCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { costService } from "./costs.js";
+import { logActivity } from "./activity-log.js";
 import { companySkillService } from "./company-skills.js";
 import { budgetService, type BudgetEnforcementScope } from "./budgets.js";
 import { secretService } from "./secrets.js";
@@ -53,6 +61,10 @@ import {
 } from "./execution-workspace-policy.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
+import {
+  buildExecutionPlanAdapterOverride,
+  resolveRunExecutionPlan,
+} from "./agent-runtime/gear-shifting.js";
 import {
   hasSessionCompactionThresholds,
   resolveSessionCompactionPolicy,
@@ -440,6 +452,78 @@ function deriveNormalizedUsageDelta(current: UsageTotals | null, previous: Usage
 function formatCount(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "0";
   return value.toLocaleString("en-US");
+}
+
+function deriveProviderFromModel(model: string | null | undefined) {
+  if (!model || !model.includes("/")) return null;
+  return model.split("/")[0] ?? null;
+}
+
+export function classifyAdapterFailure(result: AdapterExecutionResult): RunFailoverCategory {
+  const errorCode = readNonEmptyString(result.errorCode)?.toLowerCase() ?? "";
+  const errorMessage = readNonEmptyString(result.errorMessage)?.toLowerCase() ?? "";
+  const combined = `${errorCode} ${errorMessage}`;
+
+  if (
+    combined.includes("project has been denied access")
+    || combined.includes("denied access")
+    || combined.includes("contact support")
+  ) {
+    return "provider_denied";
+  }
+  if (
+    combined.includes("auth")
+    || combined.includes("api key")
+    || combined.includes("unauthorized")
+    || combined.includes("forbidden")
+    || combined.includes("login")
+  ) {
+    return "auth_failed";
+  }
+  if (
+    combined.includes("more credits")
+    || combined.includes("insufficient credits")
+    || combined.includes("billing details")
+    || combined.includes("quota")
+    || combined.includes("resource_exhausted")
+    || combined.includes("max_tokens")
+  ) {
+    return "quota_exhausted";
+  }
+  if (
+    combined.includes("rate limit")
+    || combined.includes("too many requests")
+    || /\b429\b/.test(combined)
+  ) {
+    return "rate_limited";
+  }
+  return "non_retryable";
+}
+
+export function buildExecutionPlanForCandidate(
+  plan: RunExecutionPlan,
+  candidate: RunExecutionCandidate,
+): RunExecutionPlan {
+  return {
+    ...plan,
+    selectedHarness: candidate.harness,
+    selectedModel: candidate.model,
+    selectedProvider: candidate.provider ?? deriveProviderFromModel(candidate.model),
+    selectedVariant: candidate.variant,
+    selectedDeployment: candidate.deployment,
+  };
+}
+
+export function shouldAttemptFailover(
+  plan: RunExecutionPlan,
+  attempts: RunExecutionAttemptTrace[],
+  category: RunFailoverCategory,
+) {
+  return (
+    plan.candidateModels.length > attempts.length
+    && attempts.length < plan.failoverPolicy.maxAttempts
+    && plan.failoverPolicy.retryableCategories.includes(category)
+  );
 }
 
 export function parseSessionCompactionPolicy(agent: typeof agents.$inferSelect): SessionCompactionPolicy {
@@ -1516,6 +1600,26 @@ export function heartbeatService(db: Db) {
     return Number(row?.maxSeq ?? 0) + 1;
   }
 
+  function traceUsagePayload(
+    usage: Record<string, unknown> | null,
+    durationSeconds: number | null,
+  ) {
+    return {
+      inputTokens: readNumber(usage?.inputTokens) ?? readNumber(usage?.input_tokens) ?? 0,
+      outputTokens: readNumber(usage?.outputTokens) ?? readNumber(usage?.output_tokens) ?? 0,
+      cachedInputTokens:
+        readNumber(usage?.cachedInputTokens)
+        ?? readNumber(usage?.cached_input_tokens)
+        ?? readNumber(usage?.cache_read_input_tokens)
+        ?? 0,
+      durationSeconds,
+    };
+  }
+
+  function readNumber(value: unknown): number | null {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
   async function persistRunProcessMetadata(
     runId: string,
     meta: { pid: number; startedAt: string },
@@ -1750,9 +1854,7 @@ export function heartbeatService(db: Db) {
     const nextStatus =
       runningCount > 0
         ? "running"
-        : outcome === "succeeded" || outcome === "cancelled"
-          ? "idle"
-          : "error";
+        : "idle";
 
     const updated = await db
       .update(agents)
@@ -1858,6 +1960,7 @@ export function heartbeatService(db: Db) {
           try {
             const { pitStopService } = await import("./pit-stop.js");
             await pitStopService(db).ingestSimRun(finalizedRun.id);
+            await pitStopService(db).upsertRunOptimization(finalizedRun.id);
           } catch (err) {
             logger.warn({ err, runId: finalizedRun.id }, "failed to ingest completed sim run into Pit Stop");
           }
@@ -2027,10 +2130,7 @@ export function heartbeatService(db: Db) {
 
     const runtime = await ensureRuntimeState(agent);
     const context = parseObject(run.contextSnapshot);
-    const adapterOverride = parseObject(context.adapterOverride);
-    const activeAdapterType = typeof adapterOverride.adapterType === "string" ? adapterOverride.adapterType : agent.adapterType;
-    const taskKey = deriveTaskKey(context, null);
-    const sessionCodec = getAdapterSessionCodec(activeAdapterType);
+    let adapterOverride = parseObject(context.adapterOverride);
     const issueId = readNonEmptyString(context.issueId);
     const issueContext = issueId
       ? await db
@@ -2044,6 +2144,7 @@ export function heartbeatService(db: Db) {
             executionWorkspacePreference: issues.executionWorkspacePreference,
             assigneeAgentId: issues.assigneeAgentId,
             assigneeAdapterOverrides: issues.assigneeAdapterOverrides,
+            runtimeRequirements: issues.runtimeRequirements,
             executionWorkspaceSettings: issues.executionWorkspaceSettings,
           })
           .from(issues)
@@ -2062,6 +2163,50 @@ export function heartbeatService(db: Db) {
       : null;
     const contextProjectId = readNonEmptyString(context.projectId);
     const executionProjectId = issueContext?.projectId ?? contextProjectId;
+    const requestedRuntimeRequirements =
+      (parseObject(context.runtimeRequirements ?? issueContext?.runtimeRequirements) as IssueRuntimeRequirements | null)
+      ?? null;
+    const companyCostSummary = await costService(db, budgetHooks)
+      .summary(agent.companyId)
+      .catch(() => null);
+    const executionPlan: RunExecutionPlan = resolveRunExecutionPlan({
+      agent,
+      contextSnapshot: context,
+      runtimeRequirements: requestedRuntimeRequirements,
+      budget: {
+        companyUtilizationPercent: companyCostSummary?.utilizationPercent ?? null,
+      },
+    });
+    adapterOverride = buildExecutionPlanAdapterOverride(executionPlan, adapterOverride);
+    context.runtimeRequirements = executionPlan.gearProfile;
+    context.contextTier = executionPlan.contextTier;
+    context.selectedHarness = executionPlan.selectedHarness;
+    context.selectedDeployment = executionPlan.selectedDeployment;
+    context.selectedWorkspaceMode = executionPlan.selectedWorkspaceMode;
+    context.selectionReason = executionPlan.selectionReason;
+    if (!readNonEmptyString(context.projectId) && executionProjectId) {
+      context.projectId = executionProjectId;
+    }
+    context.executionPlan = {
+      gearProfile: executionPlan.gearProfile,
+      contextTier: executionPlan.contextTier,
+      selectedHarness: executionPlan.selectedHarness,
+      selectedModel: executionPlan.selectedModel,
+      selectedDeployment: executionPlan.selectedDeployment,
+      selectedProvider: executionPlan.selectedProvider,
+      selectedVariant: executionPlan.selectedVariant,
+      selectedWorkspaceMode: executionPlan.selectedWorkspaceMode,
+      selectionReason: executionPlan.selectionReason,
+      fallbackApplied: executionPlan.fallbackApplied,
+      manualOverrideApplied: executionPlan.manualOverrideApplied,
+      initialSelectedModel: executionPlan.initialSelectedModel,
+      candidateModels: executionPlan.candidateModels,
+      failoverPolicy: executionPlan.failoverPolicy,
+    };
+    context.adapterOverride = adapterOverride;
+    let activeAdapterType = typeof adapterOverride.adapterType === "string" ? adapterOverride.adapterType : agent.adapterType;
+    const taskKey = deriveTaskKey(context, null);
+    const sessionCodec = getAdapterSessionCodec(activeAdapterType);
     const projectExecutionWorkspacePolicy = executionProjectId
       ? await db
           .select({ executionWorkspacePolicy: projects.executionWorkspacePolicy })
@@ -2495,7 +2640,109 @@ export function heartbeatService(db: Db) {
 
       const currentRun = run;
       await appendRunEvent(currentRun, seq++, {
-        eventType: "lifecycle",
+        eventType: "wakeup.received",
+        stream: "system",
+        level: "info",
+        message: "wakeup received",
+        payload: {
+          wakeSource: run.invocationSource,
+          wakeReason: readNonEmptyString(context.wakeReason) ?? readNonEmptyString(context.reason) ?? null,
+          triggerDetail: run.triggerDetail ?? readNonEmptyString(context.wakeTriggerDetail) ?? null,
+          issueId: issueId ?? readNonEmptyString(context.issueId) ?? null,
+          commentId: readNonEmptyString(context.commentId) ?? readNonEmptyString(context.wakeCommentId) ?? null,
+          approvalId: readNonEmptyString(context.approvalId) ?? null,
+          gearProfile: executionPlan.gearProfile,
+          contextTier: executionPlan.contextTier,
+          selectedHarness: executionPlan.selectedHarness,
+          selectedModel: executionPlan.selectedModel,
+          selectedDeployment: executionPlan.selectedDeployment,
+          selectedProvider: executionPlan.selectedProvider,
+          selectedWorkspaceMode: executionPlan.selectedWorkspaceMode,
+          selectionReason: executionPlan.selectionReason,
+          fallbackApplied: executionPlan.fallbackApplied,
+          manualOverrideApplied: executionPlan.manualOverrideApplied,
+          initialSelectedModel: executionPlan.initialSelectedModel,
+          candidateModels: executionPlan.candidateModels,
+        },
+      });
+      await appendRunEvent(currentRun, seq++, {
+        eventType: "context.prepared",
+        stream: "system",
+        level: "info",
+        message: "context prepared",
+        payload: {
+          wakeSource: run.invocationSource,
+          wakeReason: readNonEmptyString(context.wakeReason) ?? readNonEmptyString(context.reason) ?? null,
+          triggerDetail: run.triggerDetail ?? readNonEmptyString(context.wakeTriggerDetail) ?? null,
+          issueId: issueId ?? readNonEmptyString(context.issueId) ?? null,
+          commentId: readNonEmptyString(context.commentId) ?? readNonEmptyString(context.wakeCommentId) ?? null,
+          approvalId: readNonEmptyString(context.approvalId) ?? null,
+        },
+      });
+      if (run.runMode === "sim") {
+        try {
+          const { pitStopService } = await import("./pit-stop.js");
+          const pitStopResult = await pitStopService(db).upsertRunOptimization(currentRun.id);
+          if (pitStopResult?.optimization) {
+            context.pitStopTriggered = true;
+            context.pitStopTriggerReason = pitStopResult.optimization.triggerReason;
+            context.pitStopWorkspaceId = pitStopResult.workspace.id;
+            context.pitStopOptimizationId = pitStopResult.optimization.id;
+            context.pitStopSourceRunId = pitStopResult.optimization.sourceSimRunId;
+            await db
+              .update(heartbeatRuns)
+              .set({
+                contextSnapshot: context,
+                updatedAt: new Date(),
+              })
+              .where(eq(heartbeatRuns.id, currentRun.id));
+            await appendRunEvent(currentRun, seq++, {
+              eventType: "pitstop.triggered",
+              stream: "system",
+              level: "warn",
+              message: "pit stop optimization recommended",
+              payload: {
+                pitStopTriggered: true,
+                pitStopTriggerReason: pitStopResult.optimization.triggerReason,
+                pitStopWorkspaceId: pitStopResult.workspace.id,
+                pitStopOptimizationId: pitStopResult.optimization.id,
+                pitStopSourceRunId: pitStopResult.optimization.sourceSimRunId,
+                optimizationActions: pitStopResult.optimization.optimizationActions,
+                estimatedSavings: pitStopResult.optimization.estimatedSavings,
+              },
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, runId: currentRun.id }, "failed to evaluate pit stop optimization during sim run");
+        }
+      }
+      await appendRunEvent(currentRun, seq++, {
+        eventType: "workspace.resolved",
+        stream: "system",
+        level: "info",
+        message: "workspace resolved",
+        payload: {
+          workspaceId: persistedExecutionWorkspace?.id ?? resolvedWorkspace.workspaceId ?? null,
+          workspaceSource: executionWorkspace.source ?? null,
+          cwd: executionWorkspace.cwd,
+        },
+      });
+      if (sessionCompaction.rotate) {
+        await appendRunEvent(currentRun, seq++, {
+          eventType: "session.rotation",
+          stream: "system",
+          level: "info",
+          message: "session rotated",
+          payload: {
+            sessionRotated: true,
+            sessionIdBefore: context.paperclipPreviousSessionId as string | null,
+            sessionIdAfter: null,
+            sessionRotationReason: sessionCompaction.reason,
+          },
+        });
+      }
+      await appendRunEvent(currentRun, seq++, {
+        eventType: "run.started",
         stream: "system",
         level: "info",
         message: "run started",
@@ -2603,6 +2850,14 @@ export function heartbeatService(db: Db) {
           );
         }
       }
+      const attemptedModels: RunExecutionAttemptTrace[] = [];
+      let failoverFromModel: string | null = null;
+      let failoverToModel: string | null = null;
+      let failureCategory: RunFailoverCategory | null = null;
+      let activeExecutionPlan = executionPlan;
+      let activeAdapterOverride = adapterOverride;
+      let activeRuntimeConfig = runtimeConfig;
+
       const onAdapterMeta = async (meta: AdapterInvocationMeta) => {
         if (meta.env && secretKeys.size > 0) {
           for (const key of secretKeys) {
@@ -2610,29 +2865,41 @@ export function heartbeatService(db: Db) {
           }
         }
         await appendRunEvent(currentRun, seq++, {
-          eventType: "adapter.invoke",
+          eventType: "adapter.command.prepared",
           stream: "system",
           level: "info",
-          message: "adapter invocation",
-          payload: meta as unknown as Record<string, unknown>,
+          message: "adapter command prepared",
+          payload: {
+            ...(meta as unknown as Record<string, unknown>),
+            adapterType: meta.adapterType ?? activeAdapterType,
+            model:
+              readNonEmptyString(parseObject(activeRuntimeConfig).model)
+              ?? readNonEmptyString(parseObject(activeRuntimeConfig).providerModel)
+              ?? null,
+            effectiveVariant:
+              readNonEmptyString(parseObject(activeRuntimeConfig).thinkingEffort)
+                ?? readNonEmptyString(parseObject(activeRuntimeConfig).reasoningEffort)
+                ?? readNonEmptyString(parseObject(activeRuntimeConfig).variant)
+              ?? null,
+            contextTier: activeExecutionPlan.contextTier,
+            selectedHarness: activeExecutionPlan.selectedHarness,
+            selectedModel:
+              readNonEmptyString(parseObject(activeRuntimeConfig).model)
+              ?? readNonEmptyString(parseObject(activeRuntimeConfig).providerModel)
+              ?? activeExecutionPlan.selectedModel,
+            selectedDeployment: activeExecutionPlan.selectedDeployment,
+            selectedProvider: activeExecutionPlan.selectedProvider,
+            selectedWorkspaceMode: activeExecutionPlan.selectedWorkspaceMode,
+            selectionReason: activeExecutionPlan.selectionReason,
+            fallbackApplied: activeExecutionPlan.fallbackApplied,
+            manualOverrideApplied: activeExecutionPlan.manualOverrideApplied,
+            initialSelectedModel: executionPlan.initialSelectedModel,
+            failoverAttempt: attemptedModels.length + 1,
+            attemptedModels,
+          },
         });
       };
 
-      const adapter = getServerAdapter(activeAdapterType);
-      const authToken = adapter.supportsLocalAgentJwt
-        ? createLocalAgentJwt(agent.id, agent.companyId, activeAdapterType, run.id)
-        : null;
-      if (adapter.supportsLocalAgentJwt && !authToken) {
-        logger.warn(
-          {
-            companyId: agent.companyId,
-            agentId: agent.id,
-            runId: run.id,
-            adapterType: activeAdapterType,
-          },
-          "local agent jwt secret missing or invalid; running without injected PAPERCLIP_API_KEY",
-        );
-      }
       // V2: Load agent memories and inject as system prompt appendix
       let memoryCleanup: (() => void) | null = null;
       try {
@@ -2762,23 +3029,119 @@ Keep memories concise and specific. Don't write vague platitudes.`;
         logger.warn({ err: mcpErr, agentId: agent.id, runId: run.id }, "Failed to resolve MCP config for agent run");
       }
 
-      const adapterResult = await adapter.execute({
-        runId: run.id,
-        agent,
-        runtime: runtimeForAdapter,
-        config: runtimeConfig,
-        context,
-        onLog,
-        onMeta: onAdapterMeta,
-        onSpawn: async (meta) => {
-          await persistRunProcessMetadata(run.id, meta);
-        },
-        authToken: authToken ?? undefined,
-      });
+      let adapterResult: AdapterExecutionResult | null = null;
+      for (let candidateIndex = 0; candidateIndex < executionPlan.candidateModels.length; candidateIndex += 1) {
+        const candidate = executionPlan.candidateModels[candidateIndex]!;
+        activeExecutionPlan = buildExecutionPlanForCandidate(executionPlan, candidate);
+        activeAdapterOverride = buildExecutionPlanAdapterOverride(activeExecutionPlan, adapterOverride);
+        activeAdapterType =
+          typeof activeAdapterOverride.adapterType === "string" ? activeAdapterOverride.adapterType : agent.adapterType;
+        activeRuntimeConfig = activeAdapterOverride.adapterConfig
+          ? { ...runtimeConfig, ...parseObject(activeAdapterOverride.adapterConfig) }
+          : runtimeConfig;
+
+        context.selectedHarness = activeExecutionPlan.selectedHarness;
+        context.selectedDeployment = activeExecutionPlan.selectedDeployment;
+        context.selectedWorkspaceMode = activeExecutionPlan.selectedWorkspaceMode;
+        context.executionPlan = {
+          ...context.executionPlan,
+          selectedHarness: activeExecutionPlan.selectedHarness,
+          selectedModel: activeExecutionPlan.selectedModel,
+          selectedDeployment: activeExecutionPlan.selectedDeployment,
+          selectedProvider: activeExecutionPlan.selectedProvider,
+          selectedVariant: activeExecutionPlan.selectedVariant,
+          selectedWorkspaceMode: activeExecutionPlan.selectedWorkspaceMode,
+        };
+
+        const adapter = getServerAdapter(activeAdapterType);
+        const authToken = adapter.supportsLocalAgentJwt
+          ? createLocalAgentJwt(agent.id, agent.companyId, activeAdapterType, run.id)
+          : null;
+        if (adapter.supportsLocalAgentJwt && !authToken) {
+          logger.warn(
+            {
+              companyId: agent.companyId,
+              agentId: agent.id,
+              runId: run.id,
+              adapterType: activeAdapterType,
+            },
+            "local agent jwt secret missing or invalid; running without injected PAPERCLIP_API_KEY",
+          );
+        }
+
+        adapterResult = await adapter.execute({
+          runId: run.id,
+          agent,
+          runtime: runtimeForAdapter,
+          config: activeRuntimeConfig,
+          context,
+          onLog,
+          onMeta: onAdapterMeta,
+          onSpawn: async (meta) => {
+            await persistRunProcessMetadata(run.id, meta);
+          },
+          authToken: authToken ?? undefined,
+        });
+        const attemptFailureCategory =
+          adapterResult.timedOut ? "non_retryable" : classifyAdapterFailure(adapterResult);
+        const attemptSucceeded = (adapterResult.exitCode ?? 0) === 0 && !adapterResult.errorMessage && !adapterResult.timedOut;
+        attemptedModels.push({
+          attempt: candidateIndex + 1,
+          harness: activeExecutionPlan.selectedHarness,
+          model: activeExecutionPlan.selectedModel,
+          provider: activeExecutionPlan.selectedProvider,
+          variant: activeExecutionPlan.selectedVariant,
+          deployment: activeExecutionPlan.selectedDeployment,
+          reasoningTier: candidate.reasoningTier,
+          outcome: attemptSucceeded ? "succeeded" : "failed",
+          errorCode: adapterResult.errorCode ?? null,
+          errorMessage: adapterResult.errorMessage ?? null,
+          failureCategory: attemptSucceeded ? null : attemptFailureCategory,
+        });
+
+        if (attemptSucceeded) {
+          failureCategory = null;
+          break;
+        }
+
+        failureCategory = attemptFailureCategory;
+        if (!shouldAttemptFailover(executionPlan, attemptedModels, attemptFailureCategory)) {
+          break;
+        }
+
+        const nextCandidate = executionPlan.candidateModels[candidateIndex + 1]!;
+        failoverFromModel = activeExecutionPlan.selectedModel;
+        failoverToModel = nextCandidate.model;
+        context.executionPlan = {
+          ...context.executionPlan,
+          failoverAttempt: attemptedModels.length,
+          failureCategory: attemptFailureCategory,
+          failoverFromModel,
+          failoverToModel,
+          failoverExhausted: false,
+          attemptedModels,
+        };
+        await appendRunEvent(currentRun, seq++, {
+          eventType: "model.failover.applied",
+          stream: "system",
+          level: "warn",
+          message: "model failover applied",
+          payload: {
+            failoverAttempt: attemptedModels.length,
+            failureCategory: attemptFailureCategory,
+            failoverFromModel,
+            failoverToModel,
+            selectedHarness: activeExecutionPlan.selectedHarness,
+          },
+        });
+      }
 
       // Clean up temp files
       if (mcpConfigCleanup) mcpConfigCleanup();
       if (memoryCleanup) memoryCleanup();
+      if (!adapterResult) {
+        throw new Error("adapter execution did not produce a result");
+      }
       const adapterManagedRuntimeServices = adapterResult.runtimeServices
         ? await persistAdapterManagedRuntimeServices({
             db,
@@ -2870,6 +3233,35 @@ Keep memories concise and specific. Don't write vague platitudes.`;
               ? "timed_out"
               : "failed";
 
+      context.selectedHarness = activeExecutionPlan.selectedHarness;
+      context.selectedDeployment = activeExecutionPlan.selectedDeployment;
+      context.selectedWorkspaceMode = activeExecutionPlan.selectedWorkspaceMode;
+      context.selectionReason = activeExecutionPlan.selectionReason;
+      context.executionPlan = {
+        ...context.executionPlan,
+        selectedHarness: activeExecutionPlan.selectedHarness,
+        selectedModel: activeExecutionPlan.selectedModel,
+        selectedDeployment: activeExecutionPlan.selectedDeployment,
+        selectedProvider: activeExecutionPlan.selectedProvider,
+        selectedVariant: activeExecutionPlan.selectedVariant,
+        selectedWorkspaceMode: activeExecutionPlan.selectedWorkspaceMode,
+        selectionReason: activeExecutionPlan.selectionReason,
+        initialSelectedModel: executionPlan.initialSelectedModel,
+        candidateModels: executionPlan.candidateModels,
+        failoverPolicy: executionPlan.failoverPolicy,
+        failoverAttempt: attemptedModels.length,
+        failureCategory,
+        failoverFromModel,
+        failoverToModel,
+        failoverExhausted:
+          outcome !== "succeeded"
+          && attemptedModels.length >= Math.min(executionPlan.candidateModels.length, executionPlan.failoverPolicy.maxAttempts)
+          && failureCategory != null
+          && executionPlan.failoverPolicy.retryableCategories.includes(failureCategory),
+        attemptedModels,
+      };
+      context.adapterOverride = activeAdapterOverride;
+
       const usageJson =
         normalizedUsage || adapterResult.costUsd != null
           ? ({
@@ -2891,6 +3283,18 @@ Keep memories concise and specific. Don't write vague platitudes.`;
               provider: readNonEmptyString(adapterResult.provider) ?? "unknown",
               biller: resolveLedgerBiller(adapterResult),
               model: readNonEmptyString(adapterResult.model) ?? "unknown",
+              selectedModel: activeExecutionPlan.selectedModel,
+              initialSelectedModel: executionPlan.initialSelectedModel,
+              failureCategory,
+              failoverAttempt: attemptedModels.length,
+              failoverFromModel,
+              failoverToModel,
+              failoverExhausted:
+                outcome !== "succeeded"
+                && attemptedModels.length >= Math.min(executionPlan.candidateModels.length, executionPlan.failoverPolicy.maxAttempts)
+                && failureCategory != null
+                && executionPlan.failoverPolicy.retryableCategories.includes(failureCategory),
+              attemptedModels,
               ...(adapterResult.costUsd != null ? { costUsd: adapterResult.costUsd } : {}),
               billingType: normalizeLedgerBillingType(adapterResult.billingType),
             } as Record<string, unknown>)
@@ -2923,6 +3327,7 @@ Keep memories concise and specific. Don't write vague platitudes.`;
         logBytes: logSummary?.bytes,
         logSha256: logSummary?.sha256,
         logCompressed: logSummary?.compressed ?? false,
+        contextSnapshot: context,
       });
 
       await setWakeupStatus(run.wakeupRequestId, outcome === "succeeded" ? "completed" : status, {
@@ -2932,14 +3337,52 @@ Keep memories concise and specific. Don't write vague platitudes.`;
 
       const finalizedRun = await getRun(run.id);
       if (finalizedRun) {
+        const durationSeconds = finalizedRun.startedAt && finalizedRun.finishedAt
+          ? Math.max(0, Math.round((finalizedRun.finishedAt.getTime() - finalizedRun.startedAt.getTime()) / 1000))
+          : null;
         await appendRunEvent(finalizedRun, seq++, {
-          eventType: "lifecycle",
+          eventType: "run.usage.recorded",
+          stream: "system",
+          level: "info",
+          message: "run usage recorded",
+          payload: traceUsagePayload(usageJson, durationSeconds),
+        });
+        await appendRunEvent(finalizedRun, seq++, {
+          eventType: outcome === "succeeded" ? "run.finished" : "run.failed",
           stream: "system",
           level: outcome === "succeeded" ? "info" : "error",
           message: `run ${outcome}`,
           payload: {
             status,
             exitCode: adapterResult.exitCode,
+            errorCode:
+              outcome === "timed_out"
+                ? "timeout"
+                : outcome === "cancelled"
+                  ? "cancelled"
+                  : outcome === "failed"
+                    ? (adapterResult.errorCode ?? "adapter_failed")
+                    : null,
+            errorMessage:
+              outcome === "succeeded"
+                ? null
+                : redactCurrentUserText(
+                    adapterResult.errorMessage ?? (outcome === "timed_out" ? "Timed out" : "Adapter failed"),
+                    currentUserRedactionOptions,
+                  ),
+            durationSeconds,
+            initialSelectedModel: executionPlan.initialSelectedModel,
+            selectedModel: activeExecutionPlan.selectedModel,
+            failureCategory,
+            failoverAttempt: attemptedModels.length,
+            failoverFromModel,
+            failoverToModel,
+            failoverExhausted:
+              outcome !== "succeeded"
+              && attemptedModels.length >= Math.min(executionPlan.candidateModels.length, executionPlan.failoverPolicy.maxAttempts)
+              && failureCategory != null
+              && executionPlan.failoverPolicy.retryableCategories.includes(failureCategory),
+            attemptedModels,
           },
         });
         await releaseIssueExecutionAndPromote(finalizedRun);
@@ -2947,8 +3390,43 @@ Keep memories concise and specific. Don't write vague platitudes.`;
           try {
             const { pitStopService } = await import("./pit-stop.js");
             await pitStopService(db).ingestSimRun(finalizedRun.id);
+            await pitStopService(db).upsertRunOptimization(finalizedRun.id);
           } catch (err) {
             logger.warn({ err, runId: finalizedRun.id }, "failed to ingest completed sim run into Pit Stop");
+          }
+        }
+
+        // Award XP to agent on successful run completion
+        if (outcome === "succeeded" && finalizedRun.agentId) {
+          try {
+            const XP_BY_RUN_MODE: Record<string, number> = {
+              sim: 3, pre: 5, live: 15, prod: 20, post: 5,
+            };
+            const runXp = XP_BY_RUN_MODE[finalizedRun.runMode ?? ""] ?? 3;
+            await db
+              .update(agents)
+              .set({
+                metadata: sql`jsonb_set(
+                  COALESCE(${agents.metadata}, '{}'),
+                  '{xp}',
+                  to_jsonb(COALESCE((${agents.metadata}->>'xp')::int, 0) + ${runXp})
+                )`,
+                updatedAt: new Date(),
+              })
+              .where(eq(agents.id, finalizedRun.agentId));
+            await logActivity(db, {
+              companyId: finalizedRun.companyId,
+              actorType: "system",
+              actorId: finalizedRun.agentId,
+              action: "agent.xp_earned_from_run",
+              entityType: "agent",
+              entityId: finalizedRun.agentId,
+              agentId: finalizedRun.agentId,
+              runId: finalizedRun.id,
+              details: { runXp, runMode: finalizedRun.runMode, runId: finalizedRun.id },
+            });
+          } catch (err) {
+            logger.warn({ err, runId: finalizedRun.id }, "failed to award XP from run");
           }
         }
 
@@ -3252,10 +3730,16 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
 
       if (failedRun) {
         await appendRunEvent(failedRun, seq++, {
-          eventType: "error",
+          eventType: "run.failed",
           stream: "system",
           level: "error",
-          message,
+          message: "run failed",
+          payload: {
+            status: "failed",
+            errorCode: "adapter_failed",
+            errorMessage: message,
+            exitCode: null,
+          },
         });
         await releaseIssueExecutionAndPromote(failedRun);
 
@@ -3303,10 +3787,16 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
             // Emit a run-log event so the failure is visible in the run timeline,
             // consistent with what the inner catch block does for adapter failures.
             await appendRunEvent(failedRun, 1, {
-              eventType: "error",
+              eventType: "run.failed",
               stream: "system",
               level: "error",
-              message,
+              message: "run failed",
+              payload: {
+                status: "failed",
+                errorCode: "adapter_failed",
+                errorMessage: message,
+                exitCode: null,
+              },
             }).catch(() => undefined);
             await releaseIssueExecutionAndPromote(failedRun).catch(() => undefined);
           }
@@ -4166,10 +4656,16 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
 
     if (cancelled) {
       await appendRunEvent(cancelled, 1, {
-        eventType: "lifecycle",
+        eventType: "run.finished",
         stream: "system",
         level: "warn",
         message: "run cancelled",
+        payload: {
+          status: "cancelled",
+          exitCode: cancelled.exitCode,
+          errorCode: "cancelled",
+          errorMessage: reason,
+        },
       });
       await releaseIssueExecutionAndPromote(cancelled);
     }

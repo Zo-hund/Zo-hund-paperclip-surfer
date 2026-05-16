@@ -257,21 +257,26 @@ async function applyPendingMigrationsManually(
         migrationFile,
         hash,
       );
-      if (existingEntry) continue;
+      if (existingEntry) {
+        const alreadyApplied = await migrationContentAlreadyApplied(sql, migrationContent);
+        if (alreadyApplied) continue;
+      }
 
       await runInTransaction(sql, async () => {
         for (const statement of splitMigrationStatements(migrationContent)) {
           await sql.unsafe(statement);
         }
 
-        await recordMigrationHistoryEntry(
-          sql,
-          qualifiedTable,
-          columnNames,
-          migrationFile,
-          hash,
-          folderMillisByFileName.get(migrationFile) ?? Date.now(),
-        );
+        if (!existingEntry) {
+          await recordMigrationHistoryEntry(
+            sql,
+            qualifiedTable,
+            columnNames,
+            migrationFile,
+            hash,
+            folderMillisByFileName.get(migrationFile) ?? Date.now(),
+          );
+        }
       });
     }
   } finally {
@@ -371,6 +376,29 @@ async function constraintExists(
     ) AS exists
   `;
   return rows[0]?.exists ?? false;
+}
+
+type MigrationArtifactVerifier = (sql: ReturnType<typeof postgres>) => Promise<boolean>;
+
+const MIGRATION_ARTIFACT_VERIFIERS = new Map<string, MigrationArtifactVerifier>([
+  [
+    "0060_amx_gear_profiles.sql",
+    async (sql) => columnExists(sql, "issues", "runtime_requirements"),
+  ],
+]);
+
+async function findDriftedAppliedMigrations(
+  sql: ReturnType<typeof postgres>,
+  candidateMigrations: string[],
+): Promise<string[]> {
+  const drifted: string[] = [];
+  for (const migrationFile of candidateMigrations) {
+    const verifier = MIGRATION_ARTIFACT_VERIFIERS.get(migrationFile);
+    if (!verifier) continue;
+    const artifactsPresent = await verifier(sql);
+    if (!artifactsPresent) drifted.push(migrationFile);
+  }
+  return drifted;
 }
 
 async function migrationStatementAlreadyApplied(
@@ -635,7 +663,12 @@ export async function inspectMigrations(url: string): Promise<MigrationState> {
 
     const appliedMigrations = await loadAppliedMigrations(sql, migrationTableSchema, availableMigrations);
     const pendingMigrations = availableMigrations.filter((name) => !appliedMigrations.includes(name));
-    if (pendingMigrations.length === 0) {
+    const driftedAppliedMigrations = await findDriftedAppliedMigrations(
+      sql,
+      availableMigrations.filter((name) => MIGRATION_ARTIFACT_VERIFIERS.has(name)),
+    );
+    const effectivePendingMigrations = [...new Set([...driftedAppliedMigrations, ...pendingMigrations])];
+    if (effectivePendingMigrations.length === 0) {
       return {
         status: "upToDate",
         tableCount,
@@ -649,7 +682,7 @@ export async function inspectMigrations(url: string): Promise<MigrationState> {
       tableCount,
       availableMigrations,
       appliedMigrations,
-      pendingMigrations,
+      pendingMigrations: effectivePendingMigrations,
       reason: "pending-migrations",
     };
   } finally {

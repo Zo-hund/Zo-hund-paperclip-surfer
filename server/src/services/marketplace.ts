@@ -493,7 +493,11 @@ export function marketplaceService(db: Db) {
       supportedRunPhases: string[];
       payoutWallet: string | null;
       location: string | null;
+      isPromoted: boolean;
+      promotedUntil: string | null;
+      sponsorTag: string | null;
     }>,
+    options?: { allowPromotion?: boolean },
   ) {
     await ensurePartnerActive(userId);
     const listing = await db
@@ -520,6 +524,63 @@ export function marketplaceService(db: Db) {
         supportedRunPhases: input.supportedRunPhases ?? undefined,
         payoutWallet: input.payoutWallet ?? undefined,
         location: input.location ?? undefined,
+        ...(options?.allowPromotion && input.isPromoted !== undefined ? { isPromoted: input.isPromoted } : {}),
+        ...(options?.allowPromotion && input.promotedUntil !== undefined
+          ? { promotedUntil: input.promotedUntil ? new Date(input.promotedUntil) : null }
+          : {}),
+        ...(options?.allowPromotion && input.sponsorTag !== undefined ? { sponsorTag: input.sponsorTag } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(marketplaceListings.id, listingId))
+      .returning()
+      .then((rows) => rows[0]);
+  }
+
+  async function promoteListingAsBoard(
+    listingId: string,
+    input: Partial<{
+      status: string;
+      name: string;
+      title: string;
+      description: string;
+      skills: string[];
+      badges: string[];
+      hourlyRateTokens: number;
+      availability: string | null;
+      supportedRunPhases: string[];
+      payoutWallet: string | null;
+      location: string | null;
+      isPromoted: boolean;
+      promotedUntil: string | null;
+      sponsorTag: string | null;
+    }>,
+  ) {
+    const listing = await db
+      .select()
+      .from(marketplaceListings)
+      .where(eq(marketplaceListings.id, listingId))
+      .then((rows) => rows[0] ?? null);
+    if (!listing) throw notFound("Marketplace listing not found");
+
+    return db
+      .update(marketplaceListings)
+      .set({
+        status: input.status ?? undefined,
+        name: input.name ?? undefined,
+        title: input.title ?? undefined,
+        description: input.description ?? undefined,
+        skills: input.skills ?? undefined,
+        badges: input.badges ?? undefined,
+        hourlyRateTokens: input.hourlyRateTokens ?? undefined,
+        availability: input.availability ?? undefined,
+        supportedRunPhases: input.supportedRunPhases ?? undefined,
+        payoutWallet: input.payoutWallet ?? undefined,
+        location: input.location ?? undefined,
+        ...(input.isPromoted !== undefined ? { isPromoted: input.isPromoted } : {}),
+        ...(input.promotedUntil !== undefined
+          ? { promotedUntil: input.promotedUntil ? new Date(input.promotedUntil) : null }
+          : {}),
+        ...(input.sponsorTag !== undefined ? { sponsorTag: input.sponsorTag } : {}),
         updatedAt: new Date(),
       })
       .where(eq(marketplaceListings.id, listingId))
@@ -564,6 +625,7 @@ export function marketplaceService(db: Db) {
     completeGuidanceChecklistItem,
     topUpBalance,
     updateListing,
+    promoteListingAsBoard,
     updateProfile,
   };
 }

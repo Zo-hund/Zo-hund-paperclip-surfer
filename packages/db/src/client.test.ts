@@ -141,6 +141,63 @@ describeEmbeddedPostgres("applyPendingMigrations", () => {
   );
 
   it(
+    "repairs drift when a journaled additive column is missing from the live schema",
+    async () => {
+      const connectionString = await createTempDatabase();
+
+      await applyPendingMigrations(connectionString);
+
+      const sql = postgres(connectionString, { max: 1, onnotice: () => {} });
+      try {
+        await sql.unsafe(`ALTER TABLE "issues" DROP COLUMN IF EXISTS "runtime_requirements"`);
+        const droppedRows = await sql.unsafe<{ exists: boolean }[]>(`
+          SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'issues'
+              AND column_name = 'runtime_requirements'
+          ) AS exists
+        `);
+        expect(droppedRows[0]?.exists).toBe(false);
+      } finally {
+        await sql.end();
+      }
+
+      const pendingState = await inspectMigrations(connectionString);
+      expect(pendingState).toMatchObject({
+        status: "needsMigrations",
+        reason: "pending-migrations",
+      });
+      expect(pendingState.status === "needsMigrations" ? pendingState.pendingMigrations : []).toContain(
+        "0060_amx_gear_profiles.sql",
+      );
+
+      await applyPendingMigrations(connectionString);
+
+      const finalState = await inspectMigrations(connectionString);
+      expect(finalState.status).toBe("upToDate");
+
+      const verifySql = postgres(connectionString, { max: 1, onnotice: () => {} });
+      try {
+        const rows = await verifySql.unsafe<{ exists: boolean }[]>(`
+          SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'issues'
+              AND column_name = 'runtime_requirements'
+          ) AS exists
+        `);
+        expect(rows[0]?.exists).toBe(true);
+      } finally {
+        await verifySql.end();
+      }
+    },
+    20_000,
+  );
+
+  it(
     "enforces a unique board_api_keys.key_hash after migration 0044",
     async () => {
       const connectionString = await createTempDatabase();

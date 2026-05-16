@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DeliverablesBriefcase } from "@/components/DeliverablesBriefcase";
 import { useCompany } from "@/context/CompanyContext";
+import { AIR_HUB_EMAILS, getCurrentAirHubLaneLabel } from "@/lib/air-hubs-lanes";
 import { Link } from "@/lib/router";
 
 function workshopActionLabel(workshop: Workshop) {
@@ -129,6 +130,10 @@ export function LmsDashboard() {
     nextRecommendedStep,
   } = data;
   const partnerReady = eligibility.eligibleForPartner;
+  const currentLane = getCurrentAirHubLaneLabel(
+    marketplaceProfile.roleIntent,
+    marketplaceProfile.partnerStatus,
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-background/50 animate-in fade-in duration-500">
@@ -144,8 +149,8 @@ export function LmsDashboard() {
               </h1>
             </div>
             <p className="max-w-3xl text-base font-medium leading-relaxed text-muted-foreground md:text-xl">
-              Learn Mode powers AMX marketplace eligibility. Complete workshops and simulations,
-              earn certifications, and unlock the partner application path.
+              Learn Mode powers Community readiness, Collective provider eligibility, and Elective buyer literacy.
+              Complete workshops and simulations, earn certifications, and unlock the provider application path.
             </p>
           </div>
 
@@ -198,12 +203,12 @@ export function LmsDashboard() {
             <div className="rounded-2xl border border-border/60 bg-card p-6">
               <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-foreground">
                 <ShieldCheck className={`h-4 w-4 ${partnerReady ? "text-emerald-500" : "text-amber-500"}`} />
-                Partner Eligibility
+                Collective Eligibility
               </div>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 {partnerReady
-                  ? "You have completed the minimum v1 requirement and can apply to become a marketplace partner."
-                  : "Complete at least one required workshop or simulation bundle before submitting a partner application."}
+                  ? "You have completed the minimum v1 requirement and can apply to become a Collective provider."
+                  : "Complete at least one required workshop or simulation bundle before submitting a Collective provider application."}
               </p>
               <div className="mt-5 space-y-3 text-[12px]">
                 <div className="flex items-center justify-between">
@@ -219,13 +224,9 @@ export function LmsDashboard() {
                   <span className="font-black text-foreground">{eligibility.totalHoursTrained}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Current role</span>
+                  <span className="text-muted-foreground">Current lane</span>
                   <span className="font-black uppercase text-primary">
-                    {marketplaceProfile.partnerStatus === "active"
-                      ? "Partner"
-                      : marketplaceProfile.roleIntent === "member"
-                        ? "Member"
-                        : marketplaceProfile.roleIntent}
+                    {currentLane}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -259,9 +260,15 @@ export function LmsDashboard() {
                   </div>
                   <h2 className="mt-3 text-2xl font-black text-foreground">TECH AT NITE onboarding</h2>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Complete the guided LMS lessons and checklist before applying as a Partner. This is the orientation
-                    layer for credits, simulations, Pit Stop, live promotion, and marketplace microservices.
+                    Complete the guided LMS lessons and checklist before applying as a Collective provider.
+                    This is the orientation layer for Community learners, Collective providers, Elective buyers,
+                    credits, simulations, Pit Stop, live promotion, and marketplace microservices.
                   </p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                    <span className="rounded-full bg-background/60 px-3 py-1">Community</span>
+                    <span className="rounded-full bg-background/60 px-3 py-1">Collectives</span>
+                    <span className="rounded-full bg-background/60 px-3 py-1">Electives</span>
+                  </div>
                 </div>
                 <div className="rounded-2xl border border-border/60 bg-accent/5 p-5 md:min-w-[260px]">
                   <div className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">Progress</div>
@@ -270,6 +277,21 @@ export function LmsDashboard() {
                     <div className="h-full bg-primary" style={{ width: `${guidanceProgress.progressPercent}%` }} />
                   </div>
                   <p className="mt-3 text-xs text-muted-foreground">{nextRecommendedStep}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-border/60 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground">
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Community</div>
+                  Learn, earn certifications, and stay connected through {AIR_HUB_EMAILS.community}.
+                </div>
+                <div className="rounded-2xl border border-border/60 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground">
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Collectives</div>
+                  Providers use TECH AT NITE to qualify for listings, simulations, and service quality loops via {AIR_HUB_EMAILS.collectives}.
+                </div>
+                <div className="rounded-2xl border border-border/60 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground">
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Electives</div>
+                  Employers and universities use this guidance to hire, sponsor, and review outcomes through {AIR_HUB_EMAILS.electives}.
                 </div>
               </div>
 

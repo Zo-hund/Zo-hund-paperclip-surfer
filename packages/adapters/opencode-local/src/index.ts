@@ -38,9 +38,11 @@ Notes:
 - Paperclip requires an explicit \`model\` value for \`opencode_local\` agents.
 - Runs are executed with: opencode run --format json ...
 - Sessions are resumed with --session when stored session cwd matches current cwd.
+- Resumed timer/comment wakes use a compact prompt path in Paperclip: repeated instructions/bootstrap sections are skipped and Paperclip applies a low variant automatically unless you explicitly configured one.
 - The adapter sets OPENCODE_DISABLE_PROJECT_CONFIG=true to prevent OpenCode from \
   writing an opencode.json config file into the project working directory. Model \
   selection is passed via the --model CLI flag instead.
+- Paperclip rotates OpenCode sessions more aggressively than generic local adapters by default (40 runs, 400k raw input tokens, or 12 hours) because heartbeat-heavy agents accumulate stale context quickly.
 - When \`dangerouslySkipPermissions\` is enabled, Paperclip injects a temporary \
   runtime config with \`permission.external_directory=allow\` so headless runs do \
   not stall on approval prompts.

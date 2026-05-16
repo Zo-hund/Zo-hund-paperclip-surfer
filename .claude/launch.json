@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Full Stack (API + UI)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev"],
+      "port": 3100
+    },
+    {
+      "name": "Server only (API)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:server"],
+      "port": 3100
+    },
+    {
+      "name": "UI only (Vite)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:ui"],
+      "port": 5173
+    }
+  ]
+}

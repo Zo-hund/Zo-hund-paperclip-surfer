@@ -7,6 +7,7 @@ import {
   OPERATING_ENVIRONMENTS,
 } from "../constants.js";
 import { envConfigSchema } from "./secret.js";
+import { issueRuntimeRequirementsSchema } from "./issue.js";
 
 export const agentPermissionsSchema = z.object({
   canCreateAgents: z.boolean().optional().default(false),
@@ -109,6 +110,7 @@ export const wakeAgentSchema = z.object({
     z.boolean().optional().default(false),
   ),
   runMode: z.enum(["sim", "live"]).optional().default("live"),
+  runtimeRequirements: issueRuntimeRequirementsSchema.optional().nullable(),
 });
 
 export type WakeAgent = z.infer<typeof wakeAgentSchema>;

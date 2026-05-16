@@ -58,6 +58,7 @@ const NAV_LINKS = [
   { label: "Agents",    href: "/home#agents" },
   { label: "Companies", href: "/home#companies" },
   { label: "Services",  href: "/request" },
+  { label: "Booking",   href: "/booking" },
   { label: "Pricing",   href: "/pricing" },
   { label: "Pass",      href: "/profile" },
 ];

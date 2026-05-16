@@ -65,6 +65,9 @@ import { ServiceRequest } from "./pages/ServiceRequest";
 import { MemberProfile } from "./pages/MemberProfile";
 import { RegisterPage } from "./pages/Register";
 import { PricingPage } from "./pages/Pricing";
+import { FractalBooking } from "./pages/FractalBooking";
+import { TrackOrder } from "./pages/TrackOrder";
+import { ClientRequest } from "./pages/ClientRequest";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { useDialog } from "./context/DialogContext";
@@ -354,6 +357,9 @@ export function App() {
         <Route path="profile" element={<MemberProfile />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="pricing" element={<PricingPage />} />
+        <Route path="booking" element={<FractalBooking />} />
+        <Route path="track/:identifier" element={<TrackOrder />} />
+        <Route path="client-request" element={<ClientRequest />} />
 
         {/* ── Auth-required routes ── */}
         <Route path="auth" element={<AuthPage />} />
@@ -400,6 +406,7 @@ export function App() {
           <Route path="xp/wallet" element={<UnprefixedBoardRedirect />} />
           <Route path="rq/portal" element={<UnprefixedBoardRedirect />} />
           <Route path="lms/dashboard" element={<UnprefixedBoardRedirect />} />
+          <Route path="pit-stop" element={<UnprefixedBoardRedirect />} />
           <Route path="amx/chain" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path="mcp-servers" element={<UnprefixedBoardRedirect />} />

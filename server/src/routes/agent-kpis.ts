@@ -62,6 +62,28 @@ export function agentKpiRoutes(db: Db) {
     res.json(result);
   });
 
+  router.get("/companies/:companyId/analytics/traces", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+
+    const agentId = typeof req.query.agentId === "string" ? req.query.agentId : undefined;
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const issueId = typeof req.query.issueId === "string" ? req.query.issueId : undefined;
+    const sinceRaw = typeof req.query.since === "string" ? req.query.since : undefined;
+    const limitRaw = typeof req.query.limit === "string" ? req.query.limit : undefined;
+    const since = sinceRaw ? new Date(sinceRaw) : undefined;
+    const limit = limitRaw ? parseInt(limitRaw, 10) : undefined;
+
+    const traces = await analytics.listTraces(companyId, {
+      agentId,
+      status,
+      issueId,
+      since: since && !Number.isNaN(since.getTime()) ? since : undefined,
+      limit: limit && Number.isFinite(limit) ? limit : undefined,
+    });
+    res.json(traces);
+  });
+
   // List observations
   router.get("/companies/:companyId/analytics/observations", async (req, res) => {
     const { companyId } = req.params;

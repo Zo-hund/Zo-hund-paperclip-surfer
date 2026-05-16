@@ -78,7 +78,7 @@ function GeminiStatusBar({ status, isSpeaking }: { status: string; isSpeaking: b
         ))}
       </div>
       <span className="text-[8px] uppercase tracking-widest font-black text-white/30 ml-auto">
-        gemini-3.1-flash-live · {status}
+        gemini-2.0-flash-live · {status}
       </span>
     </div>
   );
@@ -148,7 +148,123 @@ function VisionPreview({ stream }: { stream: MediaStream | null }) {
   );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Connection Indicator Panel ──────────────────────────────────────────────
+
+function ConnectionIndicator({
+  status, isSpeaking, audioLevel, geminiActive,
+}: {
+  status: string;
+  isSpeaking: boolean;
+  audioLevel: number;
+  geminiActive: boolean;
+}) {
+  const STATUS_CFG: Record<string, { color: string; label: string; pulse: boolean }> = {
+    idle:        { color: "#374151", label: "Standby",    pulse: false },
+    connecting:  { color: "#fbbf24", label: "Connecting", pulse: true  },
+    connected:   { color: "#34d399", label: "Online",     pulse: false },
+    listening:   { color: "#94a3b8", label: "Listening",  pulse: true  },
+    thinking:    { color: "#fbbf24", label: "Thinking",   pulse: true  },
+    speaking:    { color: "#60a5fa", label: "Speaking",   pulse: true  },
+    error:       { color: "#f87171", label: "Error",      pulse: true  },
+    unavailable: { color: "#ef4444", label: "Offline",    pulse: false },
+  };
+  const cfg = STATUS_CFG[status] ?? STATUS_CFG.idle;
+
+  // Volume bar: 8 segments
+  const segments = 8;
+  const activeSeg = Math.round(audioLevel * segments * 4); // amplify for visibility
+
+  return (
+    <div className="p-4 rounded-xl border border-[#94a3b8]/20 bg-black/60 backdrop-blur-md flex flex-col gap-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <RadioTower className="h-3.5 w-3.5" style={{ color: cfg.color }} />
+          <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/50">AI Link</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${cfg.pulse ? "animate-pulse" : ""}`}
+            style={{ background: cfg.color, boxShadow: `0 0 8px ${cfg.color}` }}
+          />
+          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: cfg.color }}>
+            {cfg.label}
+          </span>
+        </div>
+      </div>
+
+      {/* WebSocket signal bars */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[8px] uppercase tracking-widest text-white/30 font-black">Signal</span>
+        <div className="flex items-end gap-1 h-6">
+          {[0.25, 0.45, 0.65, 0.85, 1].map((h, i) => {
+            const active = geminiActive && status !== "idle" && status !== "unavailable";
+            const lit = active && i <= (status === "error" ? 0 : status === "connecting" ? 1 : status === "connected" || status === "listening" ? 3 : 4);
+            return (
+              <div key={i} className="flex-1 rounded-sm transition-all duration-300"
+                style={{
+                  height: `${h * 100}%`,
+                  background: lit ? cfg.color : "rgba(255,255,255,0.06)",
+                  boxShadow: lit ? `0 0 6px ${cfg.color}80` : "none",
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Mic volume meter */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex justify-between items-center">
+          <span className="text-[8px] uppercase tracking-widest text-white/30 font-black">Mic Input</span>
+          <span className="text-[8px] font-black" style={{ color: audioLevel > 0.05 ? "#34d399" : "#374151" }}>
+            {audioLevel > 0.05 ? "ACTIVE" : "SILENT"}
+          </span>
+        </div>
+        <div className="flex gap-0.5 h-4 items-end">
+          {Array.from({ length: segments }, (_, i) => {
+            const lit = i < activeSeg;
+            const segColor = i < segments * 0.6 ? "#34d399" : i < segments * 0.85 ? "#fbbf24" : "#f87171";
+            return (
+              <div key={i} className="flex-1 rounded-sm transition-all duration-75"
+                style={{
+                  height: `${40 + i * 8}%`,
+                  background: lit ? segColor : "rgba(255,255,255,0.05)",
+                  boxShadow: lit ? `0 0 4px ${segColor}` : "none",
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Gemini speaking waveform */}
+      {isSpeaking && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[8px] uppercase tracking-widest text-[#60a5fa]/60 font-black">AI Output</span>
+          <div className="flex items-center justify-center gap-1 h-6">
+            {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6, 0.4, 0.7, 1, 0.8, 0.5].map((h, i) => (
+              <div key={i} className="w-1 rounded-full bg-[#60a5fa]"
+                style={{
+                  height: `${h * 100}%`,
+                  animation: `pulse ${0.25 + i * 0.04}s ease-in-out infinite alternate`,
+                  boxShadow: "0 0 4px #60a5fa",
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Instructions when not connected */}
+      {!geminiActive && (
+        <p className="text-[8px] text-white/20 uppercase tracking-widest text-center border border-dashed border-white/10 rounded-lg px-2 py-2 leading-relaxed">
+          Press AI OFF to activate<br />voice link
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function VoiceMeetingRoom({ meetingId, onClose }: VoiceMeetingRoomProps) {
   const { startRecording, stopRecording } = useVoiceRecorder();
@@ -185,6 +301,19 @@ export function VoiceMeetingRoom({ meetingId, onClose }: VoiceMeetingRoomProps) 
       return result;
     });
   }, [gemini, pageAgent]);
+
+  // ── Surface WebRTC permission errors as toasts ───────────────────────────
+  useEffect(() => {
+    if (webrtc.cameraError) {
+      pushToast({ title: "Camera Access Denied", body: webrtc.cameraError, tone: "error" });
+    }
+  }, [webrtc.cameraError, pushToast]);
+
+  useEffect(() => {
+    if (webrtc.screenError) {
+      pushToast({ title: "Screen Share Failed", body: webrtc.screenError, tone: "error" });
+    }
+  }, [webrtc.screenError, pushToast]);
 
   // ── Stream video frames to Gemini when active ─────────────────────────────
   useEffect(() => {
@@ -430,6 +559,14 @@ export function VoiceMeetingRoom({ meetingId, onClose }: VoiceMeetingRoomProps) 
           {/* ── LEFT PANE ─────────────────────────────────────── */}
           {isCockpit ? (
             <div className="w-full md:w-64 flex-shrink-0 flex flex-col gap-3">
+              {/* ── AI Connection Indicator ── */}
+              <ConnectionIndicator
+                status={gemini.status}
+                isSpeaking={gemini.isSpeaking}
+                audioLevel={gemini.audioLevel}
+                geminiActive={geminiActive}
+              />
+
               {/* Sub-Systems Intel HUD */}
               <div className="p-4 rounded-xl border border-[#94a3b8]/20 bg-black/40 backdrop-blur-md relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-[#94a3b8]/5 to-transparent pointer-events-none" />

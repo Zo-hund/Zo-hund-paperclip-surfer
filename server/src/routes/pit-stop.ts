@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
-import { approvalService, issueApprovalService, pitStopService } from "../services/index.js";
+import { approvalService, heartbeatService, issueApprovalService, pitStopService } from "../services/index.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
 const updateWorkspaceSchema = z.object({
@@ -22,10 +22,19 @@ const ingestRunSchema = z.object({
   runId: z.string().uuid(),
 });
 
+const prepareOptimizationSchema = z.object({
+  optimizationId: z.string().uuid(),
+});
+
+const launchOptimizationSchema = z.object({
+  optimizationId: z.string().uuid(),
+});
+
 export function pitStopRoutes(db: Db) {
   const router = Router();
   const svc = pitStopService(db);
   const approvalsSvc = approvalService(db);
+  const heartbeat = heartbeatService(db);
   const issueApprovalsSvc = issueApprovalService(db);
 
   router.get("/companies/:companyId/pit-stop/workspaces", async (req, res) => {
@@ -119,6 +128,58 @@ export function pitStopRoutes(db: Db) {
     const attached = await svc.attachApproval(packageRow.id, approval.id);
     res.status(201).json({ package: attached, approval });
   });
+
+  router.get("/companies/:companyId/pit-stop/workspaces/:workspaceId/optimizations", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const workspaceId = req.params.workspaceId as string;
+    assertCompanyAccess(req, companyId);
+    const optimizations = await svc.listOptimizations(companyId, workspaceId);
+    res.json(optimizations);
+  });
+
+  router.post(
+    "/companies/:companyId/pit-stop/workspaces/:workspaceId/optimizations/prepare-rerun",
+    validate(prepareOptimizationSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const workspaceId = req.params.workspaceId as string;
+      assertCompanyAccess(req, companyId);
+      const prepared = await svc.prepareOptimizedRerun(companyId, workspaceId, req.body.optimizationId);
+      res.status(201).json(prepared);
+    },
+  );
+
+  router.post(
+    "/companies/:companyId/pit-stop/workspaces/:workspaceId/optimizations/launch-rerun",
+    validate(launchOptimizationSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const workspaceId = req.params.workspaceId as string;
+      assertCompanyAccess(req, companyId);
+      const prepared = await svc.prepareOptimizedRerun(companyId, workspaceId, req.body.optimizationId);
+      const optimization = prepared.optimization as { sourceAgentId?: string | null };
+      if (!optimization.sourceAgentId) {
+        res.status(422).json({ error: "Optimization is missing a source agent." });
+        return;
+      }
+      const run = await heartbeat.wakeup(optimization.sourceAgentId, {
+        source: "automation",
+        triggerDetail: "system",
+        reason: prepared.rerunPayload.reason,
+        requestedByActorType: req.actor.type === "agent" ? "agent" : "user",
+        requestedByActorId: req.actor.type === "agent" ? req.actor.agentId ?? null : req.actor.userId ?? null,
+        runMode: "sim",
+        contextSnapshot: prepared.rerunPayload.contextSnapshot,
+      });
+      if (!run) {
+        res.status(202).json({ status: "skipped" });
+        return;
+      }
+
+      await svc.markOptimizationLaunched(req.body.optimizationId, run.id);
+      res.status(201).json({ run });
+    },
+  );
 
   return router;
 }

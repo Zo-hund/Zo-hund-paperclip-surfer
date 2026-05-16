@@ -1,11 +1,14 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agentKpis,
   agentKpiObservations,
   agentExperiments,
   agents,
+  heartbeatRunEvents,
+  heartbeatRuns,
 } from "@paperclipai/db";
+import { buildHeartbeatTraceSummary } from "./trace-summaries.js";
 
 export function kpiAnalyticsService(db: Db) {
   return {
@@ -107,6 +110,78 @@ export function kpiAnalyticsService(db: Db) {
         .from(agentKpiObservations)
         .where(eq(agentKpiObservations.companyId, companyId))
         .orderBy(desc(agentKpiObservations.createdAt));
+    },
+
+    async listTraces(
+      companyId: string,
+      filters: {
+        agentId?: string;
+        status?: string;
+        issueId?: string;
+        since?: Date;
+        limit?: number;
+      } = {},
+    ) {
+      const limit = Math.max(1, Math.min(filters.limit ?? 50, 200));
+      const queryLimit = Math.min(filters.issueId ? Math.max(limit * 5, 100) : limit, 500);
+      const conditions = [eq(heartbeatRuns.companyId, companyId)];
+      if (filters.agentId) conditions.push(eq(heartbeatRuns.agentId, filters.agentId));
+      if (filters.status) conditions.push(eq(heartbeatRuns.status, filters.status));
+      if (filters.since) conditions.push(gte(heartbeatRuns.createdAt, filters.since));
+
+      const runs = await db
+        .select({
+          id: heartbeatRuns.id,
+          companyId: heartbeatRuns.companyId,
+          agentId: heartbeatRuns.agentId,
+          agentName: agents.name,
+          adapterType: agents.adapterType,
+          invocationSource: heartbeatRuns.invocationSource,
+          triggerDetail: heartbeatRuns.triggerDetail,
+          status: heartbeatRuns.status,
+          startedAt: heartbeatRuns.startedAt,
+          finishedAt: heartbeatRuns.finishedAt,
+          error: heartbeatRuns.error,
+          errorCode: heartbeatRuns.errorCode,
+          exitCode: heartbeatRuns.exitCode,
+          usageJson: heartbeatRuns.usageJson,
+          resultJson: heartbeatRuns.resultJson,
+          sessionIdBefore: heartbeatRuns.sessionIdBefore,
+          sessionIdAfter: heartbeatRuns.sessionIdAfter,
+          logBytes: heartbeatRuns.logBytes,
+          contextSnapshot: heartbeatRuns.contextSnapshot,
+        })
+        .from(heartbeatRuns)
+        .innerJoin(agents, eq(agents.id, heartbeatRuns.agentId))
+        .where(and(...conditions))
+        .orderBy(desc(heartbeatRuns.createdAt))
+        .limit(queryLimit);
+
+      if (runs.length === 0) return [];
+
+      const events = await db
+        .select({
+          runId: heartbeatRunEvents.runId,
+          seq: heartbeatRunEvents.seq,
+          eventType: heartbeatRunEvents.eventType,
+          message: heartbeatRunEvents.message,
+          payload: heartbeatRunEvents.payload,
+        })
+        .from(heartbeatRunEvents)
+        .where(inArray(heartbeatRunEvents.runId, runs.map((run) => run.id)))
+        .orderBy(desc(heartbeatRunEvents.createdAt));
+
+      const eventsByRun = new Map<string, typeof events>();
+      for (const event of events) {
+        const bucket = eventsByRun.get(event.runId) ?? [];
+        bucket.push(event);
+        eventsByRun.set(event.runId, bucket);
+      }
+
+      return runs
+        .map((run) => buildHeartbeatTraceSummary(run, (eventsByRun.get(run.id) ?? []).sort((a, b) => a.seq - b.seq)))
+        .filter((trace) => !filters.issueId || trace.issueId === filters.issueId)
+        .slice(0, limit);
     },
 
     async deleteObservation(id: string) {

@@ -69,6 +69,16 @@ export interface Certificate {
 export interface ChainData {
   logs: ChainLog[];
   certificates: Certificate[];
+  totals?: {
+    logCount: number;
+    certCount: number;
+    totalEvents: number;
+  };
+  health?: {
+    uptime: number;
+    blockHeight: number;
+    nodesActive: number;
+  };
 }
 
 interface RawWalletTransaction {
@@ -218,6 +228,9 @@ export const amxApi = {
 
   getChain: async (companyId: string) =>
     normalizeChainData(await api.get<RawChainData>(`/companies/${companyId}/amx/chain`)),
+
+  verifyChain: (companyId: string) =>
+    api.post<any>(`/companies/${companyId}/amx/chain/verify`, {}),
 
   getLms: (companyId: string) =>
     api.get<LmsData>(`/companies/${companyId}/lms/dashboard`),

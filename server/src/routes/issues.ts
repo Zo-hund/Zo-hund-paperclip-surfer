@@ -31,6 +31,7 @@ import {
   projectService,
   routineService,
   workProductService,
+  amxChainService,
 } from "../services/index.js";
 import { logger } from "../middleware/logger.js";
 import { forbidden, HttpError, unauthorized } from "../errors.js";
@@ -54,6 +55,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   const workProductsSvc = workProductService(db);
   const documentsSvc = documentService(db);
   const routinesSvc = routineService(db);
+  const chainSvc = amxChainService(db);
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
@@ -1057,6 +1059,30 @@ export function issueRoutes(db: Db, storage: StorageService) {
     }
     await routinesSvc.syncRunStatusForIssue(issue.id);
 
+    // Auto-issue AMX Work Certificate when issue is marked as done
+    if (existing.status !== "done" && issue.status === "done") {
+      try {
+        const artifacts = await svc.listAttachments(issue.id);
+        const commitHashes = artifacts
+          .filter((a) => a.objectKey.startsWith("git/commit/"))
+          .map((a) => a.objectKey.replace("git/commit/", ""));
+
+        await chainSvc.issueCertificate(issue.companyId, {
+          issueId: issue.id,
+          responsiblePrincipalId: actor.agentId ?? actor.actorId,
+          commitHashes,
+          taskLogsSummary: issue.description || issue.title,
+          completionTimeMs: Date.now() - new Date(issue.createdAt).getTime(),
+          finalCostTokens: 0,
+          projects: issue.projectId ? [issue.projectId] : [],
+          resources: [],
+          reports: [],
+        });
+      } catch (err) {
+        logger.warn({ err, issueId: issue.id }, "failed to auto-issue certificate on AMX Chain");
+      }
+    }
+
     if (actor.runId) {
       await heartbeat.reportRunActivity(actor.runId).catch((err) =>
         logger.warn({ err, runId: actor.runId }, "failed to clear detached run warning after issue activity"));
@@ -1279,6 +1305,13 @@ export function issueRoutes(db: Db, storage: StorageService) {
       entityType: "issue",
       entityId: issue.id,
       details: { agentId: req.body.agentId },
+    });
+
+    // Record on AMX Chain
+    await chainSvc.recordSecurityEvent(issue.companyId, actor.actorType, actor.actorId, "ISSUE_CHECKED_OUT", {
+      issueId: issue.id,
+      agentId: req.body.agentId,
+      checkoutRunId,
     });
 
     if (

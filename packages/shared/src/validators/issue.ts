@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants.js";
+import { AGENT_ADAPTER_TYPES, ISSUE_PRIORITIES, ISSUE_STATUSES } from "../constants.js";
 
 const executionWorkspaceStrategySchema = z
   .object({
@@ -27,6 +27,50 @@ export const issueAssigneeAdapterOverridesSchema = z
   })
   .strict();
 
+export const issueRuntimeObjectiveClassSchema = z.enum(["creative", "technical", "research", "ops", "mixed"]);
+export const issueRuntimeQualityTierSchema = z.enum(["economy", "standard", "premium"]);
+export const issueRuntimeLatencyTierSchema = z.enum(["background", "interactive", "urgent"]);
+export const issueRuntimeBudgetModeSchema = z.enum(["min_cost", "balanced", "best_effort"]);
+export const issueRuntimeDeploymentPreferenceSchema = z.enum([
+  "local_only",
+  "cloud_only",
+  "local_then_cloud",
+  "cloud_then_local",
+]);
+export const issueRuntimeDataSensitivitySchema = z.enum(["local_preferred", "cloud_allowed"]);
+export const issueRuntimeCapabilitySchema = z.enum(["web", "files", "code", "image", "audio", "video"]);
+export const issueRuntimeContextTierSchema = z.enum(["minimal", "role_aware", "project_aware", "engineering_full"]);
+export const issueRuntimeReasoningTierSchema = z.enum(["low", "standard", "high"]);
+export const issueRuntimeWorkspaceModeSchema = z.enum(["agent_home", "project_workspace"]);
+export const issueRuntimeDeploymentTargetSchema = z.enum(["local", "cloud"]);
+
+export const issueRuntimeManualOverrideSchema = z
+  .object({
+    adapterType: z.enum(AGENT_ADAPTER_TYPES).optional().nullable(),
+    provider: z.string().trim().min(1).optional().nullable(),
+    model: z.string().trim().min(1).optional().nullable(),
+    variant: z.string().trim().min(1).optional().nullable(),
+    cwd: z.string().trim().min(1).optional().nullable(),
+    deploymentTarget: issueRuntimeDeploymentTargetSchema.optional().nullable(),
+    contextTier: issueRuntimeContextTierSchema.optional().nullable(),
+    reasoningTier: issueRuntimeReasoningTierSchema.optional().nullable(),
+    workspaceMode: issueRuntimeWorkspaceModeSchema.optional().nullable(),
+  })
+  .strict();
+
+export const issueRuntimeRequirementsSchema = z
+  .object({
+    objectiveClass: issueRuntimeObjectiveClassSchema.optional().nullable(),
+    qualityTier: issueRuntimeQualityTierSchema.optional().nullable(),
+    latencyTier: issueRuntimeLatencyTierSchema.optional().nullable(),
+    budgetMode: issueRuntimeBudgetModeSchema.optional().nullable(),
+    deploymentPreference: issueRuntimeDeploymentPreferenceSchema.optional().nullable(),
+    dataSensitivity: issueRuntimeDataSensitivitySchema.optional().nullable(),
+    requiredCapabilities: z.array(issueRuntimeCapabilitySchema).optional().nullable(),
+    manualOverride: issueRuntimeManualOverrideSchema.optional().nullable(),
+  })
+  .strict();
+
 export const createIssueSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   projectWorkspaceId: z.string().uuid().optional().nullable(),
@@ -41,6 +85,7 @@ export const createIssueSchema = z.object({
   requestDepth: z.number().int().nonnegative().optional().default(0),
   billingCode: z.string().optional().nullable(),
   assigneeAdapterOverrides: issueAssigneeAdapterOverridesSchema.optional().nullable(),
+  runtimeRequirements: issueRuntimeRequirementsSchema.optional().nullable(),
   executionWorkspaceId: z.string().uuid().optional().nullable(),
   executionWorkspacePreference: z.enum([
     "inherit",
@@ -71,6 +116,8 @@ export const updateIssueSchema = createIssueSchema.partial().extend({
 
 export type UpdateIssue = z.infer<typeof updateIssueSchema>;
 export type IssueExecutionWorkspaceSettings = z.infer<typeof issueExecutionWorkspaceSettingsSchema>;
+export type IssueRuntimeManualOverride = z.infer<typeof issueRuntimeManualOverrideSchema>;
+export type IssueRuntimeRequirements = z.infer<typeof issueRuntimeRequirementsSchema>;
 
 export const checkoutIssueSchema = z.object({
   agentId: z.string().uuid(),

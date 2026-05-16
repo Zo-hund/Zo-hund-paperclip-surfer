@@ -1,13 +1,17 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   Users, Zap, Bot, UserCheck, ShieldCheck, Play, Cpu, Video,
   CheckCircle2, Lock, TrendingUp, Star, Plus, ChevronRight, X,
   Sparkles, ArrowRight, Layers, Medal, Activity, Heart, Trophy,
-  AlertTriangle, Target, Clock, Flame, BarChart2, Globe
+  AlertTriangle, Target, Clock, Flame, BarChart2, Globe,
+  Mail, Copy, Check, ExternalLink, Loader2, UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/context/CompanyContext";
 import { Link } from "@/lib/router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { agentsApi } from "@/api/agents";
+import { accessApi } from "@/api/access";
 
 // ── XP level thresholds ───────────────────────────────────────────────────────
 
@@ -44,6 +48,7 @@ export interface RosterMember {
   phase: string | null; // last active phase
   simRuns: number;
   badges: string[];
+  marketplaceVisible?: boolean;
 }
 
 // ── Default demo roster ───────────────────────────────────────────────────────
@@ -333,6 +338,29 @@ function MemberCard({ member, teams, onUpdate }: {
               )}
             </div>
           </div>
+
+          {/* Ship to Market toggle — agents only */}
+          {member.type === "agent" && (
+            <button
+              onClick={() => onUpdate(member.id, { marketplaceVisible: !member.marketplaceVisible })}
+              className={`mt-3 w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-all text-left ${
+                member.marketplaceVisible
+                  ? "border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10"
+                  : "border-border/40 hover:border-amber-500/30 hover:bg-amber-500/5"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className={`h-3.5 w-3.5 ${member.marketplaceVisible ? "text-amber-400" : "text-muted-foreground"}`} />
+                <span className={`text-[11px] font-black ${member.marketplaceVisible ? "text-amber-400" : "text-muted-foreground"}`}>
+                  {member.marketplaceVisible ? "Listed in Market" : "Ship to Market"}
+                </span>
+              </div>
+              {member.marketplaceVisible
+                ? <CheckCircle2 className="h-3.5 w-3.5 text-amber-400" />
+                : <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+              }
+            </button>
+          )}
         </div>
       </div>
     </>
@@ -380,27 +408,228 @@ function TeamColumn({ team, members, onUpdate }: {
   );
 }
 
+// ── Invite Human Modal ────────────────────────────────────────────────────────
+
+function InviteHumanModal({ companyId, onClose }: { companyId: string; onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+
+  const inviteMutation = useMutation({
+    mutationFn: () =>
+      accessApi.createCompanyInvite(companyId, {
+        allowedJoinTypes: "human",
+        targetEnvironment: "live",
+        inviteeEmail: email.trim() || undefined,
+      }),
+    onSuccess: (data) => setInviteUrl(data.inviteUrl),
+  });
+
+  const handleCopy = () => {
+    if (!inviteUrl) return;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-card rounded-2xl border border-border/60 overflow-hidden animate-in zoom-in-95 duration-200 shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border/40">
+          <div className="flex items-center gap-2">
+            <UserPlus className="h-4 w-4 text-primary" />
+            <h3 className="text-[13px] font-black uppercase tracking-widest">Invite Human</h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent/20 text-muted-foreground hover:text-foreground transition-colors"><X className="h-4 w-4" /></button>
+        </div>
+
+        {!inviteUrl ? (
+          <div className="p-6 space-y-4">
+            <p className="text-[12px] text-muted-foreground">
+              Generate an invite link for a human team member. They'll join as a verified human on the roster.
+            </p>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1.5 block">
+                Email (optional — sends invite email if provided)
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                className="w-full bg-background border border-border/60 rounded-xl px-3 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/60 transition-colors"
+              />
+            </div>
+            <Button
+              onClick={() => inviteMutation.mutate()}
+              disabled={inviteMutation.isPending}
+              className="w-full h-10 font-black text-[11px] uppercase tracking-widest gap-2"
+            >
+              {inviteMutation.isPending ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+              ) : (
+                <><Mail className="h-3.5 w-3.5" /> Generate Invite Link</>
+              )}
+            </Button>
+            {inviteMutation.isError && (
+              <p className="text-[11px] text-rose-400 text-center">Failed to create invite. Try again.</p>
+            )}
+          </div>
+        ) : (
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+              <p className="text-[12px] font-bold text-emerald-400">Invite link ready!</p>
+            </div>
+            <div>
+              <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1.5 block">
+                Invite URL
+              </label>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={inviteUrl}
+                  className="flex-1 min-w-0 bg-background/50 border border-border/40 rounded-xl px-3 py-2.5 text-[11px] text-muted-foreground font-mono truncate"
+                />
+                <button
+                  onClick={handleCopy}
+                  className="shrink-0 p-2.5 rounded-xl border border-border/40 hover:border-primary/40 hover:bg-primary/5 transition-all"
+                >
+                  {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4 text-muted-foreground" />}
+                </button>
+                <a href={inviteUrl} target="_blank" rel="noopener noreferrer"
+                  className="shrink-0 p-2.5 rounded-xl border border-border/40 hover:border-primary/40 hover:bg-primary/5 transition-all">
+                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                </a>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground text-center">
+              Share this link with your team member. It expires in 7 days.
+            </p>
+            <Button variant="outline" onClick={onClose} className="w-full h-9 font-black text-[11px] uppercase tracking-widest">
+              Done
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main TeamRoster page ──────────────────────────────────────────────────────
 
 export function TeamRoster() {
-  const { selectedCompany } = useCompany();
-  const [roster, setRoster] = useState<RosterMember[]>(DEFAULT_ROSTER);
+  const { selectedCompany, selectedCompanyId } = useCompany();
+  const queryClient = useQueryClient();
+  const [localOverrides, setLocalOverrides] = useState<Record<string, Partial<RosterMember>>>({});
   const [view, setView] = useState<"board" | "list">("board");
   const [filterStatus, setFilterStatus] = useState<ActivationStatus | "all">("all");
+  const [showInvite, setShowInvite] = useState(false);
+
+  // ── Real data queries ──────────────────────────────────────────────────────
+  const { data: agentList = [] } = useQuery({
+    queryKey: ["agents", selectedCompanyId],
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 15_000,
+  });
+
+  const { data: memberList = [] } = useQuery({
+    queryKey: ["members", selectedCompanyId],
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 30_000,
+    // 403 if board lacks users:manage_permissions — silently fall back to empty
+    retry: false,
+  });
+
+  // ── Build roster from real data ────────────────────────────────────────────
+  const roster = useMemo<RosterMember[]>(() => {
+    const fromAgents: RosterMember[] = agentList.map((a) => ({
+      id: a.id,
+      name: a.name,
+      title: a.title ?? a.role,
+      type: "agent" as MemberType,
+      origin: "internal" as const,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${a.id}`,
+      xp:     Number((a.metadata?.xp    as number | undefined) ?? 0),
+      health: Number((a.metadata?.health as number | undefined) ?? 100),
+      status: ((a.metadata?.rosterStatus as ActivationStatus | undefined) ?? "in_training"),
+      teamId: (a.metadata?.teamId as string | undefined) ?? null,
+      hiredAt: new Date(a.createdAt).toISOString().slice(0, 10),
+      phase:   (a.metadata?.phase as string | undefined) ?? null,
+      simRuns: Number((a.metadata?.simRuns as number | undefined) ?? 0),
+      badges:  [],
+      marketplaceVisible: !!(a.metadata?.marketplaceVisible as boolean | undefined),
+    }));
+
+    const fromHumans: RosterMember[] = memberList
+      .filter((m) => m.principalType === "user" && m.status === "active")
+      .map((m) => ({
+        id: m.id,
+        name: `Human ${m.principalId.slice(-6).toUpperCase()}`,
+        title: m.membershipRole ?? "Team Member",
+        type: "human" as MemberType,
+        origin: "internal" as const,
+        avatarUrl: `https://api.dicebear.com/7.x/personas/svg?seed=${m.principalId}`,
+        xp: 0, health: 100,
+        status: "live_active" as ActivationStatus,
+        teamId: null,
+        hiredAt: m.createdAt,
+        phase: "live",
+        simRuns: 0,
+        badges: ["Verified Human"],
+      }));
+
+    return [...fromAgents, ...fromHumans];
+  }, [agentList, memberList]);
+
+  // ── Persist team/status changes ────────────────────────────────────────────
+  const patchAgent = useMutation({
+    mutationFn: ({ agentId, patch }: { agentId: string; patch: Partial<RosterMember> }) => {
+      const agent = agentList.find((a) => a.id === agentId);
+      if (!agent) throw new Error("Agent not found");
+      const newMeta: Record<string, unknown> = {
+        ...(agent.metadata ?? {}),
+        ...(patch.teamId             !== undefined ? { teamId: patch.teamId }                       : {}),
+        ...(patch.status             !== undefined ? { rosterStatus: patch.status }                 : {}),
+        ...(patch.health             !== undefined ? { health: patch.health }                       : {}),
+        ...(patch.phase              !== undefined ? { phase: patch.phase }                         : {}),
+        ...(patch.simRuns            !== undefined ? { simRuns: patch.simRuns }                     : {}),
+        ...(patch.marketplaceVisible !== undefined ? { marketplaceVisible: patch.marketplaceVisible } : {}),
+      };
+      return agentsApi.update(agentId, { metadata: newMeta }, selectedCompanyId!);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents", selectedCompanyId] });
+      queryClient.invalidateQueries({ queryKey: ["marketplace", "public-listings"] });
+    },
+  });
 
   const updateMember = useCallback((id: string, patch: Partial<RosterMember>) => {
-    setRoster((prev) => prev.map((m) => m.id === id ? { ...m, ...patch } : m));
-  }, []);
+    setLocalOverrides((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+    if (agentList.some((a) => a.id === id)) {
+      patchAgent.mutate({ agentId: id, patch });
+    }
+  }, [agentList, patchAgent]);
 
-  const displayed = filterStatus === "all" ? roster : roster.filter((m) => m.status === filterStatus);
+  // Merge real data with optimistic local overrides
+  const mergedRoster = roster.map((m) => ({ ...m, ...localOverrides[m.id] }));
+  const displayed = filterStatus === "all" ? mergedRoster : mergedRoster.filter((m) => m.status === filterStatus);
 
-  const liveCount     = roster.filter((m) => m.status === "live_active").length;
-  const simCount      = roster.filter((m) => m.status === "sim_active").length;
-  const readyCount    = roster.filter((m) => m.status === "live_ready" || m.status === "sim_ready").length;
-  const trainingCount = roster.filter((m) => m.status === "in_training").length;
+  const liveCount     = mergedRoster.filter((m) => m.status === "live_active").length;
+  const simCount      = mergedRoster.filter((m) => m.status === "sim_active").length;
+  const readyCount    = mergedRoster.filter((m) => m.status === "live_ready" || m.status === "sim_ready").length;
+  const trainingCount = mergedRoster.filter((m) => m.status === "in_training").length;
 
   return (
     <div className="flex flex-col min-h-screen bg-background/50 animate-in fade-in duration-500">
+
+      {/* Invite Human modal */}
+      {showInvite && selectedCompanyId && (
+        <InviteHumanModal companyId={selectedCompanyId} onClose={() => setShowInvite(false)} />
+      )}
 
       {/* Header */}
       <section className="px-4 md:px-8 py-7 border-b border-border/40 bg-gradient-to-br from-accent/10 via-background to-primary/5 relative overflow-hidden">
@@ -419,10 +648,17 @@ export function TeamRoster() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowInvite(true)}
+                className="h-10 px-4 gap-2 font-black text-[11px] uppercase tracking-widest border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/50"
+              >
+                <UserPlus className="h-3.5 w-3.5" /> Invite Human
+              </Button>
               {selectedCompany && (
                 <Link to={`/${selectedCompany.issuePrefix}/marketplace`}>
                   <Button className="h-10 px-4 gap-2 font-black text-[11px] uppercase tracking-widest shadow-lg shadow-primary/20">
-                    <Plus className="h-3.5 w-3.5" /> Hire More
+                    <Plus className="h-3.5 w-3.5" /> Hire Agent
                   </Button>
                 </Link>
               )}

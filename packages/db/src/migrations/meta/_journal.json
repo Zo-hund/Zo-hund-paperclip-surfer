@@ -421,6 +421,27 @@
       "when": 1776902400000,
       "tag": "0059_lms_guidance_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1776988800000,
+      "tag": "0060_amx_gear_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1777075200000,
+      "tag": "0061_pit_stop_optimizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1777795014959,
+      "tag": "0062_stale_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

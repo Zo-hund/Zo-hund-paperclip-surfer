@@ -72,6 +72,16 @@ interface IssueDraft {
   assigneeModelOverride: string;
   assigneeThinkingEffort: string;
   assigneeChrome: boolean;
+  objectiveClass?: string;
+  qualityTier?: string;
+  latencyTier?: string;
+  budgetMode?: string;
+  deploymentPreference?: string;
+  dataSensitivity?: string;
+  requiredCapabilities?: string[];
+  manualHarness?: string;
+  manualDeploymentTarget?: string;
+  manualContextTier?: string;
   executionWorkspaceMode?: string;
   selectedExecutionWorkspaceId?: string;
   useIsolatedExecutionWorkspace?: boolean;
@@ -238,6 +248,98 @@ const EXECUTION_WORKSPACE_MODES = [
   { value: "isolated_workspace", label: "New isolated workspace" },
   { value: "reuse_existing", label: "Reuse existing workspace" },
 ] as const;
+const OBJECTIVE_CLASS_OPTIONS = [
+  { value: "technical", label: "Technical" },
+  { value: "creative", label: "Creative" },
+  { value: "research", label: "Research" },
+  { value: "ops", label: "Ops" },
+  { value: "mixed", label: "Mixed" },
+] as const;
+const QUALITY_TIER_OPTIONS = [
+  { value: "economy", label: "Economy" },
+  { value: "standard", label: "Standard" },
+  { value: "premium", label: "Premium" },
+] as const;
+const LATENCY_TIER_OPTIONS = [
+  { value: "background", label: "Background" },
+  { value: "interactive", label: "Interactive" },
+  { value: "urgent", label: "Urgent" },
+] as const;
+const BUDGET_MODE_OPTIONS = [
+  { value: "min_cost", label: "Min cost" },
+  { value: "balanced", label: "Balanced" },
+  { value: "best_effort", label: "Best effort" },
+] as const;
+const DEPLOYMENT_PREFERENCE_OPTIONS = [
+  { value: "local_then_cloud", label: "Local then cloud" },
+  { value: "cloud_then_local", label: "Cloud then local" },
+  { value: "local_only", label: "Local only" },
+  { value: "cloud_only", label: "Cloud only" },
+] as const;
+const DATA_SENSITIVITY_OPTIONS = [
+  { value: "local_preferred", label: "Local preferred" },
+  { value: "cloud_allowed", label: "Cloud allowed" },
+] as const;
+const CAPABILITY_OPTIONS = [
+  { value: "code", label: "Code" },
+  { value: "files", label: "Files" },
+  { value: "web", label: "Web" },
+  { value: "image", label: "Image" },
+  { value: "audio", label: "Audio" },
+  { value: "video", label: "Video" },
+] as const;
+const MANUAL_HARNESS_OPTIONS = [
+  { value: "", label: "Automatic" },
+  { value: "codex_local", label: "Codex Local" },
+  { value: "opencode_local", label: "OpenCode Local" },
+  { value: "claude_local", label: "Claude Local" },
+  { value: "hermes_advanced", label: "Hermes Advanced" },
+] as const;
+const MANUAL_DEPLOYMENT_TARGET_OPTIONS = [
+  { value: "", label: "Automatic" },
+  { value: "local", label: "Local" },
+  { value: "cloud", label: "Cloud" },
+] as const;
+const MANUAL_CONTEXT_TIER_OPTIONS = [
+  { value: "", label: "Automatic" },
+  { value: "minimal", label: "Minimal" },
+  { value: "role_aware", label: "Role aware" },
+  { value: "project_aware", label: "Project aware" },
+  { value: "engineering_full", label: "Engineering full" },
+] as const;
+
+function buildRuntimeRequirements(input: {
+  objectiveClass: string;
+  qualityTier: string;
+  latencyTier: string;
+  budgetMode: string;
+  deploymentPreference: string;
+  dataSensitivity: string;
+  requiredCapabilities: string[];
+  manualHarness: string;
+  manualDeploymentTarget: string;
+  manualContextTier: string;
+  executionWorkspaceMode: string;
+}) {
+  const manualOverride: Record<string, unknown> = {};
+  if (input.manualHarness) manualOverride.adapterType = input.manualHarness;
+  if (input.manualDeploymentTarget) manualOverride.deploymentTarget = input.manualDeploymentTarget;
+  if (input.manualContextTier) manualOverride.contextTier = input.manualContextTier;
+  if (input.executionWorkspaceMode === "shared_workspace" || input.executionWorkspaceMode === "reuse_existing" || input.executionWorkspaceMode === "isolated_workspace") {
+    manualOverride.workspaceMode = "project_workspace";
+  }
+
+  return {
+    objectiveClass: input.objectiveClass,
+    qualityTier: input.qualityTier,
+    latencyTier: input.latencyTier,
+    budgetMode: input.budgetMode,
+    deploymentPreference: input.deploymentPreference,
+    dataSensitivity: input.dataSensitivity,
+    requiredCapabilities: input.requiredCapabilities,
+    ...(Object.keys(manualOverride).length > 0 ? { manualOverride } : {}),
+  };
+}
 
 function defaultProjectWorkspaceIdForProject(project: { workspaces?: Array<{ id: string; isPrimary: boolean }>; executionWorkspacePolicy?: { defaultProjectWorkspaceId?: string | null } | null } | null | undefined) {
   if (!project) return "";
@@ -245,6 +347,37 @@ function defaultProjectWorkspaceIdForProject(project: { workspaces?: Array<{ id:
     ?? project.workspaces?.find((workspace) => workspace.isPrimary)?.id
     ?? project.workspaces?.[0]?.id
     ?? "";
+}
+
+function resolveProjectSelection<
+  TProject extends { id: string },
+>(projects: TProject[], projectId: string | null | undefined) {
+  if (!projectId) {
+    return { projectId: "", project: undefined as TProject | undefined };
+  }
+  const project = projects.find((entry) => entry.id === projectId);
+  if (!project) {
+    return { projectId: "", project: undefined as TProject | undefined };
+  }
+  return { projectId: project.id, project };
+}
+
+function isProjectWorkspaceAvailableForProject(
+  project: { workspaces?: Array<{ id: string; isPrimary: boolean }> } | null | undefined,
+  workspaceId: string | null | undefined,
+) {
+  if (!project || !workspaceId) return false;
+  return project.workspaces?.some((workspace) => workspace.id === workspaceId) ?? false;
+}
+
+function resolveProjectWorkspaceIdForProject(
+  project: { workspaces?: Array<{ id: string; isPrimary: boolean }>; executionWorkspacePolicy?: { defaultProjectWorkspaceId?: string | null } | null } | null | undefined,
+  workspaceId: string | null | undefined,
+) {
+  if (isProjectWorkspaceAvailableForProject(project, workspaceId)) {
+    return workspaceId ?? "";
+  }
+  return defaultProjectWorkspaceIdForProject(project);
 }
 
 function defaultExecutionWorkspaceModeForProject(project: { executionWorkspacePolicy?: { enabled?: boolean; defaultMode?: string | null } | null } | null | undefined) {
@@ -285,6 +418,17 @@ export function NewIssueDialog() {
   const [assigneeModelOverride, setAssigneeModelOverride] = useState("");
   const [assigneeThinkingEffort, setAssigneeThinkingEffort] = useState("");
   const [assigneeChrome, setAssigneeChrome] = useState(false);
+  const [gearOptionsOpen, setGearOptionsOpen] = useState(false);
+  const [objectiveClass, setObjectiveClass] = useState("technical");
+  const [qualityTier, setQualityTier] = useState("standard");
+  const [latencyTier, setLatencyTier] = useState("interactive");
+  const [budgetMode, setBudgetMode] = useState("balanced");
+  const [deploymentPreference, setDeploymentPreference] = useState("local_then_cloud");
+  const [dataSensitivity, setDataSensitivity] = useState("local_preferred");
+  const [requiredCapabilities, setRequiredCapabilities] = useState<string[]>(["code", "files"]);
+  const [manualHarness, setManualHarness] = useState("");
+  const [manualDeploymentTarget, setManualDeploymentTarget] = useState("");
+  const [manualContextTier, setManualContextTier] = useState("");
   const [executionWorkspaceMode, setExecutionWorkspaceMode] = useState<string>("shared_workspace");
   const [selectedExecutionWorkspaceId, setSelectedExecutionWorkspaceId] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -481,6 +625,16 @@ export function NewIssueDialog() {
       assigneeModelOverride,
       assigneeThinkingEffort,
       assigneeChrome,
+      objectiveClass,
+      qualityTier,
+      latencyTier,
+      budgetMode,
+      deploymentPreference,
+      dataSensitivity,
+      requiredCapabilities,
+      manualHarness,
+      manualDeploymentTarget,
+      manualContextTier,
       executionWorkspaceMode,
       selectedExecutionWorkspaceId,
     });
@@ -495,6 +649,16 @@ export function NewIssueDialog() {
     assigneeModelOverride,
     assigneeThinkingEffort,
     assigneeChrome,
+    objectiveClass,
+    qualityTier,
+    latencyTier,
+    budgetMode,
+    deploymentPreference,
+    dataSensitivity,
+    requiredCapabilities,
+    manualHarness,
+    manualDeploymentTarget,
+    manualContextTier,
     executionWorkspaceMode,
     selectedExecutionWorkspaceId,
     newIssueOpen,
@@ -513,20 +677,27 @@ export function NewIssueDialog() {
       setDescription(newIssueDefaults.description ?? "");
       setStatus(newIssueDefaults.status ?? "todo");
       setPriority(newIssueDefaults.priority ?? "");
-      const defaultProjectId = newIssueDefaults.projectId ?? "";
-      const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
-      setProjectId(defaultProjectId);
-      setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
+      const defaultProjectSelection = resolveProjectSelection(orderedProjects, newIssueDefaults.projectId);
+      setProjectId(defaultProjectSelection.projectId);
+      setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProjectSelection.project));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
       setAssigneeChrome(false);
-      setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
+      setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProjectSelection.project));
       setSelectedExecutionWorkspaceId("");
-      executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
+      executionWorkspaceDefaultProjectId.current = defaultProjectSelection.projectId || null;
     } else if (draft && draft.title.trim()) {
-      const restoredProjectId = newIssueDefaults.projectId ?? draft.projectId;
-      const restoredProject = orderedProjects.find((project) => project.id === restoredProjectId);
+      const restoredProjectSelection = resolveProjectSelection(
+        orderedProjects,
+        newIssueDefaults.projectId ?? draft.projectId,
+      );
+      const restoredProjectId = restoredProjectSelection.projectId;
+      const restoredProject = restoredProjectSelection.project;
+      const restoredProjectWorkspaceId = resolveProjectWorkspaceIdForProject(
+        restoredProject,
+        draft.projectWorkspaceId,
+      );
       setTitle(draft.title);
       setDescription(draft.description);
       setStatus(draft.status || "todo");
@@ -537,30 +708,49 @@ export function NewIssueDialog() {
           : (draft.assigneeValue ?? draft.assigneeId ?? ""),
       );
       setProjectId(restoredProjectId);
-      setProjectWorkspaceId(draft.projectWorkspaceId ?? defaultProjectWorkspaceIdForProject(restoredProject));
+      setProjectWorkspaceId(restoredProjectWorkspaceId);
       setAssigneeModelOverride(draft.assigneeModelOverride ?? "");
       setAssigneeThinkingEffort(draft.assigneeThinkingEffort ?? "");
       setAssigneeChrome(draft.assigneeChrome ?? false);
+      setObjectiveClass(draft.objectiveClass ?? "technical");
+      setQualityTier(draft.qualityTier ?? "standard");
+      setLatencyTier(draft.latencyTier ?? "interactive");
+      setBudgetMode(draft.budgetMode ?? "balanced");
+      setDeploymentPreference(draft.deploymentPreference ?? "local_then_cloud");
+      setDataSensitivity(draft.dataSensitivity ?? "local_preferred");
+      setRequiredCapabilities(draft.requiredCapabilities?.length ? draft.requiredCapabilities : ["code", "files"]);
+      setManualHarness(draft.manualHarness ?? "");
+      setManualDeploymentTarget(draft.manualDeploymentTarget ?? "");
+      setManualContextTier(draft.manualContextTier ?? "");
       setExecutionWorkspaceMode(
         draft.executionWorkspaceMode
           ?? (draft.useIsolatedExecutionWorkspace ? "isolated_workspace" : defaultExecutionWorkspaceModeForProject(restoredProject)),
       );
-      setSelectedExecutionWorkspaceId(draft.selectedExecutionWorkspaceId ?? "");
+      setSelectedExecutionWorkspaceId("");
       executionWorkspaceDefaultProjectId.current = restoredProjectId || null;
     } else {
-      const defaultProjectId = newIssueDefaults.projectId ?? "";
-      const defaultProject = orderedProjects.find((project) => project.id === defaultProjectId);
+      const defaultProjectSelection = resolveProjectSelection(orderedProjects, newIssueDefaults.projectId);
       setStatus(newIssueDefaults.status ?? "todo");
       setPriority(newIssueDefaults.priority ?? "");
-      setProjectId(defaultProjectId);
-      setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProject));
+      setProjectId(defaultProjectSelection.projectId);
+      setProjectWorkspaceId(defaultProjectWorkspaceIdForProject(defaultProjectSelection.project));
       setAssigneeValue(assigneeValueFromSelection(newIssueDefaults));
       setAssigneeModelOverride("");
       setAssigneeThinkingEffort("");
       setAssigneeChrome(false);
-      setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProject));
+      setObjectiveClass("technical");
+      setQualityTier("standard");
+      setLatencyTier("interactive");
+      setBudgetMode("balanced");
+      setDeploymentPreference("local_then_cloud");
+      setDataSensitivity("local_preferred");
+      setRequiredCapabilities(["code", "files"]);
+      setManualHarness("");
+      setManualDeploymentTarget("");
+      setManualContextTier("");
+      setExecutionWorkspaceMode(defaultExecutionWorkspaceModeForProject(defaultProjectSelection.project));
       setSelectedExecutionWorkspaceId("");
-      executionWorkspaceDefaultProjectId.current = defaultProjectId || null;
+      executionWorkspaceDefaultProjectId.current = defaultProjectSelection.projectId || null;
     }
   }, [newIssueOpen, newIssueDefaults, orderedProjects]);
 
@@ -600,9 +790,20 @@ export function NewIssueDialog() {
     setProjectId("");
     setProjectWorkspaceId("");
     setAssigneeOptionsOpen(false);
+    setGearOptionsOpen(false);
     setAssigneeModelOverride("");
     setAssigneeThinkingEffort("");
     setAssigneeChrome(false);
+    setObjectiveClass("technical");
+    setQualityTier("standard");
+    setLatencyTier("interactive");
+    setBudgetMode("balanced");
+    setDeploymentPreference("local_then_cloud");
+    setDataSensitivity("local_preferred");
+    setRequiredCapabilities(["code", "files"]);
+    setManualHarness("");
+    setManualDeploymentTarget("");
+    setManualContextTier("");
     setExecutionWorkspaceMode("shared_workspace");
     setSelectedExecutionWorkspaceId("");
     setExpanded(false);
@@ -622,6 +823,16 @@ export function NewIssueDialog() {
     setAssigneeModelOverride("");
     setAssigneeThinkingEffort("");
     setAssigneeChrome(false);
+    setObjectiveClass("technical");
+    setQualityTier("standard");
+    setLatencyTier("interactive");
+    setBudgetMode("balanced");
+    setDeploymentPreference("local_then_cloud");
+    setDataSensitivity("local_preferred");
+    setRequiredCapabilities(["code", "files"]);
+    setManualHarness("");
+    setManualDeploymentTarget("");
+    setManualContextTier("");
     setExecutionWorkspaceMode("shared_workspace");
     setSelectedExecutionWorkspaceId("");
   }
@@ -641,11 +852,16 @@ export function NewIssueDialog() {
       thinkingEffortOverride: assigneeThinkingEffort,
       chrome: assigneeChrome,
     });
-    const selectedProject = orderedProjects.find((project) => project.id === projectId);
+    const selectedProjectSelection = resolveProjectSelection(orderedProjects, projectId);
+    const normalizedProjectId = selectedProjectSelection.projectId;
+    const selectedProject = selectedProjectSelection.project;
     const executionWorkspacePolicy =
       experimentalSettings?.enableIsolatedWorkspaces === true
         ? selectedProject?.executionWorkspacePolicy ?? null
         : null;
+    const normalizedProjectWorkspaceId = selectedProject
+      ? resolveProjectWorkspaceIdForProject(selectedProject, projectWorkspaceId)
+      : "";
     const selectedReusableExecutionWorkspace = deduplicatedReusableWorkspaces.find(
       (workspace) => workspace.id === selectedExecutionWorkspaceId,
     );
@@ -656,6 +872,19 @@ export function NewIssueDialog() {
     const executionWorkspaceSettings = executionWorkspacePolicy?.enabled
       ? { mode: requestedExecutionWorkspaceMode }
       : null;
+    const runtimeRequirements = buildRuntimeRequirements({
+      objectiveClass,
+      qualityTier,
+      latencyTier,
+      budgetMode,
+      deploymentPreference,
+      dataSensitivity,
+      requiredCapabilities,
+      manualHarness,
+      manualDeploymentTarget,
+      manualContextTier,
+      executionWorkspaceMode,
+    });
     createIssue.mutate({
       companyId: effectiveCompanyId,
       stagedFiles,
@@ -665,12 +894,13 @@ export function NewIssueDialog() {
       priority: priority || "medium",
       ...(selectedAssigneeAgentId ? { assigneeAgentId: selectedAssigneeAgentId } : {}),
       ...(selectedAssigneeUserId ? { assigneeUserId: selectedAssigneeUserId } : {}),
-      ...(projectId ? { projectId } : {}),
-      ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
+      ...(normalizedProjectId ? { projectId: normalizedProjectId } : {}),
+      ...(normalizedProjectWorkspaceId ? { projectWorkspaceId: normalizedProjectWorkspaceId } : {}),
       ...(assigneeAdapterOverrides ? { assigneeAdapterOverrides } : {}),
+      runtimeRequirements,
       ...(executionWorkspacePolicy?.enabled ? { executionWorkspacePreference: executionWorkspaceMode } : {}),
-      ...(executionWorkspaceMode === "reuse_existing" && selectedExecutionWorkspaceId
-        ? { executionWorkspaceId: selectedExecutionWorkspaceId }
+      ...(executionWorkspaceMode === "reuse_existing" && selectedReusableExecutionWorkspace
+        ? { executionWorkspaceId: selectedReusableExecutionWorkspace.id }
         : {}),
       ...(executionWorkspaceSettings ? { executionWorkspaceSettings } : {}),
     });
@@ -1242,6 +1472,103 @@ export function NewIssueDialog() {
             )}
           </div>
         )}
+
+        <div className="px-4 pb-2 shrink-0">
+          <button
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setGearOptionsOpen((open) => !open)}
+          >
+            {gearOptionsOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            Execution gear
+          </button>
+          {gearOptionsOpen && (
+            <div className="mt-2 rounded-md border border-border p-3 bg-muted/20 space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Objective</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={objectiveClass} onChange={(e) => setObjectiveClass(e.target.value)}>
+                    {OBJECTIVE_CLASS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Quality</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={qualityTier} onChange={(e) => setQualityTier(e.target.value)}>
+                    {QUALITY_TIER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Latency</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={latencyTier} onChange={(e) => setLatencyTier(e.target.value)}>
+                    {LATENCY_TIER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Budget mode</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={budgetMode} onChange={(e) => setBudgetMode(e.target.value)}>
+                    {BUDGET_MODE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Deployment preference</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={deploymentPreference} onChange={(e) => setDeploymentPreference(e.target.value)}>
+                    {DEPLOYMENT_PREFERENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Data sensitivity</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={dataSensitivity} onChange={(e) => setDataSensitivity(e.target.value)}>
+                    {DATA_SENSITIVITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Manual harness</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={manualHarness} onChange={(e) => setManualHarness(e.target.value)}>
+                    {MANUAL_HARNESS_OPTIONS.map((option) => <option key={option.value || "auto"} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1.5">
+                  <div className="text-xs text-muted-foreground">Manual deployment</div>
+                  <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={manualDeploymentTarget} onChange={(e) => setManualDeploymentTarget(e.target.value)}>
+                    {MANUAL_DEPLOYMENT_TARGET_OPTIONS.map((option) => <option key={option.value || "auto"} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className="space-y-1.5">
+                <div className="text-xs text-muted-foreground">Manual context tier</div>
+                <select className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none" value={manualContextTier} onChange={(e) => setManualContextTier(e.target.value)}>
+                  {MANUAL_CONTEXT_TIER_OPTIONS.map((option) => <option key={option.value || "auto"} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <div className="space-y-1.5">
+                <div className="text-xs text-muted-foreground">Capabilities</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {CAPABILITY_OPTIONS.map((option) => {
+                    const selected = requiredCapabilities.includes(option.value);
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={cn(
+                          "px-2 py-1 rounded-md text-xs border border-border hover:bg-accent/50 transition-colors",
+                          selected && "bg-accent",
+                        )}
+                        onClick={() =>
+                          setRequiredCapabilities((current) =>
+                            current.includes(option.value)
+                              ? current.filter((value) => value !== option.value)
+                              : [...current, option.value],
+                          )
+                        }
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Description */}
         <div

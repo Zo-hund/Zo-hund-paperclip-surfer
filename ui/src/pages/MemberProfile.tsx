@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Link } from "@/lib/router";
+import { AIR_HUB_EMAILS, getCurrentAirHubLaneLabel } from "@/lib/air-hubs-lanes";
 import { marketplaceApi } from "@/api/marketplace";
 import { ApiError } from "@/api/client";
 
@@ -129,8 +130,9 @@ export function MemberProfile() {
           </div>
           <h1 className="mt-6 text-4xl font-black tracking-tight text-white">Member Central</h1>
           <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-            Choose a global AMX marketplace path as a Member or Partner. Members learn and browse.
-            Partners unlock provider listings after LMS eligibility and admin approval.
+            Join the AMX Air Hubs network through Community, Collectives, or Electives.
+            Community members learn and network, Collectives become skills providers,
+            and Electives hire, sponsor, and run programs.
           </p>
           <div className="mt-8 flex gap-3">
             <Link to="/auth">
@@ -162,6 +164,7 @@ export function MemberProfile() {
     guidance.requiredChecklistComplete &&
     profile.partnerStatus !== "active" &&
     profile.partnerStatus !== "pending";
+  const currentLane = getCurrentAirHubLaneLabel(profile.roleIntent, profile.partnerStatus);
 
   return (
     <PublicLayout>
@@ -178,14 +181,15 @@ export function MemberProfile() {
                 <div>
                   <h1 className="text-4xl font-black tracking-tighter text-white">Member Central</h1>
                   <p className="mt-1 text-sm uppercase tracking-[0.3em] text-muted-foreground">
-                    Global Marketplace Identity
+                    Air Hubs Identity
                   </p>
                 </div>
               </div>
 
               <p className="mt-6 max-w-2xl leading-relaxed text-muted-foreground">
                 This profile is separate from company membership and board access. Use it to choose whether
-                you participate as a Member or apply to become a Partner provider in the AMX ecosystem.
+                you participate through Community, move into Collectives as a provider, or operate as an
+                Elective buyer and sponsor in the AMX ecosystem.
               </p>
 
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -242,7 +246,7 @@ export function MemberProfile() {
                   <span className="font-black text-foreground">{eligibility.totalHoursTrained}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Partner eligibility</span>
+                  <span className="text-muted-foreground">Collective eligibility</span>
                   <span className={`font-black uppercase ${eligibility.eligibleForPartner ? "text-emerald-400" : "text-amber-400"}`}>
                     {eligibility.eligibleForPartner ? "eligible" : "ineligible"}
                   </span>
@@ -250,29 +254,30 @@ export function MemberProfile() {
               </div>
 
               <div className="mt-6 rounded-2xl border border-border/50 bg-background/30 p-4 text-sm leading-relaxed text-muted-foreground">
-                Complete at least one required workshop or simulation bundle in TECH AT NITE before partner
-                application becomes available.
+                Complete at least one required workshop or simulation bundle in TECH AT NITE before the
+                Collective provider application becomes available.
               </div>
               <div className={`mt-4 rounded-2xl border p-4 text-sm leading-relaxed ${guidance.requiredChecklistComplete ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100" : "border-amber-500/20 bg-amber-500/10 text-amber-100"}`}>
                 {guidance.requiredChecklistComplete
                   ? "Required LMS onboarding guidance is complete."
-                  : guidance.nextRecommendedStep ?? "Complete the required TECH AT NITE onboarding guidance to unlock the Partner application."}
+                  : guidance.nextRecommendedStep ?? "Complete the required TECH AT NITE onboarding guidance to unlock the Collective provider application."}
               </div>
             </div>
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-2">
+          <section className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
             <div className="rounded-3xl border border-border/60 bg-card/70 p-8">
               <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
                 <UserCheck className="h-4 w-4 text-primary" />
-                Choose Your Path
+                Choose Your Lane
               </div>
 
-              <div className="mt-6 grid gap-4">
+              <div className="mt-6 grid gap-4 xl:grid-cols-3">
                 <div className={`rounded-2xl border p-5 ${profile.roleIntent === "member" ? "border-primary bg-primary/10" : "border-border/50 bg-background/30"}`}>
-                  <h3 className="text-lg font-black text-white">Member</h3>
+                  <h3 className="text-lg font-black text-white">Community</h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Access the LMS, buy credits, track certifications, and browse the marketplace without provider tools.
+                    Members and partners network here first. Learn in TECH AT NITE, buy credits, track certifications,
+                    and stay connected through {AIR_HUB_EMAILS.community}.
                   </p>
                   <Button
                     className="mt-4 text-[11px] font-black uppercase tracking-widest"
@@ -280,14 +285,15 @@ export function MemberProfile() {
                     onClick={() => chooseRoleMutation.mutate("member")}
                     disabled={chooseRoleMutation.isPending}
                   >
-                    Select Member
+                    Join Community
                   </Button>
                 </div>
 
                 <div className={`rounded-2xl border p-5 ${profile.roleIntent === "partner" || profile.partnerStatus !== "none" ? "border-primary bg-primary/10" : "border-border/50 bg-background/30"}`}>
-                  <h3 className="text-lg font-black text-white">Partner</h3>
+                  <h3 className="text-lg font-black text-white">Collectives</h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Sell AI Agents, Co-op Pairs, and Full Teams after LMS eligibility and admin approval.
+                    Skills providers, agent teams, and microservice sellers publish here after LMS eligibility
+                    and admin approval. Provider coordination runs through {AIR_HUB_EMAILS.collectives}.
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-widest">
                     <span className="rounded-full bg-background/60 px-3 py-1 text-muted-foreground">AI Agents</span>
@@ -301,7 +307,7 @@ export function MemberProfile() {
                       onClick={() => chooseRoleMutation.mutate("partner")}
                       disabled={chooseRoleMutation.isPending}
                     >
-                      Select Partner
+                      Join Collectives
                     </Button>
                     <Button
                       className="text-[11px] font-black uppercase tracking-widest"
@@ -313,9 +319,37 @@ export function MemberProfile() {
                   </div>
                   {!guidance.requiredChecklistComplete && (
                     <p className="mt-3 text-xs leading-relaxed text-amber-300">
-                      Finish the required TECH AT NITE onboarding checklist before applying as a Partner.
+                      Finish the required TECH AT NITE onboarding checklist before applying as a Collective provider.
                     </p>
                   )}
+                </div>
+
+                <div className="rounded-2xl border border-border/50 bg-background/30 p-5">
+                  <h3 className="text-lg font-black text-white">Electives</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Employers, universities, and institutional buyers use the marketplace to hire, sponsor,
+                    and run programs. Elective coordination flows through {AIR_HUB_EMAILS.electives}.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-widest">
+                    <span className="rounded-full bg-background/60 px-3 py-1 text-muted-foreground">Hiring</span>
+                    <span className="rounded-full bg-background/60 px-3 py-1 text-muted-foreground">Sponsorship</span>
+                    <span className="rounded-full bg-background/60 px-3 py-1 text-muted-foreground">Programs</span>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="text-[11px] font-black uppercase tracking-widest"
+                      onClick={() => chooseRoleMutation.mutate("member")}
+                      disabled={chooseRoleMutation.isPending}
+                    >
+                      Use Buyer Access
+                    </Button>
+                    <Link to="/marketplace">
+                      <Button className="text-[11px] font-black uppercase tracking-widest">
+                        Hire Now
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>
@@ -328,11 +362,11 @@ export function MemberProfile() {
 
               <div className="mt-6 space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Role intent</span>
-                  <span className="font-black uppercase text-primary">{profile.roleIntent}</span>
+                  <span className="text-muted-foreground">Current lane</span>
+                  <span className="font-black uppercase text-primary">{currentLane}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Partner status</span>
+                  <span className="text-muted-foreground">Provider status</span>
                   <span className="font-black uppercase text-primary">{profile.partnerStatus}</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -377,11 +411,11 @@ export function MemberProfile() {
           <section className="rounded-3xl border border-border/60 bg-card/70 p-8">
             <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.25em] text-muted-foreground">
               <Store className="h-4 w-4 text-primary" />
-              Provider Profile
+              Collective Profile
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              Fill in the fields used for marketplace listings and partner review. These controls do not change
-              company membership permissions.
+              Fill in the fields used for marketplace listings and Collective review. These controls do not
+              change company membership permissions.
             </p>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">

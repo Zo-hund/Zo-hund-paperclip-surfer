@@ -23,6 +23,7 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { PageTabBar } from "../components/PageTabBar";
 import { EvalNewRunModal } from "../components/EvalNewRunModal";
 import { EvalComparePanel, type CompareRun } from "../components/EvalComparePanel";
+import { AnalyticsTracingTab } from "../components/AnalyticsTracingTab";
 import { EVAL_TEMPLATES, autoScore } from "../data/evalTemplates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -90,7 +91,7 @@ export function Analytics() {
   const { pushToast } = useToast();
   const companyId = selectedCompanyId!;
 
-  const [activeTab, setActiveTab] = useState<"overview" | "evals">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "tracing" | "evals">("overview");
   const [evalsMode, setEvalsMode] = useState<"sandbox" | "live">("sandbox");
   const [sandboxAgentId, setSandboxAgentId] = useState<string>("");
   const [evalModalOpen, setEvalModalOpen] = useState(false);
@@ -107,6 +108,7 @@ export function Analytics() {
   const [simAgentId, setSimAgentId] = useState<string>("");
 
   const [obsDialogOpen, setObsDialogOpen] = useState(false);
+  const [obsAgentIds, setObsAgentIds] = useState<string[]>([]);
   const [obsForm, setObsForm] = useState({
     title: "",
     content: "",
@@ -190,6 +192,7 @@ export function Analytics() {
       queryClient.invalidateQueries({ queryKey: queryKeys.observations.list(companyId) });
       pushToast({ title: "Observation created" });
       setObsDialogOpen(false);
+      setObsAgentIds([]);
       setObsForm({ title: "", content: "", severity: "info" });
     },
     onError: () => pushToast({ tone: "warn", title: "Failed to create observation" }),
@@ -753,15 +756,16 @@ export function Analytics() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "overview" | "evals")}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "overview" | "tracing" | "evals")}>
         <PageTabBar
           align="start"
           items={[
             { value: "overview", label: "Overview" },
+            { value: "tracing", label: "Tracing" },
             { value: "evals", label: "Evals" },
           ]}
           value={activeTab}
-          onValueChange={(v) => setActiveTab(v as "overview" | "evals")}
+          onValueChange={(v) => setActiveTab(v as "overview" | "tracing" | "evals")}
         />
 
         {/* ── Overview Tab ── */}
@@ -1110,14 +1114,38 @@ export function Analytics() {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="tracing" className="mt-6">
+          <AnalyticsTracingTab
+            companyId={companyId}
+            agents={agents}
+            observations={observations}
+            onCreateObservation={(agentIds) => {
+              setObsAgentIds(agentIds);
+              setObsDialogOpen(true);
+            }}
+          />
+        </TabsContent>
       </Tabs>
 
       {/* Observation Dialog */}
-      <Dialog open={obsDialogOpen} onOpenChange={(open) => !open && setObsDialogOpen(false)}>
+      <Dialog
+        open={obsDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setObsDialogOpen(false);
+            setObsAgentIds([]);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Observation</DialogTitle>
-            <DialogDescription>Record a company-wide observation.</DialogDescription>
+            <DialogDescription>
+              {obsAgentIds.length > 0
+                ? "Record an observation linked to the selected trace agent."
+                : "Record a company-wide observation."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -1157,7 +1185,13 @@ export function Analytics() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setObsDialogOpen(false)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setObsDialogOpen(false);
+                setObsAgentIds([]);
+              }}
+            >
               Cancel
             </Button>
             <Button
@@ -1165,7 +1199,7 @@ export function Analytics() {
                 createObsMutation.mutate({
                   observerType: "board_human",
                   observation: obsForm.content,
-                  agentIds: [],
+                  agentIds: obsAgentIds,
                 })
               }
               disabled={!obsForm.title.trim() || !obsForm.content.trim() || createObsMutation.isPending}

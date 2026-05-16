@@ -31,13 +31,13 @@ export function AgentChatPanel({ agentId, companyId }: AgentChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data: messages = [], isLoading } = useQuery({
-    queryKey: queryKeys.agents.chatMessages(agentId),
-    queryFn: () => agentsApi.listChatMessages(agentId),
+    queryKey: queryKeys.agents.chatMessages(agentId, companyId),
+    queryFn: () => agentsApi.listChatMessages(agentId, companyId),
     refetchInterval: pendingRunId ? 3000 : false,
   });
 
   const sendMutation = useMutation({
-    mutationFn: (content: string) => agentsApi.sendChatMessage(agentId, content),
+    mutationFn: (content: string) => agentsApi.sendChatMessage(agentId, content, companyId),
     onMutate: async (content) => {
       // Optimistic user message
       const optimistic: AgentChatMessage = {
@@ -50,16 +50,16 @@ export function AgentChatPanel({ agentId, companyId }: AgentChatPanelProps) {
         createdAt: new Date().toISOString(),
       };
       queryClient.setQueryData<AgentChatMessage[]>(
-        queryKeys.agents.chatMessages(agentId),
+        queryKeys.agents.chatMessages(agentId, companyId),
         (prev = []) => [...prev, optimistic],
       );
     },
     onSuccess: (result) => {
       setPendingRunId(result.runId);
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.chatMessages(agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.chatMessages(agentId, companyId) });
     },
     onError: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents.chatMessages(agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.chatMessages(agentId, companyId) });
     },
   });
 

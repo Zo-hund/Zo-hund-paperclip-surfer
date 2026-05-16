@@ -674,6 +674,8 @@ export function AgentDetail() {
                         ? "onboarding"
                         : activeView === "chat"
                           ? "chat"
+                          : activeView === "schedule"
+                            ? "schedule"
                           : "dashboard";
     if (routeAgentRef !== canonicalAgentRef || urlTab !== canonicalTab) {
       navigate(`/agents/${canonicalAgentRef}/${canonicalTab}`, { replace: true });
@@ -1564,6 +1566,8 @@ function ConfigurationTab({
           ? "Enabled via explicit company permission grant."
           : "Disabled unless explicitly granted.";
 
+  const isMarketplaceVisible = !!(agent.metadata as Record<string, unknown> | null)?.marketplaceVisible;
+
   return (
     <div className="space-y-6">
       <AgentConfigForm
@@ -1644,6 +1648,44 @@ function ConfigurationTab({
                 className={cn(
                   "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
                   canAssignTasks ? "translate-x-4.5" : "translate-x-0.5",
+                )}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium mb-3">Marketplace</h3>
+        <div className="border border-border rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <div className="space-y-1">
+              <div>Public in Marketplace</div>
+              <p className="text-xs text-muted-foreground">
+                When enabled, this agent appears in the AMX Marketplace as an available AI agent.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              data-slot="toggle"
+              aria-checked={isMarketplaceVisible}
+              className={cn(
+                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-50",
+                isMarketplaceVisible ? "bg-amber-500" : "bg-muted",
+              )}
+              onClick={() => {
+                updateAgent.mutate({
+                  metadata: { ...(agent.metadata ?? {}), marketplaceVisible: !isMarketplaceVisible },
+                });
+                queryClient.invalidateQueries({ queryKey: ["marketplace", "public-listings"] });
+              }}
+              disabled={updateAgent.isPending}
+            >
+              <span
+                className={cn(
+                  "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+                  isMarketplaceVisible ? "translate-x-4.5" : "translate-x-0.5",
                 )}
               />
             </button>
@@ -3410,7 +3452,9 @@ function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType: strin
   }).data?.censorUsernameInLogs === true;
 
   const adapterInvokePayload = useMemo(() => {
-    const evt = events.find((e) => e.eventType === "adapter.invoke");
+    const evt = events.find(
+      (e) => e.eventType === "adapter.command.prepared" || e.eventType === "adapter.invoke",
+    );
     return redactPathValue(asRecord(evt?.payload ?? null), censorUsernameInLogs);
   }, [censorUsernameInLogs, events]);
 

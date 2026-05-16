@@ -22,6 +22,21 @@ type CompanyInviteEmailInput = {
   onboardingTextUrl?: string | null | undefined;
 };
 
+type ClientWorkOrderEmailInput = {
+  email: string | null | undefined;
+  clientName?: string | null | undefined;
+  companyName?: string | null | undefined;
+  issueIdentifier: string;
+  issueTitle: string;
+  stageLabel: string;
+  statusSummary: string;
+  intro?: string | null | undefined;
+  nextStep?: string | null | undefined;
+  customMessage?: string | null | undefined;
+  trackedHours: number;
+  timeCardLines: string[];
+};
+
 type EmailDeliveryResult = {
   provider: "resend";
   accepted: boolean;
@@ -137,6 +152,71 @@ function companyInviteEmailTemplate(input: CompanyInviteEmailInput): EmailConten
   };
 }
 
+function clientWorkOrderUpdateEmailTemplate(input: ClientWorkOrderEmailInput): EmailContent {
+  const greetingName = escapeHtml(displayName(input.clientName));
+  const safeCompanyName = escapeHtml(input.companyName?.trim() || "AMX Air Hubs");
+  const safeIssueIdentifier = escapeHtml(input.issueIdentifier);
+  const safeIssueTitle = escapeHtml(input.issueTitle);
+  const safeStageLabel = escapeHtml(input.stageLabel);
+  const safeStatusSummary = escapeHtml(input.statusSummary);
+  const safeIntro = escapeHtml(input.intro?.trim() || "Here is your latest microservice work-order update.");
+  const safeNextStep = escapeHtml(input.nextStep?.trim() || "Reply to this email if you want us to adjust scope, sequencing, or delivery timing.");
+  const safeCustomMessage = input.customMessage?.trim() ? escapeHtml(input.customMessage.trim()) : null;
+  const timeCardLines = input.timeCardLines.length > 0 ? input.timeCardLines : ["No time cards recorded yet."];
+
+  return {
+    to: input.email ?? "",
+    subject: `${input.issueIdentifier} · ${input.stageLabel} update`,
+    text: [
+      `Hi ${displayName(input.clientName)},`,
+      "",
+      safeIntro,
+      "",
+      `${input.issueIdentifier}: ${input.issueTitle}`,
+      `Stage: ${input.stageLabel}`,
+      `Status: ${input.statusSummary}`,
+      `Tracked hours: ${input.trackedHours.toFixed(1)}`,
+      "",
+      "Time cards:",
+      ...timeCardLines,
+      ...(safeCustomMessage ? ["", input.customMessage!.trim()] : []),
+      "",
+      `Next step: ${input.nextStep?.trim() || "Reply to this email if you want us to adjust scope, sequencing, or delivery timing."}`,
+      "",
+      `${safeCompanyName} · AMX Air Hubs`,
+    ].join("\n"),
+    html: [
+      '<div style="font-family:Arial,sans-serif;line-height:1.65;color:#0f172a;background:#f8fafc;padding:24px;">',
+      '<div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;">',
+      '<div style="padding:28px 32px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#f8fafc;">',
+      '<p style="margin:0 0 8px;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;opacity:0.8;">AMX Air Hubs Client Update</p>',
+      `<h1 style="margin:0;font-size:28px;line-height:1.15;">${safeIssueIdentifier}</h1>`,
+      `<p style="margin:8px 0 0;font-size:15px;opacity:0.88;">${safeIssueTitle}</p>`,
+      "</div>",
+      '<div style="padding:28px 32px;">',
+      `<p style="margin:0 0 16px;font-size:16px;">Hi ${greetingName},</p>`,
+      `<p style="margin:0 0 20px;font-size:15px;color:#334155;">${safeIntro}</p>`,
+      '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 24px;">',
+      `<div style="padding:14px 16px;border:1px solid #cbd5e1;border-radius:16px;background:#f8fafc;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.18em;color:#64748b;">Stage</div><div style="margin-top:6px;font-size:16px;font-weight:700;color:#0f172a;">${safeStageLabel}</div></div>`,
+      `<div style="padding:14px 16px;border:1px solid #cbd5e1;border-radius:16px;background:#f8fafc;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.18em;color:#64748b;">Tracked Hours</div><div style="margin-top:6px;font-size:16px;font-weight:700;color:#0f172a;">${input.trackedHours.toFixed(1)}h</div></div>`,
+      `<div style="padding:14px 16px;border:1px solid #cbd5e1;border-radius:16px;background:#f8fafc;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.18em;color:#64748b;">Status</div><div style="margin-top:6px;font-size:16px;font-weight:700;color:#0f172a;">${safeStatusSummary}</div></div>`,
+      "</div>",
+      '<div style="margin:0 0 24px;padding:20px;border:1px solid #e2e8f0;border-radius:18px;background:#ffffff;">',
+      '<p style="margin:0 0 12px;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#64748b;">Work Order Tracking</p>',
+      '<ul style="margin:0;padding-left:20px;color:#334155;font-size:14px;">',
+      ...timeCardLines.map((line) => `<li style="margin:0 0 8px;">${escapeHtml(line)}</li>`),
+      "</ul>",
+      "</div>",
+      ...(safeCustomMessage
+        ? [`<div style="margin:0 0 20px;padding:18px 20px;border-radius:16px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;"><p style="margin:0;font-size:14px;">${safeCustomMessage}</p></div>`]
+        : []),
+      `<p style="margin:0 0 18px;font-size:14px;color:#334155;"><strong>Next step:</strong> ${safeNextStep}</p>`,
+      `<p style="margin:0;font-size:13px;color:#64748b;">Sent by ${safeCompanyName} via AMX Air Hubs.</p>`,
+      "</div></div></div>",
+    ].join(""),
+  };
+}
+
 export function createEmailService(config: Config) {
   const resendApiKey = config.resendApiKey?.trim();
   const from = config.emailFrom?.trim();
@@ -219,6 +299,9 @@ export function createEmailService(config: Config) {
     },
     async sendCompanyInviteEmail(input: CompanyInviteEmailInput): Promise<EmailDeliveryResult> {
       return send(companyInviteEmailTemplate(input), { required: true });
+    },
+    async sendClientWorkOrderUpdateEmail(input: ClientWorkOrderEmailInput): Promise<EmailDeliveryResult> {
+      return send(clientWorkOrderUpdateEmailTemplate(input), { required: true });
     },
   };
 }

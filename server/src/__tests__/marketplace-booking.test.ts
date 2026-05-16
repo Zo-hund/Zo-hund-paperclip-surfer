@@ -10,6 +10,7 @@ import {
   companies,
   createDb,
   issues,
+  issueWorkProducts,
   marketplaceListings,
   marketplaceProfiles,
 } from "@paperclipai/db";
@@ -47,6 +48,7 @@ describeEmbeddedPostgres("marketplace microservice booking route", () => {
   }, 60_000);
 
   afterEach(async () => {
+    await db.delete(issueWorkProducts);
     await db.delete(issues);
     await db.delete(amxTransactions);
     await db.delete(agents);
@@ -192,6 +194,9 @@ describeEmbeddedPostgres("marketplace microservice booking route", () => {
         title: "Verification booking",
         instructions: "Create a verification issue only.",
         assignedAgentId: fixture.assignedAgentId,
+        clientName: "Mario D",
+        clientEmail: "marioduerson1cte@gmail.com",
+        clientCompany: "AMX Electives",
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
@@ -208,6 +213,10 @@ describeEmbeddedPostgres("marketplace microservice booking route", () => {
 
     expect(await countRows(amxTransactions)).toBe(1);
     expect(await countRows(issues)).toBe(1);
+    const workOrder = await db.select().from(issueWorkProducts).then((rows) => rows[0] ?? null);
+    expect(workOrder?.provider).toBe("amx-microservices");
+    expect(workOrder?.externalId).toBe("microservice-work-order");
+    expect((workOrder?.metadata as any)?.client?.email).toBe("marioduerson1cte@gmail.com");
   });
 
   it("returns readiness warnings for an assigned agent missing microservice skills", async () => {

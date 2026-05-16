@@ -15,6 +15,7 @@ import { amxApi } from "@/api/amx";
 import { marketplaceApi } from "@/api/marketplace";
 import type { MarketplaceListing } from "@/api/marketplace";
 import { MarketplaceMicroserviceBooking, isMicroserviceListing } from "@/components/MarketplaceMicroserviceBooking";
+import { AIR_HUB_EMAILS } from "@/lib/air-hubs-lanes";
 
 // ── Run phases ────────────────────────────────────────────────────────────────
 const RUN_PHASES = [
@@ -215,11 +216,21 @@ function TalentCard({ talent, activeTab, balance, currency, companyPrefix, onBoo
     <>
       {showEngage && <EngageModal talent={talent} activeTab={activeTab} balance={balance} currency={currency} onClose={() => setShowEngage(false)} companyPrefix={companyPrefix} />}
       <div className={`group relative flex flex-col bg-card rounded-2xl border transition-all duration-300 hover:shadow-xl overflow-hidden ${
+        talent.isPromoted ? "border-amber-500/40 hover:border-amber-500/70 hover:shadow-amber-500/10" :
         isHuman ? "border-emerald-500/20 hover:border-emerald-500/50 hover:shadow-emerald-500/5" :
         isCoop  ? "border-violet-500/20 hover:border-violet-500/50 hover:shadow-violet-500/5" :
         isTeam  ? "border-amber-500/20 hover:border-amber-500/50 hover:shadow-amber-500/5" :
                   "border-border/60 hover:border-primary/50 hover:shadow-primary/5"
       }`}>
+        {/* Promoted sponsor strip */}
+        {talent.isPromoted && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/30">
+            <Sparkles className="h-3 w-3 text-amber-400 shrink-0" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 truncate">
+              {talent.sponsorTag ?? "Promoted"}
+            </span>
+          </div>
+        )}
         {/* Phase availability strip */}
         <div className="flex gap-0.5 px-4 pt-3">
           {RUN_PHASES.map((p) => {
@@ -342,8 +353,15 @@ export function AgentMarketplace() {
     queryFn: () => marketplaceApi.getMyProfile(),
   });
 
+  const { data: publicListingsData } = useQuery({
+    queryKey: ["marketplace", "public-listings"],
+    queryFn: () => marketplaceApi.getPublicListings(),
+    staleTime: 60_000,
+  });
+
   const marketplaceTalent = useMemo(() => {
-    return (exchangeData?.listings ?? []).map((listing) => {
+    // Real listings from exchange API
+    const fromExchange = (exchangeData?.listings ?? []).map((listing) => {
       const tab =
         listing.listingType === "agent" ? "agents" :
         listing.listingType === "coop" ? "coop" :
@@ -370,9 +388,65 @@ export function AgentMarketplace() {
         ),
         marketplaceListing: listing,
         marketplaceTab: tab,
+        isPromoted: listing.isPromoted,
+        sponsorTag: listing.sponsorTag,
       };
     });
-  }, [exchangeData?.listings]);
+
+    // Public listings from the public endpoint (active + marketplaceVisible agents)
+    const fromPublic = (publicListingsData?.listings ?? [])
+      .filter((l) => !fromExchange.some((e) => e.id === l.id)) // dedupe
+      .map((listing) => ({
+        id: listing.id,
+        name: listing.name,
+        title: listing.title,
+        role: listing.listingType,
+        rating: 5,
+        reviews: 0,
+        hourlyRateTokens: listing.hourlyRateTokens,
+        skills: listing.skills,
+        available: listing.availability !== "unavailable",
+        badges: listing.badges,
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(listing.name)}`,
+        description: listing.description ?? "",
+        phases: listing.supportedRunPhases.map((phase) =>
+          phase === "simulation" || phase === "learn" ? "sim" :
+          phase === "pit-stop" ? "post" :
+          phase === "content-production" ? "prod" :
+          phase === "live" ? "live" :
+          phase,
+        ),
+        marketplaceListing: listing,
+        marketplaceTab: listing.listingType === "agent" ? "agents" : listing.listingType === "coop" ? "coop" : "team",
+        isPromoted: listing.isPromoted,
+        sponsorTag: listing.sponsorTag,
+      }));
+
+    // Visible agents (from metadata.marketplaceVisible=true)
+    const fromVisibleAgents = (publicListingsData?.visibleAgents ?? [])
+      .filter((a) => !fromExchange.some((e) => e.id === a.id) && !fromPublic.some((p) => p.id === a.id))
+      .map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        title: agent.title ?? agent.role ?? "AI Agent",
+        role: "agent",
+        rating: 5,
+        reviews: 0,
+        hourlyRateTokens: Number((agent.metadata?.hourlyRateTokens as number | null) ?? 50),
+        skills: (agent.metadata?.skills as string[] | null) ?? [],
+        available: true,
+        badges: (agent.metadata?.badges as string[] | null) ?? ["AMX Agent"],
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${agent.id}`,
+        description: (agent.metadata?.bio as string | null) ?? `${agent.name} is available for hire in the AMX Marketplace.`,
+        phases: ["sim", "pre", "live", "prod", "post"],
+        marketplaceListing: null,
+        marketplaceTab: "agents",
+        isPromoted: false,
+        sponsorTag: null,
+      }));
+
+    return [...fromExchange, ...fromPublic, ...fromVisibleAgents];
+  }, [exchangeData?.listings, publicListingsData]);
 
   const microserviceListings = useMemo(
     () => (exchangeData?.listings ?? []).filter(isMicroserviceListing),
@@ -382,7 +456,10 @@ export function AgentMarketplace() {
   const currentPool = useMemo(() => {
     const mockPool = activeTab === "agents" ? MOCK_AGENTS : activeTab === "humans" ? MOCK_HUMANS : activeTab === "coop" ? MOCK_COOP : MOCK_TEAMS;
     const realPool = marketplaceTalent.filter((talent) => talent.marketplaceTab === activeTab);
-    const pool = [...realPool, ...mockPool];
+    // Promoted agents first, then real, then mocks
+    const promotedPool = realPool.filter((t) => (t as any).isPromoted);
+    const regularPool = realPool.filter((t) => !(t as any).isPromoted);
+    const pool = [...promotedPool, ...regularPool, ...mockPool];
     let filtered = pool.filter((t) =>
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.skills.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -414,9 +491,23 @@ export function AgentMarketplace() {
               <h1 className="text-3xl font-black tracking-tight text-foreground uppercase">AMX Skills Marketplace</h1>
             </div>
             <p className="text-[13px] text-muted-foreground max-w-2xl leading-relaxed mb-2">
-              Hire elite AI agents, human experts, co-op pairs, or full teams — for Sims, Live performances,
-              Pre-production, Full Production runs, or Post-run reviews.
+              Electives hire from Collectives across AI agents, human experts, co-op pairs, and full teams
+              for Sims, Live performances, Pre-production, Full Production runs, or Post-run reviews.
             </p>
+            <div className="grid gap-3 md:grid-cols-3 w-full max-w-4xl mt-4">
+              <div className="rounded-2xl border border-border/60 bg-card/50 p-4 text-left text-[12px] leading-relaxed text-muted-foreground">
+                <div className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Collectives</div>
+                Skills providers and microservice teams publish offers here. Contact lane: {AIR_HUB_EMAILS.collectives}.
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-card/50 p-4 text-left text-[12px] leading-relaxed text-muted-foreground">
+                <div className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Electives</div>
+                Employers, universities, and institutional buyers hire and sponsor through {AIR_HUB_EMAILS.electives}.
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-card/50 p-4 text-left text-[12px] leading-relaxed text-muted-foreground">
+                <div className="mb-1 text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Community</div>
+                Members and partner network stay connected through {AIR_HUB_EMAILS.community}.
+              </div>
+            </div>
             {/* Wallet balance display */}
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-card/60 border border-border/40 backdrop-blur-sm mt-2">
               <Wallet className="h-3.5 w-3.5 text-primary" />
@@ -431,7 +522,7 @@ export function AgentMarketplace() {
         {profileData && !profileData.guidance.requiredChecklistComplete && (
           <div className="mx-auto mb-6 max-w-4xl rounded-2xl border border-amber-500/20 bg-amber-500/10 px-5 py-4 text-sm text-amber-100">
             TECH AT NITE onboarding is not complete yet. {profileData.guidance.nextRecommendedStep} Complete the LMS guidance before
-            moving into Partner selling and advanced marketplace workflows.
+            moving into Collective selling and advanced marketplace workflows.
           </div>
         )}
 
@@ -497,7 +588,7 @@ export function AgentMarketplace() {
                     {microserviceListings[0].title}
                   </h2>
                   <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-muted-foreground">
-                    {microserviceListings[0].description}
+                    {microserviceListings[0].description} Booking flows through {AIR_HUB_EMAILS.booking}, sales through {AIR_HUB_EMAILS.sales}, and agent operations through {AIR_HUB_EMAILS.agents}.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {microserviceListings[0].skills.map((skill) => (

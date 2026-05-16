@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
 export const marketplaceProfiles = pgTable(
@@ -51,6 +51,9 @@ export const marketplaceListings = pgTable(
     supportedRunPhases: jsonb("supported_run_phases").$type<string[]>().notNull().default([]),
     payoutWallet: text("payout_wallet"),
     location: text("location"),
+    isPromoted: boolean("is_promoted").notNull().default(false),
+    promotedUntil: timestamp("promoted_until", { withTimezone: true }),
+    sponsorTag: text("sponsor_tag"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -58,5 +61,6 @@ export const marketplaceListings = pgTable(
     companyStatusIdx: index("marketplace_listings_company_status_idx").on(table.companyId, table.status),
     providerIdx: index("marketplace_listings_provider_idx").on(table.providerUserId),
     listingTypeIdx: index("marketplace_listings_type_idx").on(table.listingType),
+    promotedIdx: index("marketplace_listings_promoted_idx").on(table.isPromoted),
   }),
 );

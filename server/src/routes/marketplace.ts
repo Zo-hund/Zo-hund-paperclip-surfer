@@ -5,15 +5,22 @@ import {
   amxTransactions,
   companies,
   issues,
+  issueWorkProducts,
   marketplaceListings,
   marketplaceProfiles,
 } from "@paperclipai/db";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { badRequest, unauthorized } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import { assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { marketplaceService } from "../services/marketplace.js";
+import {
+  buildMicroserviceWorkOrderMetadata,
+  MICROSERVICE_WORK_ORDER_EXTERNAL_ID,
+  MICROSERVICE_WORK_ORDER_PROVIDER,
+  summarizeMicroserviceWorkOrder,
+} from "../services/microservice-work-order.js";
 
 const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(80).nullable().optional(),
@@ -49,6 +56,9 @@ const listingSchema = z.object({
 
 const updateListingSchema = listingSchema.partial().extend({
   status: z.enum(["draft", "active", "paused"]).optional(),
+  isPromoted: z.boolean().optional(),
+  promotedUntil: z.string().datetime().nullable().optional(),
+  sponsorTag: z.string().trim().max(120).nullable().optional(),
 });
 
 const purchaseSchema = z.object({
@@ -71,6 +81,9 @@ const microserviceBookingSchema = purchaseSchema.extend({
   instructions: z.string().trim().min(1).max(5000),
   targetUrl: z.string().trim().url().max(2000).optional().nullable(),
   assignedAgentId: z.string().uuid().optional().nullable(),
+  clientName: z.string().trim().min(1).max(120).optional().nullable(),
+  clientEmail: z.string().trim().email().max(320).optional().nullable(),
+  clientCompany: z.string().trim().min(1).max(160).optional().nullable(),
 });
 
 const topUpSchema = z.object({
@@ -211,6 +224,40 @@ export function marketplaceRoutes(db: Db) {
     res.json(listings);
   });
 
+  // Public marketplace: active listings + agents with marketplaceVisible=true
+  router.get("/marketplace/public-listings", async (req, res) => {
+    // Fetch active marketplace listings (isPromoted first)
+    const listings = await db
+      .select()
+      .from(marketplaceListings)
+      .where(eq(marketplaceListings.status, "active"))
+      .orderBy(desc(marketplaceListings.isPromoted), desc(marketplaceListings.createdAt));
+
+    // Fetch agents with marketplaceVisible=true in their metadata
+    const visibleAgents = await db
+      .select({
+        id: agents.id,
+        name: agents.name,
+        title: agents.title,
+        role: agents.role,
+        companyId: agents.companyId,
+        metadata: agents.metadata,
+        createdAt: agents.createdAt,
+      })
+      .from(agents)
+      .where(
+        and(
+          eq(sql`(${agents.metadata}->>'marketplaceVisible')::boolean`, true),
+          or(
+            eq(agents.status, "idle"),
+            eq(agents.status, "running"),
+          ),
+        ),
+      );
+
+    res.json({ listings, visibleAgents });
+  });
+
   router.post(
     "/companies/:companyId/amx/partner-listings",
     validate(listingSchema),
@@ -230,8 +277,14 @@ export function marketplaceRoutes(db: Db) {
       const companyId = req.params.companyId as string;
       const listingId = Array.isArray(req.params.listingId) ? req.params.listingId[0] : req.params.listingId;
       assertCompanyAccess(req, companyId);
+      const isBoard = req.actor.type === "board";
+      if (isBoard) {
+        // Board actors can promote any listing without partner/ownership checks
+        const listing = await svc.promoteListingAsBoard(listingId, req.body);
+        return res.json(listing);
+      }
       const userId = getCurrentUserId(req);
-      const listing = await svc.updateListing(companyId, listingId, userId, req.body);
+      const listing = await svc.updateListing(companyId, listingId, userId, req.body, { allowPromotion: false });
       res.json(listing);
     },
   );
@@ -465,9 +518,42 @@ export function marketplaceRoutes(db: Db) {
               taskType: input.taskType,
               runPhase: input.runPhase,
               targetUrl: input.targetUrl ?? null,
+              clientName: input.clientName ?? null,
+              clientEmail: input.clientEmail ?? null,
+              clientCompany: input.clientCompany ?? null,
             },
           },
         }).returning().then((rows) => rows[0]);
+
+        const workOrderMetadata = buildMicroserviceWorkOrderMetadata({
+          listingId: input.listingId,
+          transactionId: transaction.id,
+          taskType: input.taskType,
+          runPhase: input.runPhase,
+          targetUrl: input.targetUrl ?? null,
+          title: input.title,
+          instructions: input.instructions,
+          clientName: input.clientName ?? null,
+          clientEmail: input.clientEmail ?? null,
+          clientCompany: input.clientCompany ?? null,
+        });
+
+        await tx.insert(issueWorkProducts).values({
+          companyId,
+          projectId: issue.projectId ?? null,
+          issueId: issue.id,
+          type: "document",
+          provider: MICROSERVICE_WORK_ORDER_PROVIDER,
+          externalId: MICROSERVICE_WORK_ORDER_EXTERNAL_ID,
+          title: "Microservice Work Order",
+          status: "active",
+          reviewState: "none",
+          isPrimary: false,
+          healthStatus: "healthy",
+          summary: summarizeMicroserviceWorkOrder(workOrderMetadata),
+          metadata: workOrderMetadata as Record<string, unknown>,
+          createdByRunId: null,
+        });
 
         return { transaction, issue };
       });

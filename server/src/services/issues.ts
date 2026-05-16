@@ -32,6 +32,7 @@ import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText } from "../log-redaction.js";
 import { resolveIssueGoalId, resolveNextIssueGoalId } from "./issue-goal-fallback.js";
 import { getDefaultCompanyGoal } from "./goals.js";
+import { logActivity } from "./activity-log.js";
 
 const ALL_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"];
 const MAX_ISSUE_COMMENT_PAGE_LIMIT = 500;
@@ -1043,7 +1044,15 @@ export function issueService(db: Db) {
         patch.checkoutRunId = null;
       }
 
-      return db.transaction(async (tx) => {
+      // Hoist XP calculation so value is available post-transaction for activity logging
+      const XP_BY_PRIORITY: Record<string, number> = {
+        critical: 50, urgent: 40, high: 30, medium: 15, low: 5,
+      };
+      const xpGained = (patch.status === "done" && existing.assigneeAgentId)
+        ? (XP_BY_PRIORITY[existing.priority ?? "medium"] ?? 10)
+        : 0;
+
+      const result = await db.transaction(async (tx) => {
         const defaultCompanyGoal = await getDefaultCompanyGoal(tx, existing.companyId);
         const [currentProjectGoalId, nextProjectGoalId] = await Promise.all([
           getProjectDefaultGoalId(tx, existing.companyId, existing.projectId),
@@ -1073,8 +1082,46 @@ export function issueService(db: Db) {
           await syncIssueLabels(updated.id, existing.companyId, nextLabelIds, tx);
         }
         const [enriched] = await withIssueLabels(tx, [updated]);
+
+        // Award XP to assignee agent when issue transitions to done
+        if (xpGained > 0 && existing.assigneeAgentId) {
+          await tx
+            .update(agents)
+            .set({
+              metadata: sql`jsonb_set(
+                COALESCE(${agents.metadata}, '{}'),
+                '{xp}',
+                to_jsonb(COALESCE((${agents.metadata}->>'xp')::int, 0) + ${xpGained})
+              )`,
+              updatedAt: new Date(),
+            })
+            .where(eq(agents.id, existing.assigneeAgentId));
+        }
+
         return enriched;
       });
+
+      // Post-transaction: log XP award to the activity chain
+      if (result && xpGained > 0 && existing.assigneeAgentId) {
+        await logActivity(db, {
+          companyId: existing.companyId,
+          actorType: "system",
+          actorId: existing.assigneeAgentId,
+          action: "agent.xp_awarded",
+          entityType: "agent",
+          entityId: existing.assigneeAgentId,
+          agentId: existing.assigneeAgentId,
+          details: {
+            xpGained,
+            issueId: id,
+            issueTitle: existing.title,
+            priority: existing.priority ?? "medium",
+            runId: existing.checkoutRunId ?? null,
+          },
+        });
+      }
+
+      return result;
     },
 
     remove: (id: string) =>

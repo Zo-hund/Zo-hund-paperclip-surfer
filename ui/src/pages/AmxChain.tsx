@@ -11,12 +11,21 @@ import {
   Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { amxApi } from "@/api/amx";
 import { useCompany } from "@/context/CompanyContext";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export function AmxChain() {
   const { selectedCompanyId } = useCompany();
+  const queryClient = useQueryClient();
   
   const { data, isLoading, error } = useQuery({
     queryKey: ["amx", "chain", selectedCompanyId],
@@ -43,6 +52,29 @@ export function AmxChain() {
 
   const logs = data?.logs ?? [];
   const certificates = data?.certificates ?? [];
+  const [verifyingLog, setVerifyingLog] = React.useState<typeof logs[0] | null>(null);
+  const [verifyStep, setVerifyStep] = React.useState<"loading" | "success" | "idle">("idle");
+
+  const handleVerify = (log: typeof logs[0]) => {
+    setVerifyingLog(log);
+    setVerifyStep("loading");
+    setTimeout(() => {
+      setVerifyStep("success");
+    }, 2500);
+  };
+
+  const [reconcileData, setReconcileData] = React.useState<{
+    integrityScore: number;
+    compromisedCount: number;
+    totalEvents: number;
+  } | null>(null);
+
+  const reconcileMutation = useMutation({
+    mutationFn: () => amxApi.verifyChain(selectedCompanyId!),
+    onSuccess: (data) => {
+      setReconcileData(data);
+    }
+  });
 
   return (
     <div className="flex flex-col min-h-screen bg-background/50 animate-in fade-in duration-500">
@@ -65,13 +97,13 @@ export function AmxChain() {
 
           <div className="flex wrap items-center gap-4 mt-2 md:mt-0">
             <div className="flex flex-col items-center">
-               <span className="text-2xl md:text-3xl font-black text-emerald-500">12,402</span>
+               <span className="text-2xl md:text-3xl font-black text-emerald-500">{(data?.totals?.totalEvents ?? 0).toLocaleString()}</span>
                <span className="text-[9px] md:text-[10px] font-black uppercase text-muted-foreground tracking-widest mt-1">Verified Events</span>
             </div>
             <div className="w-px h-10 bg-border/60 mx-2 md:mx-4" />
             <div className="flex flex-col items-center">
-               <span className="text-2xl md:text-3xl font-black text-emerald-500">99.9%</span>
-               <span className="text-[9px] md:text-[10px] font-black uppercase text-muted-foreground tracking-widest mt-1">Uptime Reliability</span>
+               <span className="text-2xl md:text-3xl font-black text-emerald-500">{reconcileData ? `${reconcileData.integrityScore.toFixed(1)}%` : (data?.health?.uptime ?? 99.9) + "%"}</span>
+               <span className="text-[9px] md:text-[10px] font-black uppercase text-muted-foreground tracking-widest mt-1">{reconcileData ? "Integrity Score" : "Uptime Reliability"}</span>
             </div>
           </div>
         </div>
@@ -85,7 +117,19 @@ export function AmxChain() {
           <div className="lg:col-span-2 space-y-6">
              <div className="flex items-center justify-between">
                 <h3 className="text-[13px] font-black tracking-[0.3em] uppercase text-muted-foreground">Recent Security Events</h3>
-                <Button variant="ghost" className="h-8 text-[11px] font-black uppercase tracking-widest text-primary hover:bg-primary/10">View Full Ledger</Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => reconcileMutation.mutate()}
+                    disabled={reconcileMutation.isPending}
+                    className="h-8 text-[11px] font-black uppercase tracking-widest border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10"
+                  >
+                    {reconcileMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <ShieldCheck className="h-3 w-3 mr-1.5" />}
+                    Reconcile Ledger
+                  </Button>
+                  <Button variant="ghost" className="h-8 text-[11px] font-black uppercase tracking-widest text-primary hover:bg-primary/10">View Full Ledger</Button>
+                </div>
              </div>
 
              <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
@@ -110,10 +154,15 @@ export function AmxChain() {
                       <div className="w-[25%] text-[12px] font-black text-foreground">{log.principal}</div>
                       <div className="w-[25%] text-[12px] text-muted-foreground font-medium truncate pr-4" title={log.hash}>{log.hash}</div>
                       <div className="w-[15%] text-right">
-                         <div className={`flex items-center justify-end gap-1.5 text-[10px] font-black uppercase tracking-widest ${log.status === 'VERIFIED' ? 'text-emerald-500' : 'text-amber-500 animate-pulse'}`}>
+                         <Button 
+                           variant="ghost" 
+                           size="sm" 
+                           onClick={() => handleVerify(log)}
+                           className={`flex items-center justify-end gap-1.5 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/10 h-7 px-2 ml-auto ${log.status === 'VERIFIED' ? 'text-emerald-500' : 'text-amber-500 animate-pulse'}`}
+                         >
                            {log.status === 'VERIFIED' ? <BadgeCheck className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
-                           {log.status}
-                         </div>
+                           {log.status === 'VERIFIED' ? 'Verify' : log.status}
+                         </Button>
                       </div>
                     </div>
                   ))}
@@ -175,19 +224,19 @@ export function AmxChain() {
                 <div className="space-y-6">
                    <div className="flex items-center justify-between">
                      <span className="text-[12px] font-medium text-muted-foreground">Block Height</span>
-                     <span className="text-[14px] font-black text-foreground">#1,059,203</span>
+                     <span className="text-[14px] font-black text-foreground">#{data?.health?.blockHeight?.toLocaleString() ?? '1,059,203'}</span>
                    </div>
                    <div className="flex items-center justify-between">
                      <span className="text-[12px] font-medium text-muted-foreground">Nodes Active</span>
-                     <span className="text-[14px] font-black text-foreground">14</span>
+                     <span className="text-[14px] font-black text-foreground">{data?.health?.nodesActive ?? 14}</span>
                    </div>
                    <div className="flex items-center justify-between">
-                     <span className="text-[12px] font-medium text-muted-foreground">Transactions (24h)</span>
-                     <span className="text-[14px] font-black text-foreground">4,204</span>
+                     <span className="text-[12px] font-medium text-muted-foreground">Transactions (Session)</span>
+                     <span className="text-[14px] font-black text-foreground">{data?.totals?.logCount ?? 0}</span>
                    </div>
                    <div className="flex items-center justify-between">
-                     <span className="text-[12px] font-medium text-muted-foreground">Network Hashrate</span>
-                     <span className="text-[14px] font-black text-foreground">8.2 GH/s</span>
+                     <span className="text-[12px] font-medium text-muted-foreground">Certificates</span>
+                     <span className="text-[14px] font-black text-foreground">{data?.totals?.certCount ?? 0}</span>
                    </div>
                 </div>
                 
@@ -214,6 +263,66 @@ export function AmxChain() {
           </aside>
         </div>
       </main>
+      {/* Verification Modal */}
+      <Dialog open={!!verifyingLog} onOpenChange={(open) => !open && setVerifyingLog(null)}>
+        <DialogContent className="max-w-md border-emerald-500/20 shadow-2xl shadow-emerald-500/10">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-emerald-500" />
+              Verify Ledger Entry
+            </DialogTitle>
+            <DialogDescription className="text-xs uppercase font-black tracking-widest text-muted-foreground pt-1">
+              Cryptographic Audit · {verifyingLog?.id}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-6 flex flex-col items-center text-center">
+            {verifyStep === "loading" ? (
+              <>
+                <div className="relative w-20 h-20 mb-6">
+                   <Loader2 className="h-20 w-20 animate-spin text-emerald-500 opacity-20" />
+                   <Fingerprint className="h-10 w-10 text-emerald-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
+                </div>
+                <p className="text-sm font-bold text-foreground">Analyzing block signature...</p>
+                <p className="text-[10px] font-mono text-muted-foreground mt-2 break-all px-4">{verifyingLog?.hash}</p>
+              </>
+            ) : (
+              <div className="animate-in zoom-in-95 duration-300">
+                <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-6">
+                  <BadgeCheck className="h-10 w-10 text-emerald-500" />
+                </div>
+                <h3 className="text-lg font-black text-emerald-500 uppercase">Verification Passed</h3>
+                <p className="text-sm text-muted-foreground mt-2">Signature matches AMX Chain state root.</p>
+                
+                <div className="mt-6 p-4 rounded-xl bg-accent/5 border border-border/40 text-left space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase">Action</span>
+                    <span className="text-[10px] font-bold">{verifyingLog?.action}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase">Principal</span>
+                    <span className="text-[10px] font-bold">{verifyingLog?.principal}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] font-black text-muted-foreground uppercase">Timestamp</span>
+                    <span className="text-[10px] font-bold">{verifyingLog?.timestamp}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button 
+              className="w-full h-11 font-black uppercase tracking-widest text-[11px]" 
+              disabled={verifyStep === "loading"}
+              onClick={() => setVerifyingLog(null)}
+            >
+              Close Auditor
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

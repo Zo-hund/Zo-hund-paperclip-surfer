@@ -68,6 +68,6 @@ export { collectives, electives, communityBoards, boardCollaborations } from "./
 export { rqSubmissions, rqAgentConfigs } from "./rq_factory.js";
 export { lmsWorkshops, lmsEnrollments, lmsSimulations } from "./lms_training.js";
 export { marketplaceProfiles, marketplaceListings } from "./marketplace.js";
-export { simNotebooks, pitStopWorkspaces, pitStopPackages } from "./sim_pit_stop.js";
+export { simNotebooks, pitStopWorkspaces, pitStopPackages, pitStopOptimizations } from "./sim_pit_stop.js";
 export { auditVerifications } from "./audit_verifications.js";
 export { agentChatMessages } from "./agent_chat_messages.js";

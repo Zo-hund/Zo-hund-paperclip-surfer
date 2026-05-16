@@ -82,8 +82,8 @@ test.describe("meeting-gemini: Meeting Hub — Gemini Live & controls", () => {
     // Status bar appears
     await expect(page.locator("text=GEMINI LIVE").first()).toBeVisible({ timeout: 5_000 });
 
-    // Model name shown
-    await expect(page.locator("text=gemini-3.1-flash-live").first()).toBeVisible({ timeout: 5_000 });
+    // Model name shown (allow for version variations like 2.0 or 3.1)
+    await expect(page.locator("text=/gemini-.*-flash-live/").first()).toBeVisible({ timeout: 5_000 });
 
     // Wait for WS to settle — any status except "connecting" means the server responded
     // (listening/connected = Gemini key working; unavailable/error = key missing but WS ok)

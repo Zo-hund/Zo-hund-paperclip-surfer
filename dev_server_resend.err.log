@@ -1,0 +1,28 @@
+=re_Borjjd18_M5tf9ac8Ly5RefBFHjUyJE1y : The term '=re_Borjjd18_M5tf9ac8Ly5RefBFHjUyJE1y' is not recognized as the name 
+of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, 
+verify that the path is correct and try again.
+At line:1 char:1
++ ='re_Borjjd18_M5tf9ac8Ly5RefBFHjUyJE1y'; ='onboarding@amx-air-hubs.cc ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=re_Borjjd18_M5tf9ac8Ly5RefBFHjUyJE1y:String) [], CommandNotFoundExcept 
+   ion
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=onboarding@amx-air-hubs.cc : The term '=onboarding@amx-air-hubs.cc' is not recognized as the name of a cmdlet, 
+function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the 
+path is correct and try again.
+At line:1 char:42
++ ... jd18_M5tf9ac8Ly5RefBFHjUyJE1y'; ='onboarding@amx-air-hubs.cc'; ='supp ...
++                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=onboarding@amx-air-hubs.cc:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=support@amx-air-hubs.cc : The term '=support@amx-air-hubs.cc' is not recognized as the name of a cmdlet, function, 
+script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is 
+correct and try again.
+At line:1 char:73
++ ... y'; ='onboarding@amx-air-hubs.cc'; ='support@amx-air-hubs.cc'; Set-Lo ...
++                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=support@amx-air-hubs.cc:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 

@@ -1,0 +1,24 @@
+=3110 : The term '=3110' is not recognized as the name of a cmdlet, function, script file, or operable program. Check 
+the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:1
++ ='3110'; ='1'; ='1'; pnpm --filter @paperclipai/server dev
++ ~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=3110:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=1 : The term '=1' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the 
+spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:10
++ ='3110'; ='1'; ='1'; pnpm --filter @paperclipai/server dev
++          ~~~~
+    + CategoryInfo          : ObjectNotFound: (=1:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=1 : The term '=1' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the 
+spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:16
++ ='3110'; ='1'; ='1'; pnpm --filter @paperclipai/server dev
++                ~~~~
+    + CategoryInfo          : ObjectNotFound: (=1:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 

@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -363,6 +364,81 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
       .where(eq(issues.originId, routine.id));
 
     expect(routineIssues).toHaveLength(1);
+  });
+
+  it("reuses the existing open routine issue when a legacy open-issue index blocks fresh dispatch", async () => {
+    const { companyId, issueSvc, routine, svc, wakeups, agentId } = await seedFixture();
+    const previousRunId = randomUUID();
+    const previousIssue = await issueSvc.create(companyId, {
+      projectId: routine.projectId,
+      title: routine.title,
+      description: routine.description,
+      status: "todo",
+      priority: routine.priority,
+      assigneeAgentId: routine.assigneeAgentId,
+      originKind: "routine_execution",
+      originId: routine.id,
+      originRunId: previousRunId,
+    });
+
+    await db.insert(routineRuns).values({
+      id: previousRunId,
+      companyId,
+      routineId: routine.id,
+      triggerId: null,
+      source: "manual",
+      status: "issue_created",
+      triggeredAt: new Date("2026-03-20T12:00:00.000Z"),
+      linkedIssueId: previousIssue.id,
+    });
+
+    await db.execute(sql`drop index if exists "issues_open_routine_execution_uq"`);
+    await db.execute(sql`
+      create unique index if not exists "issues_open_routine_execution_uq"
+      on "issues" using btree ("company_id","origin_kind","origin_id")
+      where "issues"."origin_kind" = 'routine_execution'
+        and "issues"."origin_id" is not null
+        and "issues"."hidden_at" is null
+        and "issues"."status" in ('backlog', 'todo', 'in_progress', 'in_review', 'blocked')
+    `);
+
+    try {
+      const run = await svc.runRoutine(routine.id, { source: "manual" });
+
+      expect(run.status).toBe("issue_created");
+      expect(run.linkedIssueId).toBe(previousIssue.id);
+      expect(wakeups.at(-1)).toEqual({
+        agentId,
+        opts: {
+          source: "assignment",
+          triggerDetail: "system",
+          reason: "issue_assigned",
+          payload: { issueId: previousIssue.id, mutation: "reuse" },
+          requestedByActorType: undefined,
+          requestedByActorId: null,
+          contextSnapshot: { issueId: previousIssue.id, source: "routine.dispatch.reuse" },
+        },
+      });
+
+      const routineIssues = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(eq(issues.originId, routine.id));
+
+      expect(routineIssues).toHaveLength(1);
+      expect(routineIssues[0]?.id).toBe(previousIssue.id);
+    } finally {
+      await db.execute(sql`drop index if exists "issues_open_routine_execution_uq"`);
+      await db.execute(sql`
+        create unique index if not exists "issues_open_routine_execution_uq"
+        on "issues" using btree ("company_id","origin_kind","origin_id")
+        where "issues"."origin_kind" = 'routine_execution'
+          and "issues"."origin_id" is not null
+          and "issues"."hidden_at" is null
+          and "issues"."execution_run_id" is not null
+          and "issues"."status" in ('backlog', 'todo', 'in_progress', 'in_review', 'blocked')
+      `);
+    }
   });
 
   it("fails the run and cleans up the execution issue when wakeup queueing fails", async () => {

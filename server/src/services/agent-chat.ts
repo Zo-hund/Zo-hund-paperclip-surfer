@@ -1,6 +1,6 @@
-import { asc, desc, eq, and } from "drizzle-orm";
+import { asc, desc, eq, and, inArray, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentChatMessages, agents } from "@paperclipai/db";
+import { agentChatMessages, agents, issues } from "@paperclipai/db";
 import type { AgentChatMessage } from "@paperclipai/shared";
 import { notFound } from "../errors.js";
 import { publishLiveEvent } from "./live-events.js";
@@ -116,6 +116,109 @@ export function agentChatService(db: Db) {
         createdAt: m.createdAt.toISOString(),
       }));
 
+      // Role-level real-time context: peer agents and cross-agent work orders.
+      const sameRoleAgents = await db
+        .select({
+          id: agents.id,
+          name: agents.name,
+          title: agents.title,
+          role: agents.role,
+          status: agents.status,
+          updatedAt: agents.updatedAt,
+        })
+        .from(agents)
+        .where(and(eq(agents.companyId, input.companyId), eq(agents.role, agent.role)))
+        .orderBy(desc(agents.updatedAt))
+        .limit(12);
+
+      const roleAgentIds = sameRoleAgents.map((a) => a.id);
+      const includeStatuses = ["backlog", "todo", "in_progress", "in_review", "blocked"];
+      const recentDoneStatuses = ["done"];
+      const roleOpenWorkOrders = roleAgentIds.length
+        ? await db
+            .select({
+              id: issues.id,
+              identifier: issues.identifier,
+              title: issues.title,
+              status: issues.status,
+              priority: issues.priority,
+              assigneeAgentId: issues.assigneeAgentId,
+              updatedAt: issues.updatedAt,
+              projectId: issues.projectId,
+            })
+            .from(issues)
+            .where(
+              and(
+                eq(issues.companyId, input.companyId),
+                isNull(issues.hiddenAt),
+                inArray(issues.assigneeAgentId, roleAgentIds),
+                inArray(issues.status, includeStatuses),
+              ),
+            )
+            .orderBy(desc(issues.updatedAt))
+            .limit(25)
+        : [];
+
+      const recentDoneWorkOrders = roleAgentIds.length
+        ? await db
+            .select({
+              id: issues.id,
+              identifier: issues.identifier,
+              title: issues.title,
+              status: issues.status,
+              priority: issues.priority,
+              assigneeAgentId: issues.assigneeAgentId,
+              updatedAt: issues.updatedAt,
+              projectId: issues.projectId,
+            })
+            .from(issues)
+            .where(
+              and(
+                eq(issues.companyId, input.companyId),
+                isNull(issues.hiddenAt),
+                inArray(issues.assigneeAgentId, roleAgentIds),
+                inArray(issues.status, recentDoneStatuses),
+              ),
+            )
+            .orderBy(desc(issues.updatedAt))
+            .limit(10)
+        : [];
+
+      const roleContext = {
+        role: agent.role,
+        selfAgentId: input.agentId,
+        peers: sameRoleAgents.map((peer) => ({
+          id: peer.id,
+          name: peer.name,
+          title: peer.title,
+          role: peer.role,
+          status: peer.status,
+          updatedAt: peer.updatedAt?.toISOString?.() ?? null,
+        })),
+        workOrders: {
+          active: roleOpenWorkOrders.map((issue) => ({
+            id: issue.id,
+            identifier: issue.identifier,
+            title: issue.title,
+            status: issue.status,
+            priority: issue.priority,
+            assigneeAgentId: issue.assigneeAgentId,
+            updatedAt: issue.updatedAt?.toISOString?.() ?? null,
+            projectId: issue.projectId,
+          })),
+          recentDone: recentDoneWorkOrders.map((issue) => ({
+            id: issue.id,
+            identifier: issue.identifier,
+            title: issue.title,
+            status: issue.status,
+            priority: issue.priority,
+            assigneeAgentId: issue.assigneeAgentId,
+            updatedAt: issue.updatedAt?.toISOString?.() ?? null,
+            projectId: issue.projectId,
+          })),
+        },
+      };
+
       // Wake the agent with enriched context
       let runId: string | null = null;
       try {
@@ -132,6 +235,7 @@ export function agentChatService(db: Db) {
             content: input.content,
             memories: memoryContext,
             chatHistory,
+            roleContext,
           },
         });
         runId = run?.id ?? null;

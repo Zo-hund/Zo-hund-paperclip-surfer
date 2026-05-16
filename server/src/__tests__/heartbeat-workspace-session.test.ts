@@ -3,11 +3,14 @@ import type { agents } from "@paperclipai/db";
 import { sessionCodec as codexSessionCodec } from "@paperclipai/adapter-codex-local/server";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 import {
+  buildExecutionPlanForCandidate,
+  classifyAdapterFailure,
   buildExplicitResumeSessionOverride,
   formatRuntimeWorkspaceWarningLog,
   prioritizeProjectWorkspaceCandidatesForRun,
   parseSessionCompactionPolicy,
   resolveRuntimeSessionParamsForWorkspace,
+  shouldAttemptFailover,
   shouldResetTaskSessionForWake,
   type ResolvedWorkspaceForRun,
 } from "../services/heartbeat.ts";
@@ -244,6 +247,115 @@ describe("formatRuntimeWorkspaceWarningLog", () => {
   });
 });
 
+describe("runtime model failover helpers", () => {
+  it("classifies provider quota and denial failures for failover decisions", () => {
+    expect(
+      classifyAdapterFailure({
+        exitCode: 1,
+        signal: null,
+        timedOut: false,
+        errorMessage: "This request requires more credits, or fewer max_tokens.",
+      }),
+    ).toBe("quota_exhausted");
+    expect(
+      classifyAdapterFailure({
+        exitCode: 1,
+        signal: null,
+        timedOut: false,
+        errorMessage: "Your project has been denied access. Please contact support.",
+      }),
+    ).toBe("provider_denied");
+  });
+
+  it("only continues failover for retryable categories while candidates remain", () => {
+    const plan = {
+      gearProfile: {},
+      contextTier: "project_aware",
+      selectedHarness: "opencode_local",
+      selectedModel: "google/gemini-2.5-flash",
+      selectedDeployment: "local",
+      selectedProvider: "google",
+      selectedVariant: "medium",
+      selectedWorkspaceMode: "project_workspace",
+      selectionReason: "objective=technical",
+      fallbackApplied: false,
+      manualOverrideApplied: false,
+      initialSelectedModel: "google/gemini-2.5-flash",
+      candidateModels: [
+        {
+          harness: "opencode_local",
+          model: "google/gemini-2.5-flash",
+          provider: "google",
+          variant: "medium",
+          deployment: "local",
+          reasoningTier: "standard",
+          reason: "primary",
+        },
+        {
+          harness: "opencode_local",
+          model: "google/gemini-2.5-flash-lite",
+          provider: "google",
+          variant: "medium",
+          deployment: "local",
+          reasoningTier: "standard",
+          reason: "fallback",
+        },
+      ],
+      failoverPolicy: {
+        maxAttempts: 3,
+        retryableCategories: ["rate_limited", "quota_exhausted", "provider_denied"],
+      },
+    } as const;
+
+    expect(
+      shouldAttemptFailover(
+        plan,
+        [
+          {
+            attempt: 1,
+            harness: "opencode_local",
+            model: "google/gemini-2.5-flash",
+            provider: "google",
+            variant: "medium",
+            deployment: "local",
+            reasoningTier: "standard",
+            outcome: "failed",
+            errorCode: "adapter_failed",
+            errorMessage: "Too many requests",
+            failureCategory: "rate_limited",
+          },
+        ],
+        "rate_limited",
+      ),
+    ).toBe(true);
+    expect(
+      shouldAttemptFailover(
+        plan,
+        [
+          {
+            attempt: 1,
+            harness: "opencode_local",
+            model: "google/gemini-2.5-flash",
+            provider: "google",
+            variant: "medium",
+            deployment: "local",
+            reasoningTier: "standard",
+            outcome: "failed",
+            errorCode: "provider_auth",
+            errorMessage: "missing api key",
+            failureCategory: "auth_failed",
+          },
+        ],
+        "auth_failed",
+      ),
+    ).toBe(false);
+    expect(buildExecutionPlanForCandidate(plan, plan.candidateModels[1])).toMatchObject({
+      selectedModel: "google/gemini-2.5-flash-lite",
+      selectedProvider: "google",
+    });
+  });
+});
+
 describe("prioritizeProjectWorkspaceCandidatesForRun", () => {
   it("moves the explicitly selected workspace to the front", () => {
     const rows = [
@@ -305,9 +417,9 @@ describe("parseSessionCompactionPolicy", () => {
     });
     expect(parseSessionCompactionPolicy(buildAgent("opencode_local"))).toEqual({
       enabled: true,
-      maxSessionRuns: 200,
-      maxRawInputTokens: 2_000_000,
-      maxSessionAgeHours: 72,
+      maxSessionRuns: 40,
+      maxRawInputTokens: 400_000,
+      maxSessionAgeHours: 12,
     });
   });
 

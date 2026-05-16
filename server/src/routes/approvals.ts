@@ -16,6 +16,7 @@ import {
   logActivity,
   pitStopService,
   secretService,
+  amxChainService,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
@@ -34,6 +35,7 @@ export function approvalRoutes(db: Db) {
   const issueApprovalsSvc = issueApprovalService(db);
   const pitStop = pitStopService(db);
   const secretsSvc = secretService(db);
+  const chainSvc = amxChainService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
   router.get("/companies/:companyId/approvals", async (req, res) => {
@@ -103,6 +105,13 @@ export function approvalRoutes(db: Db) {
       entityType: "approval",
       entityId: approval.id,
       details: { type: approval.type, issueIds: uniqueIssueIds },
+    });
+
+    // Record on AMX Chain
+    await chainSvc.recordSecurityEvent(companyId, actor.actorType, actor.actorId, "APPROVAL_CREATED", {
+      approvalId: approval.id,
+      type: approval.type,
+      issueIds: uniqueIssueIds,
     });
 
     res.status(201).json(redactApprovalPayload(approval));
@@ -199,6 +208,13 @@ export function approvalRoutes(db: Db) {
         },
       });
 
+      // Record on AMX Chain
+      await chainSvc.recordSecurityEvent(approval.companyId, "user", req.actor.userId ?? "board", "APPROVAL_APPROVED", {
+        approvalId: approval.id,
+        type: approval.type,
+        decisionNote: req.body.decisionNote,
+      });
+
       if (approval.requestedByAgentId) {
         try {
           const wakeRun = await heartbeat.wakeup(approval.requestedByAgentId, {
@@ -290,6 +306,13 @@ export function approvalRoutes(db: Db) {
         entityType: "approval",
         entityId: approval.id,
         details: { type: approval.type },
+      });
+
+      // Record on AMX Chain
+      await chainSvc.recordSecurityEvent(approval.companyId, "user", req.actor.userId ?? "board", "APPROVAL_REJECTED", {
+        approvalId: approval.id,
+        type: approval.type,
+        decisionNote: req.body.decisionNote,
       });
     }
 

@@ -67,5 +67,5 @@ export function errorHandler(
     rootError,
   );
 
-  res.status(500).json({ error: "Internal server error" });
+  res.status(500).json({ error: "Internal server error", message: rootError.message, stack: rootError.stack });
 }

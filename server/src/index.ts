@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 import type { Request as ExpressRequest, RequestHandler } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   createDb,
   ensurePostgresDatabase,
@@ -167,6 +167,14 @@ export async function startServer(): Promise<StartedServer> {
     logger.info({ pendingMigrations: state.pendingMigrations }, `Applying ${state.pendingMigrations.length} pending migrations for ${label}`);
     await applyPendingMigrations(connectionString);
     return "applied (pending migrations)";
+  }
+
+  async function repairKnownSchemaDrift(db: any): Promise<void> {
+    logger.info("Verifying known additive schema safeguards");
+    await db.execute(sql`
+      ALTER TABLE "issues"
+      ADD COLUMN IF NOT EXISTS "runtime_requirements" jsonb
+    `);
   }
   
   function isLoopbackHost(host: string): boolean {
@@ -436,6 +444,8 @@ export async function startServer(): Promise<StartedServer> {
     resolvedEmbeddedPostgresPort = port;
     startupDbInfo = { mode: "embedded-postgres", dataDir, port };
   }
+
+  await repairKnownSchemaDrift(db);
   
   if (config.deploymentMode === "local_trusted" && !isLoopbackHost(config.host)) {
     throw new Error(

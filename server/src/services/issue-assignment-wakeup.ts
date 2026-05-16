@@ -1,4 +1,5 @@
 import { logger } from "../middleware/logger.js";
+import type { IssueRuntimeRequirements } from "@paperclipai/shared";
 
 type WakeupTriggerDetail = "manual" | "ping" | "callback" | "system";
 type WakeupSource = "timer" | "assignment" | "on_demand" | "automation";
@@ -20,7 +21,7 @@ export interface IssueAssignmentWakeupDeps {
 
 export function queueIssueAssignmentWakeup(input: {
   heartbeat: IssueAssignmentWakeupDeps;
-  issue: { id: string; assigneeAgentId: string | null; status: string };
+  issue: { id: string; assigneeAgentId: string | null; status: string; runtimeRequirements?: IssueRuntimeRequirements | null };
   reason: string;
   mutation: string;
   contextSource: string;
@@ -38,7 +39,11 @@ export function queueIssueAssignmentWakeup(input: {
       payload: { issueId: input.issue.id, mutation: input.mutation },
       requestedByActorType: input.requestedByActorType,
       requestedByActorId: input.requestedByActorId ?? null,
-      contextSnapshot: { issueId: input.issue.id, source: input.contextSource },
+      contextSnapshot: {
+        issueId: input.issue.id,
+        source: input.contextSource,
+        ...(input.issue.runtimeRequirements ? { runtimeRequirements: input.issue.runtimeRequirements } : {}),
+      },
     })
     .catch((err) => {
       logger.warn({ err, issueId: input.issue.id }, "failed to wake assignee on issue assignment");

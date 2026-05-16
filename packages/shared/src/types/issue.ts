@@ -51,6 +51,42 @@ export interface IssueAssigneeAdapterOverrides {
   useProjectWorkspace?: boolean;
 }
 
+export type IssueRuntimeObjectiveClass = "creative" | "technical" | "research" | "ops" | "mixed";
+export type IssueRuntimeQualityTier = "economy" | "standard" | "premium";
+export type IssueRuntimeLatencyTier = "background" | "interactive" | "urgent";
+export type IssueRuntimeBudgetMode = "min_cost" | "balanced" | "best_effort";
+export type IssueRuntimeDeploymentPreference = "local_only" | "cloud_only" | "local_then_cloud" | "cloud_then_local";
+export type IssueRuntimeDataSensitivity = "local_preferred" | "cloud_allowed";
+export type IssueRuntimeCapability = "web" | "files" | "code" | "image" | "audio" | "video";
+export type IssueRuntimeContextTier = "minimal" | "role_aware" | "project_aware" | "engineering_full";
+export type IssueRuntimeReasoningTier = "low" | "standard" | "high";
+export type IssueRuntimeWorkspaceMode = "agent_home" | "project_workspace";
+export type IssueRuntimeDeploymentTarget = "local" | "cloud";
+
+export interface IssueRuntimeManualOverride {
+  adapterType?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  variant?: string | null;
+  allowAutoSwitch?: boolean | null;
+  cwd?: string | null;
+  deploymentTarget?: IssueRuntimeDeploymentTarget | null;
+  contextTier?: IssueRuntimeContextTier | null;
+  reasoningTier?: IssueRuntimeReasoningTier | null;
+  workspaceMode?: IssueRuntimeWorkspaceMode | null;
+}
+
+export interface IssueRuntimeRequirements {
+  objectiveClass?: IssueRuntimeObjectiveClass | null;
+  qualityTier?: IssueRuntimeQualityTier | null;
+  latencyTier?: IssueRuntimeLatencyTier | null;
+  budgetMode?: IssueRuntimeBudgetMode | null;
+  deploymentPreference?: IssueRuntimeDeploymentPreference | null;
+  dataSensitivity?: IssueRuntimeDataSensitivity | null;
+  requiredCapabilities?: IssueRuntimeCapability[] | null;
+  manualOverride?: IssueRuntimeManualOverride | null;
+}
+
 export type DocumentFormat = "markdown";
 
 export interface IssueDocumentSummary {
@@ -122,6 +158,7 @@ export interface Issue {
   requestDepth: number;
   billingCode: string | null;
   assigneeAdapterOverrides: IssueAssigneeAdapterOverrides | null;
+  runtimeRequirements?: IssueRuntimeRequirements | null;
   executionWorkspaceId: string | null;
   executionWorkspacePreference: string | null;
   executionWorkspaceSettings: IssueExecutionWorkspaceSettings | null;

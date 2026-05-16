@@ -1,19 +1,21 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 
 /**
  * Hook for managing voice recording and visualization
  */
 export function useVoiceRecorder() {
   const [isRecording, setIsRecording] = useState(false);
-  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  // Ref so stopRecording doesn't close over stale `isRecording` state
+  const isRecordingRef = useRef(false);
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setAudioStream(stream);
+      audioStreamRef.current = stream;
 
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(stream);
@@ -31,6 +33,7 @@ export function useVoiceRecorder() {
       };
 
       mediaRecorder.start(1000); // 1s chunks
+      isRecordingRef.current = true;
       setIsRecording(true);
     } catch (err) {
       console.error("Failed to start recording:", err);
@@ -38,16 +41,19 @@ export function useVoiceRecorder() {
   }, []);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
+    // Use ref to avoid stale closure — state won't be current inside callback
+    if (mediaRecorderRef.current && isRecordingRef.current) {
       mediaRecorderRef.current.stop();
-      audioStream?.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current?.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current = null;
+      isRecordingRef.current = false;
       setIsRecording(false);
-      
+
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
       return blob;
     }
     return null;
-  }, [isRecording, audioStream]);
+  }, []);
 
   return {
     isRecording,

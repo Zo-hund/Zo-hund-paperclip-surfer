@@ -5,6 +5,7 @@ import {
   authUsers,
   heartbeatRuns,
   issueWorkProducts,
+  pitStopOptimizations,
   pitStopPackages,
   pitStopWorkspaces,
   simNotebooks,
@@ -12,6 +13,8 @@ import {
 import { badRequest, notFound, unprocessable } from "../errors.js";
 import { issueService } from "./issues.js";
 import { workProductService } from "./work-products.js";
+import { costService } from "./costs.js";
+import { buildPitStopOptimizationRecommendation } from "./agent-runtime/pit-stop-optimizer.js";
 
 type RunRecord = typeof heartbeatRuns.$inferSelect;
 type NotebookRecord = typeof simNotebooks.$inferSelect;
@@ -390,6 +393,218 @@ export function pitStopService(db: Db) {
     );
   }
 
+  async function ensureWorkspaceForRun(run: RunRecord, scenario: { memberUserId: string; scenarioKey: string; scenarioLabel: string }) {
+    let notebook = await db
+      .select()
+      .from(simNotebooks)
+      .where(
+        and(
+          eq(simNotebooks.companyId, run.companyId),
+          eq(simNotebooks.memberUserId, scenario.memberUserId),
+          eq(simNotebooks.scenarioKey, scenario.scenarioKey),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+
+    const notebookIssueId = notebook?.issueId
+      ?? (await ensureNotebookIssue(
+        run.companyId,
+        scenario.memberUserId,
+        scenario.scenarioLabel,
+        scenario.scenarioKey,
+      ));
+
+    if (!notebook) {
+      notebook = await db
+        .insert(simNotebooks)
+        .values({
+          companyId: run.companyId,
+          memberUserId: scenario.memberUserId,
+          scenarioKey: scenario.scenarioKey,
+          scenarioLabel: scenario.scenarioLabel,
+          issueId: notebookIssueId,
+          lastSourceRunId: ["succeeded", "failed", "timed_out", "cancelled"].includes(run.status) ? run.id : null,
+          latestSectionKey: null,
+          currentMarkdown: "",
+        })
+        .returning()
+        .then((rows) => rows[0]);
+    } else if (!notebook.issueId) {
+      notebook = await db
+        .update(simNotebooks)
+        .set({
+          issueId: notebookIssueId,
+          scenarioLabel: scenario.scenarioLabel,
+          updatedAt: new Date(),
+        })
+        .where(eq(simNotebooks.id, notebook.id))
+        .returning()
+        .then((rows) => rows[0]);
+    }
+
+    const existingWorkspace = await db
+      .select()
+      .from(pitStopWorkspaces)
+      .where(eq(pitStopWorkspaces.notebookId, notebook.id))
+      .then((rows) => rows[0] ?? null);
+
+    const workspace = existingWorkspace
+      ? existingWorkspace
+      : await db
+          .insert(pitStopWorkspaces)
+          .values({
+            companyId: run.companyId,
+            notebookId: notebook.id,
+            memberUserId: scenario.memberUserId,
+            scenarioKey: scenario.scenarioKey,
+            latestSimRunId: null,
+            latestNotebookSectionKey: null,
+            latestRunSummary: {},
+            latestEvalSummary: {},
+            coachingNotes: null,
+            mentorNotes: null,
+            sponsorNotes: null,
+            generatedNotes: [],
+            draftAgentConfig: {},
+            draftAgentDiff: {},
+            targetAgentIds: [],
+            targetLiveSettings: {},
+            targetTrack: null,
+            targetRail: null,
+            thresholdPassed: false,
+            blockingIssues: [],
+            liveRecommendation: null,
+          })
+          .returning()
+          .then((rows) => rows[0]);
+
+    return { notebook, workspace };
+  }
+
+  async function upsertOptimizationWorkspaceState(params: {
+    run: RunRecord;
+    workspaceId: string;
+    triggerReason: string;
+    optimizationActions: string[];
+    explanation: string;
+    sourceRunStatus: string;
+    sourceRunId: string;
+  }) {
+    const latestRunSummary = {
+      runId: params.sourceRunId,
+      status: params.sourceRunStatus,
+      pitStopTriggerReason: params.triggerReason,
+      pitStopOptimizationActions: params.optimizationActions,
+      pitStopExplanation: params.explanation,
+    };
+
+    await db
+      .update(pitStopWorkspaces)
+      .set({
+        latestSimRunId: params.run.id,
+        latestRunSummary,
+        latestEvalSummary: {
+          pitStopTriggerReason: params.triggerReason,
+          optimizationActions: params.optimizationActions,
+          explanation: params.explanation,
+        },
+        blockingIssues: [params.triggerReason],
+        thresholdPassed: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(pitStopWorkspaces.id, params.workspaceId));
+  }
+
+  async function upsertRunOptimization(runId: string) {
+    const run = await getRunContext(runId);
+    if (run.runMode !== "sim") return null;
+
+    const issueAssigneeUserId = readString((run.contextSnapshot ?? {})["assigneeUserId"]);
+    const scenario = deriveScenarioContext(run, issueAssigneeUserId);
+    const { notebook, workspace } = await ensureWorkspaceForRun(run, scenario);
+    const agent = await db
+      .select({
+        id: agents.id,
+        adapterType: agents.adapterType,
+        adapterConfig: agents.adapterConfig,
+      })
+      .from(agents)
+      .where(eq(agents.id, run.agentId))
+      .then((rows) => rows[0] ?? null);
+    if (!agent) return null;
+
+    const companyCostSummary = await costService(db)
+      .summary(run.companyId)
+      .catch(() => null);
+    const recommendation = buildPitStopOptimizationRecommendation({
+      run,
+      agent,
+      budget: {
+        companyUtilizationPercent: companyCostSummary?.utilizationPercent ?? null,
+      },
+    });
+    if (!recommendation) return null;
+
+    const existing = await db
+      .select()
+      .from(pitStopOptimizations)
+      .where(eq(pitStopOptimizations.sourceSimRunId, run.id))
+      .then((rows) => rows[0] ?? null);
+
+    const values = {
+      companyId: run.companyId,
+      workspaceId: workspace.id,
+      notebookId: notebook.id,
+      sourceSimRunId: run.id,
+      sourceAgentId: run.agentId,
+      sourceRunStatus: run.status,
+      status: existing?.launchedSimRunId ? existing.status : "recommended",
+      triggerReason: recommendation.triggerReason,
+      triggerDetails: recommendation.triggerDetails,
+      currentExecutionPlan: asRecord(run.contextSnapshot?.executionPlan) ?? {},
+      currentRuntimeRequirements: asRecord(run.contextSnapshot?.runtimeRequirements) ?? {},
+      currentAdapterOverride: asRecord(run.contextSnapshot?.adapterOverride) ?? {},
+      recommendedExecutionPlan: recommendation.recommendedExecutionPlan as unknown as Record<string, unknown>,
+      recommendedRuntimeRequirements: recommendation.recommendedRuntimeRequirements as unknown as Record<string, unknown>,
+      recommendedAdapterOverride: recommendation.recommendedAdapterOverride,
+      optimizationActions: recommendation.optimizationActions,
+      explanation: recommendation.explanation,
+      estimatedSavings: recommendation.estimatedSavings,
+      relaunchEligible: recommendation.relaunchEligible,
+      updatedAt: new Date(),
+    } satisfies Partial<typeof pitStopOptimizations.$inferInsert>;
+
+    const optimization = existing
+      ? await db
+          .update(pitStopOptimizations)
+          .set(values)
+          .where(eq(pitStopOptimizations.id, existing.id))
+          .returning()
+          .then((rows) => rows[0])
+      : await db
+          .insert(pitStopOptimizations)
+          .values(values as typeof pitStopOptimizations.$inferInsert)
+          .returning()
+          .then((rows) => rows[0]);
+
+    await upsertOptimizationWorkspaceState({
+      run,
+      workspaceId: workspace.id,
+      triggerReason: recommendation.triggerReason,
+      optimizationActions: recommendation.optimizationActions,
+      explanation: recommendation.explanation,
+      sourceRunStatus: run.status,
+      sourceRunId: run.id,
+    });
+
+    return {
+      notebook,
+      workspace,
+      optimization,
+      recommendation,
+    };
+  }
+
   async function ingestSimRun(runId: string) {
     const run = await getRunContext(runId);
     if (run.runMode !== "sim") return null;
@@ -595,11 +810,18 @@ export function pitStopService(db: Db) {
       .where(eq(pitStopPackages.notebookId, row.notebook.id))
       .orderBy(desc(pitStopPackages.version), desc(pitStopPackages.createdAt));
 
+    const optimizations = await db
+      .select()
+      .from(pitStopOptimizations)
+      .where(eq(pitStopOptimizations.notebookId, row.notebook.id))
+      .orderBy(desc(pitStopOptimizations.createdAt));
+
     return {
       ...row.workspace,
       notebook: row.notebook,
       notebookArtifact: row.workProduct,
       packages,
+      optimizations,
     };
   }
 
@@ -719,6 +941,62 @@ export function pitStopService(db: Db) {
     return row;
   }
 
+  async function listOptimizations(companyId: string, workspaceId: string) {
+    const workspace = await getWorkspace(companyId, workspaceId);
+    return workspace.optimizations ?? [];
+  }
+
+  async function getOptimization(companyId: string, workspaceId: string, optimizationId: string) {
+    const workspace = await getWorkspace(companyId, workspaceId);
+    const optimization = (workspace.optimizations ?? []).find((item) => item.id === optimizationId) ?? null;
+    if (!optimization) throw notFound("Pit Stop optimization not found.");
+    return { workspace, optimization };
+  }
+
+  async function prepareOptimizedRerun(companyId: string, workspaceId: string, optimizationId: string) {
+    const { workspace, optimization } = await getOptimization(companyId, workspaceId, optimizationId);
+    const rerunContext = {
+      pitStopTriggered: true,
+      pitStopTriggerReason: optimization.triggerReason,
+      pitStopWorkspaceId: workspace.id,
+      pitStopOptimizationId: optimization.id,
+      pitStopSourceRunId: optimization.sourceSimRunId,
+      runtimeRequirements: optimization.recommendedRuntimeRequirements,
+      adapterOverride: optimization.recommendedAdapterOverride,
+      forceFreshSession: true,
+      requestedRunMode: "sim",
+      wakeReason: "pit_stop_optimized_rerun",
+      reason: optimization.explanation ?? "Pit Stop optimized rerun",
+    };
+
+    return {
+      workspace,
+      optimization,
+      rerunPayload: {
+        source: "automation" as const,
+        triggerDetail: "system" as const,
+        reason: optimization.explanation ?? "Pit Stop optimized rerun",
+        runMode: "sim" as const,
+        runtimeRequirements: optimization.recommendedRuntimeRequirements,
+        contextSnapshot: rerunContext,
+      },
+    };
+  }
+
+  async function markOptimizationLaunched(optimizationId: string, launchedSimRunId: string) {
+    return db
+      .update(pitStopOptimizations)
+      .set({
+        status: "launched",
+        launchedSimRunId,
+        launchedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(pitStopOptimizations.id, optimizationId))
+      .returning()
+      .then((rows) => rows[0] ?? null);
+  }
+
   async function getPackageByApprovalId(approvalId: string) {
     return db
       .select()
@@ -768,10 +1046,15 @@ export function pitStopService(db: Db) {
 
   return {
     ingestSimRun,
+    upsertRunOptimization,
     listWorkspaces,
     getWorkspace,
     updateWorkspace,
     createPromotionPackage,
+    listOptimizations,
+    getOptimization,
+    prepareOptimizedRerun,
+    markOptimizationLaunched,
     attachApproval,
     getPackageByApprovalId,
     getPackageById,

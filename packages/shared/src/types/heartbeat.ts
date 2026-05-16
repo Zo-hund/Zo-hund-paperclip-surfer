@@ -8,6 +8,49 @@ import type {
   WakeupTriggerDetail,
   WakeupRequestStatus,
 } from "../constants.js";
+import type {
+  IssueRuntimeContextTier,
+  IssueRuntimeDeploymentTarget,
+  IssueRuntimeRequirements,
+  IssueRuntimeReasoningTier,
+  IssueRuntimeWorkspaceMode,
+} from "./issue.js";
+
+export type RunFailoverCategory =
+  | "rate_limited"
+  | "quota_exhausted"
+  | "provider_denied"
+  | "auth_failed"
+  | "non_retryable";
+
+export interface RunExecutionCandidate {
+  harness: string;
+  model: string | null;
+  provider: string | null;
+  variant: string | null;
+  deployment: IssueRuntimeDeploymentTarget;
+  reasoningTier: IssueRuntimeReasoningTier;
+  reason: string;
+}
+
+export interface RunExecutionFailoverPolicy {
+  maxAttempts: number;
+  retryableCategories: RunFailoverCategory[];
+}
+
+export interface RunExecutionAttemptTrace {
+  attempt: number;
+  harness: string;
+  model: string | null;
+  provider: string | null;
+  variant: string | null;
+  deployment: IssueRuntimeDeploymentTarget;
+  reasoningTier: IssueRuntimeReasoningTier;
+  outcome: "succeeded" | "failed";
+  errorCode: string | null;
+  errorMessage: string | null;
+  failureCategory: RunFailoverCategory | null;
+}
 
 export interface HeartbeatRun {
   id: string;
@@ -61,6 +104,82 @@ export interface HeartbeatRunEvent {
   message: string | null;
   payload: Record<string, unknown> | null;
   createdAt: Date;
+}
+
+export interface HeartbeatTraceSummary {
+  runId: string;
+  companyId: string;
+  agentId: string;
+  agentName: string;
+  status: HeartbeatRunStatus;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  wakeSource: HeartbeatInvocationSource | null;
+  wakeReason: string | null;
+  triggerDetail: string | null;
+  issueId: string | null;
+  commentId: string | null;
+  approvalId: string | null;
+  adapterType: string | null;
+  model: string | null;
+  effectiveVariant: string | null;
+  gearProfile: IssueRuntimeRequirements | null;
+  contextTier: IssueRuntimeContextTier | null;
+  selectedHarness: string | null;
+  selectedModel: string | null;
+  selectedDeployment: IssueRuntimeDeploymentTarget | null;
+  selectedProvider: string | null;
+  selectedWorkspaceMode: IssueRuntimeWorkspaceMode | null;
+  selectionReason: string | null;
+  fallbackApplied: boolean;
+  manualOverrideApplied: boolean;
+  initialSelectedModel: string | null;
+  failureCategory: RunFailoverCategory | null;
+  failoverAttempt: number;
+  failoverFromModel: string | null;
+  failoverToModel: string | null;
+  failoverExhausted: boolean;
+  attemptedModels: RunExecutionAttemptTrace[];
+  pitStopTriggered: boolean;
+  pitStopTriggerReason: string | null;
+  pitStopWorkspaceId: string | null;
+  pitStopOptimizationId: string | null;
+  pitStopSourceRunId: string | null;
+  workspaceId: string | null;
+  workspaceSource: string | null;
+  cwd: string | null;
+  sessionRotated: boolean;
+  sessionRotationReason: string | null;
+  sessionIdBefore: string | null;
+  sessionIdAfter: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  durationSeconds: number | null;
+  exitCode: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  eventCount: number;
+  logBytes: number;
+  hasLog: boolean;
+  primaryEventType: string | null;
+}
+
+export interface RunExecutionPlan {
+  gearProfile: IssueRuntimeRequirements;
+  contextTier: IssueRuntimeContextTier;
+  selectedHarness: string;
+  selectedModel: string | null;
+  selectedDeployment: IssueRuntimeDeploymentTarget;
+  selectedProvider: string | null;
+  selectedVariant: string | null;
+  selectedWorkspaceMode: IssueRuntimeWorkspaceMode;
+  selectionReason: string;
+  fallbackApplied: boolean;
+  manualOverrideApplied: boolean;
+  initialSelectedModel: string | null;
+  candidateModels: RunExecutionCandidate[];
+  failoverPolicy: RunExecutionFailoverPolicy;
 }
 
 export interface AgentRuntimeState {

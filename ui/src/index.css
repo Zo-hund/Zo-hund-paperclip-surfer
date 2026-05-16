@@ -930,19 +930,24 @@ a.paperclip-project-mention-chip {
 }
 
 /* ─── AMX Labs Design System ──────────────────────────────────────────────────
-   Scoped to --amx-* namespace. Does not override existing Tailwind tokens.
-   Used exclusively by PublicHome.tsx (the /home marketing page).
+   Canonical brand tokens from colors_and_type.css (E:\Download\AMX Labs Design System).
+   Short-name tokens (--fg-*, --grad-*, --glow-*, etc.) are the authoritative names.
+   Legacy --amx-* names are preserved as var() aliases for backward compatibility.
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Brand core */
-  --amx-cyan:          #27E8FB;
-  --amx-cyan-bright:   #5CF2FF;
-  --amx-cyan-dim:      #0FB9D4;
-  --amx-magenta:       #FF27FF;
-  --amx-magenta-bright:#FF7BFF;
-  --amx-purple:        #B566E8;
+  /* ── Brand core ────────────────────────────────────────────────────────── */
+  --amx-cyan:           #27E8FB;
+  --amx-cyan-bright:    #5CF2FF;
+  --amx-cyan-dim:       #0FB9D4;
+  --amx-cyan-deep:      #0A5C75;
+  --amx-magenta:        #FF27FF;
+  --amx-magenta-bright: #FF7BFF;
+  --amx-magenta-dim:    #C614CA;
+  --amx-magenta-deep:   #5C0A6C;
+  --amx-purple:         #B566E8;
+  --amx-purple-dim:     #7E3FAE;
 
-  /* Neutral ink scale (deep navy, never pure black) */
+  /* ── Neutral ink scale (deep navy, never pure black) ───────────────────── */
   --amx-ink-0: #020612;
   --amx-ink-1: #070B1C;
   --amx-ink-2: #0D1330;
@@ -953,31 +958,156 @@ a.paperclip-project-mention-chip {
   --amx-ink-7: #C9CEEC;
   --amx-ink-8: #F2F4FF;
 
-  /* Gradients */
-  --amx-grad-brand:    linear-gradient(180deg,#27E8FB 0%,#B566E8 55%,#FF27FF 100%);
-  --amx-grad-brand-h:  linear-gradient(90deg, #27E8FB 0%,#B566E8 50%,#FF27FF 100%);
-  --amx-grad-wordmark: linear-gradient(90deg, #F2F4FF 0%,#F2F4FF 42%,#27E8FB 58%,#27E8FB 100%);
-  --amx-grad-surface:  radial-gradient(ellipse at 50% 0%,#0D1330 0%,#020612 70%);
+  /* ── Semantic foreground / background ──────────────────────────────────── */
+  --fg-1: var(--amx-ink-8);
+  --fg-2: var(--amx-ink-7);
+  --fg-3: var(--amx-ink-6);
+  --fg-4: var(--amx-ink-5);
+  --fg-accent:   var(--amx-cyan);
+  --fg-accent-2: var(--amx-magenta);
 
-  /* Neon glow shadows (2–3 layer stacks) */
-  --amx-glow-cyan-sm:    0 0 6px rgba(39,232,251,.55), 0 0 12px rgba(39,232,251,.28);
-  --amx-glow-cyan-md:    0 0 10px rgba(39,232,251,.6),  0 0 24px rgba(39,232,251,.35), 0 0 48px rgba(39,232,251,.18);
-  --amx-glow-magenta-sm: 0 0 6px rgba(255,39,255,.55), 0 0 12px rgba(255,39,255,.28);
+  --bg-0: var(--amx-ink-0);
+  --bg-1: var(--amx-ink-1);
+  --bg-2: var(--amx-ink-2);
+  --bg-3: var(--amx-ink-3);
 
-  /* Borders */
-  --amx-border-subtle:    rgba(74,84,150,.22);
-  --amx-border-default:   rgba(74,84,150,.38);
-  --amx-border-glow-cyan: rgba(39,232,251,.45);
+  /* ── Borders ───────────────────────────────────────────────────────────── */
+  --border-subtle:       rgba(74,84,150,.22);
+  --border-default:      rgba(74,84,150,.38);
+  --border-strong:       rgba(140,149,201,.55);
+  --border-glow-cyan:    rgba(39,232,251,.45);
+  --border-glow-magenta: rgba(255,39,255,.40);
 
-  /* Elevation */
-  --amx-shadow-2: 0 4px 12px rgba(0,0,0,.55), 0 0 0 1px rgba(74,84,150,.22);
+  /* (legacy aliases) */
+  --amx-border-subtle:    var(--border-subtle);
+  --amx-border-default:   var(--border-default);
+  --amx-border-glow-cyan: var(--border-glow-cyan);
 
-  /* Motion */
-  --amx-ease-out: cubic-bezier(0.2,0.8,0.2,1);
+  /* ── Semantic states ────────────────────────────────────────────────────── */
+  --status-success: #3DE0B3;
+  --status-warning: #FFC857;
+  --status-danger:  #FF4D7E;
+  --status-info:    var(--amx-cyan);
 
-  /* Typography */
-  --amx-font-display: 'Chakra Petch','Eurostile',ui-sans-serif,system-ui,sans-serif;
-  --amx-font-mono:    'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  /* ── Signature gradients ────────────────────────────────────────────────── */
+  --grad-brand:    linear-gradient(180deg,#27E8FB 0%,#B566E8 55%,#FF27FF 100%);
+  --grad-brand-h:  linear-gradient(90deg, #27E8FB 0%,#B566E8 50%,#FF27FF 100%);
+  --grad-wordmark: linear-gradient(90deg, #F2F4FF 0%,#F2F4FF 42%,#27E8FB 58%,#27E8FB 100%);
+  --grad-surface:  radial-gradient(ellipse at 50% 0%,#0D1330 0%,#020612 70%);
+  --grad-glow-cyan:    radial-gradient(circle,rgba(39,232,251,.35) 0%,rgba(39,232,251,0) 70%);
+  --grad-glow-magenta: radial-gradient(circle,rgba(255,39,255,.32) 0%,rgba(255,39,255,0) 70%);
+
+  /* (legacy aliases) */
+  --amx-grad-brand:    var(--grad-brand);
+  --amx-grad-brand-h:  var(--grad-brand-h);
+  --amx-grad-wordmark: var(--grad-wordmark);
+  --amx-grad-surface:  var(--grad-surface);
+
+  /* ── Neon glow shadows (2–3 layer stacks, signature) ───────────────────── */
+  --glow-cyan-sm:    0 0 6px rgba(39,232,251,.55),0 0 12px rgba(39,232,251,.28);
+  --glow-cyan-md:    0 0 10px rgba(39,232,251,.6),0 0 24px rgba(39,232,251,.35),0 0 48px rgba(39,232,251,.18);
+  --glow-cyan-lg:    0 0 14px rgba(39,232,251,.7),0 0 40px rgba(39,232,251,.45),0 0 80px rgba(39,232,251,.25);
+  --glow-magenta-sm: 0 0 6px rgba(255,39,255,.55),0 0 12px rgba(255,39,255,.28);
+  --glow-magenta-md: 0 0 10px rgba(255,39,255,.6),0 0 24px rgba(255,39,255,.35),0 0 48px rgba(255,39,255,.18);
+  --glow-magenta-lg: 0 0 14px rgba(255,39,255,.7),0 0 40px rgba(255,39,255,.45),0 0 80px rgba(255,39,255,.25);
+
+  /* (legacy aliases) */
+  --amx-glow-cyan-sm:    var(--glow-cyan-sm);
+  --amx-glow-cyan-md:    var(--glow-cyan-md);
+  --amx-glow-magenta-sm: var(--glow-magenta-sm);
+
+  /* ── Elevation shadows (dark UI, softly tinted) ─────────────────────────── */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.45),0 0 0 1px rgba(74,84,150,.18);
+  --shadow-2: 0 4px 12px rgba(0,0,0,.55),0 0 0 1px rgba(74,84,150,.22);
+  --shadow-3: 0 12px 32px rgba(0,0,0,.65),0 0 0 1px rgba(74,84,150,.28);
+  --shadow-4: 0 24px 64px rgba(0,0,0,.75),0 0 0 1px rgba(74,84,150,.32);
+
+  /* (legacy alias) */
+  --amx-shadow-2: var(--shadow-2);
+
+  /* ── Radius ─────────────────────────────────────────────────────────────── */
+  --radius-xs:   2px;
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   14px;
+  --radius-xl:   22px;
+  --radius-pill: 999px;
+
+  /* ── Spacing (4px base) ─────────────────────────────────────────────────── */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  24px;
+  --space-6:  32px;
+  --space-7:  48px;
+  --space-8:  64px;
+  --space-9:  96px;
+  --space-10: 128px;
+
+  /* ── Type scale ─────────────────────────────────────────────────────────── */
+  --fs-xs:   12px;
+  --fs-sm:   14px;
+  --fs-base: 16px;
+  --fs-md:   18px;
+  --fs-lg:   22px;
+  --fs-xl:   28px;
+  --fs-2xl:  36px;
+  --fs-3xl:  48px;
+  --fs-4xl:  64px;
+  --fs-5xl:  88px;
+
+  --lh-tight: 1.1;
+  --lh-snug:  1.25;
+  --lh-body:  1.55;
+  --lh-loose: 1.75;
+
+  --tracking-display: 0.22em;
+  --tracking-wide:    0.08em;
+  --tracking-normal:  0.01em;
+  --tracking-tight:  -0.01em;
+
+  /* ── Type families ──────────────────────────────────────────────────────── */
+  --font-display: 'Chakra Petch','Eurostile',ui-sans-serif,system-ui,sans-serif;
+  --font-body:    'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --font-mono:    'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+
+  /* (legacy aliases) */
+  --amx-font-display: var(--font-display);
+  --amx-font-mono:    var(--font-mono);
+
+  /* ── Motion ─────────────────────────────────────────────────────────────── */
+  --ease-out:    cubic-bezier(0.2,0.8,0.2,1);
+  --ease-in:     cubic-bezier(0.6,0,0.9,0.4);
+  --ease-in-out: cubic-bezier(0.65,0,0.35,1);
+  --dur-fast:    140ms;
+  --dur-med:     260ms;
+  --dur-slow:    520ms;
+  --dur-glow:    2200ms;
+
+  /* (legacy alias) */
+  --amx-ease-out: var(--ease-out);
+}
+
+/* ── AMX utility classes ──────────────────────────────────────────────────── */
+.neon-cyan    { color: var(--amx-cyan);    text-shadow: var(--glow-cyan-sm); }
+.neon-magenta { color: var(--amx-magenta); text-shadow: var(--glow-magenta-sm); }
+.neon-text-gradient {
+  background: var(--grad-brand-h);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-display);
+  background: var(--grad-wordmark);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 @keyframes amx-breathe {

@@ -91,8 +91,37 @@ export interface PitStopPackage {
   updatedAt: string;
 }
 
+export interface PitStopOptimization {
+  id: string;
+  companyId: string;
+  workspaceId: string | null;
+  notebookId: string;
+  sourceSimRunId: string;
+  sourceAgentId: string | null;
+  sourceRunStatus: string;
+  status: string;
+  triggerReason: string;
+  triggerDetails: Record<string, unknown>;
+  currentExecutionPlan: Record<string, unknown>;
+  currentRuntimeRequirements: Record<string, unknown>;
+  currentAdapterOverride: Record<string, unknown>;
+  recommendedExecutionPlan: Record<string, unknown>;
+  recommendedRuntimeRequirements: Record<string, unknown>;
+  recommendedAdapterOverride: Record<string, unknown>;
+  optimizationActions: string[];
+  explanation: string | null;
+  estimatedSavings: Record<string, unknown>;
+  relaunchEligible: boolean;
+  launchedSimRunId: string | null;
+  launchedAt: string | null;
+  manualNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PitStopWorkspaceDetail extends PitStopWorkspaceSummary {
   packages: PitStopPackage[];
+  optimizations: PitStopOptimization[];
 }
 
 export const pitStopApi = {
@@ -125,6 +154,21 @@ export const pitStopApi = {
     api.post<{ package: PitStopPackage; approval: { id: string; status: string } }>(
       `/companies/${companyId}/pit-stop/workspaces/${workspaceId}/package-promotion`,
       {},
+    ),
+  listOptimizations: (companyId: string, workspaceId: string) =>
+    api.get<PitStopOptimization[]>(`/companies/${companyId}/pit-stop/workspaces/${workspaceId}/optimizations`),
+  prepareOptimizedRerun: (companyId: string, workspaceId: string, optimizationId: string) =>
+    api.post<{
+      optimization: PitStopOptimization;
+      rerunPayload: Record<string, unknown>;
+    }>(
+      `/companies/${companyId}/pit-stop/workspaces/${workspaceId}/optimizations/prepare-rerun`,
+      { optimizationId },
+    ),
+  launchOptimizedRerun: (companyId: string, workspaceId: string, optimizationId: string) =>
+    api.post<{ run: { id: string; status: string } }>(
+      `/companies/${companyId}/pit-stop/workspaces/${workspaceId}/optimizations/launch-rerun`,
+      { optimizationId },
     ),
   ingestRun: (companyId: string, runId: string) =>
     api.post(`/companies/${companyId}/pit-stop/ingest-run`, { runId }),

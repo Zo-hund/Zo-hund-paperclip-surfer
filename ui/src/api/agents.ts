@@ -12,6 +12,7 @@ import type {
   Approval,
   AgentConfigRevision,
   AgentChatMessage,
+  IssueRuntimeRequirements,
 } from "@paperclipai/shared";
 import { isUuidLike, normalizeAgentUrlKey } from "@paperclipai/shared";
 import { ApiError, api } from "./client";
@@ -188,6 +189,8 @@ export const agentsApi = {
       reason?: string | null;
       payload?: Record<string, unknown> | null;
       idempotencyKey?: string | null;
+      runMode?: "sim" | "live";
+      runtimeRequirements?: IssueRuntimeRequirements | null;
     },
     companyId?: string,
   ) => api.post<HeartbeatRun | { status: "skipped" }>(agentPath(id, companyId, "/wakeup"), data),
@@ -195,11 +198,13 @@ export const agentsApi = {
     api.post<ClaudeLoginResult>(agentPath(id, companyId, "/claude-login"), {}),
   availableSkills: () =>
     api.get<{ skills: AvailableSkill[] }>("/skills/available"),
-  listChatMessages: (agentId: string) =>
-    api.get<AgentChatMessage[]>(`/agents/${encodeURIComponent(agentId)}/chat/messages`),
-  sendChatMessage: (agentId: string, content: string) =>
+  listChatMessages: (agentId: string, companyId?: string) =>
+    api.get<AgentChatMessage[]>(
+      withCompanyScope(`/agents/${encodeURIComponent(agentId)}/chat/messages`, companyId),
+    ),
+  sendChatMessage: (agentId: string, content: string, companyId?: string) =>
     api.post<{ message: AgentChatMessage; runId: string | null }>(
-      `/agents/${encodeURIComponent(agentId)}/chat/messages`,
+      withCompanyScope(`/agents/${encodeURIComponent(agentId)}/chat/messages`, companyId),
       { content },
     ),
   swarmLaunch: (

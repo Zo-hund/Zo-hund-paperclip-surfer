@@ -70,6 +70,9 @@ export function MarketplaceMicroserviceBooking({
   const [runPhase, setRunPhase] = React.useState("content-production");
   const [taskType, setTaskType] = React.useState<MicroserviceTaskType>("image_generate");
   const [title, setTitle] = React.useState("");
+  const [clientName, setClientName] = React.useState("");
+  const [clientEmail, setClientEmail] = React.useState("");
+  const [clientCompany, setClientCompany] = React.useState("");
   const [targetUrl, setTargetUrl] = React.useState("");
   const [instructions, setInstructions] = React.useState("");
   const [assignedAgentId, setAssignedAgentId] = React.useState("");
@@ -87,6 +90,9 @@ export function MarketplaceMicroserviceBooking({
     setRunPhase(listing?.supportedRunPhases[0] ?? "content-production");
     setTaskType("image_generate");
     setTitle(listing ? `${listing.title} request` : "");
+    setClientName("");
+    setClientEmail("");
+    setClientCompany("");
     setTargetUrl("");
     setInstructions("");
     setAssignedAgentId("");
@@ -108,6 +114,9 @@ export function MarketplaceMicroserviceBooking({
         taskType,
         title: title.trim(),
         instructions: instructions.trim(),
+        clientName: clientName.trim() || null,
+        clientEmail: clientEmail.trim() || null,
+        clientCompany: clientCompany.trim() || null,
         targetUrl: targetUrl.trim() || null,
         assignedAgentId: assignedAgentId || null,
       }),
@@ -203,6 +212,21 @@ export function MarketplaceMicroserviceBooking({
               Title
               <Input value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="space-y-2 text-sm font-bold">
+                Client name
+                <Input value={clientName} onChange={(event) => setClientName(event.target.value)} placeholder="Primary contact" />
+              </label>
+              <label className="space-y-2 text-sm font-bold">
+                Client email
+                <Input value={clientEmail} onChange={(event) => setClientEmail(event.target.value)} placeholder="client@company.com" />
+              </label>
+              <label className="space-y-2 text-sm font-bold">
+                Client company
+                <Input value={clientCompany} onChange={(event) => setClientCompany(event.target.value)} placeholder="Organization" />
+              </label>
+            </div>
 
             <label className="space-y-2 text-sm font-bold">
               Target URL, if needed

@@ -10,6 +10,15 @@ function formatJson(value: Record<string, unknown>) {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border/50 bg-background/80 p-4">
+      <div className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">{label}</div>
+      <div className="mt-2 break-all text-sm font-black text-foreground">{value}</div>
+    </div>
+  );
+}
+
 export function PitStop() {
   const queryClient = useQueryClient();
   const { selectedCompanyId } = useCompany();
@@ -21,6 +30,7 @@ export function PitStop() {
   const [targetRail, setTargetRail] = useState("");
   const [targetLiveSettings, setTargetLiveSettings] = useState("{}");
   const [draftAgentConfig, setDraftAgentConfig] = useState("{}");
+  const [preparedRerun, setPreparedRerun] = useState<Record<string, unknown> | null>(null);
 
   const workspacesQuery = useQuery({
     queryKey: ["pit-stop", "workspaces", selectedCompanyId],
@@ -87,6 +97,20 @@ export function PitStop() {
     onSuccess: refresh,
   });
 
+  const prepareRerunMutation = useMutation({
+    mutationFn: async (optimizationId: string) =>
+      pitStopApi.prepareOptimizedRerun(selectedCompanyId!, selectedWorkspaceId!, optimizationId),
+    onSuccess: (result) => {
+      setPreparedRerun(result.rerunPayload);
+    },
+  });
+
+  const launchRerunMutation = useMutation({
+    mutationFn: async (optimizationId: string) =>
+      pitStopApi.launchOptimizedRerun(selectedCompanyId!, selectedWorkspaceId!, optimizationId),
+    onSuccess: refresh,
+  });
+
   if (workspacesQuery.isLoading) {
     return (
       <div className="flex h-[360px] items-center justify-center">
@@ -111,6 +135,7 @@ export function PitStop() {
   }
 
   const workspace = detailQuery.data;
+  const latestOptimization = workspace?.optimizations?.[0] ?? null;
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 md:px-8">
@@ -206,6 +231,68 @@ export function PitStop() {
                   {workspace.notebook.currentMarkdown}
                 </pre>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-border/50 bg-accent/10 p-5">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.24em] text-muted-foreground">
+                <Wrench className="h-4 w-4 text-primary" />
+                Optimization Loop
+              </div>
+              {!latestOptimization ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  No Pit Stop optimization recommendation has been recorded for this workspace yet.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <MetricCard label="Trigger" value={latestOptimization.triggerReason} />
+                    <MetricCard label="Source Run" value={latestOptimization.sourceSimRunId.slice(0, 8)} />
+                    <MetricCard label="Savings" value={`${Number((latestOptimization.estimatedSavings as Record<string, unknown>)?.percent ?? 0)}%`} />
+                    <MetricCard label="Relaunch" value={latestOptimization.relaunchEligible ? "Ready" : "Pending"} />
+                  </div>
+                  <div className="rounded-xl border border-border/50 bg-background/80 p-4 text-sm">
+                    <div>
+                      <span className="font-semibold">Current gear:</span>{" "}
+                      {String((latestOptimization.currentExecutionPlan as Record<string, unknown>)?.selectedHarness ?? "—")} /{" "}
+                      {String((latestOptimization.currentExecutionPlan as Record<string, unknown>)?.selectedDeployment ?? "—")} /{" "}
+                      {String((latestOptimization.currentExecutionPlan as Record<string, unknown>)?.contextTier ?? "—")}
+                    </div>
+                    <div className="mt-2">
+                      <span className="font-semibold">Recommended gear:</span>{" "}
+                      {String((latestOptimization.recommendedExecutionPlan as Record<string, unknown>)?.selectedHarness ?? "—")} /{" "}
+                      {String((latestOptimization.recommendedExecutionPlan as Record<string, unknown>)?.selectedDeployment ?? "—")} /{" "}
+                      {String((latestOptimization.recommendedExecutionPlan as Record<string, unknown>)?.contextTier ?? "—")}
+                    </div>
+                    <div className="mt-2">
+                      <span className="font-semibold">Actions:</span>{" "}
+                      {(latestOptimization.optimizationActions ?? []).join(" • ") || "—"}
+                    </div>
+                    {latestOptimization.explanation && (
+                      <div className="mt-2 text-muted-foreground">{latestOptimization.explanation}</div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => prepareRerunMutation.mutate(latestOptimization.id)}
+                      disabled={prepareRerunMutation.isPending}
+                    >
+                      {prepareRerunMutation.isPending ? "Preparing..." : "Prepare Optimized Rerun"}
+                    </Button>
+                    <Button
+                      onClick={() => launchRerunMutation.mutate(latestOptimization.id)}
+                      disabled={launchRerunMutation.isPending || !latestOptimization.relaunchEligible}
+                    >
+                      {launchRerunMutation.isPending ? "Launching..." : "Launch Optimized Sim Rerun"}
+                    </Button>
+                  </div>
+                  {preparedRerun && (
+                    <pre className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-xl bg-background/80 p-4 text-xs leading-relaxed">
+                      {JSON.stringify(preparedRerun, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">

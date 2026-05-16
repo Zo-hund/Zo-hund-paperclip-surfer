@@ -22,6 +22,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { User, Hexagon, ArrowUpRight, Tag, Plus, Trash2 } from "lucide-react";
 import { AgentIcon } from "./AgentIconPicker";
 
+const GEAR_OBJECTIVE_OPTIONS = ["technical", "creative", "research", "ops", "mixed"] as const;
+const GEAR_QUALITY_OPTIONS = ["economy", "standard", "premium"] as const;
+const GEAR_BUDGET_OPTIONS = ["min_cost", "balanced", "best_effort"] as const;
+const GEAR_DEPLOYMENT_OPTIONS = ["local_only", "cloud_only", "local_then_cloud", "cloud_then_local"] as const;
+const GEAR_CONTEXT_OPTIONS = ["automatic", "minimal", "role_aware", "project_aware", "engineering_full"] as const;
+const GEAR_CAPABILITIES = ["code", "files", "web", "image", "audio", "video"] as const;
+
 function defaultProjectWorkspaceIdForProject(project: {
   workspaces?: Array<{ id: string; isPrimary: boolean }>;
   executionWorkspacePolicy?: { defaultProjectWorkspaceId?: string | null } | null;
@@ -127,6 +134,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const [projectSearch, setProjectSearch] = useState("");
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelSearch, setLabelSearch] = useState("");
+  const [gearOpen, setGearOpen] = useState(false);
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#6366f1");
 
@@ -218,6 +226,26 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const assignee = issue.assigneeAgentId
     ? agents?.find((a) => a.id === issue.assigneeAgentId)
     : null;
+  const runtimeRequirements = issue.runtimeRequirements ?? {};
+  const runtimeManualOverride =
+    runtimeRequirements.manualOverride && typeof runtimeRequirements.manualOverride === "object"
+      ? runtimeRequirements.manualOverride
+      : {};
+  const updateRuntimeRequirements = (patch: Record<string, unknown>) => {
+    const next = {
+      ...runtimeRequirements,
+      ...patch,
+    };
+    onUpdate({ runtimeRequirements: next });
+  };
+  const updateRuntimeManualOverride = (patch: Record<string, unknown>) => {
+    updateRuntimeRequirements({
+      manualOverride: {
+        ...runtimeManualOverride,
+        ...patch,
+      },
+    });
+  };
   const userLabel = (userId: string | null | undefined) => formatAssigneeUserLabel(userId, currentUserId);
   const assigneeUserLabel = userLabel(issue.assigneeUserId);
   const creatorUserLabel = userLabel(issue.createdByUserId);
@@ -488,6 +516,101 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     </>
   );
 
+  const gearSummaryParts = [
+    runtimeRequirements.objectiveClass,
+    runtimeRequirements.qualityTier,
+    runtimeRequirements.budgetMode,
+  ].filter(Boolean);
+
+  const gearContent = (
+    <div className="space-y-3 p-1">
+      <label className="block space-y-1">
+        <div className="text-[11px] text-muted-foreground">Objective</div>
+        <select
+          className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+          value={typeof runtimeRequirements.objectiveClass === "string" ? runtimeRequirements.objectiveClass : "technical"}
+          onChange={(event) => updateRuntimeRequirements({ objectiveClass: event.target.value })}
+        >
+          {GEAR_OBJECTIVE_OPTIONS.map((value) => <option key={value} value={value}>{value.replace("_", " ")}</option>)}
+        </select>
+      </label>
+      <label className="block space-y-1">
+        <div className="text-[11px] text-muted-foreground">Quality</div>
+        <select
+          className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+          value={typeof runtimeRequirements.qualityTier === "string" ? runtimeRequirements.qualityTier : "standard"}
+          onChange={(event) => updateRuntimeRequirements({ qualityTier: event.target.value })}
+        >
+          {GEAR_QUALITY_OPTIONS.map((value) => <option key={value} value={value}>{value.replace("_", " ")}</option>)}
+        </select>
+      </label>
+      <label className="block space-y-1">
+        <div className="text-[11px] text-muted-foreground">Budget mode</div>
+        <select
+          className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+          value={typeof runtimeRequirements.budgetMode === "string" ? runtimeRequirements.budgetMode : "balanced"}
+          onChange={(event) => updateRuntimeRequirements({ budgetMode: event.target.value })}
+        >
+          {GEAR_BUDGET_OPTIONS.map((value) => <option key={value} value={value}>{value.replace("_", " ")}</option>)}
+        </select>
+      </label>
+      <label className="block space-y-1">
+        <div className="text-[11px] text-muted-foreground">Deployment preference</div>
+        <select
+          className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+          value={typeof runtimeRequirements.deploymentPreference === "string" ? runtimeRequirements.deploymentPreference : "local_then_cloud"}
+          onChange={(event) => updateRuntimeRequirements({ deploymentPreference: event.target.value })}
+        >
+          {GEAR_DEPLOYMENT_OPTIONS.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+        </select>
+      </label>
+      <label className="block space-y-1">
+        <div className="text-[11px] text-muted-foreground">Manual context tier</div>
+        <select
+          className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+          value={typeof runtimeManualOverride.contextTier === "string" ? runtimeManualOverride.contextTier : "automatic"}
+          onChange={(event) =>
+            updateRuntimeManualOverride({
+              contextTier: event.target.value === "automatic" ? null : event.target.value,
+            })}
+        >
+          {GEAR_CONTEXT_OPTIONS.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+        </select>
+      </label>
+      <div className="space-y-1">
+        <div className="text-[11px] text-muted-foreground">Capabilities</div>
+        <div className="flex flex-wrap gap-1">
+          {GEAR_CAPABILITIES.map((capability) => {
+            const selected = Array.isArray(runtimeRequirements.requiredCapabilities)
+              && runtimeRequirements.requiredCapabilities.includes(capability);
+            return (
+              <button
+                key={capability}
+                type="button"
+                className={cn(
+                  "rounded border border-border px-2 py-1 text-[11px] hover:bg-accent/50",
+                  selected && "bg-accent",
+                )}
+                onClick={() => {
+                  const current = Array.isArray(runtimeRequirements.requiredCapabilities)
+                    ? runtimeRequirements.requiredCapabilities
+                    : [];
+                  updateRuntimeRequirements({
+                    requiredCapabilities: selected
+                      ? current.filter((value) => value !== capability)
+                      : [...current, capability],
+                  });
+                }}
+              >
+                {capability}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <div className="space-y-1">
@@ -558,6 +681,22 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           ) : undefined}
         >
           {projectContent}
+        </PropertyPicker>
+
+        <PropertyPicker
+          inline={inline}
+          label="Execution"
+          open={gearOpen}
+          onOpenChange={setGearOpen}
+          triggerContent={
+            <span className="text-sm truncate">
+              {gearSummaryParts.length > 0 ? gearSummaryParts.join(" • ") : "Automatic"}
+            </span>
+          }
+          triggerClassName="min-w-0 max-w-full"
+          popoverClassName="w-72"
+        >
+          {gearContent}
         </PropertyPicker>
 
         {issue.parentId && (

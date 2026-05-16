@@ -17,19 +17,19 @@
 
     "baseUrl": ".",
     "paths": {
-      "@paperclipai/shared": ["packages/shared/dist/index.d.ts"],
-      "@paperclipai/shared/*": ["packages/shared/dist/*.d.ts"],
-      "@paperclipai/db": ["packages/db/dist/index.d.ts"],
-      "@paperclipai/db/*": ["packages/db/dist/*.d.ts"],
-      "@paperclipai/adapter-utils": ["packages/adapter-utils/dist/index.d.ts"],
-      "@paperclipai/adapter-utils/*": ["packages/adapter-utils/dist/*.d.ts"],
-      "@paperclipai/plugin-sdk": ["packages/plugins/sdk/dist/index.d.ts"],
-      "@paperclipai/plugin-sdk/ui": ["packages/plugins/sdk/dist/ui/index.d.ts"],
-      "@paperclipai/plugin-sdk/*": ["packages/plugins/sdk/dist/*.d.ts"],
-      "@paperclipai/adapter-*": ["packages/adapters/*/dist/index.d.ts"],
-      "@paperclipai/adapter-*/server": ["packages/adapters/*/dist/server/index.d.ts"],
-      "@paperclipai/adapter-*/ui": ["packages/adapters/*/dist/ui/index.d.ts"],
-      "@paperclipai/adapter-*/cli": ["packages/adapters/*/dist/cli/index.d.ts"]
+      "@paperclipai/shared": ["packages/shared/src/index.ts"],
+      "@paperclipai/shared/*": ["packages/shared/src/*"],
+      "@paperclipai/db": ["packages/db/src/index.ts"],
+      "@paperclipai/db/*": ["packages/db/src/*"],
+      "@paperclipai/adapter-utils": ["packages/adapter-utils/src/index.ts"],
+      "@paperclipai/adapter-utils/*": ["packages/adapter-utils/src/*"],
+      "@paperclipai/plugin-sdk": ["packages/plugins/sdk/src/index.ts"],
+      "@paperclipai/plugin-sdk/ui": ["packages/plugins/sdk/src/ui/index.ts"],
+      "@paperclipai/plugin-sdk/*": ["packages/plugins/sdk/src/*"],
+      "@paperclipai/adapter-*": ["packages/adapters/*/src/index.ts"],
+      "@paperclipai/adapter-*/server": ["packages/adapters/*/src/server/index.ts"],
+      "@paperclipai/adapter-*/ui": ["packages/adapters/*/src/ui/index.ts"],
+      "@paperclipai/adapter-*/cli": ["packages/adapters/*/src/cli/index.ts"]
     }
   }
 }

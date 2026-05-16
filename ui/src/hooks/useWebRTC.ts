@@ -5,6 +5,8 @@ export interface WebRTCState {
   screenStream: MediaStream | null;
   cameraActive: boolean;
   screenActive: boolean;
+  cameraError: string | null;
+  screenError: string | null;
   startCamera(): Promise<void>;
   stopCamera(): void;
   startScreenShare(): Promise<void>;
@@ -12,9 +14,42 @@ export interface WebRTCState {
   captureFrame(stream: MediaStream): string | null;
 }
 
+function classifyMediaError(err: unknown): string {
+  if (err instanceof DOMException) {
+    switch (err.name) {
+      case "NotAllowedError":
+        // "Permission dismissed" = user closed the popup without choosing
+        if (err.message.toLowerCase().includes("dismissed")) {
+          return "Camera permission was dismissed. Click the camera icon in your browser's address bar and select Allow, then try again.";
+        }
+        return "Camera access was blocked. Click the 🔒 lock icon in your address bar → Site Settings → Camera → Allow.";
+      case "NotFoundError":
+        return "No camera found. Make sure a webcam is connected and not in use by another app.";
+      case "NotReadableError":
+        return "Camera is already in use by another application. Close it and try again.";
+      case "OverconstrainedError":
+        return "Camera doesn't support the requested resolution. Try a different camera.";
+      case "AbortError":
+        return "Camera access was cancelled.";
+      default:
+        return `Camera error: ${err.message}`;
+    }
+  }
+  return "Camera access failed. Check browser permissions.";
+}
+
+function isUserCancelledMediaPrompt(err: unknown): boolean {
+  return (
+    err instanceof DOMException &&
+    (err.name === "NotAllowedError" || err.name === "AbortError")
+  );
+}
+
 export function useWebRTC(): WebRTCState {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [screenError, setScreenError] = useState<string | null>(null);
   const offscreenCanvas = useRef<HTMLCanvasElement | null>(null);
 
   function getCanvas(): HTMLCanvasElement {
@@ -27,6 +62,7 @@ export function useWebRTC(): WebRTCState {
   }
 
   const startCamera = useCallback(async () => {
+    setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15 } },
@@ -34,7 +70,13 @@ export function useWebRTC(): WebRTCState {
       });
       setCameraStream(stream);
     } catch (err) {
+      if (isUserCancelledMediaPrompt(err)) {
+        setCameraError("Camera permission was not granted.");
+        return;
+      }
+      const msg = classifyMediaError(err);
       console.error("[useWebRTC] camera access denied", err);
+      setCameraError(msg);
     }
   }, []);
 
@@ -43,9 +85,11 @@ export function useWebRTC(): WebRTCState {
       cameraStream.getTracks().forEach((t) => t.stop());
       setCameraStream(null);
     }
+    setCameraError(null);
   }, [cameraStream]);
 
   const startScreenShare = useCallback(async () => {
+    setScreenError(null);
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 5 } },
@@ -55,7 +99,13 @@ export function useWebRTC(): WebRTCState {
       stream.getVideoTracks()[0]?.addEventListener("ended", () => setScreenStream(null));
       setScreenStream(stream);
     } catch (err) {
+      if (isUserCancelledMediaPrompt(err)) {
+        // User cancelled screen picker — not an error worth surfacing
+        return;
+      }
+      const msg = `Screen share failed: ${err instanceof DOMException ? err.message : String(err)}`;
       console.error("[useWebRTC] screen share denied or cancelled", err);
+      setScreenError(msg);
     }
   }, []);
 
@@ -64,6 +114,7 @@ export function useWebRTC(): WebRTCState {
       screenStream.getTracks().forEach((t) => t.stop());
       setScreenStream(null);
     }
+    setScreenError(null);
   }, [screenStream]);
 
   /**
@@ -74,24 +125,12 @@ export function useWebRTC(): WebRTCState {
     const videoTracks = stream.getVideoTracks();
     if (!videoTracks.length) return null;
 
-    // Use ImageCapture API if available (Chrome/Edge), else drawImage via hidden <video>
     try {
       const canvas = getCanvas();
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
 
-      // ImageCapture path
-      if (typeof ImageCapture !== "undefined") {
-        // Async grab is not suitable here; fall through to video element approach
-      }
-
-      // Create a temporary video element bound to the stream
-      const video = document.createElement("video");
-      video.srcObject = stream;
-      video.muted = true;
-      video.playsInline = true;
-
-      // Attempt synchronous capture using existing playing video elements
+      // Attempt synchronous capture using existing playing video elements in the DOM
       const existingVideos = document.querySelectorAll<HTMLVideoElement>("video");
       let sourceVideo: HTMLVideoElement | null = null;
       for (const v of existingVideos) {
@@ -104,7 +143,6 @@ export function useWebRTC(): WebRTCState {
       if (sourceVideo) {
         ctx.drawImage(sourceVideo, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-        // Strip "data:image/jpeg;base64," prefix
         return dataUrl.split(",")[1] ?? null;
       }
       return null;
@@ -118,6 +156,8 @@ export function useWebRTC(): WebRTCState {
     screenStream,
     cameraActive: !!cameraStream,
     screenActive: !!screenStream,
+    cameraError,
+    screenError,
     startCamera,
     stopCamera,
     startScreenShare,

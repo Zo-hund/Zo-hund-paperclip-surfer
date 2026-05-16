@@ -62,4 +62,25 @@ test.describe("Marketplace microservice booking surfaces", () => {
     const company = await getFirstCompany(page);
     await verifyBookingSurface(page, company.issuePrefix, "marketplace");
   });
+
+  test("booking creates an issue with a microservice work order panel", async ({ page }) => {
+    const company = await getFirstCompany(page);
+    await page.goto(`/${company.issuePrefix}/xp/exchange`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: /Book Microservice/i }).first().click();
+    await page.getByLabel("Client name").fill("Mario Duerson");
+    await page.getByLabel("Client email").fill("marioduerson1cte@gmail.com");
+    await page.getByLabel("Client company").fill("AMX Electives");
+    await page.getByLabel("Instructions").fill("End-to-end booking verification for the microservice work order.");
+    await page.getByRole("button", { name: /Book \+ Create Issue/i }).click();
+
+    await expect(page.getByText(/Microservice work booked/i)).toBeVisible();
+    await page.getByRole("button", { name: /View Issue/i }).click();
+
+    await expect(page.getByText("Microservice Work Order")).toBeVisible();
+    await expect(page.getByLabel("Client email")).toHaveValue("marioduerson1cte@gmail.com");
+    await expect(page.getByLabel("Current stage")).toHaveValue("pre_production");
+    await expect(page.getByText("Client Update Email")).toBeVisible();
+  });
 });

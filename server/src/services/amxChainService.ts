@@ -74,9 +74,46 @@ export function amxChainService(db: Db) {
     return { valid: true, cert };
   }
 
+  /**
+   * Performs a full reconciliation of the AMX Chain events to ensure no tampering.
+   */
+  async function verifyChainIntegrity(companyId: string) {
+    const events = await db.select()
+      .from(amxChainEvents)
+      .where(eq(amxChainEvents.companyId, companyId))
+      .orderBy(desc(amxChainEvents.createdAt));
+
+    const results = events.map(e => {
+      const payloadStr = JSON.stringify(e.payload);
+      const expectedSignature = createHash("sha256")
+        .update(payloadStr + (process.env.AMX_CHAIN_SECRET || ""))
+        .digest("hex");
+      
+      const valid = e.signature === expectedSignature;
+      return {
+        id: e.id,
+        action: e.action,
+        valid,
+        storedSignature: e.signature,
+        expectedSignature,
+        timestamp: e.createdAt
+      };
+    });
+
+    const compromisedCount = results.filter(r => !r.valid).length;
+    
+    return {
+      totalEvents: events.length,
+      compromisedCount,
+      integrityScore: events.length > 0 ? ((events.length - compromisedCount) / events.length) * 100 : 100,
+      results
+    };
+  }
+
   return {
     recordSecurityEvent,
     issueCertificate,
     verifyCertificate,
+    verifyChainIntegrity,
   };
 }

@@ -238,12 +238,53 @@ export type GeminiLiveModality = "audio" | "text";
  * UI opts into `modality=text` (e.g. Playwright / no-mic browsers). Supports
  * the same tool declarations so navigate_to / create_issue still flow through.
  */
+async function synthesizeSpeech(genAI: GoogleGenAI, text: string, onMessage: (msg: ServerMsg) => void): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (genAI.models as any).generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text }], role: "user" }],
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
+        },
+      },
+    });
+    const parts = result?.candidates?.[0]?.content?.parts ?? [];
+    onMessage({ type: "status", status: "speaking" });
+    for (const part of parts) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const inline = (part as any).inlineData;
+      if (inline?.data) {
+        let base64Audio = "";
+        if (typeof inline.data === "string") {
+          base64Audio = inline.data;
+        } else if (Buffer.isBuffer(inline.data)) {
+          base64Audio = inline.data.toString("base64");
+        } else if (inline.data instanceof Uint8Array || inline.data instanceof ArrayBuffer) {
+          base64Audio = Buffer.from(inline.data).toString("base64");
+        }
+        if (base64Audio) {
+          onMessage({ type: "audio_response", data: base64Audio });
+        }
+      }
+    }
+    onMessage({ type: "status", status: "listening" });
+  } catch (err) {
+    logger.error({ err }, "TTS synthesis failed — sending text-only response");
+    // TTS failed gracefully — transcript already sent, just stay in listening state
+    onMessage({ type: "status", status: "listening" });
+  }
+}
+
 function createTextChatSession(
   db: Db,
   meetingId: string,
   companyId: string,
   apiKey: string,
   onMessage: (msg: ServerMsg) => void,
+  withTts = false,
 ) {
   const genAI = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
   let closed = false;
@@ -327,7 +368,6 @@ function createTextChatSession(
             role: "user",
             parts: [{ functionResponse: { name: c.name, response: result as Record<string, unknown> } }],
           });
-          // Chain another turn so the model can narrate the result
           await runTurn();
           return;
         } else {
@@ -336,19 +376,29 @@ function createTextChatSession(
         }
       }
 
-      onMessage({ type: "status", status: "listening" });
+      // Synthesize audio response if TTS is enabled
+      if (withTts && assistantText && !closed) {
+        await synthesizeSpeech(genAI, assistantText, onMessage);
+      } else {
+        onMessage({ type: "status", status: "listening" });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error({ err, msg }, "text chat turn failed");
-      if (!closed) onMessage({ type: "error", message: `Text chat error: ${msg}` });
+      if (!closed) {
+        onMessage({ type: "error", message: `AI error: ${msg}` });
+        onMessage({ type: "status", status: "listening" });
+      }
     }
   }
 
   return {
-    sendAudio(_data: string) { /* no-op in text mode */ },
-    sendVideo(_data: string) { /* no-op in text mode */ },
+    // In TTS/fallback mode, audio chunks are ignored — client sends transcripts via sendText
+    sendAudio(_data: string) { /* STT handled client-side; transcripts arrive via sendText */ },
+    sendVideo(_data: string) { /* no-op */ },
     sendText(text: string) {
       if (closed || !ready) return;
+      onMessage({ type: "transcript", role: "user", text });
       history.push({ role: "user", parts: [{ text }] });
       void runTurn();
     },
@@ -377,20 +427,36 @@ export function createGeminiLiveSession(
   onMessage: (msg: ServerMsg) => void,
   modality: GeminiLiveModality = "audio",
 ) {
-  // Text-only branch: the Live bidi API's preview models only support audio
-  // response modalities. For text cockpits (Playwright tests, no-mic browsers)
-  // we use a regular chat-streaming model with the same tool declarations so
-  // navigate_to / create_issue still round-trip through the UI.
   if (modality === "text") {
-    return createTextChatSession(db, meetingId, companyId, apiKey, onMessage);
+    return createTextChatSession(db, meetingId, companyId, apiKey, onMessage, false);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let liveSession: any = null;
   let closed = false;
+  let fallbackActivated = false;
+
+  // Activate TTS fallback — called from either onclose (denial) or init catch
+  function activateFallback(reason: string) {
+    if (fallbackActivated || closed) return;
+    fallbackActivated = true;
+    logger.warn({ reason }, "gemini live denied — activating TTS fallback");
+    onMessage({ type: "status", status: "connecting" });
+    const fallback = createTextChatSession(db, meetingId, companyId, apiKey, onMessage, true);
+    liveSession = {
+      sendRealtimeInput: (_parts: unknown) => { /* PCM ignored in fallback — Web Speech sends text */ },
+      // Per skill: sendRealtimeInput for ALL real-time input during conversation
+      sendText: (text: string) => { if (text) fallback.sendText(text); },
+      sendToolResponse: ({ functionResponses }: { functionResponses: Array<{ id: string; name: string; response: unknown }> }) => {
+        for (const r of functionResponses) fallback.toolResult(r.id, r.name, r.response);
+      },
+      close: () => fallback.close(),
+    };
+  }
 
   async function init() {
-    const genAI = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
+    // Match Python script: http_options={"api_version": "v1beta"} → httpOptions.apiVersion
+    const genAI = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1beta" } });
 
     const [mtg] = await db
       .select({ title: meetings.title })
@@ -408,22 +474,23 @@ export function createGeminiLiveSession(
       "Respond concisely and professionally, suitable for a strategic operations cockpit.",
     ].filter(Boolean).join(" ");
 
-    // This branch is audio-only (text mode short-circuits to createTextChatSession).
     const liveConfig: Record<string, unknown> = {
       responseModalities: [Modality.AUDIO],
+      mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
       systemInstruction: { parts: [{ text: systemText }] },
       tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-      mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
+      },
       contextWindowCompression: {
         triggerTokens: "104857",
         slidingWindow: { targetTokens: "52428" },
       },
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
-      },
       inputAudioTranscription: {},
       outputAudioTranscription: {},
     };
+
+    // Per Python script: model uses "models/" prefix
     const s = await genAI.live.connect({
       model: "models/gemini-3.1-flash-live-preview",
       config: liveConfig,
@@ -431,19 +498,16 @@ export function createGeminiLiveSession(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onmessage(msg: any) {
           if (closed) return;
-          logger.debug({ msgKeys: Object.keys(msg ?? {}) }, "gemini live msg");
+          logger.info({ msgKeys: Object.keys(msg ?? {}) }, "gemini live msg");
 
-          // Setup complete
           if (msg.setupComplete !== undefined) {
             onMessage({ type: "status", status: "connected" });
             onMessage({ type: "status", status: "listening" });
             return;
           }
 
-          // Server content (text / audio)
           if (msg.serverContent) {
             const parts: Array<Record<string, unknown>> = msg.serverContent?.modelTurn?.parts ?? [];
-            logger.debug({ partCount: parts.length, turnComplete: msg.serverContent.turnComplete }, "gemini serverContent");
             for (const part of parts) {
               if (typeof part.text === "string" && part.text.trim()) {
                 onMessage({ type: "transcript", role: "model", text: part.text });
@@ -461,7 +525,6 @@ export function createGeminiLiveSession(
                 } else {
                   try { base64Audio = Buffer.from(inline.data).toString("base64"); } catch {}
                 }
-                
                 if (base64Audio) {
                   onMessage({ type: "status", status: "speaking" });
                   onMessage({ type: "audio_response", data: base64Audio });
@@ -473,7 +536,7 @@ export function createGeminiLiveSession(
             }
           }
 
-          // Audio transcriptions (inputTranscription = user, outputTranscription = model)
+          // Per docs: inputTranscription = user speech, outputTranscription = model speech
           if (msg.inputTranscription?.text) {
             onMessage({ type: "transcript", role: "user", text: msg.inputTranscription.text });
           }
@@ -481,7 +544,6 @@ export function createGeminiLiveSession(
             onMessage({ type: "transcript", role: "model", text: msg.outputTranscription.text });
           }
 
-          // Tool calls
           if (msg.toolCall?.functionCalls) {
             for (const fc of msg.toolCall.functionCalls as Array<{ id: string; name: string; args: Record<string, unknown> }>) {
               if (SERVER_TOOLS.has(fc.name)) {
@@ -501,16 +563,20 @@ export function createGeminiLiveSession(
 
         onerror(e: unknown) {
           const errMsg = e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e);
-          logger.error({ err: e, errMsg, modality }, "gemini live error");
+          logger.error({ err: e, errMsg }, "gemini live error");
           if (!closed) onMessage({ type: "error", message: `Gemini session error: ${errMsg}` });
         },
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onclose(ev?: any) {
           const code = ev?.code;
-          const reason = ev?.reason;
-          logger.warn({ modality, code, reason, ev: ev ? JSON.stringify(ev) : null }, "gemini live onclose");
-          if (!closed) {
+          const reason: string = ev?.reason ?? "";
+          logger.warn({ code, reason }, "gemini live onclose");
+          if (closed) return;
+          // Detect project access denial — silently switch to TTS instead of showing error
+          if (reason.toLowerCase().includes("denied") || reason.toLowerCase().includes("access")) {
+            activateFallback(reason);
+          } else {
             if (reason) onMessage({ type: "error", message: `Gemini closed: ${reason}` });
             onMessage({ type: "status", status: "unavailable" });
           }
@@ -527,38 +593,46 @@ export function createGeminiLiveSession(
       liveSession = s;
     })
     .catch((err: unknown) => {
-      logger.error({ err }, "gemini live init failed");
-      onMessage({ type: "error", message: "Failed to connect to Gemini Live — check GEMINI_API_KEY" });
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err, msg }, "gemini live init failed");
+      if (!closed) activateFallback(msg);
     });
 
   return {
+    // Per docs: sendRealtimeInput with { audio: { data, mimeType } }
     sendAudio(data: string) {
       if (!liveSession || closed) return;
       try {
-        liveSession.sendRealtimeInput([{ mimeType: "audio/pcm;rate=16000", data }]);
+        // Per Python script: mime_type="audio/pcm" (no rate suffix)
+        liveSession.sendRealtimeInput([{ audio: { data, mimeType: "audio/pcm" } }]);
       } catch (err) {
-        logger.error({ err }, "failed to send audio input to gemini");
+        logger.error({ err }, "failed to send audio to gemini live");
       }
     },
     sendVideo(data: string) {
       if (!liveSession || closed) return;
       try {
-        liveSession.sendRealtimeInput([{ mimeType: "image/jpeg", data }]);
+        liveSession.sendRealtimeInput([{ video: { data, mimeType: "image/jpeg" } }]);
       } catch (err) {
-        logger.error({ err }, "failed to send video input to gemini");
+        logger.error({ err }, "failed to send video to gemini live");
       }
     },
     sendText(text: string) {
       if (!liveSession || closed) return;
       try {
-        liveSession.sendClientContent({ turns: text, turnComplete: true });
+        // Per skill: sendRealtimeInput for ALL real-time input; sendClientContent is only for seeding history
+        liveSession.sendRealtimeInput({ text });
       } catch (err) {
-        logger.error({ err }, "failed to send text input to gemini");
+        logger.error({ err }, "failed to send text to gemini live");
       }
     },
     toolResult(callId: string, name: string, result: unknown) {
       if (!liveSession || closed) return;
-      liveSession.sendToolResponse({ functionResponses: [{ id: callId, name, response: result }] });
+      try {
+        liveSession.sendToolResponse({ functionResponses: [{ id: callId, name, response: result }] });
+      } catch (err) {
+        logger.error({ err }, "failed to send tool result to gemini live");
+      }
     },
     close() {
       closed = true;
@@ -569,3 +643,4 @@ export function createGeminiLiveSession(
     },
   };
 }
+

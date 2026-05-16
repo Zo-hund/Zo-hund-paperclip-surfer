@@ -108,6 +108,58 @@ Target ES2023, strict mode, `NodeNext` module resolution. All packages extend `t
 
 ## Session Memory Backup
 
+> Updated 2026-05-03 — Marketplace Upgrade: XP from Runs + Agent Visibility + Promoted Agents
+
+### AMX Marketplace Upgrade (2026-05-03) — ALL COMPLETE ✅
+
+**Three features shipped:**
+
+**1. XP from Heartbeat Runs** (`server/src/services/heartbeat.ts`)
+- XP awarded on `outcome === "succeeded"` inside `if (finalizedRun)` block after pitStop
+- Atomic JSONB update: `jsonb_set(metadata, '{xp}', to_jsonb(existing_xp + runXp))`
+- Logs `agent.xp_earned_from_run` to activity chain via `logActivity()`
+- XP rate: sim=3, pre=5, live=15, prod=20, post=5, default=3
+- `logActivity` import added at line ~36
+
+**2. Agent Public/Private** (`agents.metadata.marketplaceVisible`)
+- No migration — stored in existing `agents.metadata` JSONB
+- To make agent public: `PATCH /api/agents/:id` with `{ metadata: { marketplaceVisible: true } }`
+- New endpoint: `GET /api/marketplace/public-listings` returns `{ listings[], visibleAgents[] }`
+- `visibleAgents` = agents where `metadata->>'marketplaceVisible' = 'true'` AND `status IN ('idle','running')`
+- `AgentMarketplace.tsx` maps visible agents into the "AI Agents" pool alongside listings
+
+**3. Promoted/Sponsored Agents**
+- Schema: `packages/db/src/schema/marketplace.ts` — `isPromoted bool`, `promotedUntil timestamptz`, `sponsorTag text`
+- Migration `0062` rewritten as fully idempotent (all `IF NOT EXISTS`, `DO $$ EXCEPTION WHEN duplicate_object $$` for constraints)
+- Service: `marketplace.ts` exports `promoteListingAsBoard(listingId, input)` — bypasses partner/ownership checks
+- Route: board actors on `PATCH /api/companies/:id/amx/partner-listings/:id` route directly to `promoteListingAsBoard`
+- UI: promoted cards sort first; amber Sparkles strip shows `sponsorTag ?? "Promoted"` at top of card; amber border
+
+**DB Migration note:**
+- `pnpm db:generate` fails with TS6059 rootDir error (pre-existing)
+- Use `cd packages/db && npx drizzle-kit generate` instead to bypass tsc step
+- `pnpm db:migrate` works normally after that
+
+**Server restart note:**
+- Server runs `tsx src/index.ts` WITHOUT `--watch` — does NOT auto-reload
+- After source changes: `netstat -ano | findstr ":3100"` → kill PID → `pnpm dev:server` from project root
+
+**Files changed:**
+- `packages/db/src/schema/marketplace.ts` — boolean import + 3 new columns
+- `packages/db/src/migrations/0062_stale_victor_mancha.sql` — idempotent rewrite
+- `server/src/services/heartbeat.ts` — logActivity import + XP award block
+- `server/src/services/marketplace.ts` — promoteListingAsBoard() + export
+- `server/src/routes/marketplace.ts` — board PATCH path, GET /marketplace/public-listings, or import
+- `ui/src/api/marketplace.ts` — isPromoted/promotedUntil/sponsorTag on MarketplaceListing, getPublicListings()
+- `ui/src/pages/AgentMarketplace.tsx` — public-listings query, visibleAgents pool, promoted sort + card strip
+
+**Remaining work (next agent):**
+- `ui/src/pages/AgentDetail.tsx` — add `marketplaceVisible` toggle Switch in agent settings section
+- `ui/src/pages/TeamRoster.tsx` — add "Ship to Market" button on agent cards (sets `marketplaceVisible: true`)
+- `pnpm build` to rebuild `ui/dist/` after UI changes
+
+---
+
 > Updated 2026-04-27 — AMX Air Hubs Folder Rails + Governing Reference handoff
 
 ### AMX Air Hubs Folder Rails (2026-04-27)

@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarketplaceMicroserviceBooking, isMicroserviceListing } from "@/components/MarketplaceMicroserviceBooking";
 import { useCompany } from "@/context/CompanyContext";
+import { AIR_HUB_EMAILS, getCurrentAirHubLaneLabel } from "@/lib/air-hubs-lanes";
 
 const DEFAULT_LISTING_FORM = {
   listingType: "agent" as MarketplaceListingType,
@@ -168,6 +169,7 @@ export function XpExchange() {
   const canSell = profile.partnerStatus === "active";
   const isPending = profile.partnerStatus === "pending";
   const adminQueue = adminQueueQuery.data ?? [];
+  const currentLane = getCurrentAirHubLaneLabel(profile.roleIntent, profile.partnerStatus);
 
   return (
     <div className="flex min-h-screen flex-col bg-background/50 animate-in fade-in duration-500">
@@ -187,14 +189,28 @@ export function XpExchange() {
             </h1>
           </div>
           <p className="max-w-3xl text-xl font-medium leading-relaxed text-muted-foreground">
-            Browse approved partner offerings for AI Agents, Co-op Pairs, and Full Teams. LMS credits
-            stay in TECH AT NITE. Marketplace work pays AMX tokens only.
+            Hire from Collectives, browse official provider supply, and move from TECH AT NITE readiness into
+            AMX token-based marketplace work. LMS credits stay in TECH AT NITE. Marketplace work pays AMX tokens only.
           </p>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-border/60 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground">
+              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Collectives</div>
+              Skills providers, agent teams, and microservice sellers coordinate through {AIR_HUB_EMAILS.collectives}.
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground">
+              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Electives</div>
+              Employers, universities, and institutional buyers hire and sponsor through {AIR_HUB_EMAILS.electives}.
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground">
+              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-foreground">Community</div>
+              Members and partners network, learn, and route general marketplace questions through {AIR_HUB_EMAILS.community}.
+            </div>
+          </div>
 
           {!guidance.requiredChecklistComplete && (
             <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
               TECH AT NITE onboarding is still required. {guidance.nextRecommendedStep} Visit `/lms/dashboard`
-              before applying as a Partner or selling listings.
+              before applying as a Collective provider or selling listings.
             </div>
           )}
 
@@ -225,6 +241,7 @@ export function XpExchange() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search by partner, skills, or offering type..."
+              
               className="h-11 bg-accent/5 pl-10"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -245,7 +262,7 @@ export function XpExchange() {
                 Showing {filteredListings.length} listings
               </h2>
               <div className="text-[12px] font-medium text-muted-foreground">
-                Role: <span className="font-black uppercase text-primary">{profile.partnerStatus === "active" ? "Partner" : profile.roleIntent}</span>
+                Lane: <span className="font-black uppercase text-primary">{currentLane}</span>
               </div>
             </div>
 
@@ -361,15 +378,15 @@ export function XpExchange() {
               </div>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 {canSell
-                  ? "Your partner profile is active. Create v1 listings for AI Agents, Co-op Pairs, and Full Teams."
+                  ? "Your Collective profile is active. Create v1 listings for AI Agents, Co-op Pairs, and Full Teams."
                   : isPending
-                    ? "Your partner application is pending admin review. Listing creation is locked until approval."
+                    ? "Your Collective application is pending admin review. Listing creation is locked until approval."
                     : "Complete TECH AT NITE milestones and get approved before selling on the marketplace."}
               </p>
 
               <div className="mt-5 space-y-3 text-[12px]">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Partner status</span>
+                  <span className="text-muted-foreground">Provider status</span>
                   <span className="font-black uppercase text-primary">{profile.partnerStatus}</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -384,7 +401,7 @@ export function XpExchange() {
             </div>
 
             <div className="rounded-2xl border border-border/60 bg-card p-6">
-              <h3 className="text-sm font-black uppercase tracking-[0.25em] text-foreground">Create Listing</h3>
+              <h3 className="text-sm font-black uppercase tracking-[0.25em] text-foreground">Create Collective Listing</h3>
               <div className="mt-5 space-y-4">
                 <select
                   className="h-11 w-full rounded-md border border-border bg-transparent px-3 text-sm"
@@ -409,7 +426,7 @@ export function XpExchange() {
                   disabled={!canSell}
                 />
                 <Textarea
-                  placeholder="Describe the agent, co-op pair, or team."
+                  placeholder="Describe the Collective offer, agent, co-op pair, or team."
                   rows={5}
                   value={listingForm.description}
                   onChange={(event) => setListingForm((current) => ({ ...current, description: event.target.value }))}

@@ -22,6 +22,7 @@ import { CommentThread } from "../components/CommentThread";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
 import { IssueProperties } from "../components/IssueProperties";
 import { IssueWorkspaceCard } from "../components/IssueWorkspaceCard";
+import { MicroserviceWorkOrderPanel } from "../components/MicroserviceWorkOrderPanel";
 import { LiveRunWidget } from "../components/LiveRunWidget";
 import type { MentionOption } from "../components/MarkdownEditor";
 import { ScrollToBottom } from "../components/ScrollToBottom";
@@ -451,6 +452,15 @@ export function IssueDetail() {
       hasTokens,
     };
   }, [linkedRuns]);
+
+  const isMicroserviceBookingIssue = useMemo(() => {
+    if (!issue) return false;
+    if (issue.billingCode === "amx_microservice_booking") return true;
+    if (typeof issue.originId === "string" && issue.originId.startsWith("microservice-booking:")) return true;
+    return (issue.workProducts ?? []).some(
+      (product) => product.provider === "amx-microservices" && product.externalId === "microservice-work-order",
+    );
+  }, [issue]);
 
   const invalidateIssue = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.detail(issueId!) });
@@ -1019,6 +1029,10 @@ export function IssueDetail() {
         project={orderedProjects.find((p) => p.id === issue.projectId) ?? null}
         onUpdate={(data) => updateIssue.mutate(data)}
       />
+
+      {isMicroserviceBookingIssue && (
+        <MicroserviceWorkOrderPanel issueId={issue.id} />
+      )}
 
       <Separator />
 

@@ -1,16 +1,14 @@
 /**
  * useGeminiLive
  *
- * Client-side hook that connects to the server-side Gemini Live relay
+ * Client-side hook that connects to the server-side Gemini chat+TTS relay
  * at /api/meetings/:meetingId/gemini-live via WebSocket.
  *
- * Handles:
- *  - PCM16 mic capture via AudioWorklet (16kHz mono)
- *  - PCM16 audio playback via AudioContext
- *  - Video frame forwarding
- *  - Tool call dispatch callback
- *  - Reconnect with backoff (using ref flag to avoid stale-closure bug)
- *  - 30s keepalive ping to survive Cloudflare tunnel idle timeout
+ * Architecture (fallback from unavailable Live bidi API):
+ *  - Browser Web Speech API (SpeechRecognition) handles STT locally — no key needed
+ *  - Transcripts are sent as text to server via WebSocket
+ *  - Server responds with gemini-2.5-flash text + gemini-2.5-flash-preview-tts audio
+ *  - Audio is played back via AudioContext at 24kHz
  */
 
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -28,6 +26,7 @@ export interface GeminiLiveState {
   status: GeminiStatus;
   transcript: GeminiTranscriptEntry[];
   isSpeaking: boolean;
+  audioLevel: number;
   connect(): void;
   disconnect(): void;
   sendAudioChunk(pcm16Base64: string): void;
@@ -37,41 +36,6 @@ export interface GeminiLiveState {
   respondToTool(callId: string, name: string, result: unknown): void;
 }
 
-// AudioWorklet processor source (inlined as blob URL)
-const WORKLET_SRC = `
-class PCM16Processor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this._buffer = [];
-    this._bufferSize = 0;
-    this._chunkSamples = 1600; // 100ms at 16kHz
-  }
-  process(inputs) {
-    const input = inputs[0]?.[0];
-    if (!input) return true;
-    // Downsample from sampleRate to 16000 if needed
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      this._buffer.push(s < 0 ? s * 0x8000 : s * 0x7fff);
-    }
-    while (this._buffer.length >= this._chunkSamples) {
-      const chunk = this._buffer.splice(0, this._chunkSamples);
-      const int16 = new Int16Array(chunk);
-      this.port.postMessage({ pcm16: int16.buffer }, [int16.buffer]);
-    }
-    return true;
-  }
-}
-registerProcessor('pcm16-processor', PCM16Processor);
-`;
-
-function int16ToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
 function base64ToFloat32(base64: string, ctx: AudioContext): AudioBuffer | null {
   try {
     const binary = atob(base64);
@@ -79,7 +43,6 @@ function base64ToFloat32(base64: string, ctx: AudioContext): AudioBuffer | null 
     const bytes = new Uint8Array(len);
     for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
     const int16 = new Int16Array(bytes.buffer);
-    // Buffer MUST be created by the same AudioContext that will play it
     const buffer = ctx.createBuffer(1, int16.length, ctx.sampleRate);
     const channelData = buffer.getChannelData(0);
     for (let i = 0; i < int16.length; i++) {
@@ -93,11 +56,6 @@ function base64ToFloat32(base64: string, ctx: AudioContext): AudioBuffer | null 
 }
 
 export interface UseGeminiLiveOptions {
-  /**
-   * Response modality: "audio" (default) streams PCM audio + transcripts;
-   * "text" returns only text replies — useful when mic access is unavailable
-   * (headless browsers, denied permission, text-only cockpits).
-   */
   modality?: "audio" | "text";
 }
 
@@ -106,19 +64,24 @@ export function useGeminiLive(meetingId: string, options: UseGeminiLiveOptions =
   const [status, setStatus] = useState<GeminiStatus>("idle");
   const [transcript, setTranscript] = useState<GeminiTranscriptEntry[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keepaliveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryCountRef = useRef(0);
-  // Use a ref (not state) for reconnect intent — avoids stale-closure bug in onclose
   const shouldReconnectRef = useRef(false);
   const toolCallHandlerRef = useRef<ToolCallHandler | null>(null);
   const playbackCtxRef = useRef<AudioContext | null>(null);
-  const playbackQueueRef = useRef<number>(0); // next playback time
+  const playbackQueueRef = useRef<number>(0);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micCtxRef = useRef<AudioContext | null>(null);
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micProcessorRef = useRef<ScriptProcessorNode | null>(null);
+
+  // Web Speech API refs
+  const recognitionRef = useRef<any | null>(null);
+  const recognitionActiveRef = useRef(false);
 
   const send = useCallback((msg: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -126,45 +89,150 @@ export function useGeminiLive(meetingId: string, options: UseGeminiLiveOptions =
     }
   }, []);
 
-  const startMicCapture = useCallback(async () => {
-    if (!meetingId) return;
+  const encodePcm16Base64 = useCallback((input: Float32Array) => {
+    const pcm = new Int16Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+      const s = Math.max(-1, Math.min(1, input[i] ?? 0));
+      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+
+    const bytes = new Uint8Array(pcm.buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i] ?? 0);
+    return btoa(binary);
+  }, []);
+
+  const stopPcmStreaming = useCallback(() => {
+    if (micProcessorRef.current) {
+      micProcessorRef.current.disconnect();
+      micProcessorRef.current.onaudioprocess = null;
+      micProcessorRef.current = null;
+    }
+    if (micSourceRef.current) {
+      micSourceRef.current.disconnect();
+      micSourceRef.current = null;
+    }
+    if (micCtxRef.current) {
+      micCtxRef.current.close().catch(() => {});
+      micCtxRef.current = null;
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+    }
+    setAudioLevel(0);
+  }, []);
+
+  const startPcmStreaming = useCallback(async () => {
+    if (micStreamRef.current) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       micStreamRef.current = stream;
 
       const ctx = new AudioContext({ sampleRate: 16000 });
-      audioCtxRef.current = ctx;
-
-      // Load worklet
-      const blob = new Blob([WORKLET_SRC], { type: "application/javascript" });
-      const workletUrl = URL.createObjectURL(blob);
-      await ctx.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
-
+      micCtxRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
-      const workletNode = new AudioWorkletNode(ctx, "pcm16-processor");
-      workletNodeRef.current = workletNode;
+      micSourceRef.current = source;
 
-      workletNode.port.onmessage = (e: MessageEvent<{ pcm16: ArrayBuffer }>) => {
-        const b64 = int16ToBase64(e.data.pcm16);
-        send({ type: "audio_chunk", data: b64 });
+      // ScriptProcessor is deprecated but still broadly supported in Chromium/Electron.
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      micProcessorRef.current = processor;
+
+      processor.onaudioprocess = (event) => {
+        const samples = event.inputBuffer.getChannelData(0);
+        if (!samples || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+        // Lightweight RMS meter for UI state.
+        let sumSquares = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const s = samples[i] ?? 0;
+          sumSquares += s * s;
+        }
+        const rms = Math.sqrt(sumSquares / samples.length);
+        setAudioLevel(Math.min(1, rms * 6));
+
+        const pcm16Base64 = encodePcm16Base64(samples);
+        send({ type: "audio_chunk", data: pcm16Base64 });
       };
 
-      source.connect(workletNode);
-      workletNode.connect(ctx.destination);
+      source.connect(processor);
+      processor.connect(ctx.destination);
+      console.log("[useGeminiLive] PCM streaming fallback started");
     } catch (err) {
-      console.error("[useGeminiLive] mic capture failed", err);
+      console.error("[useGeminiLive] Failed to start PCM fallback:", err);
+      setStatus("error");
     }
-  }, [meetingId, send]);
+  }, [encodePcm16Base64, send]);
 
-  const stopMicCapture = useCallback(() => {
-    workletNodeRef.current?.disconnect();
-    workletNodeRef.current = null;
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-    micStreamRef.current?.getTracks().forEach((t) => t.stop());
-    micStreamRef.current = null;
-  }, []);
+  // ── Web Speech API STT ─────────────────────────────────────────────────────
+  const startSpeechRecognition = useCallback(async () => {
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      console.warn("[useGeminiLive] SpeechRecognition not supported — switching to PCM streaming fallback");
+      await startPcmStreaming();
+      return;
+    }
+    if (recognitionActiveRef.current) return;
+
+    const rec = new SpeechRec() as any;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+    recognitionRef.current = rec;
+
+    rec.onresult = (event: any) => {
+      const results = Array.from(event.results);
+      for (let i = event.resultIndex; i < results.length; i++) {
+        const result = results[i] as any;
+        if (!result) continue;
+        if (result.isFinal) {
+          const text = result[0]?.transcript?.trim();
+          if (text && wsRef.current?.readyState === WebSocket.OPEN) {
+            console.log("[useGeminiLive] STT final:", text);
+            setAudioLevel(0.8); // flash mic indicator
+            setTimeout(() => setAudioLevel(0), 300);
+            send({ type: "text", text });
+          }
+        }
+      }
+    };
+
+    rec.onerror = (event: any) => {
+      if (event.error === "no-speech" || event.error === "aborted") return;
+      console.error("[useGeminiLive] SpeechRecognition error:", event.error);
+    };
+
+    rec.onend = () => {
+      recognitionActiveRef.current = false;
+      // Auto-restart unless disconnected
+      if (shouldReconnectRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        setTimeout(() => startSpeechRecognition(), 300);
+      }
+    };
+
+    try {
+      rec.start();
+      recognitionActiveRef.current = true;
+      console.log("[useGeminiLive] SpeechRecognition started");
+    } catch (err) {
+      console.error("[useGeminiLive] SpeechRecognition start failed:", err);
+    }
+  }, [send, startPcmStreaming]);
+
+  const stopSpeechRecognition = useCallback(() => {
+    recognitionActiveRef.current = false;
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setAudioLevel(0);
+    stopPcmStreaming();
+  }, [stopPcmStreaming]);
 
   const stopKeepalive = useCallback(() => {
     if (keepaliveTimerRef.current) {
@@ -222,15 +290,13 @@ export function useGeminiLive(meetingId: string, options: UseGeminiLiveOptions =
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log("[useGeminiLive] WS opened.", modality === "text" ? "Text mode (mic disabled)." : "Starting mic capture...");
+        console.log("[useGeminiLive] WS opened — starting speech recognition");
         retryCountRef.current = 0;
-        setStatus("connecting"); // wait for server's "connected" message
+        setStatus("connecting");
         if (modality !== "text") {
-          void startMicCapture();
+          void startSpeechRecognition();
         }
 
-        // Keepalive ping every 30s — prevents Cloudflare tunnel (and other proxies)
-        // from closing idle WebSocket connections (~100s idle timeout).
         stopKeepalive();
         keepaliveTimerRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -297,9 +363,8 @@ export function useGeminiLive(meetingId: string, options: UseGeminiLiveOptions =
 
       ws.onclose = (ev) => {
         console.log("[useGeminiLive] WS closed:", ev.code, ev.reason);
-        stopMicCapture();
+        stopSpeechRecognition();
         stopKeepalive();
-        // Use shouldReconnectRef (not stale `status` closure) to decide whether to retry
         if (shouldReconnectRef.current && retryCountRef.current < 5) {
           retryCountRef.current++;
           const delay = Math.min(2000 * retryCountRef.current, 10000);
@@ -314,7 +379,7 @@ export function useGeminiLive(meetingId: string, options: UseGeminiLiveOptions =
       console.error("[useGeminiLive] Failed to construct WebSocket:", err);
       setStatus("error");
     }
-  }, [meetingId, modality, send, startMicCapture, stopMicCapture, stopKeepalive, playAudioResponse]);
+  }, [meetingId, modality, send, startSpeechRecognition, stopSpeechRecognition, stopKeepalive, playAudioResponse]);
 
   const connect = useCallback(() => {
     // Ensure playback context is unlocked during the user gesture.
@@ -336,16 +401,17 @@ export function useGeminiLive(meetingId: string, options: UseGeminiLiveOptions =
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;
-    retryCountRef.current = 99; // belt-and-suspenders: stop reconnect loop
+    retryCountRef.current = 99;
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     stopKeepalive();
-    stopMicCapture();
+    stopSpeechRecognition();
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
     playbackCtxRef.current?.close().catch(() => {});
     playbackCtxRef.current = null;
+    stopPcmStreaming();
     setStatus("idle");
     setIsSpeaking(false);
-  }, [stopMicCapture, stopKeepalive]);
+  }, [stopSpeechRecognition, stopKeepalive, stopPcmStreaming]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -378,6 +444,7 @@ export function useGeminiLive(meetingId: string, options: UseGeminiLiveOptions =
     status,
     transcript,
     isSpeaking,
+    audioLevel,
     connect,
     disconnect,
     sendAudioChunk,

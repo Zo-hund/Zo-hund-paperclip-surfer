@@ -41,6 +41,7 @@ import {
   secretService,
   syncInstructionsBundleConfigFromFilePath,
   workspaceOperationService,
+  amxChainService,
 } from "../services/index.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
@@ -97,6 +98,7 @@ export function agentRoutes(db: Db) {
   const companySkills = companySkillService(db);
   const workspaceOperations = workspaceOperationService(db);
   const instanceSettings = instanceSettingsService(db);
+  const chainSvc = amxChainService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
 
   async function getCurrentUserRedactionOptions() {
@@ -1335,6 +1337,16 @@ export function agentRoutes(db: Db) {
       },
     });
 
+    // Record on AMX Chain
+    await chainSvc.recordSecurityEvent(companyId, actor.actorType, actor.actorId, "AGENT_HIRE_CREATED", {
+      agentId: agent.id,
+      name: agent.name,
+      role: agent.role,
+      requiresApproval,
+      approvalId: approval?.id ?? null,
+      issueIds: sourceIssueIds,
+    });
+
     await applyDefaultAgentTaskAssignGrant(
       companyId,
       agent.id,
@@ -1415,6 +1427,14 @@ export function agentRoutes(db: Db) {
         role: agent.role,
         desiredSkills: desiredSkillAssignment.desiredSkills,
       },
+    });
+
+    // Record on AMX Chain
+    await chainSvc.recordSecurityEvent(companyId, actor.actorType, actor.actorId, "AGENT_CREATED", {
+      agentId: agent.id,
+      name: agent.name,
+      role: agent.role,
+      adapterType: agent.adapterType,
     });
 
     await applyDefaultAgentTaskAssignGrant(

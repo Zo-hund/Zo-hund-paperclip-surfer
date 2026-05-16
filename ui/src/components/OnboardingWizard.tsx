@@ -42,6 +42,7 @@ import {
   getDefaultModelForAdapter,
   type PreferredLocalAdapterType,
 } from "../lib/local-adapter-readiness";
+import { AIR_HUB_EMAILS } from "../lib/air-hubs-lanes";
 import { resolveRouteOnboardingOptions } from "../lib/onboarding-route";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
@@ -904,6 +905,11 @@ export function OnboardingWizard() {
               {/* Step content */}
               {step === 1 && (
                 <div className="space-y-5">
+                  <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed text-muted-foreground">
+                    Start in the Air Hubs lane that fits your goal: <span className="font-black text-foreground">Community</span> for learners and members,
+                    <span className="font-black text-foreground"> Collectives</span> for skills providers, and
+                    <span className="font-black text-foreground"> Electives</span> for employers and universities.
+                  </div>
                   <div className="flex items-center gap-3 mb-1">
                     <div className="bg-muted/50 p-2">
                       <Building2 className="h-5 w-5 text-muted-foreground" />
@@ -911,7 +917,7 @@ export function OnboardingWizard() {
                     <div>
                       <h3 className="font-medium">Name your company</h3>
                       <p className="text-xs text-muted-foreground">
-                        This is the organization your agents will work for.
+                        This is the organization your agents will work for across Community, Collectives, or Electives.
                       </p>
                     </div>
                   </div>
@@ -964,7 +970,7 @@ export function OnboardingWizard() {
                     <div>
                       <h3 className="font-medium">Create your first agent</h3>
                       <p className="text-xs text-muted-foreground">
-                        Choose how this agent will run tasks.
+                        Choose how this agent will run tasks across member support, provider work, and buyer delivery flows.
                       </p>
                     </div>
                   </div>
@@ -1040,7 +1046,7 @@ export function OnboardingWizard() {
                     <span>
                       <span className="block font-medium">Enable AMX microservices tooling</span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        Adds page-agent, Firecrawl, and AMX image/video/audio/webhook router skills so this agent can be hired for on-demand microservice work.
+                        Adds page-agent, Firecrawl, and AMX image/video/audio/webhook router skills so this agent can be hired for on-demand microservice work through {AIR_HUB_EMAILS.agents}.
                       </span>
                     </span>
                   </label>
@@ -1498,8 +1504,7 @@ export function OnboardingWizard() {
                     <div>
                       <h3 className="font-medium">Ready to launch</h3>
                       <p className="text-xs text-muted-foreground">
-                        Everything is set up. Launching now will create the
-                        starter task, wake the agent, and open the issue.
+                        Everything is set up. Launching now will create the starter task and send you into TECH AT NITE so Community members can learn, Collectives can qualify to sell, and Electives can move into hiring workflows.
                       </p>
                     </div>
                   </div>
