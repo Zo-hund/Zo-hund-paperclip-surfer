@@ -72,6 +72,16 @@ curl http://localhost:3100/api/companies
 # -> []
 ```
 
+## Pipeline Parity (Local vs CI)
+
+Use the same green command locally that CI uses for merge gating:
+
+```sh
+pnpm run pipeline:local
+```
+
+`pipeline:local` is intentionally an alias of `pipeline:smoke` so local and CI checks stay aligned.
+
 ## Reset Dev Data
 
 To wipe local data and start fresh:

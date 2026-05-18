@@ -25,6 +25,28 @@ PAPERCLIP_PORT=3200 PAPERCLIP_DATA_DIR=./data/pc \
   docker compose -f docker-compose.quickstart.yml up --build
 ```
 
+## Cloud Release Pipeline (Docker Host)
+
+GitHub Actions release workflow: `.github/workflows/release-docker.yml`
+
+Triggers:
+
+- Manual run (`workflow_dispatch`)
+- Tag push matching `v*`
+
+Required repository variables:
+
+- `REGISTRY_IMAGE` (example: `ghcr.io/org/paperclip`)
+- `PAPERCLIP_PUBLIC_URL`
+
+Required repository secrets:
+
+- `BETTER_AUTH_SECRET`
+- `REGISTRY_USERNAME`
+- `REGISTRY_TOKEN`
+
+The workflow builds the image, smoke-runs it against `/api/health`, pushes `:<version>` and `:latest`, and uploads `release-metadata.json` as a build artifact.
+
 ## Manual Docker Build
 
 ```sh

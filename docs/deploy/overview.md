@@ -53,3 +53,17 @@ Or update it later:
 ```sh
 pnpm paperclipai configure --section server
 ```
+
+## CI Contract
+
+Merge gate command:
+
+```sh
+pnpm run pipeline:smoke
+```
+
+Recommended branch protection:
+
+- Require status check `ci / smoke` before merging pull requests.
+
+The workflow also runs `ci / smoke twice (non-blocking)` for flaky-test visibility without blocking merges.
