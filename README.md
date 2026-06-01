@@ -73,9 +73,34 @@ pnpm paperclipai run
 ### Docker
 
 ```bash
-docker build -t paperclip-surfers .
-docker run -p 3100:3100 -v ~/.paperclip:/paperclip paperclip-surfers
+docker build -t amx-air-hubs:local .
+docker run -p 3100:3100 -v ~/.paperclip:/paperclip amx-air-hubs:local
 ```
+
+For the local single-node stack:
+
+```powershell
+Copy-Item .env.docker.example .env.docker
+docker compose up --build
+```
+
+Cloud image tags are published through GitHub Actions as:
+
+- `ghcr.io/<owner>/amx-air-hubs:sha-<commit>`
+- `ghcr.io/<owner>/amx-air-hubs:main`
+- `ghcr.io/<owner>/amx-air-hubs:latest`
+
+For AMX AIR HUBS local or cloud deployments, see [deploy/README.md](deploy/README.md) for:
+
+- `docker-compose.yml` for the simple local app + Postgres stack
+- `docker-compose.cluster.yml` for a Traefik-backed local Docker cluster
+- `deploy/vps` for the primary Hostinger and per-client VPS deployment path
+- `deploy/helm/amx-air-hubs` for the advanced Kubernetes Helm release path
+- `deploy/k8s/overlays/local` and `deploy/k8s/overlays/cloud` as reference/local scaffolding
+
+For the primary VPS production path and client onboarding workflow, use [deploy/VPS-ADMIN-CHECKLIST.md](deploy/VPS-ADMIN-CHECKLIST.md).
+
+For the Kubernetes staging, promotion, and rollback procedure, use [deploy/CLUSTER-ADMIN-CHECKLIST.md](deploy/CLUSTER-ADMIN-CHECKLIST.md).
 
 ---
 
