@@ -1,0 +1,156 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate cluster compose pack
+        shell: bash
+        run: |
+          cp .env.cluster.example .env.cluster
+          docker compose -f docker-compose.cluster.yml config >/dev/null
+
+      - name: Validate VPS compose pack
+        shell: bash
+        run: |
+          cp deploy/vps/.env.vps.example deploy/vps/.env.vps
+          docker compose --env-file deploy/vps/.env.vps -f deploy/vps/docker-compose.vps.yml config >/dev/null
+
+      - name: Validate Hostinger compose pack
+        shell: bash
+        run: |
+          cp deploy/vps/.env.hostinger.example deploy/vps/.env
+          docker compose --env-file deploy/vps/.env -f deploy/vps/docker-compose.hostinger.yml config >/dev/null
+
+      - name: Run Typecheck
+        run: pnpm -r typecheck
+
+      - name: Run Tests
+        run: pnpm test:run
+
+  helm-validate:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Helm lint
+        run: helm lint ./deploy/helm/amx-air-hubs
+
+      - name: Helm template local
+        run: >
+          helm template amx-air-hubs ./deploy/helm/amx-air-hubs
+          --values ./deploy/helm/amx-air-hubs/values-local.yaml
+          --set secrets.existingSecretName=amx-secrets
+
+      - name: Helm template staging
+        run: >
+          helm template amx-air-hubs-staging ./deploy/helm/amx-air-hubs
+          --values ./deploy/helm/amx-air-hubs/values-staging.yaml
+          --set fullnameOverride=amx-air-hubs-staging
+          --set secrets.existingSecretName=amx-secrets
+
+      - name: Helm template cloud
+        run: >
+          helm template amx-air-hubs ./deploy/helm/amx-air-hubs
+          --values ./deploy/helm/amx-air-hubs/values-cloud.yaml
+          --set secrets.existingSecretName=amx-secrets
+
+  docker:
+    needs:
+      - build-and-test
+      - helm-validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_repository: ${{ steps.image.outputs.repository }}
+      image_tag: ${{ steps.image.outputs.tag }}
+      image_ref: ${{ steps.image.outputs.ref }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image coordinates
+        id: image
+        shell: bash
+        run: |
+          REPOSITORY="ghcr.io/${{ github.repository_owner }}/amx-air-hubs"
+          TAG="sha-${GITHUB_SHA}"
+          echo "repository=${REPOSITORY}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REPOSITORY}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.repository }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.image.outputs.tag }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.image.outputs.tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publish image summary
+        run: |
+          echo "Pushed image: ${{ steps.image.outputs.ref }}" >> "$GITHUB_STEP_SUMMARY"

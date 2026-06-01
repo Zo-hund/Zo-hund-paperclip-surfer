@@ -1,0 +1,64 @@
+services:
+  traefik:
+    image: traefik:v3.2
+    restart: unless-stopped
+    command:
+      - --api.dashboard=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${TRAEFIK_ACME_STORAGE:-./traefik/acme}:/letsencrypt
+    networks:
+      - amx
+
+  amx:
+    image: ${AMX_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - .env.vps
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      SERVE_UI: "true"
+      DATABASE_URL: ${DATABASE_URL}
+      PAPERCLIP_HOME: /paperclip
+      PAPERCLIP_INSTANCE_ID: default
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+      PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3100/ >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    volumes:
+      - ${PAPERCLIP_DATA_PATH:-./paperclip-data}:/paperclip
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.amx.rule=Host(`${TRAEFIK_DOMAIN}`)
+      - traefik.http.routers.amx.entrypoints=websecure
+      - traefik.http.routers.amx.tls=true
+      - traefik.http.routers.amx.tls.certresolver=letsencrypt
+      - traefik.http.services.amx.loadbalancer.server.port=3100
+    networks:
+      - amx
+
+networks:
+  amx:
+    name: ${COMPOSE_PROJECT_NAME:-amx-air-hubs}
