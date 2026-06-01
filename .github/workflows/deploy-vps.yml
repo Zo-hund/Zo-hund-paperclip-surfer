@@ -1,0 +1,239 @@
+name: Deploy AMX VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_name:
+        description: GitHub Environment name for the VPS target
+        required: true
+        type: string
+      image_tag:
+        description: Immutable image tag to deploy, for example sha-<commit>
+        required: true
+        type: string
+      domain:
+        description: Optional domain override for the VPS target
+        required: false
+        default: ""
+        type: string
+      stack_name:
+        description: Optional Compose project name override
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_name }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/amx-air-hubs
+      DEFAULT_DEPLOY_ROOT: /opt/amx
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve deployment variables
+        id: vars
+        shell: bash
+        run: |
+          DEPLOY_LAYOUT="${{ vars.VPS_LAYOUT }}"
+          if [ -z "${DEPLOY_LAYOUT}" ]; then
+            DEPLOY_LAYOUT="generic"
+          fi
+
+          STACK_NAME="${{ inputs.stack_name }}"
+          if [ -z "${STACK_NAME}" ]; then
+            if [ "${DEPLOY_LAYOUT}" = "hostinger-shared-traefik" ]; then
+              STACK_NAME="${{ vars.VPS_COMPOSE_PROJECT_NAME }}"
+            fi
+          fi
+          if [ -z "${STACK_NAME}" ]; then
+            STACK_NAME="${{ inputs.target_name }}"
+          fi
+
+          DOMAIN="${{ inputs.domain }}"
+          if [ -z "${DOMAIN}" ]; then
+            DOMAIN="${{ vars.VPS_DOMAIN }}"
+          fi
+          if [ -z "${DOMAIN}" ]; then
+            echo "No deployment domain provided. Supply the workflow input or define GitHub environment variable VPS_DOMAIN." >&2
+            exit 1
+          fi
+
+          if [ "${DEPLOY_LAYOUT}" = "hostinger-shared-traefik" ]; then
+            DEPLOY_DIR="${{ vars.VPS_DEPLOY_DIR }}"
+            if [ -z "${DEPLOY_DIR}" ]; then
+              DEPLOY_DIR="/root/paperclip"
+            fi
+            COMPOSE_TEMPLATE="deploy/vps/docker-compose.hostinger.yml"
+            REMOTE_COMPOSE_FILE="docker-compose.yml"
+            REMOTE_ENV_FILE=".env"
+            APP_SERVICE_NAME="server"
+          else
+            DEPLOY_DIR="${{ vars.VPS_DEPLOY_DIR }}"
+            if [ -z "${DEPLOY_DIR}" ]; then
+              DEPLOY_DIR="${DEFAULT_DEPLOY_ROOT}/${STACK_NAME}"
+            fi
+            COMPOSE_TEMPLATE="deploy/vps/docker-compose.vps.yml"
+            REMOTE_COMPOSE_FILE="docker-compose.vps.yml"
+            REMOTE_ENV_FILE=".env.vps"
+            APP_SERVICE_NAME="amx"
+          fi
+          IMAGE_REF="${IMAGE_REPOSITORY}:${{ inputs.image_tag }}"
+
+          echo "deploy_layout=${DEPLOY_LAYOUT}" >> "$GITHUB_OUTPUT"
+          echo "stack_name=${STACK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "domain=${DOMAIN}" >> "$GITHUB_OUTPUT"
+          echo "deploy_dir=${DEPLOY_DIR}" >> "$GITHUB_OUTPUT"
+          echo "compose_template=${COMPOSE_TEMPLATE}" >> "$GITHUB_OUTPUT"
+          echo "remote_compose_file=${REMOTE_COMPOSE_FILE}" >> "$GITHUB_OUTPUT"
+          echo "remote_env_file=${REMOTE_ENV_FILE}" >> "$GITHUB_OUTPUT"
+          echo "app_service_name=${APP_SERVICE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify published image tag exists
+        run: docker buildx imagetools inspect "${{ steps.vars.outputs.image_ref }}"
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+
+      - name: Add VPS host key
+        shell: bash
+        run: |
+          mkdir -p "${HOME}/.ssh"
+          ssh-keyscan -p "${{ secrets.VPS_SSH_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> "${HOME}/.ssh/known_hosts"
+
+      - name: Render VPS env file
+        shell: bash
+        env:
+          DEPLOY_LAYOUT: ${{ steps.vars.outputs.deploy_layout }}
+          DOMAIN: ${{ steps.vars.outputs.domain }}
+          STACK_NAME: ${{ steps.vars.outputs.stack_name }}
+          APP_SERVICE_NAME: ${{ steps.vars.outputs.app_service_name }}
+          REMOTE_ENV_FILE: ${{ steps.vars.outputs.remote_env_file }}
+          IMAGE_REF: ${{ steps.vars.outputs.image_ref }}
+          DATABASE_URL: ${{ secrets.AMX_DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.AMX_BETTER_AUTH_SECRET }}
+          TRAEFIK_ACME_EMAIL: ${{ secrets.TRAEFIK_ACME_EMAIL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          cat > "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
+          COMPOSE_PROJECT_NAME=${STACK_NAME}
+          APP_SERVICE_NAME=${APP_SERVICE_NAME}
+          DEPLOY_LAYOUT=${DEPLOY_LAYOUT}
+          AMX_IMAGE=${IMAGE_REF}
+          TRAEFIK_DOMAIN=${DOMAIN}
+          PAPERCLIP_PUBLIC_URL=https://${DOMAIN}
+          BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+          OPENAI_API_KEY=${OPENAI_API_KEY}
+          ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+          GOOGLE_API_KEY=${GOOGLE_API_KEY}
+          GHCR_PULL_USERNAME=${GHCR_PULL_USERNAME}
+          GHCR_PULL_TOKEN=${GHCR_PULL_TOKEN}
+          EOF
+          if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
+            cat >> "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
+          TRAEFIK_ACME_EMAIL=${TRAEFIK_ACME_EMAIL}
+          TRAEFIK_ACME_STORAGE=./traefik/acme
+          PAPERCLIP_DATA_PATH=./paperclip-data
+          DATABASE_URL=${DATABASE_URL}
+          EOF
+          fi
+
+      - name: Create remote deploy directory
+        shell: bash
+        run: |
+          if [ "${{ steps.vars.outputs.deploy_layout }}" = "hostinger-shared-traefik" ]; then
+            ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" \
+              "mkdir -p '${{ steps.vars.outputs.deploy_dir }}'"
+          else
+            ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" \
+              "mkdir -p '${{ steps.vars.outputs.deploy_dir }}/traefik/acme' '${{ steps.vars.outputs.deploy_dir }}/paperclip-data'"
+          fi
+
+      - name: Upload VPS deployment bundle
+        shell: bash
+        run: |
+          scp -P "${{ secrets.VPS_SSH_PORT || 22 }}" \
+            "${{ steps.vars.outputs.compose_template }}" \
+            "deploy/vps/deploy-remote.sh" \
+            "${RUNNER_TEMP}/${{ steps.vars.outputs.remote_env_file }}" \
+            "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}:${{ steps.vars.outputs.deploy_dir }}/"
+
+      - name: Rename uploaded deployment files on remote host
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
+            cd '${{ steps.vars.outputs.deploy_dir }}' && \
+            mv '$(basename "${{ steps.vars.outputs.compose_template }}")' '${{ steps.vars.outputs.remote_compose_file }}' && \
+            chmod +x deploy-remote.sh"
+
+      - name: Run remote deployment
+        shell: bash
+        env:
+          HEALTH_URL: https://${{ steps.vars.outputs.domain }}
+        run: |
+          ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
+            cd '${{ steps.vars.outputs.deploy_dir }}' && \
+            COMPOSE_FILE='${{ steps.vars.outputs.remote_compose_file }}' \
+            ENV_FILE='${{ steps.vars.outputs.remote_env_file }}' \
+            HEALTH_URL='${HEALTH_URL}' \
+            ./deploy-remote.sh '${{ steps.vars.outputs.deploy_dir }}'"
+
+      - name: Smoke test public domain
+        shell: bash
+        run: |
+          URL="https://${{ steps.vars.outputs.domain }}"
+          for attempt in $(seq 1 20); do
+            status="$(curl -sS -o /dev/null -w '%{http_code}' "${URL}" || true)"
+            if [[ "${status}" =~ ^[0-9]+$ ]] && [ "${status}" -ge 200 ] && [ "${status}" -lt 400 ]; then
+              echo "Smoke test passed for ${URL} with status ${status}"
+              exit 0
+            fi
+            echo "Waiting for ${URL} to become ready (attempt ${attempt}/20, status=${status:-none})"
+            sleep 15
+          done
+          echo "Smoke test failed for ${URL}" >&2
+          exit 1
+
+      - name: Publish deployment summary
+        shell: bash
+        run: |
+          {
+            echo "## AMX VPS deployment"
+            echo
+            echo "- Target: \`${{ inputs.target_name }}\`"
+            echo "- Layout: \`${{ steps.vars.outputs.deploy_layout }}\`"
+            echo "- Domain: [https://${{ steps.vars.outputs.domain }}](https://${{ steps.vars.outputs.domain }})"
+            echo "- Stack: \`${{ steps.vars.outputs.stack_name }}\`"
+            echo "- Image: \`${{ steps.vars.outputs.image_ref }}\`"
+            echo "- Remote path: \`${{ steps.vars.outputs.deploy_dir }}\`"
+            echo
+            echo "### Rollback"
+            echo "- Re-run this workflow with a prior immutable \`sha-<commit>\` image tag"
+            echo
+            echo "### Remote verify"
+            echo "- \`ssh -p ${{ secrets.VPS_SSH_PORT || 22 }} ${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}\`"
+            echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && docker compose --env-file ${{ steps.vars.outputs.remote_env_file }} -f ${{ steps.vars.outputs.remote_compose_file }} ps\`"
+            echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && docker compose --env-file ${{ steps.vars.outputs.remote_env_file }} -f ${{ steps.vars.outputs.remote_compose_file }} logs --tail 200\`"
+          } >> "$GITHUB_STEP_SUMMARY"

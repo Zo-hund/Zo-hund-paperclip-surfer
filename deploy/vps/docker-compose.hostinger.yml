@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: paperclip
+      POSTGRES_PASSWORD: paperclip
+      POSTGRES_DB: paperclip
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperclip -d paperclip"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  server:
+    image: ${AMX_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip
+      PORT: "3100"
+      SERVE_UI: "true"
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+    ports:
+      - "3100:3100"
+    volumes:
+      - paperclip-data:/paperclip
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.paperclip-redirect.redirectscheme.permanent=true
+      - traefik.http.middlewares.paperclip-redirect.redirectscheme.scheme=https
+      - traefik.http.routers.paperclip-http.entrypoints=web
+      - traefik.http.routers.paperclip-http.middlewares=paperclip-redirect
+      - traefik.http.routers.paperclip-http.rule=Host(`${TRAEFIK_DOMAIN}`)
+      - traefik.http.routers.paperclip.entrypoints=websecure
+      - traefik.http.routers.paperclip.rule=Host(`${TRAEFIK_DOMAIN}`)
+      - traefik.http.routers.paperclip.tls.certresolver=letsencrypt
+      - traefik.http.services.paperclip.loadbalancer.server.port=3100
+
+volumes:
+  pgdata:
+  paperclip-data:
