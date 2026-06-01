@@ -107,11 +107,13 @@ The VPS flow uses:
 - external Postgres
 - Traefik TLS termination
 - persistent `/paperclip` storage on the VPS
+- deploy-time backups of the active compose/env bundle and local Postgres dump when a bundled `db` service exists
 
 Hostinger note:
 
 - if the VPS already has Hostinger's shared Traefik on `80/443`, use the `hostinger-shared-traefik` layout
 - that layout deploys into the existing app directory, reuses shared Traefik, and updates only the AMX compose stack
+- in that layout, set `POSTGRES_PASSWORD` in the GitHub Environment secrets so the bundled local Postgres service is not left on the default credential
 
 ## Cloud Kubernetes deployment
 

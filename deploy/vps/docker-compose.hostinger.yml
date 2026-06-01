@@ -3,9 +3,9 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: paperclip
-      POSTGRES_PASSWORD: paperclip
-      POSTGRES_DB: paperclip
+      POSTGRES_USER: ${POSTGRES_USER:-paperclip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paperclip}
+      POSTGRES_DB: ${POSTGRES_DB:-paperclip}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U paperclip -d paperclip"]
       interval: 2s
@@ -20,12 +20,18 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip
+      DATABASE_URL: postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:-paperclip}@db:5432/${POSTGRES_DB:-paperclip}
       PORT: "3100"
       SERVE_UI: "true"
       PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
       PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3100/ >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     ports:
       - "3100:3100"
     volumes:

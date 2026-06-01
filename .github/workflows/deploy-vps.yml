@@ -95,6 +95,38 @@ jobs:
           echo "app_service_name=${APP_SERVICE_NAME}" >> "$GITHUB_OUTPUT"
           echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate deployment inputs and secrets
+        shell: bash
+        env:
+          DEPLOY_LAYOUT: ${{ steps.vars.outputs.deploy_layout }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          BETTER_AUTH_SECRET: ${{ secrets.AMX_BETTER_AUTH_SECRET }}
+          DATABASE_URL: ${{ secrets.AMX_DATABASE_URL }}
+          TRAEFIK_ACME_EMAIL: ${{ secrets.TRAEFIK_ACME_EMAIL }}
+          VPS_DOMAIN: ${{ steps.vars.outputs.domain }}
+        run: |
+          require() {
+            local key="$1"
+            local value="$2"
+            if [ -z "${value}" ]; then
+              echo "Missing required deployment secret or value: ${key}" >&2
+              exit 1
+            fi
+          }
+
+          require "VPS_HOST" "${VPS_HOST}"
+          require "VPS_SSH_USER" "${VPS_SSH_USER}"
+          require "VPS_SSH_PORT" "${VPS_SSH_PORT}"
+          require "AMX_BETTER_AUTH_SECRET" "${BETTER_AUTH_SECRET}"
+          require "deployment domain" "${VPS_DOMAIN}"
+
+          if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
+            require "AMX_DATABASE_URL" "${DATABASE_URL}"
+            require "TRAEFIK_ACME_EMAIL" "${TRAEFIK_ACME_EMAIL}"
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -115,9 +147,15 @@ jobs:
 
       - name: Add VPS host key
         shell: bash
+        env:
+          VPS_HOST_PUBLIC_KEY: ${{ secrets.VPS_HOST_PUBLIC_KEY }}
         run: |
           mkdir -p "${HOME}/.ssh"
-          ssh-keyscan -p "${{ secrets.VPS_SSH_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> "${HOME}/.ssh/known_hosts"
+          if [ -n "${VPS_HOST_PUBLIC_KEY}" ]; then
+            printf '%s\n' "${VPS_HOST_PUBLIC_KEY}" >> "${HOME}/.ssh/known_hosts"
+          else
+            ssh-keyscan -p "${{ secrets.VPS_SSH_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> "${HOME}/.ssh/known_hosts"
+          fi
 
       - name: Render VPS env file
         shell: bash
@@ -136,6 +174,10 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DB_BACKUP_RETENTION_DAYS: ${{ vars.DB_BACKUP_RETENTION_DAYS }}
         run: |
           cat > "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
           COMPOSE_PROJECT_NAME=${STACK_NAME}
@@ -150,6 +192,10 @@ jobs:
           GOOGLE_API_KEY=${GOOGLE_API_KEY}
           GHCR_PULL_USERNAME=${GHCR_PULL_USERNAME}
           GHCR_PULL_TOKEN=${GHCR_PULL_TOKEN}
+          POSTGRES_USER=${POSTGRES_USER:-paperclip}
+          POSTGRES_DB=${POSTGRES_DB:-paperclip}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-paperclip}
+          DB_BACKUP_RETENTION_DAYS=${DB_BACKUP_RETENTION_DAYS:-30}
           EOF
           if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
             cat >> "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
@@ -197,6 +243,7 @@ jobs:
             cd '${{ steps.vars.outputs.deploy_dir }}' && \
             COMPOSE_FILE='${{ steps.vars.outputs.remote_compose_file }}' \
             ENV_FILE='${{ steps.vars.outputs.remote_env_file }}' \
+            BACKUP_ROOT='${{ steps.vars.outputs.deploy_dir }}/.deploy-backups' \
             HEALTH_URL='${HEALTH_URL}' \
             ./deploy-remote.sh '${{ steps.vars.outputs.deploy_dir }}'"
 
@@ -236,4 +283,5 @@ jobs:
             echo "- \`ssh -p ${{ secrets.VPS_SSH_PORT || 22 }} ${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}\`"
             echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && docker compose --env-file ${{ steps.vars.outputs.remote_env_file }} -f ${{ steps.vars.outputs.remote_compose_file }} ps\`"
             echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && docker compose --env-file ${{ steps.vars.outputs.remote_env_file }} -f ${{ steps.vars.outputs.remote_compose_file }} logs --tail 200\`"
+            echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && cat .last-successful-release\`"
           } >> "$GITHUB_STEP_SUMMARY"

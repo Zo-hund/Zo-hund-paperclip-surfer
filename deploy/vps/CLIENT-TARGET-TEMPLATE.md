@@ -18,6 +18,7 @@ Use this template when onboarding a new client deployment target.
 
 ## Optional secrets
 
+- `VPS_HOST_PUBLIC_KEY`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `GOOGLE_API_KEY`
@@ -39,6 +40,9 @@ For Hostinger-managed boxes that already have shared Traefik, use instead:
 - `VPS_LAYOUT=hostinger-shared-traefik`
 - `VPS_DEPLOY_DIR=/root/paperclip`
 - `VPS_COMPOSE_PROJECT_NAME=paperclip`
+- optional secret `POSTGRES_PASSWORD`
+- optional variable `POSTGRES_USER`
+- optional variable `POSTGRES_DB`
 
 ## First deploy inputs
 
