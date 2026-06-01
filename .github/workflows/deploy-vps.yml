@@ -30,7 +30,6 @@ jobs:
       contents: read
       packages: read
     env:
-      IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/amx-air-hubs
       DEFAULT_DEPLOY_ROOT: /opt/amx
     steps:
       - name: Checkout code
@@ -40,6 +39,7 @@ jobs:
         id: vars
         shell: bash
         run: |
+          IMAGE_REPOSITORY="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/amx-air-hubs"
           DEPLOY_LAYOUT="${{ vars.VPS_LAYOUT }}"
           if [ -z "${DEPLOY_LAYOUT}" ]; then
             DEPLOY_LAYOUT="generic"

@@ -176,7 +176,7 @@ jobs:
         id: image
         shell: bash
         run: |
-          REPOSITORY="ghcr.io/${{ github.repository_owner }}/amx-air-hubs"
+          REPOSITORY="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/amx-air-hubs"
           TAG="sha-${GITHUB_SHA}"
           echo "repository=${REPOSITORY}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
