@@ -134,8 +134,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.GHCR_PULL_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Verify published image tag exists
         run: docker buildx imagetools inspect "${{ steps.vars.outputs.image_ref }}"
