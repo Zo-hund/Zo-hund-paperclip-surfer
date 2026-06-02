@@ -188,7 +188,8 @@ jobs:
         with:
           images: ${{ steps.image.outputs.repository }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+            type=raw,value=experimental,enable=${{ github.ref == 'refs/heads/experimental' }}
             type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=${{ steps.image.outputs.tag }}
 
