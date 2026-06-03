@@ -80,7 +80,7 @@ export function RegisterPage() {
 
   const mutation = useMutation({
     mutationFn: () =>
-      authApi.signUpEmail({ name: name.trim(), email: email.trim(), password }),
+      authApi.signUpEmail({ name: name.trim(), email: email.trim().toLowerCase(), password }),
     onSuccess: async () => {
       setError(null);
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
@@ -177,13 +177,15 @@ export function RegisterPage() {
                 placeholder="Your full name"
               />
             </div>
-            <div>
+             <div>
               <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground block mb-2">Email *</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
                 className="w-full h-11 px-4 rounded-xl border border-border/60 bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40"
                 placeholder="your@email.com"
               />
@@ -195,6 +197,8 @@ export function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
+                autoCapitalize="none"
+                autoCorrect="off"
                 className="w-full h-11 px-4 rounded-xl border border-border/60 bg-background text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/40"
                 placeholder="At least 8 characters"
               />
