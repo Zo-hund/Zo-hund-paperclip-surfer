@@ -35,12 +35,12 @@ export function AuthPage() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (mode === "sign_in") {
-        await authApi.signInEmail({ email: email.trim(), password });
+        await authApi.signInEmail({ email: email.trim().toLowerCase(), password });
         return;
       }
       await authApi.signUpEmail({
         name: name.trim(),
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
       });
     },
@@ -129,6 +129,8 @@ export function AuthPage() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
                 autoFocus={mode === "sign_in"}
               />
             </div>
@@ -142,6 +144,8 @@ export function AuthPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
+                autoCapitalize="none"
+                autoCorrect="off"
               />
             </div>
             {error && <p className="text-xs text-destructive">{error}</p>}

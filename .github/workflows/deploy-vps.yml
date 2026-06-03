@@ -30,6 +30,7 @@ jobs:
       contents: read
       packages: read
     env:
+      IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/amx-air-hubs
       DEFAULT_DEPLOY_ROOT: /opt/amx
     steps:
       - name: Checkout code
@@ -39,7 +40,6 @@ jobs:
         id: vars
         shell: bash
         run: |
-          IMAGE_REPOSITORY="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/amx-air-hubs"
           DEPLOY_LAYOUT="${{ vars.VPS_LAYOUT }}"
           if [ -z "${DEPLOY_LAYOUT}" ]; then
             DEPLOY_LAYOUT="generic"
@@ -95,38 +95,6 @@ jobs:
           echo "app_service_name=${APP_SERVICE_NAME}" >> "$GITHUB_OUTPUT"
           echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
 
-      - name: Validate deployment inputs and secrets
-        shell: bash
-        env:
-          DEPLOY_LAYOUT: ${{ steps.vars.outputs.deploy_layout }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_SSH_USER: ${{ secrets.VPS_SSH_USER }}
-          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
-          BETTER_AUTH_SECRET: ${{ secrets.AMX_BETTER_AUTH_SECRET }}
-          DATABASE_URL: ${{ secrets.AMX_DATABASE_URL }}
-          TRAEFIK_ACME_EMAIL: ${{ secrets.TRAEFIK_ACME_EMAIL }}
-          VPS_DOMAIN: ${{ steps.vars.outputs.domain }}
-        run: |
-          require() {
-            local key="$1"
-            local value="$2"
-            if [ -z "${value}" ]; then
-              echo "Missing required deployment secret or value: ${key}" >&2
-              exit 1
-            fi
-          }
-
-          require "VPS_HOST" "${VPS_HOST}"
-          require "VPS_SSH_USER" "${VPS_SSH_USER}"
-          require "VPS_SSH_PORT" "${VPS_SSH_PORT}"
-          require "AMX_BETTER_AUTH_SECRET" "${BETTER_AUTH_SECRET}"
-          require "deployment domain" "${VPS_DOMAIN}"
-
-          if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
-            require "AMX_DATABASE_URL" "${DATABASE_URL}"
-            require "TRAEFIK_ACME_EMAIL" "${TRAEFIK_ACME_EMAIL}"
-          fi
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -134,42 +102,22 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ secrets.GHCR_PULL_USERNAME || secrets.REGISTRY_USERNAME || github.actor }}
-          password: ${{ secrets.GHCR_PULL_TOKEN || secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify published image tag exists
         run: docker buildx imagetools inspect "${{ steps.vars.outputs.image_ref }}"
 
       - name: Start SSH agent
-        shell: bash
-        env:
-          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          VPS_SSH_PRIVATE_KEY_B64: ${{ secrets.VPS_SSH_PRIVATE_KEY_B64 }}
-        run: |
-          set -euo pipefail
-          eval "$(ssh-agent -s)"
-          echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
-          echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
-          mkdir -p "${HOME}/.ssh"
-          if [ -n "${VPS_SSH_PRIVATE_KEY_B64}" ]; then
-            printf '%s' "${VPS_SSH_PRIVATE_KEY_B64}" | base64 -d > "${HOME}/.ssh/deploy_key"
-          else
-            printf '%s\n' "${VPS_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/deploy_key"
-          fi
-          chmod 600 "${HOME}/.ssh/deploy_key"
-          ssh-add "${HOME}/.ssh/deploy_key"
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
 
       - name: Add VPS host key
         shell: bash
-        env:
-          VPS_HOST_PUBLIC_KEY: ${{ secrets.VPS_HOST_PUBLIC_KEY }}
         run: |
           mkdir -p "${HOME}/.ssh"
-          if [ -n "${VPS_HOST_PUBLIC_KEY}" ]; then
-            printf '%s\n' "${VPS_HOST_PUBLIC_KEY}" >> "${HOME}/.ssh/known_hosts"
-          else
-            ssh-keyscan -p "${{ secrets.VPS_SSH_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> "${HOME}/.ssh/known_hosts"
-          fi
+          ssh-keyscan -p "${{ secrets.VPS_SSH_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> "${HOME}/.ssh/known_hosts"
 
       - name: Render VPS env file
         shell: bash
@@ -188,12 +136,6 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
-          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          DB_BACKUP_RETENTION_DAYS: ${{ vars.DB_BACKUP_RETENTION_DAYS }}
         run: |
           cat > "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
           COMPOSE_PROJECT_NAME=${STACK_NAME}
@@ -202,16 +144,13 @@ jobs:
           AMX_IMAGE=${IMAGE_REF}
           TRAEFIK_DOMAIN=${DOMAIN}
           PAPERCLIP_PUBLIC_URL=https://${DOMAIN}
+          PAPERCLIP_DEPLOYMENT_EXPOSURE=public
           BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
           OPENAI_API_KEY=${OPENAI_API_KEY}
           ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
           GOOGLE_API_KEY=${GOOGLE_API_KEY}
-          GHCR_PULL_USERNAME=${GHCR_PULL_USERNAME:-${REGISTRY_USERNAME}}
-          GHCR_PULL_TOKEN=${GHCR_PULL_TOKEN:-${REGISTRY_TOKEN}}
-          POSTGRES_USER=${POSTGRES_USER:-paperclip}
-          POSTGRES_DB=${POSTGRES_DB:-paperclip}
-          POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-paperclip}
-          DB_BACKUP_RETENTION_DAYS=${DB_BACKUP_RETENTION_DAYS:-30}
+          GHCR_PULL_USERNAME=${GHCR_PULL_USERNAME}
+          GHCR_PULL_TOKEN=${GHCR_PULL_TOKEN}
           EOF
           if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
             cat >> "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
@@ -259,7 +198,6 @@ jobs:
             cd '${{ steps.vars.outputs.deploy_dir }}' && \
             COMPOSE_FILE='${{ steps.vars.outputs.remote_compose_file }}' \
             ENV_FILE='${{ steps.vars.outputs.remote_env_file }}' \
-            BACKUP_ROOT='${{ steps.vars.outputs.deploy_dir }}/.deploy-backups' \
             HEALTH_URL='${HEALTH_URL}' \
             ./deploy-remote.sh '${{ steps.vars.outputs.deploy_dir }}'"
 
@@ -299,5 +237,4 @@ jobs:
             echo "- \`ssh -p ${{ secrets.VPS_SSH_PORT || 22 }} ${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}\`"
             echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && docker compose --env-file ${{ steps.vars.outputs.remote_env_file }} -f ${{ steps.vars.outputs.remote_compose_file }} ps\`"
             echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && docker compose --env-file ${{ steps.vars.outputs.remote_env_file }} -f ${{ steps.vars.outputs.remote_compose_file }} logs --tail 200\`"
-            echo "- \`cd ${{ steps.vars.outputs.deploy_dir }} && cat .last-successful-release\`"
           } >> "$GITHUB_STEP_SUMMARY"
