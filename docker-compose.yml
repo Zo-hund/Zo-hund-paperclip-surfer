@@ -32,6 +32,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.paperclip-redirect.redirectscheme.permanent=true
+      - traefik.http.middlewares.paperclip-redirect.redirectscheme.scheme=https
+      - traefik.http.routers.paperclip-http.entrypoints=web
+      - traefik.http.routers.paperclip-http.middlewares=paperclip-redirect
+      - traefik.http.routers.paperclip-http.rule=Host(`amx-air-hubs.cc`) || Host(`www.amx-air-hubs.cc`) || Host(`paperclip.amx-air-hubs.cc`)
+      - traefik.http.routers.paperclip.entrypoints=websecure
+      - traefik.http.routers.paperclip.rule=Host(`amx-air-hubs.cc`) || Host(`www.amx-air-hubs.cc`) || Host(`paperclip.amx-air-hubs.cc`)
+      - traefik.http.routers.paperclip.tls.certresolver=letsencrypt
+      - traefik.http.services.paperclip.loadbalancer.server.port=3100
 
 volumes:
   pgdata:
