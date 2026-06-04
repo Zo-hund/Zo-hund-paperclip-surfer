@@ -25,7 +25,7 @@ const adapterLabels: Record<string, string> = {
   http: "HTTP",
 };
 
-const ENABLED_INVITE_ADAPTERS = new Set(["claude_local", "codex_local", "gemini_local", "opencode_local", "pi_local", "cursor", "hermes_local"]);
+const ENABLED_INVITE_ADAPTERS = new Set(["claude_local", "codex_local", "gemini_local", "opencode_local", "pi_local", "cursor", "hermes_local", "openclaw_gateway", "process", "http"]);
 
 function dateTime(value: string) {
   return new Date(value).toLocaleString();
@@ -176,13 +176,22 @@ export function InviteLandingPage() {
     return (
       <div className="mx-auto max-w-xl py-10">
         <div className="rounded-lg border border-border bg-card p-6">
-          <h1 className="text-lg font-semibold">Join request submitted</h1>
+          <h1 className="text-lg font-semibold">
+            {payload.status === "approved" ? "Join request approved" : "Join request submitted"}
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Your request is pending admin approval. You will not have access until approved.
+            {payload.status === "approved"
+              ? "Your request has been auto-approved! You can now access the company."
+              : "Your request is pending admin approval. You will not have access until approved."}
           </p>
           <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             Request ID: <span className="font-mono">{payload.id}</span>
           </div>
+          {payload.status === "approved" && (
+            <Button asChild className="mt-4">
+              <Link to="/">Go to board</Link>
+            </Button>
+          )}
           {claimSecret && claimApiKeyPath && (
             <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">One-time claim secret (save now)</p>

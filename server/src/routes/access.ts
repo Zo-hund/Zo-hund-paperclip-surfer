@@ -2262,6 +2262,40 @@ export function accessRoutes(
         ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         : null;
 
+      const defaults = invite.defaultsPayload as Record<string, unknown> | null;
+      const isAutoApproveConfigured =
+        defaults?.autoApprove === true ||
+        defaults?.auto_approve === true;
+
+      const creatorIsAdmin = invite.invitedByUserId
+        ? await access.isInstanceAdmin(invite.invitedByUserId)
+        : false;
+
+      const autoApprove = isAutoApproveConfigured || creatorIsAdmin;
+      const initialStatus = autoApprove ? "approved" : "pending_approval";
+
+      let effectiveStatus = initialStatus;
+      let managerId: string | null = null;
+      let agentName = requestType === "agent" ? req.body.agentName : null;
+
+      if (autoApprove && requestType === "agent") {
+        const existingAgents = await agents.list(companyId);
+        managerId = resolveJoinRequestAgentManagerId(existingAgents);
+        if (!managerId) {
+          // Fallback to manual approval because there is no active CEO
+          effectiveStatus = "pending_approval";
+        } else {
+          agentName = deduplicateAgentName(
+            req.body.agentName ?? "New Agent",
+            existingAgents.map((a) => ({
+              id: a.id,
+              name: a.name,
+              status: a.status
+            }))
+          );
+        }
+      }
+
       const actorEmail =
         requestType === "human" ? await resolveActorEmail(db, req) : null;
       const created = !inviteAlreadyAccepted
@@ -2277,13 +2311,78 @@ export function accessRoutes(
                 )
               );
 
+            let createdAgentId: string | null = null;
+            let approvedByUserId: string | null = null;
+            let approvedAt: Date | null = null;
+
+            if (effectiveStatus === "approved") {
+              approvedAt = new Date();
+              if (requestType === "human") {
+                const requestingUserId = req.actor.userId ?? "local-board";
+                approvedByUserId = requestingUserId;
+                await access.ensureMembership(
+                  companyId,
+                  "user",
+                  requestingUserId,
+                  "member",
+                  "active"
+                );
+                const grants = grantsFromDefaults(
+                  invite.defaultsPayload as Record<string, unknown> | null,
+                  "human"
+                );
+                await access.setPrincipalGrants(
+                  companyId,
+                  "user",
+                  requestingUserId,
+                  grants,
+                  invite.invitedByUserId ?? null
+                );
+              } else if (requestType === "agent" && managerId) {
+                const createdAgent = await agents.create(companyId, {
+                  name: agentName ?? "New Agent",
+                  role: "general",
+                  title: null,
+                  status: "idle",
+                  reportsTo: managerId,
+                  capabilities: req.body.capabilities ?? null,
+                  adapterType: adapterType ?? "process",
+                  adapterConfig: joinDefaults.normalized ?? {},
+                  runtimeConfig: {},
+                  budgetMonthlyCents: 0,
+                  spentMonthlyCents: 0,
+                  permissions: {},
+                  lastHeartbeatAt: null,
+                  metadata: null
+                });
+                createdAgentId = createdAgent.id;
+                await access.ensureMembership(
+                  companyId,
+                  "agent",
+                  createdAgent.id,
+                  "member",
+                  "active"
+                );
+                const grants = agentJoinGrantsFromDefaults(
+                  invite.defaultsPayload as Record<string, unknown> | null
+                );
+                await access.setPrincipalGrants(
+                  companyId,
+                  "agent",
+                  createdAgent.id,
+                  grants,
+                  invite.invitedByUserId ?? null
+                );
+              }
+            }
+
             const row = await tx
               .insert(joinRequests)
               .values({
                 inviteId: invite.id,
                 companyId,
                 requestType,
-                status: "pending_approval",
+                status: effectiveStatus,
                 requestIp: requestIp(req),
                 requestingUserId:
                   requestType === "human"
@@ -2291,7 +2390,7 @@ export function accessRoutes(
                     : null,
                 requestEmailSnapshot:
                   requestType === "human" ? actorEmail : null,
-                agentName: requestType === "agent" ? req.body.agentName : null,
+                agentName: requestType === "agent" ? agentName : null,
                 adapterType: requestType === "agent" ? adapterType : null,
                 capabilities:
                   requestType === "agent"
@@ -2300,7 +2399,10 @@ export function accessRoutes(
                 agentDefaultsPayload:
                   requestType === "agent" ? joinDefaults.normalized : null,
                 claimSecretHash,
-                claimSecretExpiresAt
+                claimSecretExpiresAt,
+                approvedByUserId,
+                approvedAt,
+                createdAgentId
               })
               .returning()
               .then((rows) => rows[0]);
@@ -2455,6 +2557,28 @@ export function accessRoutes(
           inviteReplay: inviteAlreadyAccepted
         }
       });
+ 
+      if (created.status === "approved" && !inviteAlreadyAccepted) {
+        await logActivity(db, {
+          companyId,
+          actorType: "user",
+          actorId: req.actor.userId ?? "board",
+          action: "join.approved",
+          entityType: "join_request",
+          entityId: created.id,
+          details: { requestType: created.requestType, createdAgentId: created.createdAgentId }
+        });
+
+        if (created.createdAgentId) {
+          void notifyHireApproved(db, {
+            companyId,
+            agentId: created.createdAgentId,
+            source: "join_request",
+            sourceId: created.id,
+            approvedAt: new Date()
+          }).catch(() => {});
+        }
+      }
 
       const response = toJoinRequestResponse(created);
       if (claimSecret) {

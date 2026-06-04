@@ -15,17 +15,23 @@ import { companiesApi } from "@/api/companies";
 import { useToast } from "@/context/ToastContext";
 
 export function DeploymentManagement() {
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { selectedCompanyId, selectedCompany, reloadCompanies } = useCompany();
   const { pushToast } = useToast();
   const [target, setTarget] = useState<"local" | "cloud">("cloud");
   const [updating, setUpdating] = useState(false);
+
+  React.useEffect(() => {
+    if (selectedCompany?.deploymentTarget) {
+      setTarget(selectedCompany.deploymentTarget as "local" | "cloud");
+    }
+  }, [selectedCompany]);
 
   const handleToggle = async (newTarget: "local" | "cloud") => {
     if (!selectedCompanyId) return;
     setUpdating(true);
     try {
       await companiesApi.updateDeploymentTarget(selectedCompanyId, newTarget);
-      setTarget(newTarget);
+      await reloadCompanies();
       pushToast({
         tone: "success",
         title: "Deployment Target Updated!",

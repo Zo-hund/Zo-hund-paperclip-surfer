@@ -3507,6 +3507,69 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
       return null;
     }
 
+    if (source !== "timer" && triggerDetail !== "manual") {
+      // 1. Check for actionable work
+      if (!issueId) {
+        const assignedIssues = await db
+          .select({ id: issues.id })
+          .from(issues)
+          .where(
+            and(
+              eq(issues.assigneeAgentId, agentId),
+              eq(issues.companyId, agent.companyId),
+              inArray(issues.status, ["todo", "in_progress"])
+            )
+          )
+          .limit(1);
+        if (assignedIssues.length === 0) {
+          await writeSkippedRequest("no_actionable_work");
+          return null;
+        }
+      }
+
+      // 2. Check for cooldown
+      const recentNoopRun = await db
+        .select({
+          id: heartbeatRuns.id,
+          finishedAt: heartbeatRuns.finishedAt,
+          contextSnapshot: heartbeatRuns.contextSnapshot,
+        })
+        .from(heartbeatRuns)
+        .where(
+          and(
+            eq(heartbeatRuns.agentId, agentId),
+            eq(heartbeatRuns.status, "succeeded")
+          )
+        )
+        .orderBy(desc(heartbeatRuns.finishedAt))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+
+      if (recentNoopRun && recentNoopRun.finishedAt) {
+        const outcome = (recentNoopRun.contextSnapshot as Record<string, unknown> | null)?.runtimeOutcome;
+        if (outcome === "zero_token_noop") {
+          const timeSinceFinish = Date.now() - new Date(recentNoopRun.finishedAt).getTime();
+          const cooldownMs = 5 * 60 * 1000; // 5 minutes cooldown
+          if (timeSinceFinish < cooldownMs) {
+            await db.insert(agentWakeupRequests).values({
+              companyId: agent.companyId,
+              agentId,
+              source,
+              triggerDetail,
+              reason: "noop_cooldown_active",
+              payload: { ...(payload ?? {}), previousRunId: recentNoopRun.id },
+              status: "skipped",
+              requestedByActorType: opts.requestedByActorType ?? null,
+              requestedByActorId: opts.requestedByActorId ?? null,
+              idempotencyKey: opts.idempotencyKey ?? null,
+              finishedAt: new Date(),
+            });
+            return null;
+          }
+        }
+      }
+    }
+
     const bypassIssueExecutionLock =
       reason === "issue_comment_mentioned" ||
       readNonEmptyString(enrichedContextSnapshot.wakeReason) === "issue_comment_mentioned";

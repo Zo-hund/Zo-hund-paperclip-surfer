@@ -397,6 +397,8 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       return;
     }
     
+    await svc.update(companyId, { deploymentTarget: target });
+    
     const actor = getActorInfo(req);
     await logActivity(db, {
       companyId,
