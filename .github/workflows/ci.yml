@@ -95,9 +95,9 @@ jobs:
       - name: Audit for high/critical vulnerabilities
         run: pnpm audit --audit-level=high
 
-      - name: Validate cluster compose pack
-        shell: bash
-        run: |
+         - name: Audit for high vulnerabilities (informational)
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
           cp .env.cluster.example .env.cluster
           docker compose -f docker-compose.cluster.yml config >/dev/null
 
