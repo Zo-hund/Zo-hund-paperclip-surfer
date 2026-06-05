@@ -107,7 +107,7 @@ jobs:
         shell: bash
         run: |
           cp .env.cluster.example .env.cluster
-          docker compose -f docker-compose.cluster.yml config >/dev/null
+          docker compose --env-file .env.cluster -f docker-compose.cluster.yml config >/dev/null
 
       - name: Validate VPS compose pack
         shell: bash
