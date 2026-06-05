@@ -1,0 +1,8 @@
+AMX AIR HUBS has been deployed.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Host: {{ .Values.ingress.host }}
+
+If ingress is enabled, open:
+  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}

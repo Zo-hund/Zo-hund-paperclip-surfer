@@ -1,0 +1,22 @@
+replicaCount: 1
+
+image:
+  repository: amx-air-hubs
+  tag: local
+  pullPolicy: IfNotPresent
+
+ingress:
+  host: amx-air-hubs.local
+
+env:
+  PAPERCLIP_PUBLIC_URL: http://amx-air-hubs.local
+
+persistence:
+  enabled: true
+  size: 20Gi
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  minAvailable: 1
