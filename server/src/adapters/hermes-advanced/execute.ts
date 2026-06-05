@@ -19,14 +19,34 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const __dirname = path.dirname(__filename);
   const rootDir = path.resolve(__dirname, "../../../../"); // server/src/adapters/hermes-advanced → monorepo root
   const hermesDir = path.resolve(rootDir, "packages/hermes-agent");
-  const pythonPath = path.join(hermesDir, ".venv", "Scripts", "python.exe");
-  const scriptPath = path.join(hermesDir, "run_agent.py");
-  const baseConfigPath = path.join(hermesDir, "cli-config.yaml");
-  const mcpServerScript = path.resolve(rootDir, "server/src/services/agent-runtime/mcp/hermes-server.ts");
-
-  // Create temporary config to inject Paperclip MCP bridge
+  const isWin = process.platform === "win32";
   const fs = await import("node:fs");
   const os = await import("node:os");
+
+  let pythonPath = isWin
+    ? path.join(hermesDir, ".venv", "Scripts", "python.exe")
+    : path.join(hermesDir, ".venv", "bin", "python");
+
+  if (!fs.existsSync(pythonPath)) {
+    pythonPath = isWin ? "python" : "python3";
+  }
+
+  const scriptPath = path.join(hermesDir, "run_agent.py");
+  const baseConfigPath = path.join(hermesDir, "cli-config.yaml");
+
+  // Determine MCP running command and args dynamically based on compiled state
+  const mcpServerScriptTs = path.resolve(rootDir, "server/src/services/agent-runtime/mcp/hermes-server.ts");
+  const mcpServerScriptJs = path.resolve(rootDir, "server/dist/services/agent-runtime/mcp/hermes-server.js");
+  
+  let mcpCommand = "npx";
+  let mcpArgs = ["tsx", mcpServerScriptTs.replace(/\\/g, "/")];
+
+  if (fs.existsSync(mcpServerScriptJs)) {
+    mcpCommand = "node";
+    mcpArgs = [mcpServerScriptJs.replace(/\\/g, "/")];
+  }
+
+  // Create temporary config to inject Paperclip MCP bridge
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-run-"));
   const tempConfigPath = path.join(tempDir, "cli-config.yaml");
   
@@ -43,8 +63,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const mcpSection = `
 mcp_servers:
   paperclip:
-    command: "npx"
-    args: ["tsx", "${mcpServerScript.replace(/\\/g, "/")}"]
+    command: "${mcpCommand}"
+    args: ${JSON.stringify(mcpArgs)}
     env:
       PAPERCLIP_API_URL: "http://localhost:3100/api"
       AGENT_ID: "${agent.id}"

@@ -1,0 +1,23 @@
+schema: paperclip/v1
+agents:
+  director:
+    adapter:
+      type: claude_local
+      config:
+        model: anthropic/claude-3-5-sonnet
+  hermes-sentinel:
+    adapter:
+      type: hermes_local
+      config:
+        model: anthropic/claude-3-5-sonnet
+        toolsets: web_tools,terminal_tools,file_tools
+        extraArgs:
+          - "--dangerously-skip-permissions"
+  nous-specialist:
+    adapter:
+      type: hermes_advanced
+      config:
+        model: anthropic/claude-3-5-sonnet
+        enabled_toolsets: web_tools,terminal_tools,file_tools,mcp-paperclip
+        extraArgs:
+          - "--dangerously-skip-permissions"

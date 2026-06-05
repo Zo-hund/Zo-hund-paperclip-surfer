@@ -1,5 +1,8 @@
 import type { ServerAdapterModule } from "./types.js";
 import { getAdapterSessionManagement } from "@paperclipai/adapter-utils";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import fs from "node:fs";
 import {
   execute as claudeExecute,
   listClaudeSkills,
@@ -177,7 +180,24 @@ const piLocalAdapter: ServerAdapterModule = {
 
 const hermesLocalAdapter: ServerAdapterModule = {
   type: "hermes_local",
-  execute: hermesExecute,
+  execute: async (ctx) => {
+    // Resolve dynamic path to hermes executable in the local virtualenv if config.hermesCommand is not set
+    const config = (ctx.agent?.adapterConfig ?? {}) as any;
+    if (!config.hermesCommand) {
+      const isWin = process.platform === "win32";
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const rootDir = path.resolve(__dirname, "../../../"); // server/src/adapters -> monorepo root
+      const hermesDir = path.resolve(rootDir, "packages/hermes-agent");
+      const venvHermes = isWin
+        ? path.join(hermesDir, ".venv", "Scripts", "hermes.exe")
+        : path.join(hermesDir, ".venv", "bin", "hermes");
+      if (fs.existsSync(venvHermes)) {
+        config.hermesCommand = venvHermes;
+      }
+    }
+    return hermesExecute(ctx);
+  },
   testEnvironment: hermesTestEnvironment,
   sessionCodec: hermesSessionCodec,
   listSkills: hermesListSkills,

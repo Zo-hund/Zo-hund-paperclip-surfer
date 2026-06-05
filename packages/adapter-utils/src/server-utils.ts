@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { constants as fsConstants, promises as fs, type Dirent } from "node:fs";
+import { constants as fsConstants, promises as fs, type Dirent, existsSync } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import type {
   AdapterSkillEntry,
   AdapterSkillSnapshot,
@@ -214,9 +215,17 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
     if (host.includes(":") && !host.startsWith("[") && !host.endsWith("]")) return `[${host}]`;
     return host;
   };
+  
+  const isDocker = existsSync("/.dockerenv") || process.env.DATABASE_URL?.includes("@db:") || false;
+  const deviceContext = process.env.PAPERCLIP_DEVICE_CONTEXT || (isDocker ? "cloud" : "local");
+
   const vars: Record<string, string> = {
     PAPERCLIP_AGENT_ID: agent.id,
     PAPERCLIP_COMPANY_ID: agent.companyId,
+    PAPERCLIP_DEVICE_HOSTNAME: os.hostname(),
+    PAPERCLIP_DEVICE_PLATFORM: process.platform,
+    PAPERCLIP_DEVICE_OS: os.type(),
+    PAPERCLIP_DEVICE_CONTEXT: deviceContext,
   };
   const runtimeHost = resolveHostForUrl(
     process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",
