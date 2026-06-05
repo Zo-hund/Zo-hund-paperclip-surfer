@@ -151,6 +151,8 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          PAPERCLIP_AGENT_JWT_SECRET: ${{ secrets.PAPERCLIP_AGENT_JWT_SECRET }}
         run: |
           cat > "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
           COMPOSE_PROJECT_NAME=${STACK_NAME}
@@ -166,6 +168,8 @@ jobs:
           GOOGLE_API_KEY=${GOOGLE_API_KEY}
           GHCR_PULL_USERNAME=${GHCR_PULL_USERNAME}
           GHCR_PULL_TOKEN=${GHCR_PULL_TOKEN}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_AGENT_JWT_SECRET}
           EOF
           if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
             cat >> "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
