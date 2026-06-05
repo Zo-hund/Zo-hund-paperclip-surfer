@@ -1,0 +1,94 @@
+services:
+  traefik:
+    image: traefik:v3.6
+    command:
+      - --log.level=DEBUG
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+    environment:
+      DOCKER_API_VERSION: "1.44"
+    ports:
+      - "3100:80"
+      - "3443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - amx
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-paperclip}
+      POSTGRES_USER: ${POSTGRES_USER:-paperclip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paperclip}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-paperclip} -d ${POSTGRES_DB:-paperclip}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - amx-postgres-data:/var/lib/postgresql/data
+
+  amx:
+    image: ${AMX_IMAGE:-amx-air-hubs:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.cluster
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      SERVE_UI: "true"
+      DATABASE_URL: postgres://${POSTGRES_USER:-paperclip}:${POSTGRES_PASSWORD:-paperclip}@postgres:5432/${POSTGRES_DB:-paperclip}
+      PAPERCLIP_HOME: /paperclip
+      PAPERCLIP_INSTANCE_ID: default
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+      PAPERCLIP_PUBLIC_URL: ${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}
+      PAPERCLIP_UI_DEV_MIDDLEWARE: "false"
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      PAPERCLIP_EMAIL_FROM: ${PAPERCLIP_EMAIL_FROM:-}
+      PAPERCLIP_EMAIL_REPLY_TO: ${PAPERCLIP_EMAIL_REPLY_TO:-}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      PAPERCLIP_ALLOWED_HOSTNAMES: ${PAPERCLIP_ALLOWED_HOSTNAMES:-}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-}
+      PAPERCLIP_AGENT_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3100/ >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - amx-paperclip-data:/paperclip
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.amx.rule=PathPrefix(`/`)
+      - traefik.http.routers.amx.entrypoints=web
+      - traefik.http.routers.amx-secure.rule=PathPrefix(`/`)
+      - traefik.http.routers.amx-secure.entrypoints=websecure
+      - traefik.http.routers.amx-secure.tls=true
+      - traefik.http.services.amx.loadbalancer.server.port=3100
+
+volumes:
+  amx-postgres-data:
+  amx-paperclip-data:
