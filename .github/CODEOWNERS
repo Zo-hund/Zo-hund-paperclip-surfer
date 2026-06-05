@@ -1,5 +1,6 @@
 # Replace @cryppadotta if a different maintainer or team should own release infrastructure.
 
+# Release infrastructure — requires infra owner review
 .github/** @cryppadotta @devinfoley
 scripts/release*.sh @cryppadotta @devinfoley
 scripts/release-*.mjs @cryppadotta @devinfoley
@@ -8,3 +9,13 @@ scripts/rollback-latest.sh @cryppadotta @devinfoley
 doc/RELEASING.md @cryppadotta @devinfoley
 doc/PUBLISHING.md @cryppadotta @devinfoley
 doc/RELEASE-AUTOMATION-SETUP.md @cryppadotta @devinfoley
+
+# Deployment and infrastructure — requires at least one infra owner to approve
+# Any PR touching deploy/ or .github/workflows/ needs a second pair of eyes.
+deploy/** @cryppadotta @devinfoley
+.github/workflows/** @cryppadotta @devinfoley
+
+# RBAC and security manifests — highest trust level; always requires infra owner
+deploy/k8s/rbac/** @cryppadotta @devinfoley
+deploy/scripts/create-deploy-token.sh @cryppadotta @devinfoley
+deploy/scripts/rotate-secrets.sh @cryppadotta @devinfoley

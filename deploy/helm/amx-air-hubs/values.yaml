@@ -1,0 +1,135 @@
+replicaCount: 3
+
+image:
+  repository: ghcr.io/amx-labs/amx-air-hubs
+  tag: latest
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  readOnlyRootFilesystem: false  # app writes to /paperclip; keep false
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3100
+
+ingress:
+  enabled: true
+  className: nginx
+  host: amx-air-hubs.cc
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+env:
+  HOST: "0.0.0.0"
+  PORT: "3100"
+  SERVE_UI: "true"
+  PAPERCLIP_HOME: "/paperclip"
+  PAPERCLIP_INSTANCE_ID: "default"
+  PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+  PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
+  PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+  PAPERCLIP_PUBLIC_URL: "https://amx-air-hubs.cc"
+  PAPERCLIP_EMAIL_FROM: "onboarding@amx-air-hubs.cc"
+  PAPERCLIP_EMAIL_REPLY_TO: "support@amx-air-hubs.cc"
+  PAPERCLIP_ALLOWED_HOSTNAMES: "localhost,127.0.0.1,::1,amx-air-hubs.cc"
+  BETTER_AUTH_TRUSTED_ORIGINS: "https://amx-air-hubs.cc"
+
+secrets:
+  create: false
+  existingSecretName: amx-secrets
+  keys:
+    databaseUrl: DATABASE_URL
+    betterAuthSecret: BETTER_AUTH_SECRET
+    openaiApiKey: OPENAI_API_KEY
+    anthropicApiKey: ANTHROPIC_API_KEY
+    googleApiKey: GOOGLE_API_KEY
+    geminiApiKey: GEMINI_API_KEY
+    resendApiKey: RESEND_API_KEY
+    livekitUrl: LIVEKIT_URL
+    livekitApiKey: LIVEKIT_API_KEY
+    livekitApiSecret: LIVEKIT_API_SECRET
+    agentJwtSecret: PAPERCLIP_AGENT_JWT_SECRET
+  stringData: {}
+
+persistence:
+  enabled: false
+  accessMode: ReadWriteOnce
+  size: 20Gi
+  storageClassName: ""
+  existingClaim: ""
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+affinity:
+  podAntiAffinity:
+    enabled: true
+    topologyKey: kubernetes.io/hostname
+
+topologySpreadConstraints:
+  enabled: true
+  maxSkew: 1
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+
+nodeSelector: {}
+tolerations: []
+
+readinessProbe:
+  path: /api/health
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+livenessProbe:
+  path: /api/health
+  initialDelaySeconds: 30
+  periodSeconds: 20
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+# NetworkPolicy: set enabled=true to apply default-deny + selective allow rules
+networkPolicy:
+  enabled: false   # set true when ingress-nginx and cert-manager are present
+  # CIDR of the external Postgres — replace with actual value
+  postgresCidr: "10.0.0.0/8"

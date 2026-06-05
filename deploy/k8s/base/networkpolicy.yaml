@@ -1,0 +1,113 @@
+---
+# NetworkPolicy: Default deny ALL ingress and egress in the AMX namespace.
+# Everything is blocked unless explicitly allowed by subsequent policies below.
+# This limits lateral movement if a pod is compromised.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: amx-air-hubs
+  labels:
+    app.kubernetes.io/name: amx-air-hubs
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}  # applies to ALL pods in namespace
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# NetworkPolicy: Allow ingress from the nginx ingress controller to app pods on port 3100.
+# Adjust the namespaceSelector if you use a different ingress class/namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-nginx
+  namespace: amx-air-hubs
+  labels:
+    app.kubernetes.io/name: amx-air-hubs
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: amx-air-hubs
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3100
+---
+# NetworkPolicy: Allow egress to DNS (required by all pods for name resolution).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: amx-air-hubs
+  labels:
+    app.kubernetes.io/name: amx-air-hubs
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# NetworkPolicy: Allow egress to external HTTPS (port 443) for AI provider APIs
+# (Anthropic, OpenAI, Google, LiveKit, Resend, etc.).
+# This uses 0.0.0.0/0 because provider IPs are dynamic; if you want stricter control,
+# replace with specific CIDRs for each provider or use an egress proxy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-https
+  namespace: amx-air-hubs
+  labels:
+    app.kubernetes.io/name: amx-air-hubs
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: amx-air-hubs
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443
+---
+# NetworkPolicy: Allow egress to external Postgres (port 5432).
+# Replace 10.0.0.0/8 with the actual CIDR of your managed database endpoint.
+# For cloud-managed DBs, use the specific IP or CIDR from the provider console.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-postgres
+  namespace: amx-air-hubs
+  labels:
+    app.kubernetes.io/name: amx-air-hubs
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: amx-air-hubs
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8  # REPLACE: set to your actual Postgres CIDR
+      ports:
+        - protocol: TCP
+          port: 5432

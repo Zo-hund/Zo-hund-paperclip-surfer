@@ -1,9 +1,10 @@
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: paperclip
-      POSTGRES_PASSWORD: paperclip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paperclip}
       POSTGRES_DB: paperclip
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U paperclip -d paperclip"]
@@ -17,32 +18,25 @@ services:
 
   server:
     build: .
+    restart: unless-stopped
     ports:
       - "3100:3100"
     environment:
-      DATABASE_URL: postgres://paperclip:paperclip@db:5432/paperclip
+      DATABASE_URL: postgres://paperclip:${POSTGRES_PASSWORD:-paperclip}@db:5432/paperclip
       PORT: "3100"
       SERVE_UI: "true"
       PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
       PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
+      PAPERCLIP_AGENT_JWT_SECRET: "${PAPERCLIP_AGENT_JWT_SECRET:-}"
     volumes:
       - paperclip-data:/paperclip
     depends_on:
       db:
         condition: service_healthy
     labels:
-      - traefik.enable=true
-      - traefik.http.middlewares.paperclip-redirect.redirectscheme.permanent=true
-      - traefik.http.middlewares.paperclip-redirect.redirectscheme.scheme=https
-      - traefik.http.routers.paperclip-http.entrypoints=web
-      - traefik.http.routers.paperclip-http.middlewares=paperclip-redirect
-      - traefik.http.routers.paperclip-http.rule=Host(`amx-air-hubs.cc`) || Host(`www.amx-air-hubs.cc`) || Host(`paperclip.amx-air-hubs.cc`)
-      - traefik.http.routers.paperclip.entrypoints=websecure
-      - traefik.http.routers.paperclip.rule=Host(`amx-air-hubs.cc`) || Host(`www.amx-air-hubs.cc`) || Host(`paperclip.amx-air-hubs.cc`)
-      - traefik.http.routers.paperclip.tls.certresolver=letsencrypt
-      - traefik.http.services.paperclip.loadbalancer.server.port=3100
+      - traefik.enable=false
 
 volumes:
   pgdata:

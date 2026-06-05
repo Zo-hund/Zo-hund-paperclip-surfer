@@ -1,0 +1,37 @@
+---
+# Bind the deploy ClusterRole to the paperclip-deploy ServiceAccount
+# in the production namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: paperclip-deploy-production
+  labels:
+    app.kubernetes.io/name: paperclip-deploy
+    app.kubernetes.io/component: ci-cd
+    app.kubernetes.io/managed-by: kubectl
+subjects:
+  - kind: ServiceAccount
+    name: paperclip-deploy
+    namespace: amx-air-hubs
+roleRef:
+  kind: ClusterRole
+  name: paperclip-deploy
+  apiGroup: rbac.authorization.k8s.io
+---
+# Also bind to the staging namespace so a single SA handles both environments.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: paperclip-deploy-staging
+  labels:
+    app.kubernetes.io/name: paperclip-deploy
+    app.kubernetes.io/component: ci-cd
+    app.kubernetes.io/managed-by: kubectl
+subjects:
+  - kind: ServiceAccount
+    name: paperclip-deploy
+    namespace: amx-air-hubs
+roleRef:
+  kind: ClusterRole
+  name: paperclip-deploy
+  apiGroup: rbac.authorization.k8s.io

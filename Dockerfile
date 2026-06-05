@@ -1,4 +1,9 @@
 FROM node:lts-trixie-slim AS base
+# Build-time metadata args (injected by CI)
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git \
   && rm -rf /var/lib/apt/lists/*
@@ -36,7 +41,12 @@ RUN pnpm --filter @paperclipai/plugin-sdk build
 RUN cd server && node_modules/.bin/tsc; mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
-FROM base AS production
+FROM node:lts-trixie-slim AS production
+# Production stage uses a fresh slim base — no build tools, no git
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+RUN corepack enable
 WORKDIR /app
 COPY --chown=node:node --from=build /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -57,8 +67,20 @@ ENV NODE_ENV=production \
   PAPERCLIP_DEPLOYMENT_MODE=authenticated \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private
 
+# OCI image labels for traceability
+LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.title="amx-air-hubs" \
+      org.opencontainers.image.description="Paperclip AI-agent control plane" \
+      org.opencontainers.image.source="https://github.com/Zo-hund/Zo-hund-paperclip-surfer"
+
 VOLUME ["/paperclip"]
 EXPOSE 3100
+
+# Health check via the dedicated API health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:3100/api/health || exit 1
 
 USER node
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

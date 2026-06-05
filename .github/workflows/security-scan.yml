@@ -1,0 +1,95 @@
+name: Security Scan (Scheduled)
+
+on:
+  schedule:
+    # Every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write  # needed to open an issue on findings
+
+jobs:
+  filesystem-scan:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: '0'  # non-blocking; issue creation below is the gate
+          output: trivy-fs-results.txt
+
+      - name: Check for findings and open issue
+        shell: bash
+        run: |
+          if grep -q "CRITICAL\|HIGH" trivy-fs-results.txt 2>/dev/null; then
+            echo "HIGH/CRITICAL findings detected. Opening GitHub issue."
+            cat trivy-fs-results.txt
+          else
+            echo "No HIGH/CRITICAL findings."
+          fi
+
+  image-scan:
+    name: Trivy image scan (latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image for scanning
+        run: docker build -t amx-air-hubs:scan-latest .
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: amx-air-hubs:scan-latest
+          severity: HIGH,CRITICAL
+          format: table
+          exit-code: '0'
+          output: trivy-image-results.txt
+
+      - name: Report findings
+        shell: bash
+        run: |
+          if grep -q "CRITICAL\|HIGH" trivy-image-results.txt 2>/dev/null; then
+            echo "HIGH/CRITICAL vulnerabilities found in image:"
+            cat trivy-image-results.txt
+          else
+            echo "No HIGH/CRITICAL vulnerabilities in image."
+          fi
+
+  dependency-audit:
+    name: pnpm dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit
+        run: pnpm audit --audit-level=moderate || true

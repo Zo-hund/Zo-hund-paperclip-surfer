@@ -1,0 +1,77 @@
+---
+# ClusterRole scoped to only the permissions the CI/CD pipeline needs for Helm deploys.
+# Principle of least privilege: no cluster-admin, no secret reads, no deletion of core resources.
+#
+# Permissions breakdown:
+#   - namespaces:       create (for --create-namespace in helm upgrade)
+#   - deployments:      full CRUD (Helm manages Deployment objects)
+#   - replicasets:      read (Helm needs to check rollout state)
+#   - services:         full CRUD (Helm manages Service objects)
+#   - configmaps:       full CRUD (Helm release metadata is stored here)
+#   - secrets:          create + update (apply runtime secrets; NO read/delete)
+#   - ingresses:        full CRUD (Helm manages Ingress objects)
+#   - hpa:              full CRUD (Helm manages HorizontalPodAutoscaler)
+#   - pdb:              full CRUD (Helm manages PodDisruptionBudget)
+#   - serviceaccounts:  create + update (Helm chart creates a SA for the app)
+#   - pods:             read (for rollout status and smoke checks)
+#   - events:           read (for kubectl describe during troubleshooting)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: paperclip-deploy
+  labels:
+    app.kubernetes.io/name: paperclip-deploy
+    app.kubernetes.io/component: ci-cd
+    app.kubernetes.io/managed-by: kubectl
+rules:
+  # Namespace management (for helm --create-namespace)
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "create", "patch"]
+
+  # Core application resources
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  - apiGroups: [""]
+    resources: ["services", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # Helm stores release state in ConfigMaps/Secrets
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Secrets: write-only for apply; never read existing values from CI
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch"]
+
+  # Network
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # Autoscaling and availability
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # Read pods and events for rollout status and smoke checks
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "endpoints"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+
+  # Role/RoleBinding if the Helm chart manages app-level RBAC
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]

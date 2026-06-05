@@ -1,0 +1,35 @@
+replicaCount: 3
+
+image:
+  repository: ghcr.io/amx-labs/amx-air-hubs
+  tag: latest
+  pullPolicy: IfNotPresent
+
+ingress:
+  host: amx-air-hubs.cc
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+  tls:
+    - secretName: amx-air-hubs-tls
+      hosts:
+        - amx-air-hubs.cc
+
+env:
+  PAPERCLIP_PUBLIC_URL: https://amx-air-hubs.cc
+
+persistence:
+  enabled: false
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+
+# Enable NetworkPolicy for production cluster.
+# Set postgresCidr to the actual CIDR of your managed Postgres instance.
+networkPolicy:
+  enabled: true
+  postgresCidr: "10.0.0.0/8"  # REPLACE: set to your actual Postgres CIDR

@@ -1,0 +1,14 @@
+---
+# ServiceAccount used exclusively by the CI/CD pipeline for Helm deployments.
+# This account replaces the cluster-admin KUBE_CONFIG_DATA with a scoped identity.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: paperclip-deploy
+  namespace: amx-air-hubs
+  labels:
+    app.kubernetes.io/name: paperclip-deploy
+    app.kubernetes.io/component: ci-cd
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "CI/CD deploy account for Helm-based AMX Air Hubs rollouts"
