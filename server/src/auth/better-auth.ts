@@ -90,6 +90,60 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
+      sendResetPassword: async ({
+        user,
+        url,
+      }: {
+        user: { email: string; name?: string | null };
+        url: string;
+        token: string;
+      }) => {
+        const { sendEmail } = await import("./email-service.js");
+        const greeting = user.name ? ` ${user.name}` : "";
+        await sendEmail({
+          to: user.email,
+          subject: "Reset your Paperclip password",
+          text: [
+            `Hi${greeting},`,
+            "",
+            "Click the link below to reset your password. This link expires in 1 hour.",
+            "",
+            url,
+            "",
+            "If you didn't request this, you can safely ignore this email.",
+            "",
+            "— The Paperclip team",
+          ].join("\n"),
+          html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#09090b;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fafafa">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;background:#18181b;border:1px solid #27272a;border-radius:12px;padding:40px">
+        <tr><td>
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#71717a">AMX LABS x Paperclip</p>
+          <h1 style="margin:0 0 24px;font-size:22px;font-weight:600;color:#fafafa">Reset your password</h1>
+          <p style="margin:0 0 8px;font-size:14px;color:#a1a1aa">Hi${greeting},</p>
+          <p style="margin:0 0 24px;font-size:14px;color:#a1a1aa;line-height:1.6">
+            We received a request to reset the password for your Paperclip account.<br>
+            Click the button below to choose a new password. This link expires in <strong style="color:#fafafa">1 hour</strong>.
+          </p>
+          <a href="${url}" style="display:inline-block;padding:10px 24px;background:#6366f1;color:#fff;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px">Reset Password</a>
+          <p style="margin:24px 0 0;font-size:12px;color:#52525b;line-height:1.6">
+            Or copy this link:<br>
+            <span style="color:#6366f1;word-break:break-all">${url}</span>
+          </p>
+          <hr style="margin:32px 0;border:none;border-top:1px solid #27272a">
+          <p style="margin:0;font-size:12px;color:#52525b">If you didn't request a password reset, you can safely ignore this email.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+        });
+      },
     },
     ...(isHttpOnly ? { advanced: { useSecureCookies: false } } : {}),
   };

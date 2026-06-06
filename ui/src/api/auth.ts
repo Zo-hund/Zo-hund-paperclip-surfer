@@ -72,4 +72,16 @@ export const authApi = {
   signOut: async () => {
     await authPost("/sign-out", {});
   },
+
+  forgotPassword: async (email: string) => {
+    // Better Auth built-in endpoint — always returns 200 (doesn't reveal if email exists)
+    await authPost("/forget-password", {
+      email,
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+  },
+
+  resetPassword: async (token: string, newPassword: string) => {
+    await authPost("/reset-password", { token, newPassword });
+  },
 };

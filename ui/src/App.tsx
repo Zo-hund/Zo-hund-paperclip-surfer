@@ -28,6 +28,9 @@ import { CompanySettings } from "./pages/CompanySettings";
 import { CompanySkills } from "./pages/CompanySkills";
 import { McpServers } from "./pages/McpServers";
 import { Analytics } from "./pages/Analytics";
+import { RunHistory } from "./pages/RunHistory";
+import { Memories } from "./pages/Memories";
+import { Tracing } from "./pages/Tracing";
 import { CompanyExport } from "./pages/CompanyExport";
 import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
@@ -41,6 +44,8 @@ import { RunTranscriptUxLab } from "./pages/RunTranscriptUxLab";
 import { OrgChart } from "./pages/OrgChart";
 import { NewAgent } from "./pages/NewAgent";
 import { AuthPage } from "./pages/Auth";
+import { ForgotPasswordPage } from "./pages/ForgotPassword";
+import { ResetPasswordPage } from "./pages/ResetPassword";
 import { XpExchange } from "./pages/XpExchange";
 import { RqPortal } from "./pages/RqPortal";
 import { LmsDashboard } from "./pages/LmsDashboard";
@@ -146,6 +151,9 @@ function boardRoutes() {
       <Route path="skills/*" element={<CompanySkills />} />
       <Route path="mcp-servers" element={<McpServers />} />
       <Route path="analytics" element={<Analytics />} />
+      <Route path="run-history" element={<RunHistory />} />
+      <Route path="memories" element={<Memories />} />
+      <Route path="tracing" element={<Tracing />} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
       <Route path="plugins/:pluginId" element={<PluginPage />} />
@@ -344,6 +352,8 @@ export function App() {
 
         {/* ── Auth-required routes ── */}
         <Route path="auth" element={<AuthPage />} />
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
         <Route path="invite/:token" element={<InviteLandingPage />} />
@@ -388,6 +398,9 @@ export function App() {
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path="mcp-servers" element={<UnprefixedBoardRedirect />} />
           <Route path="analytics" element={<UnprefixedBoardRedirect />} />
+          <Route path="run-history" element={<UnprefixedBoardRedirect />} />
+          <Route path="memories" element={<UnprefixedBoardRedirect />} />
+          <Route path="tracing" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace/agent/:marketplaceAgentId" element={<UnprefixedBoardRedirect />} />
           
