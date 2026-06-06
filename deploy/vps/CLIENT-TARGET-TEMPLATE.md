@@ -24,6 +24,9 @@ Use this template when onboarding a new client deployment target.
 - `GOOGLE_API_KEY`
 - `GHCR_PULL_USERNAME`
 - `GHCR_PULL_TOKEN`
+- `RESEND_API_KEY`
+- `PAPERCLIP_EMAIL_FROM`
+- `PAPERCLIP_EMAIL_REPLY_TO`
 
 ## Target defaults
 

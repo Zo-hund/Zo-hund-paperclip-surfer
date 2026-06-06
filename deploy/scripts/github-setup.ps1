@@ -13,6 +13,27 @@ $PG_PASSWORD    = node -e "console.log(require('crypto').randomBytes(24).toStrin
 $SMOKE_SECRET   = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 Write-Host "  Secrets generated." -ForegroundColor Green
 
+# ── Parse local .env for Resend/Email settings ──────────────────────────────────
+$RESEND_API_KEY = ""
+$EMAIL_FROM = ""
+$EMAIL_REPLY_TO = ""
+
+if (Test-Path ".env") {
+    $envLines = Get-Content ".env"
+    foreach ($line in $envLines) {
+        $line = $line.Trim()
+        if ($line -like "RESEND_API_KEY=*") {
+            $RESEND_API_KEY = $line.Substring("RESEND_API_KEY=".Length).Trim("'`" ")
+        }
+        if ($line -like "PAPERCLIP_EMAIL_FROM=*") {
+            $EMAIL_FROM = $line.Substring("PAPERCLIP_EMAIL_FROM=".Length).Trim("'`" ")
+        }
+        if ($line -like "PAPERCLIP_EMAIL_REPLY_TO=*") {
+            $EMAIL_REPLY_TO = $line.Substring("PAPERCLIP_EMAIL_REPLY_TO=".Length).Trim("'`" ")
+        }
+    }
+}
+
 # ── Repo-level variables ───────────────────────────────────────────────────────
 Write-Host "`n==> Setting repository variables..." -ForegroundColor Cyan
 gh variable set REGISTRY_IMAGE      --body "ghcr.io/zo-hund/amx-air-hubs"         --repo $REPO
@@ -66,6 +87,9 @@ $PG_PASSWORD  | gh secret set POSTGRES_PASSWORD             --env hostinger-prod
 ""            | gh secret set GOOGLE_API_KEY                --env hostinger-prod --repo $REPO
 ""            | gh secret set GHCR_PULL_USERNAME            --env hostinger-prod --repo $REPO
 $GH_TOKEN     | gh secret set GHCR_PULL_TOKEN               --env hostinger-prod --repo $REPO
+if ($RESEND_API_KEY) { $RESEND_API_KEY | gh secret set RESEND_API_KEY --env hostinger-prod --repo $REPO }
+if ($EMAIL_FROM) { $EMAIL_FROM | gh secret set PAPERCLIP_EMAIL_FROM --env hostinger-prod --repo $REPO }
+if ($EMAIL_REPLY_TO) { $EMAIL_REPLY_TO | gh secret set PAPERCLIP_EMAIL_REPLY_TO --env hostinger-prod --repo $REPO }
 Write-Host "  hostinger-prod secrets done." -ForegroundColor Green
 
 # ── hostinger-prod variables ──────────────────────────────────────────────────
@@ -87,6 +111,9 @@ $JWT_SECRET  | gh secret set PAPERCLIP_AGENT_JWT_SECRET --env staging --repo $RE
 ""           | gh secret set GOOGLE_API_KEY             --env staging --repo $REPO
 $GH_TOKEN    | gh secret set GHCR_PULL_TOKEN            --env staging --repo $REPO
 "zo-hund"    | gh secret set GHCR_PULL_USERNAME         --env staging --repo $REPO
+if ($RESEND_API_KEY) { $RESEND_API_KEY | gh secret set RESEND_API_KEY --env staging --repo $REPO }
+if ($EMAIL_FROM) { $EMAIL_FROM | gh secret set PAPERCLIP_EMAIL_FROM --env staging --repo $REPO }
+if ($EMAIL_REPLY_TO) { $EMAIL_REPLY_TO | gh secret set PAPERCLIP_EMAIL_REPLY_TO --env staging --repo $REPO }
 Write-Host "  staging secrets done." -ForegroundColor Green
 
 # ── production environment secrets ───────────────────────────────────────────
@@ -100,6 +127,9 @@ $JWT_SECRET  | gh secret set PAPERCLIP_AGENT_JWT_SECRET --env production --repo 
 ""           | gh secret set GOOGLE_API_KEY             --env production --repo $REPO
 $GH_TOKEN    | gh secret set GHCR_PULL_TOKEN            --env production --repo $REPO
 "zo-hund"    | gh secret set GHCR_PULL_USERNAME         --env production --repo $REPO
+if ($RESEND_API_KEY) { $RESEND_API_KEY | gh secret set RESEND_API_KEY --env production --repo $REPO }
+if ($EMAIL_FROM) { $EMAIL_FROM | gh secret set PAPERCLIP_EMAIL_FROM --env production --repo $REPO }
+if ($EMAIL_REPLY_TO) { $EMAIL_REPLY_TO | gh secret set PAPERCLIP_EMAIL_REPLY_TO --env production --repo $REPO }
 Write-Host "  production secrets done." -ForegroundColor Green
 
 # ── Generate SSH deploy key ───────────────────────────────────────────────────

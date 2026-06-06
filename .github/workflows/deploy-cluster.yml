@@ -76,6 +76,10 @@ jobs:
         id: vars
         shell: bash
         run: |
+          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE_REPOSITORY="ghcr.io/${OWNER_LOWER}/amx-air-hubs"
+          echo "IMAGE_REPOSITORY=${IMAGE_REPOSITORY}" >> "$GITHUB_ENV"
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             IMAGE_TAG="${{ inputs.image_tag }}"
           else
@@ -147,7 +151,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Configure kubeconfig
         shell: bash

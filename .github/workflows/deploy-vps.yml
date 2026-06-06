@@ -41,6 +41,10 @@ jobs:
         id: vars
         shell: bash
         run: |
+          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE_REPOSITORY="ghcr.io/${OWNER_LOWER}/amx-air-hubs"
+          echo "IMAGE_REPOSITORY=${IMAGE_REPOSITORY}" >> "$GITHUB_ENV"
+
           DEPLOY_LAYOUT="${{ vars.VPS_LAYOUT }}"
           if [ -z "${DEPLOY_LAYOUT}" ]; then
             DEPLOY_LAYOUT="generic"
@@ -104,7 +108,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Verify published image tag exists
         run: docker buildx imagetools inspect "${{ steps.vars.outputs.image_ref }}"
@@ -153,6 +157,9 @@ jobs:
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           PAPERCLIP_AGENT_JWT_SECRET: ${{ secrets.PAPERCLIP_AGENT_JWT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          PAPERCLIP_EMAIL_FROM: ${{ secrets.PAPERCLIP_EMAIL_FROM }}
+          PAPERCLIP_EMAIL_REPLY_TO: ${{ secrets.PAPERCLIP_EMAIL_REPLY_TO }}
         run: |
           cat > "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
           COMPOSE_PROJECT_NAME=${STACK_NAME}
@@ -170,6 +177,9 @@ jobs:
           GHCR_PULL_TOKEN=${GHCR_PULL_TOKEN}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_AGENT_JWT_SECRET}
+          RESEND_API_KEY=${RESEND_API_KEY}
+          PAPERCLIP_EMAIL_FROM=${PAPERCLIP_EMAIL_FROM}
+          PAPERCLIP_EMAIL_REPLY_TO=${PAPERCLIP_EMAIL_REPLY_TO}
           EOF
           if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
             cat >> "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF

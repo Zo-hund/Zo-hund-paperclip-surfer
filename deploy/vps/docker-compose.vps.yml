@@ -41,6 +41,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      PAPERCLIP_EMAIL_FROM: ${PAPERCLIP_EMAIL_FROM:-}
+      PAPERCLIP_EMAIL_REPLY_TO: ${PAPERCLIP_EMAIL_REPLY_TO:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3100/ >/dev/null"]
       interval: 15s
