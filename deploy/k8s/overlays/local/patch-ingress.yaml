@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: amx-app
+spec:
+  rules:
+    - host: amx-air-hubs.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: amx-app
+                port:
+                  number: 80

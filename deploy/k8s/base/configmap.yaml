@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amx-config
+data:
+  HOST: "0.0.0.0"
+  PORT: "3100"
+  SERVE_UI: "true"
+  PAPERCLIP_HOME: "/paperclip"
+  PAPERCLIP_INSTANCE_ID: "default"
+  PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+  PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
+  PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+  PAPERCLIP_PUBLIC_URL: "https://amx-air-hubs.cc"

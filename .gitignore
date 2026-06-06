@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .env
+.env.cluster
+deploy/vps/.env.vps
+# SSH/deploy keys — never commit private keys
+deploy/keys/
+
 *.tsbuildinfo
 drizzle/meta/
 .vite/

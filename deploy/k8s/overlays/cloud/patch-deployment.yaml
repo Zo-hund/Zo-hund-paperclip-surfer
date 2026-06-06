@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amx-app
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: amx-app
+          image: ghcr.io/amx-labs/amx-air-hubs:latest
+          imagePullPolicy: IfNotPresent
