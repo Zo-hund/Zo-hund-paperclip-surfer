@@ -111,9 +111,11 @@ docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" ps
 
 for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
   status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${COMPOSE_PROJECT_NAME_VALUE}-${APP_SERVICE_NAME_VALUE}-1" 2>/dev/null || true)"
+  echo "Checking deployment health... Attempt ${attempt}/${MAX_ATTEMPTS} (Container state: ${status:-unknown})"
   if [[ "${status}" == "healthy" || "${status}" == "running" ]]; then
     if [[ -n "${HEALTH_URL}" ]]; then
       code="$(curl -sS -o /dev/null -w '%{http_code}' "${HEALTH_URL}" || true)"
+      echo "  Curl check at ${HEALTH_URL} returned status code: ${code:-failed}"
       if [[ "${code}" =~ ^[0-9]+$ ]] && [[ "${code}" -ge 200 && "${code}" -lt 400 ]]; then
         cat > ".last-successful-release" <<EOF
 timestamp=${TIMESTAMP}

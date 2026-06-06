@@ -223,7 +223,7 @@ jobs:
         env:
           HEALTH_URL: https://${{ steps.vars.outputs.domain }}
         run: |
-          ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
             cd '${{ steps.vars.outputs.deploy_dir }}' && \
             COMPOSE_FILE='${{ steps.vars.outputs.remote_compose_file }}' \
             ENV_FILE='${{ steps.vars.outputs.remote_env_file }}' \
