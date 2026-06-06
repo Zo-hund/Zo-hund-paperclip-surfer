@@ -9,6 +9,8 @@ declare global {
         agentId?: string;
         companyId?: string;
         companyIds?: string[];
+        /** Per-company role for the authenticated board user. Keyed by companyId. */
+        companyRoles?: Record<string, import("@paperclipai/shared").CompanyMembershipRole>;
         isInstanceAdmin?: boolean;
         keyId?: string;
         runId?: string;

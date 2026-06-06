@@ -11,6 +11,7 @@ import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
 import { privateHostnameGuard, resolvePrivateHostnameAllowSet } from "./middleware/private-hostname-guard.js";
 import { healthRoutes } from "./routes/health.js";
 import { companyRoutes } from "./routes/companies.js";
+import { companyMembersRoutes } from "./routes/company-members.js";
 import { companySkillRoutes } from "./routes/company-skills.js";
 import { agentRoutes } from "./routes/agents.js";
 import { projectRoutes } from "./routes/projects.js";
@@ -182,6 +183,7 @@ export async function createApp(
     }),
   );
   api.use("/companies", companyRoutes(db, opts.storageService));
+  api.use("/companies/:companyId/members", companyMembersRoutes(db));
   api.use(companySkillRoutes(db));
   api.use(agentRoutes(db));
   api.use(assetRoutes(db, opts.storageService));
@@ -299,7 +301,18 @@ export async function createApp(
       app.use("/assets", (_req, res) => {
         res.status(404).set("Content-Type", "text/plain").end("Not found");
       });
-      app.use(express.static(uiDist));
+      app.use(
+        express.static(uiDist, {
+          setHeaders(res, filePath) {
+            const basename = path.basename(filePath);
+            if (basename === "index.html" || basename === "sw.js" || basename.endsWith(".webmanifest")) {
+              res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+              res.setHeader("Pragma", "no-cache");
+              res.setHeader("Expires", "0");
+            }
+          },
+        }),
+      );
       app.get(/.*/, (req, res) => {
         const requestPath = req.path ?? "";
         if (requestPath.startsWith("/assets/")) {
@@ -310,7 +323,15 @@ export async function createApp(
           res.status(404).set("Content-Type", "text/plain").end("Not found");
           return;
         }
-        res.status(200).set("Content-Type", "text/html").end(indexHtml);
+        res
+          .status(200)
+          .set({
+            "Content-Type": "text/html",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          })
+          .end(indexHtml);
       });
     } else {
       console.warn("[paperclip] UI dist not found; running in API-only mode");

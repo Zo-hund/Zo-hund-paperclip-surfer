@@ -1,5 +1,5 @@
 import { ChangeEvent, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
@@ -8,8 +8,10 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, Download, Upload } from "lucide-react";
+import { Settings, Check, Download, Upload, Users, Trash2 } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import type { CompanyMembershipRole } from "@paperclipai/shared";
+import { COMPANY_MEMBERSHIP_ROLES } from "@paperclipai/shared";
 import {
   Field,
   ToggleField,
@@ -463,6 +465,9 @@ export function CompanySettings() {
         </div>
       </div>
 
+      {/* Members */}
+      <MembersSection companyId={selectedCompanyId!} />
+
       {/* Import / Export */}
       <div className="space-y-4">
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -541,6 +546,138 @@ export function CompanySettings() {
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const ROLE_LABELS: Record<CompanyMembershipRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+  viewer: "Viewer",
+};
+
+function MembersSection({ companyId }: { companyId: string }) {
+  const queryClient = useQueryClient();
+  const { pushToast } = useToast();
+
+  const membersQuery = useQuery({
+    queryKey: ["company-members", companyId],
+    queryFn: () => accessApi.listMembers(companyId),
+    enabled: !!companyId,
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: CompanyMembershipRole }) =>
+      accessApi.updateMemberRole(companyId, userId, role),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["company-members", companyId] });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Failed to update role",
+        body: err instanceof Error ? err.message : "Unknown error",
+        tone: "error",
+      });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (userId: string) => accessApi.removeMember(companyId, userId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["company-members", companyId] });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Failed to remove member",
+        body: err instanceof Error ? err.message : "Unknown error",
+        tone: "error",
+      });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+        <Users className="h-3.5 w-3.5" />
+        Members
+      </div>
+      <div className="rounded-md border border-border">
+        {membersQuery.isLoading && (
+          <div className="px-4 py-3 text-sm text-muted-foreground">Loading members…</div>
+        )}
+        {membersQuery.isError && (
+          <div className="px-4 py-3 text-sm text-destructive">
+            {membersQuery.error instanceof Error ? membersQuery.error.message : "Failed to load members"}
+          </div>
+        )}
+        {membersQuery.data && membersQuery.data.length === 0 && (
+          <div className="px-4 py-3 text-sm text-muted-foreground">No members yet.</div>
+        )}
+        {membersQuery.data && membersQuery.data.length > 0 && (
+          <ul className="divide-y divide-border">
+            {membersQuery.data.map((m) => (
+              <li key={m.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-mono text-muted-foreground truncate max-w-[180px]" title={m.principalId}>
+                    {m.principalId.slice(0, 12)}…
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wide">{m.principalType}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                    m.status === "active"
+                      ? "bg-green-500/10 text-green-600"
+                      : m.status === "suspended"
+                      ? "bg-yellow-500/10 text-yellow-600"
+                      : "bg-muted text-muted-foreground"
+                  }`}>
+                    {m.status}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {m.principalType === "user" ? (
+                    <select
+                      id={`member-role-${m.id}`}
+                      value={m.membershipRole ?? "member"}
+                      onChange={(e) =>
+                        roleMutation.mutate({
+                          userId: m.principalId,
+                          role: e.target.value as CompanyMembershipRole,
+                        })
+                      }
+                      disabled={roleMutation.isPending}
+                      className="text-xs rounded border border-border bg-transparent px-1.5 py-1 outline-none cursor-pointer hover:bg-muted/50"
+                    >
+                      {COMPANY_MEMBERSHIP_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_LABELS[role]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      {m.membershipRole ?? "member"}
+                    </span>
+                  )}
+                  <Button
+                    id={`remove-member-${m.id}`}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    disabled={removeMutation.isPending}
+                    onClick={() => {
+                      if (!window.confirm(`Remove this member (${m.principalId.slice(0, 8)}…)?`)) return;
+                      removeMutation.mutate(m.principalId);
+                    }}
+                    title="Remove member"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

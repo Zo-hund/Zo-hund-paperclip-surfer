@@ -335,6 +335,32 @@ export type PrincipalType = (typeof PRINCIPAL_TYPES)[number];
 export const MEMBERSHIP_STATUSES = ["pending", "active", "suspended"] as const;
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
 
+export const COMPANY_MEMBERSHIP_ROLES = ["owner", "admin", "member", "viewer"] as const;
+export type CompanyMembershipRole = (typeof COMPANY_MEMBERSHIP_ROLES)[number];
+
+/**
+ * Numeric rank for each company membership role. Higher = more privileged.
+ * Use `hasCompanyRoleAtLeast` for role comparisons.
+ */
+export const COMPANY_MEMBERSHIP_ROLE_RANK: Record<CompanyMembershipRole, number> = {
+  owner: 40,
+  admin: 30,
+  member: 20,
+  viewer: 10,
+};
+
+/**
+ * Returns true if `actual` role has at least the permissions of `required` role.
+ */
+export function hasCompanyRoleAtLeast(
+  actual: CompanyMembershipRole | string | null | undefined,
+  required: CompanyMembershipRole,
+): boolean {
+  if (!actual) return false;
+  const actualRank = COMPANY_MEMBERSHIP_ROLE_RANK[actual as CompanyMembershipRole] ?? 0;
+  return actualRank >= COMPANY_MEMBERSHIP_ROLE_RANK[required];
+}
+
 export const INSTANCE_USER_ROLES = ["instance_admin"] as const;
 export type InstanceUserRole = (typeof INSTANCE_USER_ROLES)[number];
 

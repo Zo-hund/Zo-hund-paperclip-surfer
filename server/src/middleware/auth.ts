@@ -4,7 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agentApiKeys, agents, companyMemberships, instanceUserRoles } from "@paperclipai/db";
 import { verifyLocalAgentJwt } from "../agent-auth-jwt.js";
-import type { DeploymentMode } from "@paperclipai/shared";
+import type { CompanyMembershipRole, DeploymentMode } from "@paperclipai/shared";
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "./logger.js";
 import { boardAuthService } from "../services/board-auth.js";
@@ -49,7 +49,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
               .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
               .then((rows) => rows[0] ?? null),
             db
-              .select({ companyId: companyMemberships.companyId })
+              .select({ companyId: companyMemberships.companyId, membershipRole: companyMemberships.membershipRole })
               .from(companyMemberships)
               .where(
                 and(
@@ -59,10 +59,15 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
                 ),
               ),
           ]);
+          const companyRoles: Record<string, CompanyMembershipRole> = {};
+          for (const m of memberships) {
+            if (m.membershipRole) companyRoles[m.companyId] = m.membershipRole as CompanyMembershipRole;
+          }
           req.actor = {
             type: "board",
             userId,
             companyIds: memberships.map((row) => row.companyId),
+            companyRoles,
             isInstanceAdmin: Boolean(roleRow),
             runId: runIdHeader ?? undefined,
             source: "session",
@@ -87,10 +92,15 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       const access = await boardAuth.resolveBoardAccess(boardKey.userId);
       if (access.user) {
         await boardAuth.touchBoardApiKey(boardKey.id);
+        const boardKeyRoles: Record<string, CompanyMembershipRole> = {};
+        for (const m of access.memberships ?? []) {
+          if (m.membershipRole) boardKeyRoles[m.companyId] = m.membershipRole as CompanyMembershipRole;
+        }
         req.actor = {
           type: "board",
           userId: boardKey.userId,
           companyIds: access.companyIds,
+          companyRoles: boardKeyRoles,
           isInstanceAdmin: access.isInstanceAdmin,
           keyId: boardKey.id,
           runId: runIdHeader || undefined,

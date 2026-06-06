@@ -359,12 +359,48 @@ export function accessService(db: Db) {
     });
   }
 
+  async function updateMemberRole(
+    companyId: string,
+    principalType: PrincipalType,
+    principalId: string,
+    role: string,
+  ) {
+    const existing = await getMembership(companyId, principalType, principalId);
+    if (!existing) return null;
+    return db
+      .update(companyMemberships)
+      .set({ membershipRole: role, updatedAt: new Date() })
+      .where(eq(companyMemberships.id, existing.id))
+      .returning()
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function removeMember(
+    companyId: string,
+    principalType: PrincipalType,
+    principalId: string,
+  ) {
+    return db
+      .delete(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          eq(companyMemberships.principalType, principalType),
+          eq(companyMemberships.principalId, principalId),
+        ),
+      )
+      .returning()
+      .then((rows) => rows[0] ?? null);
+  }
+
   return {
     isInstanceAdmin,
     canUser,
     hasPermission,
     getMembership,
     ensureMembership,
+    updateMemberRole,
+    removeMember,
     listMembers,
     listActiveUserMemberships,
     copyActiveUserMemberships,

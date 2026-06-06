@@ -1,5 +1,16 @@
-import type { AgentAdapterType, JoinRequest } from "@paperclipai/shared";
+import type { AgentAdapterType, CompanyMembershipRole, JoinRequest } from "@paperclipai/shared";
 import { api } from "./client";
+
+type CompanyMembership = {
+  id: string;
+  companyId: string;
+  principalType: "user" | "agent";
+  principalId: string;
+  status: "pending" | "active" | "suspended";
+  membershipRole: CompanyMembershipRole | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type InviteSummary = {
   id: string;
@@ -156,4 +167,16 @@ export const accessApi = {
 
   cancelCliAuthChallenge: (id: string, token: string) =>
     api.post<{ cancelled: boolean; status: string }>(`/cli-auth/challenges/${id}/cancel`, { token }),
+
+  listMembers: (companyId: string) =>
+    api.get<CompanyMembership[]>(`/companies/${companyId}/members`),
+
+  addMember: (companyId: string, userId: string, role: CompanyMembershipRole = "member") =>
+    api.post<CompanyMembership>(`/companies/${companyId}/members`, { userId, role }),
+
+  updateMemberRole: (companyId: string, userId: string, role: CompanyMembershipRole) =>
+    api.patch<CompanyMembership>(`/companies/${companyId}/members/${userId}`, { role }),
+
+  removeMember: (companyId: string, userId: string) =>
+    api.delete<{ ok: boolean }>(`/companies/${companyId}/members/${userId}`),
 };
