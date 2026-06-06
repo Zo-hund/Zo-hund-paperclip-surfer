@@ -232,8 +232,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-       cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: false
           sbom: false
       - name: Scan image for vulnerabilities (Trivy)
