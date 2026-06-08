@@ -519,7 +519,13 @@ export function issueRoutes(db: Db, storage: StorageService) {
 
     // Promotion logic: if this is a primary deliverable key, sync a record to work products
     // so it shows up in global Briefcase views.
-    const deliverableKeys = ["report_deliverable", "strategic_assessment", "blueprint"];
+    const deliverableKeys = [
+      "report_deliverable",
+      "strategic_assessment",
+      "blueprint",
+      "deliverable",
+      "final_report",
+    ];
     if (deliverableKeys.includes(doc.key)) {
       try {
         await workProductsSvc.createForIssue(issue.id, issue.companyId, {

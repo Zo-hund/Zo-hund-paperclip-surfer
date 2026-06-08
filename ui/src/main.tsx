@@ -23,7 +23,7 @@ initPluginBridge(React, ReactDOM);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    const cleanupFlag = "paperclip.sw.cleanup.v1";
+    const cleanupFlag = "paperclip.sw.cleanup.v2";
 
     const registerServiceWorker = async () => {
       try {

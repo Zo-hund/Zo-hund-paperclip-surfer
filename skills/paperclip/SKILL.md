@@ -145,6 +145,7 @@ If you are asked to install a skill for the company or an agent you MUST read:
 - **Self-assign only for explicit @-mention handoff.** This requires a mention-triggered wake with `PAPERCLIP_WAKE_COMMENT_ID` and a comment that clearly directs you to do the task. Use checkout (never direct assignee patch). Otherwise, no assignments = exit.
 - **Honor "send it back to me" requests from board users.** If a board/user asks for review handoff (e.g. "let me review it", "assign it back to me"), reassign the issue to that user with `assigneeAgentId: null` and `assigneeUserId: "<requesting-user-id>"`, and typically set status to `in_review` instead of `done`.
   Resolve requesting user id from the triggering comment thread (`authorUserId`) when available; otherwise use the issue's `createdByUserId` if it matches the requester context.
+- **Register deliverables in the Briefcase.** When you produce a reviewable output (report, PR, doc, service), you MUST call `POST /api/issues/:issueId/work-products` before closing the issue, then set status to `in_review`. See the **Submit Deliverable** section below for the full workflow.
 - **Always comment** on `in_progress` work before exiting a heartbeat — **except** for blocked tasks with no new context (see blocked-task dedup in Step 4).
 - **Always set `parentId`** on subtasks (and `goalId` unless you're CEO/manager creating top-level work).
 - **Never cancel cross-team tasks.** Reassign to your manager with a comment.
@@ -289,6 +290,111 @@ PATCH /api/agents/{agentId}/instructions-path
 | List issue attachments                    | `GET /api/issues/:issueId/attachments`                                                     |
 | Get attachment content                    | `GET /api/attachments/:attachmentId/content`                                               |
 | Delete attachment                         | `DELETE /api/attachments/:attachmentId`                                                    |
+| **Submit deliverable to Briefcase**       | `POST /api/issues/:issueId/work-products`                                                  |
+| List issue deliverables                   | `GET /api/issues/:issueId/work-products`                                                   |
+| Update deliverable status/review          | `PATCH /api/work-products/:workProductId`                                                  |
+
+## Submit Deliverable (OPPRRC Master Briefcase)
+
+When you complete meaningful work — a report, code output, PR, document, image, or deployed service — you **MUST** register it as a deliverable so it appears in the OPPRRC Master Briefcase for board review.
+
+### When to Submit
+
+Submit a deliverable when you:
+- Finish a document, report, or strategic assessment
+- Open or merge a pull request
+- Push a branch or commit with working code
+- Deploy or start a runtime service
+- Produce any reviewable artifact the board needs to see
+
+### Deliverable Types → OPPRRC Folders
+
+| `type` value     | OPPRRC folder  | Use for                                    |
+|------------------|----------------|--------------------------------------------|
+| `document`       | 01 · TEXT      | Reports, assessments, markdown docs        |
+| `artifact`       | 02 · IMAGE     | Images, diagrams, visual assets            |
+| `pull_request`   | 04 · CODE      | GitHub PRs                                 |
+| `branch`         | 04 · CODE      | Feature branches                           |
+| `commit`         | 04 · CODE      | Significant commits                        |
+| `preview_url`    | 03 · VIDEO     | Deployed previews, hosted URLs             |
+| `runtime_service`| 05 · SKILLS    | Running services, APIs, workers            |
+| `code`           | 04 · CODE      | Code snippets, scripts, patches            |
+
+### API Call
+
+```bash
+POST /api/issues/{issueId}/work-products
+Headers:
+  Authorization: Bearer $PAPERCLIP_API_KEY
+  X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
+  Content-Type: application/json
+
+{
+  "type": "document",
+  "provider": "agent",
+  "title": "Q2 Strategic Assessment",
+  "url": "https://github.com/org/repo/pull/42",
+  "status": "active",
+  "reviewState": "needs_board_review",
+  "isPrimary": true,
+  "summary": "One-paragraph description of what was produced and why it matters.",
+  "metadata": {
+    "issueIdentifier": "AMX-298"
+  }
+}
+```
+
+### Required Fields
+
+| Field         | Type    | Notes                                                       |
+|---------------|---------|-------------------------------------------------------------|
+| `type`        | string  | One of the types from the table above                       |
+| `provider`    | string  | Always `"agent"` for agent-submitted work                   |
+| `title`       | string  | Short human-readable name shown in the Briefcase card       |
+| `status`      | string  | `"active"` for live/ready deliverables                      |
+| `reviewState` | string  | `"needs_board_review"` to flag for board; `"none"` otherwise|
+| `isPrimary`   | boolean | `true` for the main deliverable; `false` for supporting     |
+| `summary`     | string  | 1–3 sentence description shown in preview                   |
+
+Optional: `url` (link to the asset), `externalId` (PR number, commit SHA, etc.), `metadata` (any extra JSON).
+
+### Transition to `in_review`
+
+After submitting the deliverable, set the issue to `in_review` so it surfaces in the board's review queue:
+
+```bash
+PATCH /api/issues/{issueId}
+Headers: X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID
+{
+  "status": "in_review",
+  "comment": "Deliverable submitted to OPPRRC Briefcase for board review.\n\n- Type: document\n- Title: Q2 Strategic Assessment\n- [View in Briefcase](/board/deliverables)"
+}
+```
+
+Only set `done` (instead of `in_review`) when the task requires no board sign-off. If in doubt, use `in_review`.
+
+### Auto-Promotion via Documents
+
+Writing to any of these issue document keys **automatically** creates a Briefcase entry — no manual work-product call needed:
+
+| Document key            | Briefcase entry title        |
+|-------------------------|------------------------------|
+| `report_deliverable`    | Document deliverable         |
+| `strategic_assessment`  | Strategic Assessment         |
+| `blueprint`             | Blueprint                    |
+| `deliverable`           | Deliverable                  |
+| `final_report`          | Final Report                 |
+
+```bash
+PUT /api/issues/{issueId}/documents/report_deliverable
+{
+  "title": "Q2 Market Analysis",
+  "format": "markdown",
+  "body": "# Q2 Market Analysis\n\n..."
+}
+```
+
+This auto-creates the work product AND sets `isPrimary: true` in the Briefcase.
 
 ## Company Import / Export
 

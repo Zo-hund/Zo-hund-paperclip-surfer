@@ -181,7 +181,11 @@ const piLocalAdapter: ServerAdapterModule = {
 const hermesLocalAdapter: ServerAdapterModule = {
   type: "hermes_local",
   execute: async (ctx) => {
-    // Resolve dynamic path to hermes executable in the local virtualenv if config.hermesCommand is not set
+    // Resolve dynamic path to hermes executable if config.hermesCommand is not set.
+    // Priority order:
+    //   1. .venv inside packages/hermes-agent (dev setup)
+    //   2. ~/.local/bin/hermes (user pip install --user, common on Linux/macOS/Windows)
+    //   3. PATH fallback (let the OS resolve it)
     const config = (ctx.agent?.adapterConfig ?? {}) as any;
     if (!config.hermesCommand) {
       const isWin = process.platform === "win32";
@@ -189,12 +193,29 @@ const hermesLocalAdapter: ServerAdapterModule = {
       const __dirname = path.dirname(__filename);
       const rootDir = path.resolve(__dirname, "../../../"); // server/src/adapters -> monorepo root
       const hermesDir = path.resolve(rootDir, "packages/hermes-agent");
+
+      // 1. Check local venv
       const venvHermes = isWin
         ? path.join(hermesDir, ".venv", "Scripts", "hermes.exe")
         : path.join(hermesDir, ".venv", "bin", "hermes");
+
+      // 2. Check global user install (~/.local/bin)
+      const homeDir = process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
+      const userBinHermes = isWin
+        ? path.join(homeDir, ".local", "bin", "hermes.exe")
+        : path.join(homeDir, ".local", "bin", "hermes");
+
+      // 3. Windows: also check without .exe extension (shim scripts)
+      const userBinHermesNoExt = path.join(homeDir, ".local", "bin", "hermes");
+
       if (fs.existsSync(venvHermes)) {
         config.hermesCommand = venvHermes;
+      } else if (fs.existsSync(userBinHermes)) {
+        config.hermesCommand = userBinHermes;
+      } else if (isWin && fs.existsSync(userBinHermesNoExt)) {
+        config.hermesCommand = userBinHermesNoExt;
       }
+      // Otherwise fall through to PATH resolution inside the adapter
     }
     return hermesExecute(ctx);
   },

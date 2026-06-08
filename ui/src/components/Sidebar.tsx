@@ -1,10 +1,12 @@
 import {
+  Activity,
   Inbox,
   CircleDot,
   Target,
   LayoutDashboard,
   DollarSign,
   History,
+  FolderKanban,
   Search,
   SquarePen,
   Network,
@@ -14,6 +16,7 @@ import {
   Settings,
   Plug,
   BarChart3,
+  Brain,
   Zap,
   Factory,
   GraduationCap,
@@ -22,6 +25,9 @@ import {
   Store,
   Briefcase,
   ClipboardCheck,
+  GitBranch,
+  Route,
+  UserPlus,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -115,6 +121,8 @@ export function Sidebar() {
 
           <SidebarSection label="Work">
             <SidebarNavItem to="/issues" label="Issues" icon={CircleDot} />
+            <SidebarNavItem to="/projects" label="Projects" icon={FolderKanban} />
+            <SidebarNavItem to="/onboarding" label="Onboarding" icon={UserPlus} />
             <SidebarNavItem to="/routines" label="Routines" icon={Repeat} textBadge="Beta" textBadgeTone="amber" />
             <SidebarNavItem to="/goals" label="Goals" icon={Target} />
           </SidebarSection>
@@ -127,6 +135,9 @@ export function Sidebar() {
           <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
           <SidebarNavItem to="/mcp-servers" label="MCPs" icon={Plug} />
           <SidebarNavItem to="/analytics" label="Analytics" icon={BarChart3} />
+          <SidebarNavItem to="/run-history" label="Run History" icon={GitBranch} liveCount={liveRunCount} />
+          <SidebarNavItem to="/memories" label="Memories" icon={Brain} />
+          <SidebarNavItem to="/tracing" label="Tracing" icon={Route} />
           <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
           <SidebarNavItem to="/activity" label="Activity" icon={History} />
           <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
@@ -140,6 +151,7 @@ export function Sidebar() {
           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
           <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />
           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
+          <SidebarNavItem to="/tests/ux/runs" label="UX Trace Lab" icon={Activity} textBadge="Lab" />
           <SidebarNavItem to="/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
         </SidebarSection>
 
