@@ -1061,8 +1061,8 @@ function buildInviteOnboardingManifest(
         guidance:
           opts.deploymentMode === "authenticated" &&
           opts.deploymentExposure === "private"
-            ? "If OpenClaw runs on another machine, ensure the Paperclip hostname is reachable and allowed via `pnpm paperclipai allowed-hostname <host>`."
-            : "Ensure OpenClaw can reach this Paperclip API base URL for invite, claim, and skill bootstrap calls."
+            ? "If OpenClaw runs on another machine, ensure the AMX-AIR-HUBs hostname is reachable and allowed via `pnpm paperclipai allowed-hostname <host>`."
+            : "Ensure OpenClaw can reach this AMX-AIR-HUBs API base URL for invite, claim, and skill bootstrap calls."
       },
       textInstructions: {
         path: onboardingTextPath,
@@ -1123,7 +1123,7 @@ export function buildInviteOnboardingTextDocument(
   };
 
   appendBlock(`
-    # Paperclip OpenClaw Gateway Onboarding
+    # AMX-AIR-HUBs OpenClaw Gateway Onboarding
 
     This document is meant to be readable by both humans and agents.
 
@@ -1188,7 +1188,7 @@ export function buildInviteOnboardingTextDocument(
     Legacy x-openclaw-auth is also accepted, but x-openclaw-token is preferred.
     Use adapterType "openclaw_gateway" and a ws:// or wss:// gateway URL.
     Pairing mode requirement:
-    - Keep device auth enabled (recommended). If devicePrivateKeyPem is omitted, Paperclip generates and persists one during join so pairing approvals are stable.
+    - Keep device auth enabled (recommended). If devicePrivateKeyPem is omitted, AMX-AIR-HUBs generates and persists one during join so pairing approvals are stable.
     - You may set disableDeviceAuth=true only for special environments that cannot support pairing.
     - First run may return "pairing required" once; approve the pending pairing request in OpenClaw, then retry.
     Do NOT use /v1/responses or /hooks/* in this gateway join flow.
@@ -1216,7 +1216,7 @@ export function buildInviteOnboardingTextDocument(
     - claimApiKeyPath
 
     ## Step 2: Wait for board approval
-    The board approves the join request in Paperclip before key claim is allowed.
+    The board approves the join request in AMX-AIR-HUBs before key claim is allowed.
 
     ## Step 3: Claim API key (one-time)
     ${
@@ -1252,7 +1252,7 @@ export function buildInviteOnboardingTextDocument(
     - claim secrets are single-use
     - claim fails before board approval
 
-    ## Step 4: Install Paperclip skill in OpenClaw
+    ## Step 4: Install AMX-AIR-HUBs skill in OpenClaw
     GET ${onboarding.skill.url}
     Install path: ${onboarding.skill.installPath}
 
@@ -1264,7 +1264,7 @@ export function buildInviteOnboardingTextDocument(
     ## Connectivity guidance
     ${
       onboarding.connectivity?.guidance ??
-      "Ensure Paperclip is reachable from your OpenClaw runtime."
+      "Ensure AMX-AIR-HUBs is reachable from your OpenClaw runtime."
     }
   `);
 
@@ -1277,7 +1277,7 @@ export function buildInviteOnboardingTextDocument(
     : [];
 
   if (connectionCandidates.length > 0) {
-    lines.push("## Suggested Paperclip base URLs to try");
+    lines.push("## Suggested AMX-AIR-HUBs base URLs to try");
     for (const candidate of connectionCandidates) {
       lines.push(`- ${candidate}`);
     }
@@ -1290,7 +1290,7 @@ export function buildInviteOnboardingTextDocument(
       If none are reachable: ask your human operator for a reachable hostname/address and help them update network configuration.
       For authenticated/private mode, they may need:
       - pnpm paperclipai allowed-hostname <host>
-      - then restart Paperclip and retry onboarding.
+      - then restart AMX-AIR-HUBs and retry onboarding.
     `);
   }
 

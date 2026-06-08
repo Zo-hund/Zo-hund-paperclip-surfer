@@ -37,11 +37,11 @@ describe("buildInviteOnboardingTextDocument", () => {
       allowedHostnames: [],
     });
 
-    expect(text).toContain("Paperclip OpenClaw Gateway Onboarding");
+    expect(text).toContain("AMX-AIR-HUBs OpenClaw Gateway Onboarding");
     expect(text).toContain("/api/invites/token-123/accept");
     expect(text).toContain("/api/join-requests/{requestId}/claim-api-key");
     expect(text).toContain("/api/invites/token-123/onboarding.txt");
-    expect(text).toContain("Suggested Paperclip base URLs to try");
+    expect(text).toContain("Suggested AMX-AIR-HUBs base URLs to try");
     expect(text).toContain("http://localhost:3100");
     expect(text).toContain("host.docker.internal");
     expect(text).toContain("paperclipApiUrl");

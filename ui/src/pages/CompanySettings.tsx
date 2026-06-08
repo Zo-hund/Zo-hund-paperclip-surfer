@@ -694,35 +694,35 @@ function buildAgentSnippet(input: AgentSnippetInput) {
 
   const connectivityBlock =
     candidateUrls.length === 0
-      ? `No candidate URLs are available. Ask your user to configure a reachable hostname in Paperclip, then retry.
+      ? `No candidate URLs are available. Ask your user to configure a reachable hostname in AMX-AIR-HUBs, then retry.
 Suggested steps:
-- choose a hostname that resolves to the Paperclip host from your runtime
+- choose a hostname that resolves to the AMX-AIR-HUBs host from your runtime
 - run: pnpm paperclipai allowed-hostname <host>
-- restart Paperclip
+- restart AMX-AIR-HUBs
 - verify with: curl -fsS http://<host>:3100/api/health
 - regenerate this invite snippet`
-      : `If none are reachable, ask your user to add a reachable hostname in Paperclip, restart, and retry.
+      : `If none are reachable, ask your user to add a reachable hostname in AMX-AIR-HUBs, restart, and retry.
 Suggested command:
 - pnpm paperclipai allowed-hostname <host>
 Then verify with: curl -fsS <base-url>/api/health`;
 
   const resolutionLine = resolutionTestUrl
-    ? `\nYou MUST test Paperclip-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from Paperclip. Test it. `
+    ? `\nYou MUST test AMX-AIR-HUBs-to-gateway reachability, call: ${resolutionTestUrl}?url=<urlencoded-gateway-url> (using the hostname that worked above). Do not assume your 172.x is necessarily reachable from AMX-AIR-HUBs. Test it. `
     : "";
 
-  return `You're invited to join a Paperclip organization.
+  return `You're invited to join an AMX-AIR-HUBs organization.
 
 The URLs you should try are:
 ${candidateList}
 
 Connectivity guidance:
-If you are running on a different machine than Paperclip, Paperclip must be reachable at one of the hostnames used above.
+If you are running on a different machine than AMX-AIR-HUBs, AMX-AIR-HUBs must be reachable at one of the hostnames used above.
 Verify the hostname works from your runtime with: GET <base-url>/api/health
 
 ${connectivityBlock}
 
 For your "agentName", just use your own agent name (OpenClaw or whatever your name is) and send it directly.
-You also need to send a gateway URL that Paperclip can access. Check your config and include that URL.${resolutionLine}
+You also need to send a gateway URL that AMX-AIR-HUBs can access. Check your config and include that URL.${resolutionLine}
 
 ---
 
@@ -732,14 +732,14 @@ When you submit the join request, use:
 - \`agentDefaultsPayload.url\` as your \`ws://\` or \`wss://\` gateway URL
 - \`agentDefaultsPayload.headers["x-openclaw-token"]\` with your gateway token
 - (legacy accepted) \`agentDefaultsPayload.headers["x-openclaw-auth"]\`
-- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, Paperclip will generate and persist one during join so pairing approvals remain stable.
+- Keep device auth enabled (recommended). If \`devicePrivateKeyPem\` is omitted, AMX-AIR-HUBs will generate and persist one during join so pairing approvals remain stable.
 - Only use \`disableDeviceAuth=true\` for special environments where pairing cannot be completed.
 
 Do NOT use \`/v1/responses\` or \`/hooks/*\` in this join flow.
 
-Before you do anything, please respond to your user that you understand the instructions and you're going to work on them. Then do the step above in another session called "paperclip-onboarding" and then tell your user when you're done. Update your user in intermediate steps along the way so they know what's going on.
+Before you do anything, please respond to your user that you understand the instructions and you're going to work on them. Then do the step above in another session called "amx-onboarding" and then tell your user when you're done. Update your user in intermediate steps along the way so they know what's going on.
 
-Then after you've connected to Paperclip (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
+Then after you've connected to AMX-AIR-HUBs (exchanged keys etc.) you MUST review and follow the onboarding instructions in onboarding.txt they give you.
 
 `;
 }
