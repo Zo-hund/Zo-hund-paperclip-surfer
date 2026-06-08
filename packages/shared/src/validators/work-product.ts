@@ -27,6 +27,7 @@ export const issueWorkProductReviewStateSchema = z.enum([
   "needs_board_review",
   "approved",
   "changes_requested",
+  "rejected",
 ]);
 
 export const createIssueWorkProductSchema = z.object({

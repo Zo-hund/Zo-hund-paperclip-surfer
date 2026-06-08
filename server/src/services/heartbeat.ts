@@ -11,6 +11,7 @@ import {
   agentRuntimeState,
   agentTaskSessions,
   agentWakeupRequests,
+  companies,
   heartbeatRunEvents,
   heartbeatRuns,
   issues,
@@ -1369,6 +1370,242 @@ export function heartbeatService(db: Db) {
       .then((rows) => rows[0]);
   }
 
+  async function triggerRunEmailUpdate(run: typeof heartbeatRuns.$inferSelect) {
+    try {
+      const [agent, company] = await Promise.all([
+        db
+          .select()
+          .from(agents)
+          .where(eq(agents.id, run.agentId))
+          .then((rows) => rows[0] ?? null),
+        db
+          .select()
+          .from(companies)
+          .where(eq(companies.id, run.companyId))
+          .then((rows) => rows[0] ?? null),
+      ]);
+
+      if (!agent || !company) {
+        console.warn(`[Email Update] Could not find agent/company for run ${run.id}. Skipping email.`);
+        return;
+      }
+
+      const recipient = process.env.PAPERCLIP_NOTIFICATION_RECIPIENT || "MARIODUERSON34@GMAIL.COM";
+
+      let durationStr = "N/A";
+      if (run.startedAt && run.finishedAt) {
+        const diffMs = new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime();
+        const diffSec = Math.floor(diffMs / 1000);
+        if (diffSec < 60) {
+          durationStr = `${diffSec}s`;
+        } else {
+          const mins = Math.floor(diffSec / 60);
+          const secs = diffSec % 60;
+          durationStr = `${mins}m ${secs}s`;
+        }
+      }
+
+      let statusBadgeStyle = "background-color: #f8fafc; color: #475569; border: 1px solid #e2e8f0;";
+      let statusLabel = run.status.toUpperCase();
+      if (run.status === "succeeded") {
+        statusBadgeStyle = "background-color: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;";
+        statusLabel = "SUCCEEDED";
+      } else if (run.status === "failed") {
+        statusBadgeStyle = "background-color: #fef2f2; color: #991b1b; border: 1px solid #fca5a5;";
+        statusLabel = "FAILED";
+      } else if (run.status === "timed_out") {
+        statusBadgeStyle = "background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a;";
+        statusLabel = "TIMED OUT";
+      } else if (run.status === "cancelled") {
+        statusBadgeStyle = "background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;";
+        statusLabel = "CANCELLED";
+      }
+
+      const usage = run.usageJson;
+      let usageStr = "";
+      if (usage && typeof usage === "object") {
+        const parts: string[] = [];
+        if ("inputTokens" in usage) parts.push(`Input: ${usage.inputTokens}`);
+        else if ("rawInputTokens" in usage) parts.push(`Input: ${usage.rawInputTokens}`);
+
+        if ("outputTokens" in usage) parts.push(`Output: ${usage.outputTokens}`);
+        else if ("rawOutputTokens" in usage) parts.push(`Output: ${usage.rawOutputTokens}`);
+
+        if ("costUsd" in usage && typeof usage.costUsd === "number") {
+          parts.push(`Cost: $${usage.costUsd.toFixed(4)}`);
+        }
+        if (parts.length > 0) {
+          usageStr = parts.join(", ");
+        }
+      }
+
+      const summaryObj = summarizeHeartbeatRunResultJson(run.resultJson);
+      let summaryText = "";
+      if (summaryObj) {
+        const parts: string[] = [];
+        if (summaryObj.summary) parts.push(String(summaryObj.summary));
+        if (summaryObj.result) parts.push(String(summaryObj.result));
+        if (summaryObj.message) parts.push(String(summaryObj.message));
+        if (parts.length > 0) {
+          summaryText = parts.join("\n\n");
+        }
+      }
+      if (!summaryText && run.stdoutExcerpt) {
+        summaryText = run.stdoutExcerpt.slice(0, 300) + (run.stdoutExcerpt.length > 300 ? "..." : "");
+      }
+      if (!summaryText) {
+        summaryText = "No summary details returned by the agent.";
+      }
+
+      const escapeHtml = (unsafe: string) => {
+        return unsafe
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      };
+
+      const agentNameEscaped = escapeHtml(agent.name);
+      const companyNameEscaped = escapeHtml(company.name);
+      const agentRoleEscaped = escapeHtml(agent.role);
+      const adapterTypeEscaped = escapeHtml(agent.adapterType);
+      const triggerEscaped = run.triggerDetail ? escapeHtml(run.triggerDetail) : "";
+      const summaryHtml = escapeHtml(summaryText).replace(/\n/g, "<br>");
+
+      let errorBlockHtml = "";
+      let errorTextPlain = "";
+      if (run.error) {
+        const errorEscaped = escapeHtml(run.error);
+        errorTextPlain = `\n\nError:\n${run.error}`;
+        errorBlockHtml = `
+          <div style="padding: 0 24px 24px 24px;">
+            <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #991b1b; text-transform: uppercase; letter-spacing: 0.05em;">
+              Execution Error
+            </h3>
+            <div style="background-color: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; color: #991b1b; white-space: pre-wrap; word-break: break-all;">
+              ${errorEscaped}
+            </div>
+          </div>
+        `;
+      }
+
+      const publicUrl = process.env.PAPERCLIP_PUBLIC_URL || process.env.BETTER_AUTH_URL || "http://localhost:3100";
+      const dashboardUrl = `${publicUrl}/${company.issuePrefix}/agents/${agent.id}/runs/${run.id}`;
+
+      const subject = `[AMX Air Hubs] Run ${statusLabel} - ${agentNameEscaped}`;
+
+      const text = [
+        `AMX Air Hubs - Agent Run Notification`,
+        `====================================`,
+        `Agent: ${agent.name} (${agent.role})`,
+        `Company: ${company.name}`,
+        `Status: ${statusLabel}`,
+        `Duration: ${durationStr}`,
+        `Trigger: ${run.invocationSource}${run.triggerDetail ? ` (${run.triggerDetail})` : ""}`,
+        usageStr ? `Resources: ${usageStr}` : "",
+        ``,
+        `Summary:`,
+        `------------------------------------`,
+        summaryText,
+        errorTextPlain,
+        ``,
+        `View Run on Board:`,
+        dashboardUrl,
+        ``,
+        `— The AMX Air Hubs Team`,
+      ].filter(Boolean).join("\n");
+
+      const html = `
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; padding: 32px 16px; color: #1e293b; line-height: 1.5;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); overflow: hidden; border: 1px solid #e2e8f0;">
+    <!-- Brand Header -->
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 24px; text-align: center;">
+      <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">
+        AMX Air Hubs
+      </h1>
+      <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 13px;">Agent Run Notification</p>
+    </div>
+
+    <!-- Status Banner -->
+    <div style="padding: 24px; border-bottom: 1px solid #f1f5f9; text-align: center;">
+      <span style="display: inline-block; padding: 6px 16px; border-radius: 9999px; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; ${statusBadgeStyle}">
+        ${statusLabel}
+      </span>
+      <h2 style="margin: 16px 0 0 0; font-size: 20px; font-weight: 600; color: #0f172a;">
+        ${agentNameEscaped} Finished Execution
+      </h2>
+    </div>
+
+    <!-- Metadata Grid -->
+    <div style="padding: 24px; background-color: #f8fafc; border-bottom: 1px solid #f1f5f9;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; width: 35%; font-weight: 500;">Company</td>
+          <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">${companyNameEscaped}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-weight: 500;">Agent Role / Type</td>
+          <td style="padding: 6px 0; color: #334155;">${agentRoleEscaped} / <code style="background-color: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: monospace;">${adapterTypeEscaped}</code></td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-weight: 500;">Duration</td>
+          <td style="padding: 6px 0; color: #334155; font-weight: 600;">${durationStr}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-weight: 500;">Trigger Source</td>
+          <td style="padding: 6px 0; color: #334155;">${run.invocationSource} ${triggerEscaped ? `(${triggerEscaped})` : ""}</td>
+        </tr>
+        ${usageStr ? `
+        <tr>
+          <td style="padding: 6px 0; color: #64748b; font-weight: 500;">LLM Resources</td>
+          <td style="padding: 6px 0; color: #334155; font-family: monospace; font-size: 13px;">${usageStr}</td>
+        </tr>` : ""}
+      </table>
+    </div>
+
+    <!-- Summary Content -->
+    <div style="padding: 24px;">
+      <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 600; color: #0f172a; text-transform: uppercase; letter-spacing: 0.05em;">
+        Execution Summary
+      </h3>
+      <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; font-size: 14px; color: #334155; white-space: pre-wrap; line-height: 1.6;">
+        ${summaryHtml}
+      </div>
+    </div>
+
+    <!-- Error Block (if any) -->
+    ${errorBlockHtml}
+
+    <!-- Link / Button -->
+    <div style="padding: 0 24px 32px 24px; text-align: center;">
+      <a href="${dashboardUrl}" style="display: inline-block; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
+        View Run on Board
+      </a>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="max-width: 600px; margin: 24px auto 0 auto; text-align: center; font-size: 12px; color: #94a3b8;">
+    <p style="margin: 0;">This email was automatically generated by AMX Air Hubs control plane.</p>
+  </div>
+</div>
+      `;
+
+      const { sendEmail } = await import("../auth/email-service.js");
+      await sendEmail({
+        to: recipient,
+        subject,
+        text,
+        html,
+      });
+
+      console.log(`[Email Update] Sent run email update successfully for run ${run.id} to ${recipient}`);
+    } catch (error) {
+      console.error(`[Email Update] Failed to send email update for run ${run.id}:`, error);
+    }
+  }
+
   async function setRunStatus(
     runId: string,
     status: string,
@@ -1397,6 +1634,12 @@ export function heartbeatService(db: Db) {
           finishedAt: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : null,
         },
       });
+
+      if (["succeeded", "failed", "cancelled", "timed_out"].includes(updated.status)) {
+        triggerRunEmailUpdate(updated).catch((err) => {
+          console.error(`[Email Update] Error triggering run email update:`, err);
+        });
+      }
     }
 
     return updated;

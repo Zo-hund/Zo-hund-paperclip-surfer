@@ -29,7 +29,8 @@ export type IssueWorkProductReviewState =
   | "none"
   | "needs_board_review"
   | "approved"
-  | "changes_requested";
+  | "changes_requested"
+  | "rejected";
 
 export interface IssueWorkProduct {
   id: string;

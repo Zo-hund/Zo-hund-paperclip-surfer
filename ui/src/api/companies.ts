@@ -71,7 +71,7 @@ export const companiesApi = {
     return api.get<any[]>(`/companies/board/deliverables?${params.toString()}`);
   },
   getDeliverableDetail: (id: string) => api.get<any>(`/companies/board/deliverables/${id}`),
-  reviewDeliverable: (id: string, data: { reviewState?: string; healthStatus?: string }) =>
+  reviewDeliverable: (id: string, data: { reviewState?: string; healthStatus?: string; comment?: string }) =>
     api.patch<any>(`/companies/board/deliverables/${id}/review`, data),
   getCompanyMetrics: (companyId: string) => api.get<any>(`/companies/${companyId}/metrics`),
   updateDeploymentTarget: (companyId: string, target: string) =>

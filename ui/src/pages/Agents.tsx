@@ -30,6 +30,7 @@ const adapterLabels: Record<string, string> = {
   openclaw_gateway: "OpenClaw Gateway",
   process: "Process",
   http: "HTTP",
+  openrouter: "OpenRouter",
 };
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;

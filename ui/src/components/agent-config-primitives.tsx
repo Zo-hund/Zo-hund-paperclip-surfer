@@ -68,6 +68,7 @@ export const adapterLabels: Record<string, string> = {
   hermes_advanced: "Hermes Advanced (Nous)",
   process: "Process",
   http: "HTTP",
+  openrouter: "OpenRouter",
 };
 
 export const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;

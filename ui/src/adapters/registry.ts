@@ -10,6 +10,7 @@ import { openClawGatewayUIAdapter } from "./openclaw-gateway";
 import { processUIAdapter } from "./process";
 import { httpUIAdapter } from "./http";
 import { hermesAdvancedUIAdapter } from "./hermes-advanced";
+import { openRouterUIAdapter } from "./openrouter";
 
 const uiAdapters: UIAdapterModule[] = [
   claudeLocalUIAdapter,
@@ -23,6 +24,7 @@ const uiAdapters: UIAdapterModule[] = [
   openClawGatewayUIAdapter,
   processUIAdapter,
   httpUIAdapter,
+  openRouterUIAdapter,
 ];
 
 const adaptersByType = new Map<string, UIAdapterModule>(

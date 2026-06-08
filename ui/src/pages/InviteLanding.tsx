@@ -23,9 +23,10 @@ const adapterLabels: Record<string, string> = {
   hermes_local: "Hermes Agent",
   process: "Process",
   http: "HTTP",
+  openrouter: "OpenRouter",
 };
 
-const ENABLED_INVITE_ADAPTERS = new Set(["claude_local", "codex_local", "gemini_local", "opencode_local", "pi_local", "cursor", "hermes_local", "openclaw_gateway", "process", "http"]);
+const ENABLED_INVITE_ADAPTERS = new Set(["claude_local", "codex_local", "gemini_local", "opencode_local", "pi_local", "cursor", "hermes_local", "openclaw_gateway", "process", "http", "openrouter"]);
 
 function dateTime(value: string) {
   return new Date(value).toLocaleString();

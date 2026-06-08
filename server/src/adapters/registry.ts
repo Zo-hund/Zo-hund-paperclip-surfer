@@ -81,6 +81,16 @@ import {
   agentConfigurationDoc as hermesAgentConfigurationDoc,
   models as hermesModels,
 } from "hermes-paperclip-adapter";
+import {
+  execute as openrouterExecute,
+  testEnvironment as openrouterTestEnvironment,
+  sessionCodec as openrouterSessionCodec,
+  listModels as openrouterListModels,
+} from "@paperclipai/adapter-openrouter/server";
+import {
+  agentConfigurationDoc as openrouterAgentConfigurationDoc,
+  models as openrouterModels,
+} from "@paperclipai/adapter-openrouter";
 import { processAdapter } from "./process/index.js";
 import { httpAdapter } from "./http/index.js";
 import { hermesAdvancedAdapter } from "./hermes-advanced/index.js";
@@ -229,6 +239,18 @@ const hermesLocalAdapter: ServerAdapterModule = {
   detectModel: () => detectModelFromHermes(),
 };
 
+const openrouterAdapter: ServerAdapterModule = {
+  type: "openrouter",
+  execute: openrouterExecute,
+  testEnvironment: openrouterTestEnvironment,
+  sessionCodec: openrouterSessionCodec,
+  sessionManagement: getAdapterSessionManagement("openrouter") ?? undefined,
+  models: openrouterModels,
+  listModels: openrouterListModels,
+  supportsLocalAgentJwt: true,
+  agentConfigurationDoc: openrouterAgentConfigurationDoc,
+};
+
 const adaptersByType = new Map<string, ServerAdapterModule>(
   [
     claudeLocalAdapter,
@@ -240,6 +262,7 @@ const adaptersByType = new Map<string, ServerAdapterModule>(
     openclawGatewayAdapter,
     hermesLocalAdapter,
     hermesAdvancedAdapter,
+    openrouterAdapter,
     processAdapter,
     httpAdapter,
   ].map((a) => [a.type, a]),

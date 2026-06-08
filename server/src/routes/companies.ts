@@ -1,5 +1,7 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
+import { agentMemories, issues } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 import {
   companyPortabilityExportSchema,
   companyPortabilityImportSchema,
@@ -123,12 +125,91 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   router.patch("/board/deliverables/:id/review", async (req, res) => {
     assertBoard(req);
-    const { reviewState, healthStatus } = req.body as { reviewState?: string; healthStatus?: string };
+    const existing = await workProducts.getById(req.params.id as string);
+    if (!existing) {
+      res.status(404).json({ error: "Deliverable not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+
+    const { reviewState, healthStatus, comment } = req.body as {
+      reviewState?: string;
+      healthStatus?: string;
+      comment?: string;
+    };
+
     const patch: Record<string, unknown> = {};
     if (reviewState) patch.reviewState = reviewState;
     if (healthStatus) patch.healthStatus = healthStatus;
+    if (comment) {
+      patch.metadata = {
+        ...(existing.metadata || {}),
+        lastReviewComment: comment,
+      };
+    }
+
     const updated = await workProducts.update(req.params.id as string, patch as any);
-    if (!updated) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Deliverable not found" });
+      return;
+    }
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: existing.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "deliverable.reviewed",
+      entityType: "issue_work_products",
+      entityId: existing.id,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      details: {
+        title: existing.title,
+        reviewState,
+        healthStatus,
+        comment: comment || null,
+      },
+    });
+
+    const issue = await db
+      .select({ assigneeAgentId: issues.assigneeAgentId, projectId: issues.projectId })
+      .from(issues)
+      .where(eq(issues.id, existing.issueId))
+      .then((rows) => rows[0] ?? null);
+
+    if (issue?.assigneeAgentId) {
+      const statusLabel =
+        reviewState === "approved"
+          ? "Approved"
+          : reviewState === "changes_requested"
+          ? "Changes Requested"
+          : reviewState === "rejected"
+          ? "Rejected"
+          : reviewState;
+
+      const memoryContent = [
+        `Deliverable: ${existing.title} (${existing.type})`,
+        `Review Action: ${statusLabel}`,
+        comment ? `Feedback Comment: ${comment}` : "No comments provided.",
+        existing.summary ? `Deliverable Summary: ${existing.summary}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      await db.insert(agentMemories).values({
+        agentId: issue.assigneeAgentId,
+        companyId: existing.companyId,
+        scope: "project",
+        projectId: existing.projectId ?? issue.projectId ?? null,
+        category: "feedback",
+        title: `Board Review: ${statusLabel} - ${existing.title}`,
+        content: memoryContent,
+        source: "board",
+        confidence: 1.0,
+      });
+    }
+
     res.json(updated);
   });
 

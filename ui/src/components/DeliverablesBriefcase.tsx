@@ -75,6 +75,20 @@ function DonePill({ state }: { state: string }) {
       </span>
     );
   }
+  if (state === "changes_requested") {
+    return (
+      <span className="done-pill-enter inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-500 text-white shadow-lg shadow-red-500/30">
+        <XCircle className="h-3 w-3" />Revise
+      </span>
+    );
+  }
+  if (state === "rejected") {
+    return (
+      <span className="done-pill-enter inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-600 text-white shadow-lg shadow-red-600/30">
+        <XCircle className="h-3 w-3" />Flagged
+      </span>
+    );
+  }
   return null;
 }
 
@@ -186,6 +200,7 @@ function ContentPreview({ dl }: { dl: any }) {
 
 function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const queryClient = useQueryClient();
+  const [comment, setComment] = useState("");
 
   const { data: dl, isLoading } = useQuery({
     queryKey: ["deliverable-detail", id],
@@ -194,9 +209,10 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
   });
 
   const reviewMutation = useMutation({
-    mutationFn: (data: { reviewState?: string; healthStatus?: string }) =>
+    mutationFn: (data: { reviewState?: string; healthStatus?: string; comment?: string }) =>
       companiesApi.reviewDeliverable(id, data),
     onSuccess: () => {
+      setComment("");
       queryClient.invalidateQueries({ queryKey: ["deliverable-detail", id] });
       queryClient.invalidateQueries({ queryKey: ["deliverables"] });
     },
@@ -220,6 +236,17 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
 
         {dl && (
           <>
+            {/* OPPRRC folder path breadcrumb bar */}
+            <div className="flex items-center gap-2 px-6 py-2 bg-black/10 border-b border-border/20 text-xs font-mono select-all">
+              <span className="text-muted-foreground">Path:</span>
+              <span className="text-primary font-semibold">AMX-AIR-HUBS-OPPRRC</span>
+              <span className="text-muted-foreground">/</span>
+              <span className="text-foreground font-semibold">{getOpprcInfo(dl.type).folder}</span>
+              <span className="text-muted-foreground">/</span>
+              <span className={`font-semibold ${getOpprcInfo(dl.type).color}`}>
+                {dl.issueIdentifier ? `${dl.issueIdentifier.toLowerCase()}_${slugifyTitle(dl.title)}` : slugifyTitle(dl.title)}.{getOpprcInfo(dl.type).ext}
+              </span>
+            </div>
             {/* Header */}
             <div className="flex items-start gap-4 p-6 border-b border-border/40">
               <div className={`p-2.5 rounded-xl shrink-0 ${cfg.bg}`}>
@@ -236,7 +263,7 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
                 </div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-lg font-black text-foreground leading-tight">{dl.title}</h2>
-                  {(dl.reviewState === "approved" || dl.reviewState === "pending") && (
+                  {(dl.reviewState === "approved" || dl.reviewState === "pending" || dl.reviewState === "needs_board_review" || dl.reviewState === "changes_requested" || dl.reviewState === "rejected") && (
                     <DonePill state={dl.reviewState} />
                   )}
                 </div>
@@ -294,6 +321,20 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
               </div>
             )}
 
+            {/* Review Comment box */}
+            <div className="px-6 py-4 border-t border-border/40 space-y-2">
+              <label htmlFor="review-comment" className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" /> Review Feedback & Comments
+              </label>
+              <textarea
+                id="review-comment"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="Add revision notes, flag reasons, or approval feedback..."
+                className="w-full min-h-[80px] p-3 text-sm bg-accent/20 border border-border/40 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground placeholder-muted-foreground resize-none"
+              />
+            </div>
+
             {/* Board actions */}
             <div className="flex items-center gap-2 px-6 py-4 border-t border-border/40 bg-accent/5">
               <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mr-2">Board Review</span>
@@ -302,19 +343,19 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
                 <Button size="sm" variant="outline"
                   className="gap-1.5 text-emerald-400 border-emerald-400/30 hover:bg-emerald-400/10"
                   disabled={reviewMutation.isPending || dl.reviewState === "approved"}
-                  onClick={() => reviewMutation.mutate({ reviewState: "approved", healthStatus: "healthy" })}>
+                  onClick={() => reviewMutation.mutate({ reviewState: "approved", healthStatus: "healthy", comment })}>
                   <ThumbsUp className="h-3.5 w-3.5" />Approve
                 </Button>
                 <Button size="sm" variant="outline"
                   className="gap-1.5 text-amber-400 border-amber-400/30 hover:bg-amber-400/10"
-                  disabled={reviewMutation.isPending}
-                  onClick={() => reviewMutation.mutate({ reviewState: "pending" })}>
+                  disabled={reviewMutation.isPending || dl.reviewState === "changes_requested"}
+                  onClick={() => reviewMutation.mutate({ reviewState: "changes_requested", comment })}>
                   <RotateCcw className="h-3.5 w-3.5" />Revise
                 </Button>
                 <Button size="sm" variant="outline"
                   className="gap-1.5 text-red-400 border-red-400/30 hover:bg-red-400/10"
                   disabled={reviewMutation.isPending || dl.reviewState === "rejected"}
-                  onClick={() => reviewMutation.mutate({ reviewState: "rejected", healthStatus: "unhealthy" })}>
+                  onClick={() => reviewMutation.mutate({ reviewState: "rejected", healthStatus: "unhealthy", comment })}>
                   <ThumbsDown className="h-3.5 w-3.5" />Flag
                 </Button>
               </div>

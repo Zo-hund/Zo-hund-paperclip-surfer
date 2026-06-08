@@ -31,7 +31,8 @@ type AdvancedAdapterType =
   | "pi_local"
   | "cursor"
   | "openclaw_gateway"
-  | "hermes_local";
+  | "hermes_local"
+  | "openrouter";
 
 const ADVANCED_ADAPTER_OPTIONS: Array<{
   value: AdvancedAdapterType;
@@ -40,6 +41,13 @@ const ADVANCED_ADAPTER_OPTIONS: Array<{
   icon: ComponentType<{ className?: string }>;
   recommended?: boolean;
 }> = [
+  {
+    value: "openrouter",
+    label: "OpenRouter",
+    icon: Bot,
+    desc: "Cloud or local OpenRouter agent",
+    recommended: true,
+  },
   {
     value: "claude_local",
     label: "Claude Code",
