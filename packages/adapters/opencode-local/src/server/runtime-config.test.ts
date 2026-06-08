@@ -76,4 +76,79 @@ describe("prepareOpenCodeRuntimeConfig", () => {
     expect(prepared.notes).toEqual([]);
     await prepared.cleanup();
   });
+
+  it("parses and merges MCP configuration path", async () => {
+    const configHome = await makeConfigHome({
+      theme: "system",
+      mcp: {
+        existing: {
+          type: "local",
+          command: "node",
+          args: ["existing.js"],
+          enabled: false
+        }
+      }
+    });
+
+    const mcpConfigRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-mcp-test-"));
+    const mcpConfigPath = path.join(mcpConfigRoot, "mcp-config.json");
+    await fs.writeFile(
+      mcpConfigPath,
+      JSON.stringify({
+        mcpServers: {
+          "http-server": {
+            type: "http",
+            url: "https://mcp.example.com"
+          },
+          "stdio-server": {
+            command: "npx",
+            args: ["stdio.js"],
+            env: { DEBUG: "true" }
+          }
+        }
+      }),
+      "utf8"
+    );
+
+    const prepared = await prepareOpenCodeRuntimeConfig({
+      env: { XDG_CONFIG_HOME: configHome },
+      config: {},
+      mcpConfigPath,
+    });
+    cleanupPaths.add(prepared.env.XDG_CONFIG_HOME);
+
+    const runtimeConfig = JSON.parse(
+      await fs.readFile(
+        path.join(prepared.env.XDG_CONFIG_HOME, "opencode", "opencode.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+
+    expect(runtimeConfig.mcp).toEqual({
+      existing: {
+        type: "local",
+        command: "node",
+        args: ["existing.js"],
+        enabled: false
+      },
+      "http-server": {
+        type: "remote",
+        url: "https://mcp.example.com",
+        enabled: true
+      },
+      "stdio-server": {
+        type: "local",
+        command: "npx",
+        args: ["stdio.js"],
+        env: { DEBUG: "true" },
+        enabled: true
+      }
+    });
+
+    expect(prepared.notes).toContain("Injected 2 MCP server(s) configuration.");
+
+    await prepared.cleanup();
+    cleanupPaths.delete(prepared.env.XDG_CONFIG_HOME);
+    await fs.rm(mcpConfigRoot, { recursive: true, force: true });
+  });
 });

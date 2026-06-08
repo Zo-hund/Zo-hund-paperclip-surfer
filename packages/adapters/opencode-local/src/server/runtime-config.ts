@@ -31,9 +31,43 @@ async function readJsonObject(filepath: string): Promise<Record<string, unknown>
   }
 }
 
+async function loadAndMapMcpConfig(mcpConfigPath: string): Promise<Record<string, any>> {
+  try {
+    const raw = await fs.readFile(mcpConfigPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const mcpServers = parsed.mcpServers;
+    if (typeof mcpServers !== "object" || mcpServers === null) return {};
+
+    const mapped: Record<string, any> = {};
+    for (const [name, config] of Object.entries(mcpServers)) {
+      if (typeof config !== "object" || config === null) continue;
+      const c = config as Record<string, any>;
+      if (c.type === "http" || c.type === "sse") {
+        mapped[name] = {
+          type: "remote",
+          url: c.url ?? "",
+          enabled: true
+        };
+      } else {
+        mapped[name] = {
+          type: "local",
+          command: c.command ?? "",
+          args: c.args ?? [],
+          env: c.env ?? {},
+          enabled: true
+        };
+      }
+    }
+    return mapped;
+  } catch {
+    return {};
+  }
+}
+
 export async function prepareOpenCodeRuntimeConfig(input: {
   env: Record<string, string>;
   config: Record<string, unknown>;
+  mcpConfigPath?: string;
 }): Promise<PreparedOpenCodeRuntimeConfig> {
   const skipPermissions = asBoolean(input.config.dangerouslySkipPermissions, true);
   if (!skipPermissions) {
@@ -67,23 +101,36 @@ export async function prepareOpenCodeRuntimeConfig(input: {
   const existingPermission = isPlainObject(existingConfig.permission)
     ? existingConfig.permission
     : {};
+  const existingMcp = isPlainObject(existingConfig.mcp) ? existingConfig.mcp : {};
+
+  const mappedMcp = input.mcpConfigPath ? await loadAndMapMcpConfig(input.mcpConfigPath) : {};
+
   const nextConfig = {
     ...existingConfig,
     permission: {
       ...existingPermission,
       external_directory: "allow",
     },
+    mcp: {
+      ...existingMcp,
+      ...mappedMcp
+    }
   };
   await fs.writeFile(runtimeConfigPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+
+  const notes = [
+    "Injected runtime OpenCode config with permission.external_directory=allow to avoid headless approval prompts.",
+  ];
+  if (input.mcpConfigPath && Object.keys(mappedMcp).length > 0) {
+    notes.push(`Injected ${Object.keys(mappedMcp).length} MCP server(s) configuration.`);
+  }
 
   return {
     env: {
       ...input.env,
       XDG_CONFIG_HOME: runtimeConfigHome,
     },
-    notes: [
-      "Injected runtime OpenCode config with permission.external_directory=allow to avoid headless approval prompts.",
-    ],
+    notes,
     cleanup: async () => {
       await fs.rm(runtimeConfigHome, { recursive: true, force: true });
     },

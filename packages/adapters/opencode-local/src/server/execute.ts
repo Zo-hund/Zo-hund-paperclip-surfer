@@ -178,7 +178,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (!hasExplicitApiKey && authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }
-  const preparedRuntimeConfig = await prepareOpenCodeRuntimeConfig({ env, config });
+  const mcpConfigPath = typeof context.paperclipMcpConfigPath === "string" && context.paperclipMcpConfigPath.trim().length > 0
+    ? context.paperclipMcpConfigPath.trim()
+    : undefined;
+  const preparedRuntimeConfig = await prepareOpenCodeRuntimeConfig({ env, config, mcpConfigPath });
   try {
     const runtimeEnv = Object.fromEntries(
       Object.entries(ensurePathInEnv({ ...process.env, ...preparedRuntimeConfig.env })).filter(
