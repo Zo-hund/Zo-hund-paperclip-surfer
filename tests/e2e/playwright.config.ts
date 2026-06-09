@@ -20,16 +20,14 @@ export default defineConfig({
       use: { browserName: "chromium" },
     },
   ],
-  // The webServer directive starts `paperclipai run` before tests.
-  // Expects `pnpm paperclipai` to be runnable from repo root.
-  webServer: {
+  webServer: (BASE_URL.includes("localhost") || BASE_URL.includes("127.0.0.1")) ? {
     command: `pnpm paperclipai run`,
     url: `${BASE_URL}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: "pipe",
     stderr: "pipe",
-  },
+  } : undefined,
   outputDir: "./test-results",
   reporter: [["list"], ["html", { open: "never", outputFolder: "./playwright-report" }]],
 });
