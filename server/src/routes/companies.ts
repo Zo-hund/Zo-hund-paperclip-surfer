@@ -222,6 +222,10 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     }
 
     // ── Default → render Work Order page ───────────────────────────────────
+    // HTML-escape helper — prevents XSS from user-controlled deliverable fields
+    const esc = (s: unknown): string =>
+      String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
     const openUrl = `/api/companies/board/deliverables/${existing.id}/asset?open=1`;
     const hasDirectUrl = !!existing.url;
     const isLocalFile = typeof existing.url === "string" && existing.url.startsWith("file://");
@@ -283,7 +287,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Work Order · ${existing.title}</title>
+<title>Work Order · ${esc(existing.title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
@@ -370,8 +374,8 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
       <div class="title-row">
         <div class="type-icon">${icon}</div>
         <div class="title-group">
-          <div class="deliverable-title">${existing.title ?? "Untitled Deliverable"}</div>
-          <div class="deliverable-type">${existing.type ?? "unknown"} · ${folderLabel}</div>
+          <div class="deliverable-title">${esc(existing.title) || "Untitled Deliverable"}</div>
+          <div class="deliverable-type">${esc(existing.type) || "unknown"} · ${folderLabel}</div>
         </div>
       </div>
 
@@ -387,11 +391,11 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
       <div class="meta-grid">
         <div class="meta-item">
           <div class="meta-label">Deliverable ID</div>
-          <div class="meta-value">${existing.id.slice(0, 8)}…</div>
+          <div class="meta-value">${esc(existing.id.slice(0, 8))}…</div>
         </div>
         <div class="meta-item">
           <div class="meta-label">Issue</div>
-          <div class="meta-value">${existing.issueId ? existing.issueId.slice(0, 12) + "…" : "—"}</div>
+          <div class="meta-value">${existing.issueId ? esc(existing.issueId.slice(0, 12)) + "…" : "—"}</div>
         </div>
         <div class="meta-item">
           <div class="meta-label">Folder</div>
@@ -399,9 +403,9 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
         </div>
         <div class="meta-item">
           <div class="meta-label">File</div>
-          <div class="meta-value">${filename}</div>
+          <div class="meta-value">${esc(filename)}</div>
         </div>
-        ${existing.projectId ? `<div class="meta-item"><div class="meta-label">Project</div><div class="meta-value">${(existing.projectId as string).slice(0,12)}…</div></div>` : ""}
+        ${existing.projectId ? `<div class="meta-item"><div class="meta-label">Project</div><div class="meta-value">${esc((existing.projectId as string).slice(0,12))}…</div></div>` : ""}
         <div class="meta-item">
           <div class="meta-label">Source</div>
           <div class="meta-value">${isLocalFile ? "VPS filesystem" : isWebLink ? "External URL" : "Drive folder"}</div>
@@ -411,7 +415,7 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
       ${summary ? `
       <div class="summary-block">
         <div class="summary-label">Summary</div>
-        <div class="summary-text">${summary}</div>
+        <div class="summary-text">${esc(summary)}</div>
       </div>` : ""}
 
       <div class="divider"></div>
@@ -429,7 +433,7 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
 
     <!-- Footer -->
     <div class="footer" style="padding:0 32px 24px;margin-top:0">
-      <div class="footer-left">WO · ${existing.id}</div>
+      <div class="footer-left">WO · ${esc(existing.id)}</div>
       <div class="footer-right">Generated ${now}</div>
     </div>
   </div>
@@ -440,7 +444,6 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   });
-
 
 
   router.patch("/board/deliverables/:id/review", async (req, res) => {
