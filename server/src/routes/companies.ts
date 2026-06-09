@@ -197,8 +197,19 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const folderLabel = folderLabels[folderKey] || "01_ORGANIZATIONS";
     const driveFolderUrl = `https://drive.google.com/drive/folders/${folderId}`;
 
-    // ── ?open=1 → serve the actual asset (direct file or Drive fallback) ────
-    if (req.query.open === "1") {
+    // ── ?export=metadata → download JSON metadata ─────────────────────────────
+    if (req.query.export === "metadata") {
+      const slugTitle = (existing.title ?? "untitled")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      res.setHeader("Content-Disposition", `attachment; filename="${slugTitle}-metadata.json"`);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.send(JSON.stringify(existing, null, 2));
+      return;
+    }
+
+    // ── ?download=1 or ?open=1 → serve the actual asset (direct file or Drive fallback) ────
+    if (req.query.download === "1" || req.query.open === "1") {
+      const isDownload = req.query.download === "1";
       if (existing.url) {
         if (existing.url.startsWith("http://") || existing.url.startsWith("https://")) {
           res.redirect(existing.url);
@@ -210,7 +221,22 @@ export function companyRoutes(db: Db, storage?: StorageService) {
           const resolvedPath = fileURLToPath(existing.url);
           const stats = await fs.stat(resolvedPath);
           if (stats.isFile()) {
-            res.sendFile(resolvedPath);
+            const slugTitle = (existing.title ?? "untitled")
+              .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+            const extMap: Record<string, string> = {
+              document: "md", text: "md", image: "png", artifact: "png",
+              visual: "png", video: "mp4", audio: "mp3", preview_url: "html",
+              code: "ts", pull_request: "ts", branch: "ts", commit: "ts",
+              runtime_service: "json", audit: "md", certificate: "md",
+            };
+            const ext = extMap[t] ?? "md";
+            const filename = `${slugTitle}.${ext}`;
+
+            if (isDownload) {
+              res.download(resolvedPath, filename);
+            } else {
+              res.sendFile(resolvedPath);
+            }
             return;
           }
         } catch {
@@ -226,7 +252,26 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const esc = (s: unknown): string =>
       String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
+    const company = await svc.getById(existing.companyId);
+    const companyName = company ? company.name : "AMX · AIR HUBS";
+    const companyPrefix = company ? company.issuePrefix.toUpperCase() : "AMX";
+    const companySlug = companyName.toUpperCase().replace(/[^A-Z0-9\s]+/g, "").replace(/\s+/g, "-");
+    const brandColor = (company && company.brandColor) || "#a78bfa";
+    let brandColorRgb = "167,139,250";
+    if (brandColor.startsWith("#")) {
+      try {
+        const cleanHex = brandColor.replace("#", "");
+        const num = parseInt(cleanHex, 16);
+        const r = (num >> 16) & 255;
+        const g = (num >> 8) & 255;
+        const b = num & 255;
+        brandColorRgb = `${r},${g},${b}`;
+      } catch (err) {}
+    }
+
     const openUrl = `/api/companies/board/deliverables/${existing.id}/asset?open=1`;
+    const downloadUrl = `/api/companies/board/deliverables/${existing.id}/asset?download=1`;
+    const metadataUrl = `/api/companies/board/deliverables/${existing.id}/asset?export=metadata`;
     const hasDirectUrl = !!existing.url;
     const isLocalFile = typeof existing.url === "string" && existing.url.startsWith("file://");
     const isWebLink = typeof existing.url === "string" && (existing.url.startsWith("http://") || existing.url.startsWith("https://"));
@@ -238,13 +283,31 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
     const extMap: Record<string, string> = {
       document: "md", text: "md", image: "png", artifact: "png",
-      visual: "png", video: "mp4", preview_url: "html",
+      visual: "png", video: "mp4", audio: "mp3", preview_url: "html",
       code: "ts", pull_request: "ts", branch: "ts", commit: "ts",
       runtime_service: "json", audit: "md", certificate: "md",
     };
     const ext = extMap[t] ?? "md";
     const filename = `${slugTitle}.${ext}`;
-    const fullPath = `AMX-AIR-HUBS-OPPRRC / ${folderLabel} / ${filename}`;
+    const tickerPrefix = companySlug.endsWith("OPPRRC") ? companySlug : `${companySlug}-OPPRRC`;
+    const fullPath = `${tickerPrefix} / ${folderLabel} / ${filename}`;
+
+    // Read local file preview for text/code/document/audit types
+    let fileContentPreview = "";
+    const isPreviewableText = ["document", "text", "code", "pull_request", "branch", "commit", "audit", "certificate"].includes(t);
+    if (isPreviewableText && existing.url && isLocalFile) {
+      try {
+        const { fileURLToPath } = await import("node:url");
+        const fs = await import("node:fs/promises");
+        const resolvedPath = fileURLToPath(existing.url);
+        const stats = await fs.stat(resolvedPath);
+        if (stats.isFile() && stats.size < 1024 * 1024) { // Limit to 1MB
+          fileContentPreview = await fs.readFile(resolvedPath, "utf-8");
+        }
+      } catch (err) {
+        console.error("Error loading file content preview:", err);
+      }
+    }
 
     const reviewBadge = (state: string) => {
       const map: Record<string, [string, string]> = {
@@ -277,7 +340,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const rb = reviewBadge(reviewState);
     const hb = healthBadge(healthStatus);
     const routeLabel = isExternal ? "CLIENTS · EXTERNAL" : "BOARD · INTERNAL";
-    const routeColor = isExternal ? "#06b6d4" : "#a78bfa";
+    const routeColor = isExternal ? "#06b6d4" : brandColor;
     const openBtnLabel = isLocalFile ? "Open Local File" : isWebLink ? "Open Link" : "View in Google Drive";
     const openBtnSub = isLocalFile ? "Served from VPS filesystem" : isWebLink ? "External resource URL" : "Fallback — OPPRRC Drive folder";
     const now = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
@@ -291,6 +354,10 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
+:root {
+  --brand-color: ${brandColor};
+  --brand-color-rgb: ${brandColorRgb};
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:16px}
 body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:32px 16px 64px}
@@ -298,11 +365,11 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
 /* Header */
 .header{display:flex;align-items:center;justify-content:space-between;padding:20px 0 24px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:28px}
 .brand{display:flex;flex-direction:column;gap:3px}
-.brand-name{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#a78bfa}
+.brand-name{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--brand-color)}
 .brand-sub{font-size:10px;color:#4b5563;letter-spacing:.06em;text-transform:uppercase}
 .route-pill{font-size:10px;font-weight:700;letter-spacing:.12em;padding:4px 10px;border-radius:99px;border:1px solid;text-transform:uppercase}
 /* Work order card */
-.card{background:linear-gradient(135deg,rgba(20,18,40,.9) 0%,rgba(10,9,24,.9) 100%);border:1px solid rgba(167,139,250,.12);border-radius:20px;overflow:hidden;box-shadow:0 0 60px rgba(109,40,217,.08),0 2px 40px rgba(0,0,0,.5)}
+.card{background:linear-gradient(135deg,rgba(20,18,40,.9) 0%,rgba(10,9,24,.9) 100%);border:1px solid rgba(var(--brand-color-rgb),.12);border-radius:20px;overflow:hidden;box-shadow:0 0 60px rgba(var(--brand-color-rgb),.08),0 2px 40px rgba(0,0,0,.5)}
 /* OPPRRC path ticker */
 .ticker-wrap{background:rgba(0,0,0,.4);border-bottom:1px solid rgba(255,255,255,.06);height:32px;display:flex;align-items:center;overflow:hidden;position:relative}
 .ticker-fade-l,.ticker-fade-r{position:absolute;top:0;bottom:0;width:40px;z-index:2;pointer-events:none}
@@ -310,7 +377,7 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
 .ticker-fade-r{right:0;background:linear-gradient(to left,rgba(0,0,0,.8),transparent)}
 .ticker{display:flex;align-items:center;gap:0;animation:tick 22s linear infinite;white-space:nowrap;padding:0 20px}
 @keyframes tick{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.ticker-text{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#7c3aed;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
+.ticker-text{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--brand-color);letter-spacing:.08em;text-transform:uppercase;opacity:.85}
 /* Card body */
 .card-body{padding:28px 32px}
 /* Title row */
@@ -336,8 +403,8 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
 /* Open section */
 .open-section{display:flex;flex-direction:column;align-items:center;gap:14px}
 .open-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#4b5563}
-.open-btn{display:inline-flex;flex-direction:column;align-items:center;gap:5px;padding:18px 40px;border-radius:14px;text-decoration:none;transition:all .2s;cursor:pointer;background:linear-gradient(135deg,#7c3aed,#4f46e5);border:1px solid rgba(167,139,250,.3);box-shadow:0 0 30px rgba(124,58,237,.25),0 4px 20px rgba(0,0,0,.4)}
-.open-btn:hover{background:linear-gradient(135deg,#8b5cf6,#6366f1);box-shadow:0 0 50px rgba(139,92,246,.4),0 4px 24px rgba(0,0,0,.5);transform:translateY(-1px)}
+.open-btn{display:inline-flex;flex-direction:column;align-items:center;gap:5px;padding:18px 40px;border-radius:14px;text-decoration:none;transition:all .2s;cursor:pointer;background:linear-gradient(135deg,var(--brand-color),rgba(var(--brand-color-rgb),0.7));border:1px solid rgba(var(--brand-color-rgb),.3);box-shadow:0 0 30px rgba(var(--brand-color-rgb),.25),0 4px 20px rgba(0,0,0,.4)}
+.open-btn:hover{background:linear-gradient(135deg,rgba(var(--brand-color-rgb),0.95),rgba(var(--brand-color-rgb),0.65));box-shadow:0 0 50px rgba(var(--brand-color-rgb),.4),0 4px 24px rgba(0,0,0,.5);transform:translateY(-1px)}
 .open-btn-main{font-size:15px;font-weight:800;color:#fff;letter-spacing:.02em}
 .open-btn-sub{font-size:10px;font-weight:500;color:rgba(255,255,255,.55);letter-spacing:.04em}
 .drive-note{font-size:10px;color:#374151;text-align:center;letter-spacing:.03em}
@@ -345,14 +412,73 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
 .footer{margin-top:28px;padding-top:20px;border-top:1px solid rgba(255,255,255,.05);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .footer-left{font-size:9px;color:#1f2937;letter-spacing:.06em;font-family:'JetBrains Mono',monospace}
 .footer-right{font-size:9px;color:#374151;letter-spacing:.06em}
+
+/* Export options card */
+.export-card{background:rgba(var(--brand-color-rgb),.04);border:1px solid rgba(var(--brand-color-rgb),.15);border-radius:16px;padding:24px;margin-bottom:28px}
+.export-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.export-icon{font-size:24px}
+.export-title-group{display:flex;flex-direction:column;gap:2px}
+.export-title{font-size:13px;font-weight:800;letter-spacing:.05em;color:#f1f5f9;text-transform:uppercase}
+.export-subtitle{font-size:10px;color:#6b7280}
+.export-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.export-option-btn{display:flex;flex-direction:column;gap:4px;padding:16px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.05);border-radius:12px;text-decoration:none;transition:all .2s;cursor:pointer;text-align:left}
+.export-option-btn:hover{background:rgba(var(--brand-color-rgb),.08);border-color:rgba(var(--brand-color-rgb),.3);transform:translateY(-1px)}
+.export-btn-title-row{display:flex;align-items:center;gap:8px}
+.export-btn-icon{font-size:16px}
+.export-btn-text{font-size:12px;font-weight:700;color:#e2e8f0}
+.export-btn-desc{font-size:10px;color:#6b7280;line-height:1.4;margin-top:2px}
+
+/* Preview container */
+.preview-container{background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:20px;margin-bottom:28px}
+.preview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.05)}
+.preview-title{font-size:11px;font-weight:700;letter-spacing:.05em;color:#94a3b8;text-transform:uppercase}
+.copy-btn{background:rgba(var(--brand-color-rgb),.1);border:1px solid rgba(var(--brand-color-rgb),.25);color:var(--brand-color);font-size:10px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all .2s}
+.copy-btn:hover{background:rgba(var(--brand-color-rgb),.2);border-color:rgba(var(--brand-color-rgb),.4);color:#fff}
+pre{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.03);border-radius:8px;padding:16px;max-height:350px;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:#cbd5e1;white-space:pre-wrap;word-break:break-all}
+
+/* Media previews */
+.media-preview-box{display:flex;justify-content:center;align-items:center;padding:24px;background:rgba(0,0,0,.25);border-radius:12px;border:1px solid rgba(255,255,255,.04);overflow:hidden}
+
+/* Back button */
+.back-link-container{margin-bottom:16px;display:flex}
+.back-link{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#6b7280;text-decoration:none;transition:color .2s;letter-spacing:.08em;text-transform:uppercase}
+.back-link:hover{color:var(--brand-color)}
+
+@media print{
+  body{background:#fff;color:#000;padding:0}
+  .card{box-shadow:none;border:none;background:none}
+  .ticker-wrap,.open-section,.export-card,.copy-btn,.header,.footer,.back-link-container{display:none !important}
+  .preview-container{border:1px solid #ccc;background:none;page-break-inside:avoid}
+  pre{background:none;border:none;max-height:none;overflow:visible;color:#000}
+  .meta-item{border:1px solid #ccc;background:none}
+  .meta-value,.deliverable-title{color:#000}
+}
 </style>
+<script>
+function copyToClipboard(btn) {
+  const codeBlock = document.getElementById('preview-code');
+  if (!codeBlock) return;
+  navigator.clipboard.writeText(codeBlock.innerText).then(() => {
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '📋 Copied!';
+    setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+  }).catch(err => {
+    console.error('Failed to copy text:', err);
+  });
+}
+</script>
 </head>
 <body>
 <div class="page">
+  <!-- Back Link -->
+  <div class="back-link-container">
+    <a href="/${companyPrefix}/briefcase" class="back-link">← Back to AMX</a>
+  </div>
+
   <!-- Header -->
   <header class="header">
     <div class="brand">
-      <div class="brand-name">AMX · AIR HUBS</div>
+      <div class="brand-name">${esc(companyName)}</div>
       <div class="brand-sub">OPPRRC Work Order</div>
     </div>
     <div class="route-pill" style="color:${routeColor};border-color:${routeColor}30;background:${routeColor}10">${routeLabel}</div>
@@ -417,6 +543,96 @@ body{background:#07070e;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:
         <div class="summary-label">Summary</div>
         <div class="summary-text">${esc(summary)}</div>
       </div>` : ""}
+
+      <!-- Previews -->
+      ${["image", "visual", "artifact"].includes(t) && existing.url ? `
+      <div class="preview-container">
+        <div class="preview-header">
+          <span class="preview-title">🖼️ Image Preview</span>
+        </div>
+        <div class="media-preview-box">
+          <img src="/api/companies/board/deliverables/${existing.id}/asset?open=1" style="max-width:100%;max-height:360px;object-fit:contain;border-radius:6px;" alt="Image Preview"/>
+        </div>
+      </div>` : ""}
+
+      ${["video"].includes(t) && existing.url ? `
+      <div class="preview-container">
+        <div class="preview-header">
+          <span class="preview-title">🎬 Video Preview</span>
+        </div>
+        <div class="media-preview-box">
+          <video controls style="max-width:100%;max-height:360px;border-radius:6px;">
+            <source src="/api/companies/board/deliverables/${existing.id}/asset?open=1" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      </div>` : ""}
+
+      ${["audio"].includes(t) && existing.url ? `
+      <div class="preview-container">
+        <div class="preview-header">
+          <span class="preview-title">🎵 Audio Preview</span>
+        </div>
+        <div class="media-preview-box">
+          <audio controls style="width:100%;">
+            <source src="/api/companies/board/deliverables/${existing.id}/asset?open=1" type="audio/mpeg">
+            Your browser does not support the audio tag.
+          </audio>
+        </div>
+      </div>` : ""}
+
+      ${fileContentPreview ? `
+      <div class="preview-container">
+        <div class="preview-header">
+          <span class="preview-title">📄 File Content Preview (${esc(filename)})</span>
+          <button class="copy-btn" onclick="copyToClipboard(this)">📋 Copy Content</button>
+        </div>
+        <pre id="preview-code"><code>${esc(fileContentPreview)}</code></pre>
+      </div>` : ""}
+
+      <!-- Export Options -->
+      <div class="export-card">
+        <div class="export-header">
+          <div class="export-icon">💾</div>
+          <div class="export-title-group">
+            <div class="export-title">Export &amp; Download Options</div>
+            <div class="export-subtitle">Choose format or download options below</div>
+          </div>
+        </div>
+        <div class="export-grid">
+          ${hasDirectUrl ? `
+          <a href="${downloadUrl}" class="export-option-btn">
+            <div class="export-btn-title-row">
+              <span class="export-btn-icon">📥</span>
+              <span class="export-btn-text">Download Raw File</span>
+            </div>
+            <span class="export-btn-desc">Download original file as ${ext.toUpperCase()}</span>
+          </a>
+          ` : `
+          <a href="${driveFolderUrl}" target="_blank" class="export-option-btn">
+            <div class="export-btn-title-row">
+              <span class="export-btn-icon">📁</span>
+              <span class="export-btn-text">Open Drive Folder</span>
+            </div>
+            <span class="export-btn-desc">Browse files in the mapped Google Drive folder</span>
+          </a>
+          `}
+          <a href="${metadataUrl}" class="export-option-btn">
+            <div class="export-btn-title-row">
+              <span class="export-btn-icon">📊</span>
+              <span class="export-btn-text">Export Metadata JSON</span>
+            </div>
+            <span class="export-btn-desc">Download structured work product metadata</span>
+          </a>
+          <button onclick="window.print()" class="export-option-btn">
+            <div class="export-btn-title-row">
+              <span class="export-btn-icon">🖨️</span>
+              <span class="export-btn-text">Print / Save as PDF</span>
+            </div>
+            <span class="export-btn-desc">Generate print-ready copy of this work order</span>
+          </button>
+        </div>
+      </div>
 
       <div class="divider"></div>
 

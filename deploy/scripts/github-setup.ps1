@@ -85,7 +85,7 @@ $PG_PASSWORD  | gh secret set POSTGRES_PASSWORD             --env hostinger-prod
 ""            | gh secret set ANTHROPIC_API_KEY             --env hostinger-prod --repo $REPO
 ""            | gh secret set OPENAI_API_KEY                --env hostinger-prod --repo $REPO
 ""            | gh secret set GOOGLE_API_KEY                --env hostinger-prod --repo $REPO
-""            | gh secret set GHCR_PULL_USERNAME            --env hostinger-prod --repo $REPO
+"zo-hund"     | gh secret set GHCR_PULL_USERNAME            --env hostinger-prod --repo $REPO
 $GH_TOKEN     | gh secret set GHCR_PULL_TOKEN               --env hostinger-prod --repo $REPO
 if ($RESEND_API_KEY) { $RESEND_API_KEY | gh secret set RESEND_API_KEY --env hostinger-prod --repo $REPO }
 if ($EMAIL_FROM) { $EMAIL_FROM | gh secret set PAPERCLIP_EMAIL_FROM --env hostinger-prod --repo $REPO }

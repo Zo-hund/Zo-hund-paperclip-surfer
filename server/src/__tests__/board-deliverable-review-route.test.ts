@@ -384,5 +384,68 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       // type=document → 05_reports; internal map 05_reports = 1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ
       expect(res.header.location).toBe("https://drive.google.com/drive/folders/1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ");
     });
+
+    it("returns JSON metadata when ?export=metadata is provided", async () => {
+      const mockDeliverable = {
+        id: "wp-5",
+        companyId: "company-1",
+        issueId: "issue-1",
+        projectId: "project-1",
+        title: "Test Metadata Deliverable",
+        type: "document",
+        url: "https://example.com/some-url",
+        summary: "Detailed metadata test",
+        metadata: { customField: "value" },
+      };
+      mockWorkProductService.getById.mockResolvedValue(mockDeliverable);
+
+      const app = createApp({
+        type: "board",
+        userId: "user-1",
+        source: "local_implicit",
+        companyIds: ["company-1"],
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-5/asset?export=metadata");
+
+      expect(res.status).toBe(200);
+      expect(res.header["content-type"]).toContain("application/json");
+      expect(res.header["content-disposition"]).toContain("attachment");
+      expect(res.header["content-disposition"]).toContain("test-metadata-deliverable-metadata.json");
+      expect(res.body).toEqual(mockDeliverable);
+    });
+
+    it("renders the main HTML work order page when no query parameter is provided", async () => {
+      mockWorkProductService.getById.mockResolvedValue({
+        id: "wp-6",
+        companyId: "company-1",
+        issueId: "issue-1",
+        projectId: "project-1",
+        title: "Work Order HTML Render Page",
+        type: "document",
+        url: "https://example.com/raw-doc",
+        summary: "Testing the HTML template layout and options.",
+        metadata: {},
+      });
+
+      const app = createApp({
+        type: "board",
+        userId: "user-1",
+        source: "local_implicit",
+        companyIds: ["company-1"],
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-6/asset");
+
+      expect(res.status).toBe(200);
+      expect(res.header["content-type"]).toContain("text/html");
+      expect(res.text).toContain("Work Order · Work Order HTML Render Page");
+      expect(res.text).toContain("Export &amp; Download Options");
+      expect(res.text).toContain("Download Raw File");
+      expect(res.text).toContain("Export Metadata JSON");
+      expect(res.text).toContain("Print / Save as PDF");
+    });
   });
 });
