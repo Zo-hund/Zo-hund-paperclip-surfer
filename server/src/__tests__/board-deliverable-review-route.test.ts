@@ -280,5 +280,62 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
         }),
       );
     });
+
+    it("routes external (client-visible) deliverables to the CLIENTS-EXTERNAL folder map", async () => {
+      mockWorkProductService.getById.mockResolvedValue({
+        id: "wp-3",
+        companyId: "company-1",
+        issueId: "issue-1",
+        projectId: "project-1",
+        title: "Client Report Q2",
+        type: "document",
+        url: null,
+        summary: "Quarterly client summary.",
+        // clientVisible marks this as EXTERNAL → clientsExternalFolders
+        metadata: { clientVisible: true },
+      });
+
+      const app = createApp({
+        type: "board",
+        userId: "user-1",
+        source: "local_implicit",
+        companyIds: ["company-1"],
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-3/asset");
+
+      expect(res.status).toBe(302);
+      // type=document → 05_reports; external map 05_reports = 1I7LrWC-dLKoCIYK1HNt9_Ek1iRjOA2UD
+      expect(res.header.location).toBe("https://drive.google.com/drive/folders/1I7LrWC-dLKoCIYK1HNt9_Ek1iRjOA2UD");
+    });
+
+    it("routes board-internal document deliverables to 05_REPORTS folder", async () => {
+      mockWorkProductService.getById.mockResolvedValue({
+        id: "wp-4",
+        companyId: "company-1",
+        issueId: "issue-2",
+        projectId: "project-2",
+        title: "Arch Spec v1",
+        type: "document",
+        url: null,
+        summary: "Architecture specification.",
+        metadata: {},
+      });
+
+      const app = createApp({
+        type: "board",
+        userId: "user-1",
+        source: "local_implicit",
+        companyIds: ["company-1"],
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-4/asset");
+
+      expect(res.status).toBe(302);
+      // type=document → 05_reports; internal map 05_reports = 1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ
+      expect(res.header.location).toBe("https://drive.google.com/drive/folders/1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ");
+    });
   });
 });
