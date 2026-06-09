@@ -192,7 +192,7 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       expect(res.body.error).toContain("Board access required");
     });
 
-    it("redirects to URL and logs activity if URL is defined", async () => {
+    it("renders a Work Order HTML page by default (no ?open=1)", async () => {
       mockWorkProductService.getById.mockResolvedValue({
         id: "wp-1",
         companyId: "company-1",
@@ -215,10 +215,15 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       const res = await request(app)
         .get("/api/companies/board/deliverables/wp-1/asset");
 
-      expect(res.status).toBe(302);
-      expect(res.header.location).toBe("https://example.com/asset-view");
+      // Must return HTML work order page, NOT an immediate redirect
+      expect(res.status).toBe(200);
+      expect(res.header["content-type"]).toContain("text/html");
+      expect(res.text).toContain("AMX · AIR HUBS");
+      expect(res.text).toContain("Work Order");
+      expect(res.text).toContain("Design Specs");
+      expect(res.text).toContain("?open=1");
 
-      // Verify activity logging
+      // Activity must still be logged
       expect(mockLogActivity).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -236,7 +241,50 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       );
     });
 
-    it("redirects to category folder on Google Drive and logs activity if URL is missing", async () => {
+    it("redirects to URL and logs activity when ?open=1 and URL is defined", async () => {
+      mockWorkProductService.getById.mockResolvedValue({
+        id: "wp-1",
+        companyId: "company-1",
+        issueId: "issue-1",
+        projectId: "project-1",
+        title: "Design Specs",
+        type: "document",
+        url: "https://example.com/asset-view",
+        summary: "Draft architecture layout.",
+        metadata: {},
+      });
+
+      const app = createApp({
+        type: "board",
+        userId: "user-1",
+        source: "local_implicit",
+        companyIds: ["company-1"],
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-1/asset?open=1");
+
+      expect(res.status).toBe(302);
+      expect(res.header.location).toBe("https://example.com/asset-view");
+
+      expect(mockLogActivity).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          companyId: "company-1",
+          action: "work_product.asset_accessed",
+          entityType: "issue_work_products",
+          entityId: "wp-1",
+          details: {
+            title: "Design Specs",
+            type: "document",
+            url: "https://example.com/asset-view",
+            issueId: "issue-1",
+          },
+        }),
+      );
+    });
+
+    it("redirects to category folder on Google Drive via ?open=1 when URL is missing", async () => {
       mockWorkProductService.getById.mockResolvedValue({
         id: "wp-2",
         companyId: "company-1",
@@ -257,13 +305,12 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       });
 
       const res = await request(app)
-        .get("/api/companies/board/deliverables/wp-2/asset");
+        .get("/api/companies/board/deliverables/wp-2/asset?open=1");
 
       expect(res.status).toBe(302);
       // 02_PROGRAMS folder ID: 1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP
       expect(res.header.location).toBe("https://drive.google.com/drive/folders/1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP");
 
-      // Verify activity logging
       expect(mockLogActivity).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -281,7 +328,7 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       );
     });
 
-    it("routes external (client-visible) deliverables to the CLIENTS-EXTERNAL folder map", async () => {
+    it("routes external (client-visible) deliverables to the CLIENTS-EXTERNAL folder map via ?open=1", async () => {
       mockWorkProductService.getById.mockResolvedValue({
         id: "wp-3",
         companyId: "company-1",
@@ -303,14 +350,14 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       });
 
       const res = await request(app)
-        .get("/api/companies/board/deliverables/wp-3/asset");
+        .get("/api/companies/board/deliverables/wp-3/asset?open=1");
 
       expect(res.status).toBe(302);
       // type=document → 05_reports; external map 05_reports = 1I7LrWC-dLKoCIYK1HNt9_Ek1iRjOA2UD
       expect(res.header.location).toBe("https://drive.google.com/drive/folders/1I7LrWC-dLKoCIYK1HNt9_Ek1iRjOA2UD");
     });
 
-    it("routes board-internal document deliverables to 05_REPORTS folder", async () => {
+    it("routes board-internal document deliverables to 05_REPORTS folder via ?open=1", async () => {
       mockWorkProductService.getById.mockResolvedValue({
         id: "wp-4",
         companyId: "company-1",
@@ -331,7 +378,7 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       });
 
       const res = await request(app)
-        .get("/api/companies/board/deliverables/wp-4/asset");
+        .get("/api/companies/board/deliverables/wp-4/asset?open=1");
 
       expect(res.status).toBe(302);
       // type=document → 05_reports; internal map 05_reports = 1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ
