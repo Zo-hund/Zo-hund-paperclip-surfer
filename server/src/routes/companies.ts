@@ -151,7 +151,6 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     });
 
     let fileServed = false;
-    let fileName = "";
 
     if (existing.url) {
       if (existing.url.startsWith("http://") || existing.url.startsWith("https://")) {
@@ -160,15 +159,9 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       }
 
       try {
-        const path = await import("node:path");
+        const { fileURLToPath } = await import("node:url");
         const fs = await import("node:fs/promises");
-        let resolvedPath = existing.url;
-        if (resolvedPath.startsWith("file:///")) {
-          resolvedPath = resolvedPath.substring(8);
-        } else if (resolvedPath.startsWith("file://")) {
-          resolvedPath = resolvedPath.substring(7);
-        }
-        resolvedPath = path.resolve(resolvedPath);
+        const resolvedPath = fileURLToPath(existing.url);
 
         const stats = await fs.stat(resolvedPath);
         if (stats.isFile()) {
@@ -178,19 +171,6 @@ export function companyRoutes(db: Db, storage?: StorageService) {
         }
       } catch (err) {
         // ignore, will fallback
-      }
-
-      try {
-        const path = await import("node:path");
-        let resolvedPath = existing.url;
-        if (resolvedPath.startsWith("file:///")) {
-          resolvedPath = resolvedPath.substring(8);
-        } else if (resolvedPath.startsWith("file://")) {
-          resolvedPath = resolvedPath.substring(7);
-        }
-        fileName = path.basename(resolvedPath);
-      } catch (err) {
-        // ignore
       }
     }
 
@@ -232,10 +212,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       else if (["audit", "certificate"].includes(t)) folderKey = "06_certificates";
 
       const folderId = folderIdMap[folderKey] || "1mt1gW80-ifMs1YOi2VLUIK1-GKbtyj7D";
-      const searchTerm = fileName || existing.title;
-      
-      const driveSearchUrl = `https://drive.google.com/drive/search?q=parent:'${folderId}'%20and%20name%20contains%20'${encodeURIComponent(searchTerm)}'`;
-      res.redirect(driveSearchUrl);
+      res.redirect(`https://drive.google.com/drive/folders/${folderId}`);
     }
   });
 
