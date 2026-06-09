@@ -150,30 +150,93 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       },
     });
 
+    let fileServed = false;
+    let fileName = "";
+
     if (existing.url) {
-      res.redirect(existing.url);
-      return;
+      if (existing.url.startsWith("http://") || existing.url.startsWith("https://")) {
+        res.redirect(existing.url);
+        return;
+      }
+
+      try {
+        const path = await import("node:path");
+        const fs = await import("node:fs/promises");
+        let resolvedPath = existing.url;
+        if (resolvedPath.startsWith("file:///")) {
+          resolvedPath = resolvedPath.substring(8);
+        } else if (resolvedPath.startsWith("file://")) {
+          resolvedPath = resolvedPath.substring(7);
+        }
+        resolvedPath = path.resolve(resolvedPath);
+
+        const stats = await fs.stat(resolvedPath);
+        if (stats.isFile()) {
+          res.sendFile(resolvedPath);
+          fileServed = true;
+          return;
+        }
+      } catch (err) {
+        // ignore, will fallback
+      }
+
+      try {
+        const path = await import("node:path");
+        let resolvedPath = existing.url;
+        if (resolvedPath.startsWith("file:///")) {
+          resolvedPath = resolvedPath.substring(8);
+        } else if (resolvedPath.startsWith("file://")) {
+          resolvedPath = resolvedPath.substring(7);
+        }
+        fileName = path.basename(resolvedPath);
+      } catch (err) {
+        // ignore
+      }
     }
 
-    const folderIdMap: Record<string, string> = {
-      "01_organizations": "1mt1gW80-ifMs1YOi2VLUIK1-GKbtyj7D",
-      "02_programs":      "1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP",
-      "03_projects":      "1WvapNf0sGQEm_fdeJBwE2hm63plxessX",
-      "04_resources":     "1u0xWeSNcNbgEzkj7BSL_9NA7pcUespNl",
-      "05_reports":       "1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ",
-      "06_certificates":  "1pveOQdJ-2WO3D7JPr6NOG_aVRnumaYOA",
-    };
+    if (!fileServed) {
+      const boardInternalFolders: Record<string, string> = {
+        "01_organizations": "1mt1gW80-ifMs1YOi2VLUIK1-GKbtyj7D",
+        "02_programs":      "1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP",
+        "03_projects":      "1WvapNf0sGQEm_fdeJBwE2hm63plxessX",
+        "04_resources":     "1u0xWeSNcNbgEzkj7BSL_9NA7pcUespNl",
+        "05_reports":       "1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ",
+        "06_certificates":  "1pveOQdJ-2WO3D7JPr6NOG_aVRnumaYOA",
+      };
 
-    const t = (existing.type ?? "").toLowerCase();
-    let folderKey = "01_organizations";
-    if (["document", "text"].includes(t)) folderKey = "05_reports";
-    else if (["image", "artifact", "visual", "video", "preview_url"].includes(t)) folderKey = "02_programs";
-    else if (["code", "pull_request", "branch", "commit"].includes(t)) folderKey = "03_projects";
-    else if (["runtime_service"].includes(t)) folderKey = "04_resources";
-    else if (["audit", "certificate"].includes(t)) folderKey = "06_certificates";
+      const clientsExternalFolders: Record<string, string> = {
+        "01_organizations": "1g7RwTOjyAwIDAqcfC459cqXiYFjYAruC",
+        "02_programs":      "1U88FXmIvCA6gaA_b_LtbBuNlaY5VYKRs",
+        "03_projects":      "1AWB4pMt5IU3APRq87ex3igKvgYgevJWG",
+        "04_resources":     "1poJpArhsTjdd20v5sIW1C4UeJeMzqlX4",
+        "05_reports":       "1I7LrWC-dLKoCIYK1HNt9_Ek1iRjOA2UD",
+        "06_certificates":  "1-HhxtE39SD2q3rW79zA_mMM-Sew3kK8e",
+      };
 
-    const folderId = folderIdMap[folderKey] || "1mt1gW80-ifMs1YOi2VLUIK1-GKbtyj7D";
-    res.redirect(`https://drive.google.com/drive/folders/${folderId}`);
+      const meta = existing.metadata || {};
+      const isExternal =
+        meta.audience === "external" ||
+        meta.audience === "client" ||
+        meta.clientVisible === true ||
+        meta.isExternal === true ||
+        meta.external === true;
+
+      const folderIdMap = isExternal ? clientsExternalFolders : boardInternalFolders;
+
+      const t = (existing.type ?? "").toLowerCase();
+      let folderKey = "01_organizations";
+      if (["document", "text"].includes(t)) folderKey = "05_reports";
+      else if (["image", "artifact", "visual", "video", "preview_url"].includes(t)) folderKey = "02_programs";
+      else if (["code", "pull_request", "branch", "commit"].includes(t)) folderKey = "03_projects";
+      else if (["runtime_service"].includes(t)) folderKey = "04_resources";
+      else if (["audit", "certificate"].includes(t)) folderKey = "06_certificates";
+
+      const folderId = folderIdMap[folderKey] || "1mt1gW80-ifMs1YOi2VLUIK1-GKbtyj7D";
+      const searchTerm = fileName || existing.title;
+      
+      const driveSearchUrl = `https://drive.google.com/drive/search?q=parent:'${folderId}'%20and%20name%20contains%20'${encodeURIComponent(searchTerm)}'`;
+      res.redirect(driveSearchUrl);
+    }
   });
 
   router.patch("/board/deliverables/:id/review", async (req, res) => {

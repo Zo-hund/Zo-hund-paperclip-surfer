@@ -261,7 +261,8 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
 
       expect(res.status).toBe(302);
       // 02_PROGRAMS folder ID: 1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP
-      expect(res.header.location).toBe("https://drive.google.com/drive/folders/1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP");
+      expect(res.header.location).toContain("https://drive.google.com/drive/search?q=parent:'1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP'");
+      expect(res.header.location).toContain("name%20contains%20'chiropractor_ad_image'");
 
       // Verify activity logging
       expect(mockLogActivity).toHaveBeenCalledWith(
