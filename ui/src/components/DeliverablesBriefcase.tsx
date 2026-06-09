@@ -640,6 +640,14 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
         >
           <PackageOpen className="h-3 w-3" /> OPPRRC Folders
         </button>
+        <a
+          href="https://drive.google.com/open?id=17Q9oSWHOmsn-Ea5m0g22M2nBpRVNAEqX"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/50 border border-transparent hover:border-border/20"
+        >
+          <ExternalLink className="h-3 w-3" /> Master Briefcase
+        </a>
         {!folderView && (
           <span className="text-[10px] text-muted-foreground/50 border border-border/30 rounded px-2 py-1 font-mono">v1.0 global standard</span>
         )}
