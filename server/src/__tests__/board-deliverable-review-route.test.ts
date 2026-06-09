@@ -171,4 +171,114 @@ describe("PATCH /api/companies/board/deliverables/:id/review", () => {
       }),
     );
   });
+
+  describe("GET /api/companies/board/deliverables/:id/asset", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("rejects non-board actors", async () => {
+      const app = createApp({
+        type: "agent",
+        agentId: "agent-1",
+        companyId: "company-1",
+        source: "agent_key",
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-1/asset");
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain("Board access required");
+    });
+
+    it("redirects to URL and logs activity if URL is defined", async () => {
+      mockWorkProductService.getById.mockResolvedValue({
+        id: "wp-1",
+        companyId: "company-1",
+        issueId: "issue-1",
+        projectId: "project-1",
+        title: "Design Specs",
+        type: "document",
+        url: "https://example.com/asset-view",
+        summary: "Draft architecture layout.",
+        metadata: {},
+      });
+
+      const app = createApp({
+        type: "board",
+        userId: "user-1",
+        source: "local_implicit",
+        companyIds: ["company-1"],
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-1/asset");
+
+      expect(res.status).toBe(302);
+      expect(res.header.location).toBe("https://example.com/asset-view");
+
+      // Verify activity logging
+      expect(mockLogActivity).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          companyId: "company-1",
+          action: "work_product.asset_accessed",
+          entityType: "issue_work_products",
+          entityId: "wp-1",
+          details: {
+            title: "Design Specs",
+            type: "document",
+            url: "https://example.com/asset-view",
+            issueId: "issue-1",
+          },
+        }),
+      );
+    });
+
+    it("redirects to category folder on Google Drive and logs activity if URL is missing", async () => {
+      mockWorkProductService.getById.mockResolvedValue({
+        id: "wp-2",
+        companyId: "company-1",
+        issueId: "issue-1",
+        projectId: "project-1",
+        title: "chiropractor_ad_image",
+        type: "image",
+        url: null,
+        summary: "Image ad creative.",
+        metadata: {},
+      });
+
+      const app = createApp({
+        type: "board",
+        userId: "user-1",
+        source: "local_implicit",
+        companyIds: ["company-1"],
+      });
+
+      const res = await request(app)
+        .get("/api/companies/board/deliverables/wp-2/asset");
+
+      expect(res.status).toBe(302);
+      // 02_PROGRAMS folder ID: 1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP
+      expect(res.header.location).toBe("https://drive.google.com/drive/folders/1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP");
+
+      // Verify activity logging
+      expect(mockLogActivity).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          companyId: "company-1",
+          action: "work_product.asset_accessed",
+          entityType: "issue_work_products",
+          entityId: "wp-2",
+          details: {
+            title: "chiropractor_ad_image",
+            type: "image",
+            url: null,
+            issueId: "issue-1",
+          },
+        }),
+      );
+    });
+  });
 });

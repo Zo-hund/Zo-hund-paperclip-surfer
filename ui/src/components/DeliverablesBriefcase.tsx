@@ -185,11 +185,11 @@ function ContentPreview({ dl }: { dl: any }) {
       </div>
     );
   }
-  if (dl.url) {
+  if (dl.id) {
     return (
-      <a href={dl.url} target="_blank" rel="noopener noreferrer"
+      <a href={`/api/companies/board/deliverables/${dl.id}/asset`} target="_blank" rel="noopener noreferrer"
         className="flex items-center gap-2 text-sm text-primary hover:underline">
-        <ExternalLink className="h-4 w-4" />{dl.url}
+        <ExternalLink className="h-4 w-4" />{dl.url || "Go to Category Folder"}
       </a>
     );
   }
@@ -294,8 +294,8 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
             <div className="p-6 space-y-4">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black uppercase tracking-widest text-muted-foreground">Asset Preview</span>
-                {dl.url && (
-                  <a href={dl.url} target="_blank" rel="noopener noreferrer"
+                {dl.id && (
+                  <a href={`/api/companies/board/deliverables/${dl.id}/asset`} target="_blank" rel="noopener noreferrer"
                     className="ml-auto flex items-center gap-1 text-[11px] text-primary hover:underline">
                     <ExternalLink className="h-3 w-3" />Open
                   </a>
@@ -373,16 +373,18 @@ function DeliverableDialog({ id, onClose }: { id: string; onClose: () => void })
 function getOpprcInfo(type: string): { folder: string; folderNum: string; ext: string; color: string } {
   const t = (type ?? "").toLowerCase();
   if (["document", "text"].includes(t))
-    return { folder: "01-TEXT",            folderNum: "01", ext: "md",   color: "text-blue-400/80" };
+    return { folder: "05_REPORTS",         folderNum: "05", ext: "md",   color: "text-blue-400/80" };
   if (["image", "artifact", "visual"].includes(t))
-    return { folder: "02-IMAGE",           folderNum: "02", ext: "png",  color: "text-violet-400/80" };
+    return { folder: "02_PROGRAMS",        folderNum: "02", ext: "png",  color: "text-violet-400/80" };
   if (["video", "preview_url"].includes(t))
-    return { folder: "03-VIDEO",           folderNum: "03", ext: "mp4",  color: "text-pink-400/80" };
+    return { folder: "02_PROGRAMS",        folderNum: "02", ext: t === "video" ? "mp4" : "html",  color: "text-violet-400/80" };
   if (["code", "pull_request", "branch", "commit"].includes(t))
-    return { folder: "04-CODE",            folderNum: "04", ext: "ts",   color: "text-emerald-400/80" };
-  if (["runtime_service", "audit"].includes(t))
-    return { folder: "05-SKILLS",          folderNum: "05", ext: "md",   color: "text-amber-400/80" };
-  return   { folder: "MASTERS-BRIEFCASE", folderNum: "MB", ext: "md",   color: "text-cyan-400/80" };
+    return { folder: "03_PROJECTS",        folderNum: "03", ext: "ts",   color: "text-emerald-400/80" };
+  if (["runtime_service"].includes(t))
+    return { folder: "04_RESOURCES",       folderNum: "04", ext: "json", color: "text-amber-400/80" };
+  if (["audit", "certificate"].includes(t))
+    return { folder: "06_CERTIFICATES",    folderNum: "06", ext: "md",   color: "text-pink-400/80" };
+  return   { folder: "01_ORGANIZATIONS",   folderNum: "01", ext: "md",   color: "text-cyan-400/80" };
 }
 
 /** Slugifies a title into a filename-safe string. */
@@ -500,24 +502,25 @@ function DeliverableCard({ dl, onClick, index }: { dl: any; onClick: () => void;
 
 /** Maps OPPRRC folder slugs to deliverable types, display labels, and colors. */
 const OPPRRC_FOLDERS = [
-  { folder: "",         label: "All",           types: [],                             icon: "📦", color: "text-foreground" },
-  { folder: "text",    label: "01 · TEXT",      types: ["document", "text"],            icon: "📄", color: "text-blue-400" },
-  { folder: "image",   label: "02 · IMAGE",     types: ["image", "artifact", "visual"], icon: "🖼️", color: "text-violet-400" },
-  { folder: "video",   label: "03 · VIDEO",     types: ["video", "preview_url"],        icon: "🎬", color: "text-pink-400" },
-  { folder: "code",    label: "04 · CODE",      types: ["code", "pull_request", "branch", "commit"], icon: "💻", color: "text-emerald-400" },
-  { folder: "skills",  label: "05 · SKILLS",    types: ["runtime_service", "audit"],    icon: "🤖", color: "text-amber-400" },
-  { folder: "briefcase", label: "BRIEFCASE",    types: [],                             icon: "🗂️", color: "text-cyan-400" },
+  { folder: "",                  label: "All",               types: [],                             icon: "📦", color: "text-foreground" },
+  { folder: "01_organizations",  label: "01 · ORGANIZATIONS", types: [],                             icon: "🏢", color: "text-cyan-400" },
+  { folder: "02_programs",       label: "02 · PROGRAMS",      types: ["image", "artifact", "visual", "video", "preview_url"], icon: "📢", color: "text-violet-400" },
+  { folder: "03_projects",       label: "03 · PROJECTS",      types: ["code", "pull_request", "branch", "commit"], icon: "🛠️", color: "text-emerald-400" },
+  { folder: "04_resources",      label: "04 · RESOURCES",     types: ["runtime_service"],            icon: "💾", color: "text-amber-400" },
+  { folder: "05_reports",        label: "05 · REPORTS",       types: ["document", "text"],            icon: "📊", color: "text-blue-400" },
+  { folder: "06_certificates",   label: "06 · CERTIFICATES",  types: ["audit", "certificate"],        icon: "📜", color: "text-pink-400" },
 ] as const;
 
 type OpprcFolder = (typeof OPPRRC_FOLDERS)[number]["folder"];
 
 function folderForType(type: string): OpprcFolder {
   const t = (type ?? "").toLowerCase();
-  for (const f of OPPRRC_FOLDERS) {
-    if (f.folder === "") continue;
-    if ((f.types as unknown as string[]).includes(t)) return f.folder;
-  }
-  return "briefcase";
+  if (["document", "text"].includes(t)) return "05_reports";
+  if (["image", "artifact", "visual", "video", "preview_url"].includes(t)) return "02_programs";
+  if (["code", "pull_request", "branch", "commit"].includes(t)) return "03_projects";
+  if (["runtime_service"].includes(t)) return "04_resources";
+  if (["audit", "certificate"].includes(t)) return "06_certificates";
+  return "01_organizations";
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -567,8 +570,8 @@ export function DeliverablesBriefcase({ global = false }: { global?: boolean }) 
       const cfg = OPPRRC_FOLDERS.find((f) => f.folder === activeFolder);
       if (cfg && cfg.types.length > 0) {
         list = list.filter((d) => (cfg.types as unknown as string[]).includes(d.type?.toLowerCase()));
-      } else if (activeFolder === "briefcase") {
-        // Show anything not in TEXT/IMAGE/VIDEO/CODE/SKILLS
+      } else if (activeFolder === "01_organizations") {
+        // Show anything not in 02, 03, 04, 05, 06
         const knownTypes = OPPRRC_FOLDERS.flatMap((f) => [...f.types] as string[]);
         list = list.filter((d) => !knownTypes.includes(d.type?.toLowerCase()));
       }

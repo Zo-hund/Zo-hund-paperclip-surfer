@@ -123,6 +123,59 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     res.json(detail);
   });
 
+  router.get("/board/deliverables/:id/asset", async (req, res) => {
+    assertBoard(req);
+    const existing = await workProducts.getById(req.params.id as string);
+    if (!existing) {
+      res.status(404).json({ error: "Deliverable not found" });
+      return;
+    }
+    assertCompanyAccess(req, existing.companyId);
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: existing.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "work_product.asset_accessed",
+      entityType: "issue_work_products",
+      entityId: existing.id,
+      details: {
+        title: existing.title,
+        type: existing.type,
+        url: existing.url || null,
+        issueId: existing.issueId,
+      },
+    });
+
+    if (existing.url) {
+      res.redirect(existing.url);
+      return;
+    }
+
+    const folderIdMap: Record<string, string> = {
+      "01_organizations": "1mt1gW80-ifMs1YOi2VLUIK1-GKbtyj7D",
+      "02_programs":      "1Lq7sUNGdmZWu8XL0wB4h6yOQIgJbLhIP",
+      "03_projects":      "1WvapNf0sGQEm_fdeJBwE2hm63plxessX",
+      "04_resources":     "1u0xWeSNcNbgEzkj7BSL_9NA7pcUespNl",
+      "05_reports":       "1ZzE45t0ws8sKn1HimIR7Ty_c7hw4VHFQ",
+      "06_certificates":  "1pveOQdJ-2WO3D7JPr6NOG_aVRnumaYOA",
+    };
+
+    const t = (existing.type ?? "").toLowerCase();
+    let folderKey = "01_organizations";
+    if (["document", "text"].includes(t)) folderKey = "05_reports";
+    else if (["image", "artifact", "visual", "video", "preview_url"].includes(t)) folderKey = "02_programs";
+    else if (["code", "pull_request", "branch", "commit"].includes(t)) folderKey = "03_projects";
+    else if (["runtime_service"].includes(t)) folderKey = "04_resources";
+    else if (["audit", "certificate"].includes(t)) folderKey = "06_certificates";
+
+    const folderId = folderIdMap[folderKey] || "1mt1gW80-ifMs1YOi2VLUIK1-GKbtyj7D";
+    res.redirect(`https://drive.google.com/drive/folders/${folderId}`);
+  });
+
   router.patch("/board/deliverables/:id/review", async (req, res) => {
     assertBoard(req);
     const existing = await workProducts.getById(req.params.id as string);
