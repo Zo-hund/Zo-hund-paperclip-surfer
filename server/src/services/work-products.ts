@@ -1,5 +1,6 @@
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
+import { alias } from "drizzle-orm/pg-core";
 import { issueWorkProducts, issues, projects, agents, amxCertificates, auditVerifications } from "@paperclipai/db";
 import type { IssueWorkProduct } from "@paperclipai/shared";
 
@@ -40,6 +41,9 @@ export type BriefcaseDeliverable = IssueWorkProduct & {
   agentRole: string | null;
   certificateFootprint: string | null;
   auditStatus: string | null;
+  auditVerdict?: string | null;
+  auditorAgentId?: string | null;
+  auditorAgentName?: string | null;
 };
 
 export function workProductService(db: Db) {
@@ -116,6 +120,7 @@ export function workProductService(db: Db) {
     },
 
     getDetailById: async (id: string): Promise<BriefcaseDeliverable | null> => {
+      const auditorAgents = alias(agents, "auditor_agents");
       const rows = await db
         .select({
           wp: issueWorkProducts,
@@ -128,6 +133,9 @@ export function workProductService(db: Db) {
           agentRole: agents.role,
           certFootprint: amxCertificates.certificateFootprint,
           auditStatus: auditVerifications.status,
+          auditVerdict: auditVerifications.verdict,
+          auditorAgentId: auditorAgents.id,
+          auditorAgentName: auditorAgents.name,
         })
         .from(issueWorkProducts)
         .innerJoin(issues, eq(issueWorkProducts.issueId, issues.id))
@@ -135,6 +143,7 @@ export function workProductService(db: Db) {
         .leftJoin(agents, eq(issues.assigneeAgentId, agents.id))
         .leftJoin(amxCertificates, eq(amxCertificates.issueId, issueWorkProducts.issueId))
         .leftJoin(auditVerifications, eq(auditVerifications.targetId, sql`${issueWorkProducts.issueId}::text`))
+        .leftJoin(auditorAgents, eq(auditVerifications.auditorAgentId, auditorAgents.id))
         .where(eq(issueWorkProducts.id, id))
         .limit(1);
 
@@ -151,6 +160,9 @@ export function workProductService(db: Db) {
         agentRole: r.agentRole ?? null,
         certificateFootprint: r.certFootprint ?? null,
         auditStatus: r.auditStatus ?? null,
+        auditVerdict: r.auditVerdict ?? null,
+        auditorAgentId: r.auditorAgentId ?? null,
+        auditorAgentName: r.auditorAgentName ?? null,
       };
     },
 

@@ -125,7 +125,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
 
   router.get("/board/deliverables/:id/asset", async (req, res) => {
     assertBoard(req);
-    const existing = await workProducts.getById(req.params.id as string);
+    const existing = await workProducts.getDetailById(req.params.id as string);
     if (!existing) {
       res.status(404).json({ error: "Deliverable not found" });
       return;
@@ -278,6 +278,27 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const reviewState = (existing as any).reviewState ?? "pending";
     const healthStatus = (existing as any).healthStatus ?? "unknown";
     const summary = existing.summary ?? "";
+
+    const auditStatus = (existing as any).auditStatus ?? null;
+    const auditVerdict = (existing as any).auditVerdict ?? null;
+    const certificateFootprint = (existing as any).certificateFootprint ?? null;
+    const auditorAgentId = (existing as any).auditorAgentId ?? null;
+    const auditorAgentName = (existing as any).auditorAgentName ?? null;
+
+    const auditBadge = (state: string | null) => {
+      if (!state) return null;
+      const map: Record<string, [string, string]> = {
+        passed:             ["#22c55e", "AUDIT PASSED"],
+        failed:             ["#ef4444", "AUDIT FAILED"],
+        flagged:            ["#f59e0b", "AUDIT FLAGGED"],
+        in_progress:        ["#3b82f6", "AUDITING"],
+        pending:            ["#6b7280", "AUDIT PENDING"],
+        none:               ["#6b7280", "NO AUDIT STATUS"],
+      };
+      const [color, label] = map[state] ?? ["#6b7280", `AUDIT: ${state.toUpperCase()}`];
+      return { color, label };
+    };
+    const ab = auditBadge(auditStatus);
 
     const slugTitle = (existing.title ?? "untitled")
       .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -511,6 +532,7 @@ function copyToClipboard(btn) {
         <span class="badge" style="color:${hb.color};border-color:${hb.color}40;background:${hb.color}12">${hb.label}</span>
         <span class="badge" style="color:${routeColor};border-color:${routeColor}40;background:${routeColor}12">${routeLabel}</span>
         ${hasDirectUrl ? `<span class="badge" style="color:#34d399;border-color:#34d39940;background:#34d39912">FILE LINKED</span>` : `<span class="badge" style="color:#f59e0b;border-color:#f59e0b40;background:#f59e0b12">DRIVE FALLBACK</span>`}
+        ${ab ? `<span class="badge" style="color:${ab.color};border-color:${ab.color}40;background:${ab.color}12">⬤ ${ab.label}</span>` : ""}
       </div>
 
       <!-- Meta grid -->
@@ -536,7 +558,43 @@ function copyToClipboard(btn) {
           <div class="meta-label">Source</div>
           <div class="meta-value">${isLocalFile ? "VPS filesystem" : isWebLink ? "External URL" : "Drive folder"}</div>
         </div>
+        ${existing.agentName ? `<div class="meta-item"><div class="meta-label">Agent</div><div class="meta-value">${esc(existing.agentName)}</div></div>` : ""}
+        ${existing.createdByRunId && existing.agentId ? `<div class="meta-item"><div class="meta-label">Run Trace</div><div class="meta-value"><a href="/${companyPrefix}/agents/${existing.agentId}/runs/${existing.createdByRunId}" target="_blank" style="color:var(--brand-color);text-decoration:none;border-bottom:1px dashed var(--brand-color)">${esc((existing.createdByRunId as string).slice(0, 8))}</a></div></div>` : ""}
       </div>
+
+      ${auditStatus || certificateFootprint || auditVerdict ? `
+      <div class="summary-block" style="border-color: rgba(34, 197, 94, 0.25); background: rgba(34, 197, 94, 0.03); border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+        <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.15em; color: #22c55e; text-transform: uppercase; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+          🛡️ SECURITY & AUDIT VERIFICATION TRACE
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+          ${auditorAgentName ? `
+          <div class="meta-item" style="background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.03);">
+            <div class="meta-label">Audit Agent</div>
+            <div class="meta-value">${esc(auditorAgentName)}</div>
+          </div>` : ""}
+          ${auditorAgentId ? `
+          <div class="meta-item" style="background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.03);">
+            <div class="meta-label">Audit Run Trace</div>
+            <div class="meta-value">
+              <a href="/${companyPrefix}/agents/${auditorAgentId}/runs" target="_blank" style="color:var(--brand-color);text-decoration:none;border-bottom:1px dashed var(--brand-color)">
+                Runs History
+              </a>
+            </div>
+          </div>` : ""}
+          ${certificateFootprint ? `
+          <div class="meta-item" style="background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.03); grid-column: span 2;">
+            <div class="meta-label">AMX Chain Certificate Footprint</div>
+            <div class="meta-value" style="color: #22c55e; font-family: 'JetBrains Mono', monospace; font-size: 11px; word-break: break-all;">${esc(certificateFootprint)}</div>
+          </div>` : ""}
+          ${auditVerdict ? `
+          <div class="meta-item" style="background: rgba(0,0,0,0.2); border-color: rgba(255,255,255,0.03); grid-column: span 2;">
+            <div class="meta-label">Auditor Verdict Summary</div>
+            <div class="meta-value" style="font-family: inherit; font-size: 12px; color: #94a3b8; line-height: 1.5; white-space: pre-wrap; word-break: normal;">${esc(auditVerdict)}</div>
+          </div>` : ""}
+        </div>
+      </div>
+      ` : ""}
 
       ${summary ? `
       <div class="summary-block">

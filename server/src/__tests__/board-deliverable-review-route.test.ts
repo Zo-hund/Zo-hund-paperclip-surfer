@@ -36,6 +36,7 @@ const mockCompanyPortabilityService = vi.hoisted(() => ({
 const mockWorkProductService = vi.hoisted(() => ({
   listForIssue: vi.fn(),
   getById: vi.fn(),
+  getDetailById: vi.fn(),
   update: vi.fn(),
 }));
 
@@ -76,6 +77,9 @@ function createApp(actor: Record<string, unknown>) {
 describe("PATCH /api/companies/board/deliverables/:id/review", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockWorkProductService.getDetailById.mockImplementation(async (id: string) => {
+      return mockWorkProductService.getById(id);
+    });
   });
 
   it("rejects non-board actors", async () => {

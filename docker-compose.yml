@@ -38,6 +38,19 @@ services:
     labels:
       - traefik.enable=false
 
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+    volumes:
+      - n8n-data:/home/node/.n8n
+
 volumes:
   pgdata:
   paperclip-data:
+  n8n-data:

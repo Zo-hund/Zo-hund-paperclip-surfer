@@ -403,6 +403,7 @@ export function App() {
           <Route path="tracing" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace/agent/:marketplaceAgentId" element={<UnprefixedBoardRedirect />} />
+          <Route path="briefcase" element={<UnprefixedBoardRedirect />} />
           
           {/* Global Board Routes */}
           <Route path="board" element={<Layout />}>
