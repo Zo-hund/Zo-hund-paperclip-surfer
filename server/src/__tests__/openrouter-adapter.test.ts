@@ -131,4 +131,27 @@ describe("OpenRouter testEnvironment check", () => {
     expect(result.checks.some((c) => c.code === "api_key_configured")).toBe(true);
     expect(result.checks.some((c) => c.code === "model_configured")).toBe(true);
   });
+
+  it("passes test when API key is set in host system environment", async () => {
+    const originalKey = process.env.OPENROUTER_API_KEY;
+    process.env.OPENROUTER_API_KEY = "sk-or-host-key";
+    try {
+      const result = await testEnvironment({
+        companyId: "comp-1",
+        adapterType: "openrouter",
+        config: {
+          model: "openai/gpt-4o",
+          env: {},
+        },
+      });
+      expect(result.status).toBe("pass");
+      expect(result.checks.some((c) => c.code === "api_key_configured")).toBe(true);
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.OPENROUTER_API_KEY;
+      } else {
+        process.env.OPENROUTER_API_KEY = originalKey;
+      }
+    }
+  });
 });
