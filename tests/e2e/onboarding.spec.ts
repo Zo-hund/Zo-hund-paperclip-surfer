@@ -24,6 +24,36 @@ test.describe("Onboarding wizard", () => {
   test("completes full wizard flow", async ({ page }) => {
     await page.goto("/");
 
+    // If redirected to /auth under authenticated mode, register a new user first
+    if (page.url().includes("/auth")) {
+      // Click on "Create one" to switch to sign up mode
+      await page.getByRole("button", { name: "Create one" }).click();
+
+      // Verify header change
+      await expect(page.locator("h1")).toHaveText(/Create your AMX account/i);
+
+      // Generate unique test email
+      const uniqueEmail = `onboarding-user-${Date.now()}@amx-air-hubs.cc`;
+      const name = "Onboarding Test User";
+      const password = "SecurePassword123!";
+
+      // Fill in the form
+      await page.locator("#name").fill(name);
+      await page.locator("#email").fill(uniqueEmail);
+      await page.locator("#password").fill(password);
+
+      // Submit the form
+      await page.getByRole("button", { name: "Create Account" }).click();
+
+      // Wait for signup and onboarding page to load
+      await page.waitForURL((url) => {
+        return url.pathname === "/" || url.pathname.includes("/dashboard") || url.pathname.includes("/onboarding") || url.pathname.includes("/wizard");
+      }, { timeout: 30000 });
+
+      // Navigate to home again to start onboarding wizard
+      await page.goto("/");
+    }
+
     const wizardHeading = page.locator("h3", { hasText: "Name your company" });
     const newCompanyBtn = page.getByRole("button", { name: "New Company" });
 

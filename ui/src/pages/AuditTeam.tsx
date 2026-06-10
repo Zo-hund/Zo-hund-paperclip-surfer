@@ -85,34 +85,34 @@ function FindingRow({ finding }: { finding: { severity: string; category: string
 
 // ── Verification card ────────────────────────────────────────────────────────
 
-function VerificationCard({ v }: { v: Record<string, any> }) {
+function VerificationCard({ verification }: { verification: any }) {
   const [open, setOpen] = useState(false);
-  const findings: any[] = v.findings ?? [];
+  const findings: any[] = verification.findings ?? [];
 
   return (
     <div className="border border-border/50 rounded-lg p-4 space-y-2 bg-card/50">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold leading-tight">
-            {v.targetLabel ?? v.targetId}
+            {verification.targetLabel ?? verification.targetId}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-            {v.targetType.toUpperCase()} · {v.id.slice(0, 8)}
+            {verification.targetType.toUpperCase()} · {verification.id.slice(0, 8)}
           </p>
         </div>
-        <StatusBadge status={v.status} />
+        <StatusBadge status={verification.status} />
       </div>
 
-      {v.verdict && (
+      {verification.verdict && (
         <p className="text-xs text-muted-foreground border-l-2 border-border pl-2 italic">
-          {v.verdict}
+          {verification.verdict}
         </p>
       )}
 
-      {v.certificateFootprint && (
+      {verification.certificateFootprint && (
         <div className="flex items-center gap-1.5 text-xs text-emerald-500">
           <BadgeCheck className="h-3.5 w-3.5" />
-          <span className="font-mono truncate">{v.certificateFootprint}</span>
+          <span className="font-mono truncate">{verification.certificateFootprint}</span>
         </div>
       )}
 
@@ -134,9 +134,9 @@ function VerificationCard({ v }: { v: Record<string, any> }) {
       )}
 
       <p className="text-[10px] text-muted-foreground/50">
-        {v.completedAt
-          ? `Completed ${new Date(v.completedAt).toLocaleString()}`
-          : `Started ${new Date(v.createdAt).toLocaleString()}`}
+        {verification.completedAt
+          ? `Completed ${new Date(verification.completedAt).toLocaleString()}`
+          : `Started ${new Date(verification.createdAt).toLocaleString()}`}
       </p>
     </div>
   );
@@ -309,8 +309,8 @@ export function AuditTeam() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filtered.map((v) => (
-                <VerificationCard key={v.id} v={v} />
+              {filtered.map((item) => (
+                <VerificationCard key={item.id} verification={item} />
               ))}
             </div>
           )}
