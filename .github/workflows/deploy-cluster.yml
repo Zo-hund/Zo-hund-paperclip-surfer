@@ -187,6 +187,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           kubectl create secret generic amx-secrets \
             --namespace "${{ steps.vars.outputs.namespace }}" \
@@ -195,6 +196,7 @@ jobs:
             --from-literal=OPENAI_API_KEY="${OPENAI_API_KEY}" \
             --from-literal=ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}" \
             --from-literal=GOOGLE_API_KEY="${GOOGLE_API_KEY}" \
+            --from-literal=OPENROUTER_API_KEY="${OPENROUTER_API_KEY}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Apply GHCR image pull secret

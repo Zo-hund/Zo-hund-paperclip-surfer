@@ -85,6 +85,7 @@ $PG_PASSWORD  | gh secret set POSTGRES_PASSWORD             --env hostinger-prod
 ""            | gh secret set ANTHROPIC_API_KEY             --env hostinger-prod --repo $REPO
 ""            | gh secret set OPENAI_API_KEY                --env hostinger-prod --repo $REPO
 ""            | gh secret set GOOGLE_API_KEY                --env hostinger-prod --repo $REPO
+""            | gh secret set OPENROUTER_API_KEY            --env hostinger-prod --repo $REPO
 "zo-hund"     | gh secret set GHCR_PULL_USERNAME            --env hostinger-prod --repo $REPO
 $GH_TOKEN     | gh secret set GHCR_PULL_TOKEN               --env hostinger-prod --repo $REPO
 if ($RESEND_API_KEY) { $RESEND_API_KEY | gh secret set RESEND_API_KEY --env hostinger-prod --repo $REPO }
@@ -109,6 +110,7 @@ $JWT_SECRET  | gh secret set PAPERCLIP_AGENT_JWT_SECRET --env staging --repo $RE
 ""           | gh secret set ANTHROPIC_API_KEY          --env staging --repo $REPO
 ""           | gh secret set OPENAI_API_KEY             --env staging --repo $REPO
 ""           | gh secret set GOOGLE_API_KEY             --env staging --repo $REPO
+""           | gh secret set OPENROUTER_API_KEY         --env staging --repo $REPO
 $GH_TOKEN    | gh secret set GHCR_PULL_TOKEN            --env staging --repo $REPO
 "zo-hund"    | gh secret set GHCR_PULL_USERNAME         --env staging --repo $REPO
 if ($RESEND_API_KEY) { $RESEND_API_KEY | gh secret set RESEND_API_KEY --env staging --repo $REPO }
@@ -125,6 +127,7 @@ $JWT_SECRET  | gh secret set PAPERCLIP_AGENT_JWT_SECRET --env production --repo 
 ""           | gh secret set ANTHROPIC_API_KEY          --env production --repo $REPO
 ""           | gh secret set OPENAI_API_KEY             --env production --repo $REPO
 ""           | gh secret set GOOGLE_API_KEY             --env production --repo $REPO
+""           | gh secret set OPENROUTER_API_KEY         --env production --repo $REPO
 $GH_TOKEN    | gh secret set GHCR_PULL_TOKEN            --env production --repo $REPO
 "zo-hund"    | gh secret set GHCR_PULL_USERNAME         --env production --repo $REPO
 if ($RESEND_API_KEY) { $RESEND_API_KEY | gh secret set RESEND_API_KEY --env production --repo $REPO }
@@ -192,6 +195,7 @@ Write-Host "   [ ] TRAEFIK_ACME_EMAIL    - your email for Let's Encrypt"
 Write-Host "   [ ] ANTHROPIC_API_KEY     - if using Claude agents"
 Write-Host "   [ ] OPENAI_API_KEY        - if using Codex agents"
 Write-Host "   [ ] GOOGLE_API_KEY        - if using Gemini agents"
+Write-Host "   [ ] OPENROUTER_API_KEY    - if using OpenRouter agents"
 Write-Host "   [ ] AMX_DATABASE_URL      - Postgres URL (staging + production envs)"
 Write-Host "   [ ] KUBE_CONFIG_DATA      - run: bash deploy/scripts/create-deploy-token.sh"
 Write-Host ""

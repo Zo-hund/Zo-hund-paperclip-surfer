@@ -14,6 +14,7 @@ services:
       PAPERCLIP_HOME: "/home/reviewer/.paperclip-review"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
     ports:
       - "${REVIEW_PAPERCLIP_PORT:-3100}:3100"

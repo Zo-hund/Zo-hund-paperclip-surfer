@@ -75,6 +75,7 @@ secrets:
     anthropicApiKey: ANTHROPIC_API_KEY
     googleApiKey: GOOGLE_API_KEY
     geminiApiKey: GEMINI_API_KEY
+    openrouterApiKey: OPENROUTER_API_KEY
     resendApiKey: RESEND_API_KEY
     livekitUrl: LIVEKIT_URL
     livekitApiKey: LIVEKIT_API_KEY
