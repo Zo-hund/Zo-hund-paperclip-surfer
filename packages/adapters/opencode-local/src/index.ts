@@ -1,7 +1,18 @@
 export const type = "opencode_local";
 export const label = "OpenCode (local)";
 
-export const models: Array<{ id: string; label: string }> = [];
+export const models: Array<{ id: string; label: string }> = [
+  { id: "openrouter/~moonshotai/kimi-latest", label: "OpenRouter - MoonshotAI Kimi Latest" },
+  { id: "openrouter/moonshotai/kimi-k2.6-20260420", label: "OpenRouter - MoonshotAI Kimi K2.6" },
+  { id: "openrouter/moonshotai/kimi-k2.6:free", label: "OpenRouter - MoonshotAI Kimi K2.6 (free)" },
+  { id: "openrouter/moonshotai/kimi-k2.5", label: "OpenRouter - MoonshotAI Kimi K2.5" },
+  { id: "openrouter/moonshotai/kimi-k2", label: "OpenRouter - MoonshotAI Kimi K2 0711" },
+  { id: "openrouter/minimax/minimax-m3", label: "OpenRouter - MiniMax M3" },
+  { id: "openrouter/minimax/minimax-m2.7", label: "OpenRouter - MiniMax M2.7" },
+  { id: "openrouter/minimax/minimax-m2.1", label: "OpenRouter - MiniMax M2.1" },
+  { id: "openrouter/minimax/minimax-m2", label: "OpenRouter - MiniMax M2" },
+  { id: "openrouter/minimax/minimax-01", label: "OpenRouter - MiniMax-01" },
+];
 
 export const agentConfigurationDoc = `# opencode_local agent configuration
 
@@ -9,7 +20,7 @@ Adapter: opencode_local
 
 Use when:
 - You want Paperclip to run OpenCode locally as the agent runtime
-- You want provider/model routing in OpenCode format (provider/model)
+- You want provider/model routing in OpenCode format (provider/model), including OpenRouter-hosted Kimi and MiniMax models
 - You want OpenCode session resume across heartbeats via --session
 
 Don't use when:
@@ -20,7 +31,7 @@ Don't use when:
 Core fields:
 - cwd (string, optional): default absolute working directory fallback for the agent process (created if missing when possible)
 - instructionsFilePath (string, optional): absolute path to a markdown instructions file prepended to the run prompt
-- model (string, required): OpenCode model id in provider/model format (for example anthropic/claude-sonnet-4-5)
+- model (string, required): OpenCode model id in provider/model format (for example anthropic/claude-sonnet-4-5, openrouter/moonshotai/kimi-k2.6-20260420, or openrouter/minimax/minimax-m3)
 - variant (string, optional): provider-specific model variant (for example minimal|low|medium|high|max)
 - dangerouslySkipPermissions (boolean, optional): inject a runtime OpenCode config that allows \`external_directory\` access without interactive prompts; defaults to true for unattended Paperclip runs
 - promptTemplate (string, optional): run prompt template
