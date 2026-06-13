@@ -19,7 +19,7 @@ jobs:
       PAPERCLIP_PUBLIC_URL: ${{ vars.PAPERCLIP_PUBLIC_URL }}
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
       REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+      REGISTRY_TOKEN: ${{ secrets.GHCR_PAT || secrets.REGISTRY_TOKEN }}
     steps:
       - name: Validate required release configuration
         shell: bash
