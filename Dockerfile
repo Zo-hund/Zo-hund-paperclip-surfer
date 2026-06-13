@@ -46,7 +46,7 @@ RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" &
 FROM node:lts-trixie-slim AS production
 # Production stage uses a fresh slim base — no build tools, no git
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl python3 \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
