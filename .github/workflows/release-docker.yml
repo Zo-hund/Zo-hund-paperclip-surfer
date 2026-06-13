@@ -42,7 +42,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_TOKEN }}
+          password: ${{ env.REGISTRY_TOKEN }}
 
       - name: Resolve image metadata
         id: meta
