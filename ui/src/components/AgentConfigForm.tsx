@@ -633,6 +633,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </Field>
           )}
 
+          <AdapterReadinessHint adapterType={adapterType} />
+
           {testEnvironment.error && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {testEnvironment.error instanceof Error
@@ -751,6 +753,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 allowDefault={adapterType !== "opencode_local" && !isHermes}
                 required={adapterType === "opencode_local" || isHermes}
                 groupByProvider={adapterType === "opencode_local"}
+                creatable={adapterType === "openrouter" || adapterType === "opencode_local"}
                 detectedModel={isHermes ? detectedModel : null}
                 onDetectModel={isHermes
                   ? async () => {
@@ -1703,6 +1706,67 @@ export function ModelDropdown({
         </PopoverContent>
       </Popover>
     </Field>
+  );
+}
+
+function AdapterReadinessHint({ adapterType }: { adapterType: string }) {
+  const hints: Record<string, { tone: "local" | "cloud" | "process"; title: string; body: string }> = {
+    claude_local: {
+      tone: "local",
+      title: "Host CLI",
+      body: "Requires the `claude` CLI and Anthropic auth on the machine running Paperclip. Works on the VPS when the CLI and key are present.",
+    },
+    codex_local: {
+      tone: "local",
+      title: "Host CLI",
+      body: "Requires the `codex` CLI and OpenAI auth on the host. Use Test environment before waking an agent.",
+    },
+    gemini_local: {
+      tone: "local",
+      title: "Host CLI",
+      body: "Requires the `gemini` CLI plus `GEMINI_API_KEY`, `GOOGLE_API_KEY`, or Gemini CLI login on the host.",
+    },
+    opencode_local: {
+      tone: "local",
+      title: "Host CLI with provider routing",
+      body: "Requires the `opencode` CLI and a provider/model value. Model choices are loaded from `opencode models` when available.",
+    },
+    openrouter: {
+      tone: "cloud",
+      title: "Cloud model gateway",
+      body: "Requires `OPENROUTER_API_KEY`. You can pick a listed model or type any OpenRouter model id manually.",
+    },
+    openclaw_gateway: {
+      tone: "cloud",
+      title: "External gateway",
+      body: "Requires a reachable OpenClaw gateway URL and any gateway-specific auth in adapter env.",
+    },
+    http: {
+      tone: "cloud",
+      title: "Webhook adapter",
+      body: "Requires a reachable webhook URL. Paperclip sends wake payloads and does not run a local CLI.",
+    },
+    process: {
+      tone: "process",
+      title: "Raw process",
+      body: "Runs the configured command directly on the Paperclip host. Use for scripts and simple workers.",
+    },
+  };
+  const hint = hints[adapterType];
+  if (!hint) return null;
+
+  const toneClass =
+    hint.tone === "cloud"
+      ? "border-blue-500/25 bg-blue-500/10 text-blue-100"
+      : hint.tone === "process"
+        ? "border-zinc-500/25 bg-zinc-500/10 text-zinc-200"
+        : "border-emerald-500/25 bg-emerald-500/10 text-emerald-100";
+
+  return (
+    <div className={cn("rounded-md border px-3 py-2 text-xs", toneClass)}>
+      <span className="font-medium">{hint.title}</span>
+      <span className="text-current/80"> - {hint.body}</span>
+    </div>
   );
 }
 

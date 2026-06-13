@@ -36,6 +36,9 @@ on:
     types:
       - completed
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   deploy:
     if: >
@@ -200,11 +203,11 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Apply GHCR image pull secret
-        if: ${{ secrets.GHCR_PULL_USERNAME != '' && secrets.GHCR_PULL_TOKEN != '' }}
+        if: ${{ secrets.GHCR_PAT != '' || secrets.REGISTRY_TOKEN != '' || secrets.GHCR_PULL_TOKEN != '' }}
         shell: bash
         env:
-          GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_PULL_USERNAME: ${{ secrets.REGISTRY_USERNAME || secrets.GHCR_PULL_USERNAME || github.repository_owner }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PAT || secrets.REGISTRY_TOKEN || secrets.GHCR_PULL_TOKEN }}
         run: |
           kubectl create secret docker-registry "${IMAGE_PULL_SECRET_NAME}" \
             --namespace "${{ steps.vars.outputs.namespace }}" \
@@ -226,7 +229,7 @@ jobs:
           --set ingress.host="${{ steps.vars.outputs.ingress_host }}"
           --set env.PAPERCLIP_PUBLIC_URL="https://${{ steps.vars.outputs.ingress_host }}"
           --set secrets.existingSecretName=amx-secrets
-          ${{ secrets.GHCR_PULL_USERNAME != '' && secrets.GHCR_PULL_TOKEN != '' && format('--set image.pullSecrets[0].name={0}', env.IMAGE_PULL_SECRET_NAME) || '' }}
+          ${{ (secrets.GHCR_PAT != '' || secrets.REGISTRY_TOKEN != '' || secrets.GHCR_PULL_TOKEN != '') && format('--set image.pullSecrets[0].name={0}', env.IMAGE_PULL_SECRET_NAME) || '' }}
 
       - name: Deploy Helm release
         run: >
@@ -243,7 +246,7 @@ jobs:
           --set ingress.host="${{ steps.vars.outputs.ingress_host }}"
           --set env.PAPERCLIP_PUBLIC_URL="https://${{ steps.vars.outputs.ingress_host }}"
           --set secrets.existingSecretName=amx-secrets
-          ${{ secrets.GHCR_PULL_USERNAME != '' && secrets.GHCR_PULL_TOKEN != '' && format('--set image.pullSecrets[0].name={0}', env.IMAGE_PULL_SECRET_NAME) || '' }}
+          ${{ (secrets.GHCR_PAT != '' || secrets.REGISTRY_TOKEN != '' || secrets.GHCR_PULL_TOKEN != '') && format('--set image.pullSecrets[0].name={0}', env.IMAGE_PULL_SECRET_NAME) || '' }}
 
       - name: Wait for rollout
         run: kubectl rollout status deployment/"${{ steps.vars.outputs.release_name }}" --namespace "${{ steps.vars.outputs.namespace }}" --timeout=10m
@@ -276,7 +279,7 @@ jobs:
             echo "- Host: [https://${{ steps.vars.outputs.ingress_host }}](https://${{ steps.vars.outputs.ingress_host }})"
             echo "- Image: \`${{ steps.vars.outputs.image_ref }}\`"
             echo "- Values file: \`${{ steps.vars.outputs.values_file }}\`"
-            echo "- GHCR pull secret: \`${{ secrets.GHCR_PULL_USERNAME != '' && env.IMAGE_PULL_SECRET_NAME || 'not applied (public package or pre-provisioned cluster access assumed)' }}\`"
+            echo "- GHCR pull secret: \`${{ (secrets.GHCR_PAT != '' || secrets.REGISTRY_TOKEN != '' || secrets.GHCR_PULL_TOKEN != '') && env.IMAGE_PULL_SECRET_NAME || 'not applied (public package or pre-provisioned cluster access assumed)' }}\`"
             echo
             echo "### Verify"
             echo "- \`kubectl get pods -n ${{ steps.vars.outputs.namespace }}\`"

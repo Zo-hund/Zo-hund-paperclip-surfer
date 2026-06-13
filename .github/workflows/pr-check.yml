@@ -17,6 +17,9 @@ concurrency:
   group: pr-check-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   secret-scan:
     name: Secret scan (TruffleHog)
