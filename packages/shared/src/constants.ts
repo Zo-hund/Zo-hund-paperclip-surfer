@@ -26,6 +26,7 @@ export const AGENT_ADAPTER_TYPES = [
   "http",
   "claude_local",
   "codex_local",
+  "gemini_local",
   "opencode_local",
   "pi_local",
   "cursor",
@@ -310,6 +311,85 @@ export const HEARTBEAT_RUN_STATUSES = [
   "timed_out",
 ] as const;
 export type HeartbeatRunStatus = (typeof HEARTBEAT_RUN_STATUSES)[number];
+
+export const AMX_NODE_KINDS = [
+  "local_desktop",
+  "laptop",
+  "phone",
+  "tablet",
+  "hmd",
+  "cloud_vm",
+  "cloud_container",
+  "edge_device",
+] as const;
+export type AmxNodeKind = (typeof AMX_NODE_KINDS)[number];
+
+export const AMX_NODE_STATUSES = [
+  "enrolling",
+  "online",
+  "idle",
+  "busy",
+  "degraded",
+  "offline",
+  "suspended",
+] as const;
+export type AmxNodeStatus = (typeof AMX_NODE_STATUSES)[number];
+
+export const AMX_NODE_TRUST_TIERS = [
+  "untrusted",
+  "paired",
+  "personal_admin",
+  "company_managed",
+  "privileged",
+] as const;
+export type AmxNodeTrustTier = (typeof AMX_NODE_TRUST_TIERS)[number];
+
+export const AMX_NODE_CONNECTION_MODES = [
+  "outbound_websocket",
+  "webrtc_relay",
+  "tailscale",
+  "cloudflare_tunnel",
+  "local_loopback",
+] as const;
+export type AmxNodeConnectionMode = (typeof AMX_NODE_CONNECTION_MODES)[number];
+
+export const AMX_NODE_CAPABILITIES = [
+  "heartbeat_worker",
+  "browser_control",
+  "shell",
+  "filesystem_read",
+  "filesystem_write",
+  "screen_stream",
+  "input_control",
+  "local_models",
+  "gpu",
+  "camera",
+  "microphone",
+  "hmd_runtime",
+  "cloud_models",
+  "docker",
+  "git",
+] as const;
+export type AmxNodeCapability = (typeof AMX_NODE_CAPABILITIES)[number];
+
+export const AMX_COMMAND_RISK_LEVELS = [
+  "view",
+  "read",
+  "write",
+  "execute",
+  "destructive",
+] as const;
+export type AmxCommandRiskLevel = (typeof AMX_COMMAND_RISK_LEVELS)[number];
+
+export const AMX_DISPATCH_LEASE_STATUSES = [
+  "pending_approval",
+  "granted",
+  "consumed",
+  "revoked",
+  "expired",
+  "denied",
+] as const;
+export type AmxDispatchLeaseStatus = (typeof AMX_DISPATCH_LEASE_STATUSES)[number];
 
 export const LIVE_EVENT_TYPES = [
   "heartbeat.run.queued",

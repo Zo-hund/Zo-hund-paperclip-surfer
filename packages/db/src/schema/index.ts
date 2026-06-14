@@ -64,6 +64,7 @@ export { agentKpis, agentKpiDefinitions, agentExperiments, agentKpiObservations 
 export { meetings, meetingTranscripts, meetingParticipants, meetingOutcomes } from "./meetings.js";
 export { amxLedger, amxTransactions } from "./amx_ledger.js";
 export { amxChainEvents, amxCertificates } from "./amx_chain.js";
+export { amxNodes, amxDispatchLeases, amxDispatchEvidence } from "./amx_nodes.js";
 export { collectives, electives, communityBoards, boardCollaborations } from "./governance_boards.js";
 export { rqSubmissions, rqAgentConfigs } from "./rq_factory.js";
 export { lmsWorkshops, lmsEnrollments, lmsSimulations } from "./lms_training.js";

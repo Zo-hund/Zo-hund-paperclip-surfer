@@ -50,6 +50,7 @@ import { XpExchange } from "./pages/XpExchange";
 import { RqPortal } from "./pages/RqPortal";
 import { LmsDashboard } from "./pages/LmsDashboard";
 import { AmxChain } from "./pages/AmxChain";
+import { AmxDispatchConsole } from "./pages/AmxDispatchConsole";
 import { XpWallet } from "./pages/XpWallet";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
@@ -207,6 +208,8 @@ function boardRoutes() {
       <Route path="rq/portal" element={<RqPortal />} />
       <Route path="lms/dashboard" element={<LmsDashboard />} />
       <Route path="amx/chain" element={<AmxChain />} />
+      <Route path="amx/remote-work" element={<AmxDispatchConsole />} />
+      <Route path="amx/dispatch" element={<AmxDispatchConsole />} />
       <Route path="audit/team" element={<AuditTeam />} />
       <Route path="briefcase" element={<BoardDeliverables />} />
       <Route path="marketplace" element={<AgentMarketplace />} />
@@ -395,6 +398,8 @@ export function App() {
           <Route path="rq/portal" element={<UnprefixedBoardRedirect />} />
           <Route path="lms/dashboard" element={<UnprefixedBoardRedirect />} />
           <Route path="amx/chain" element={<UnprefixedBoardRedirect />} />
+          <Route path="amx/remote-work" element={<UnprefixedBoardRedirect />} />
+          <Route path="amx/dispatch" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path="mcp-servers" element={<UnprefixedBoardRedirect />} />
           <Route path="analytics" element={<UnprefixedBoardRedirect />} />

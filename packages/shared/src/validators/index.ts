@@ -221,6 +221,25 @@ export {
 } from "./cost.js";
 
 export {
+  amxNodeKindSchema,
+  amxNodeStatusSchema,
+  amxNodeTrustTierSchema,
+  amxNodeConnectionModeSchema,
+  amxNodeCapabilitySchema,
+  amxCommandRiskLevelSchema,
+  createAmxNodeSchema,
+  updateAmxNodeSchema,
+  amxNodeHeartbeatSchema,
+  createAmxDispatchLeaseSchema,
+  submitAmxDispatchEvidenceSchema,
+  type CreateAmxNode,
+  type UpdateAmxNode,
+  type AmxNodeHeartbeat,
+  type CreateAmxDispatchLease,
+  type SubmitAmxDispatchEvidence,
+} from "./amx-node.js";
+
+export {
   createFinanceEventSchema,
   type CreateFinanceEvent,
 } from "./finance.js";

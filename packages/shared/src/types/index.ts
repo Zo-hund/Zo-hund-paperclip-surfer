@@ -128,6 +128,12 @@ export type {
   AgentWakeupRequest,
   InstanceSchedulerHeartbeatAgent,
 } from "./heartbeat.js";
+export type {
+  AmxNode,
+  AmxDispatchLease,
+  AmxDispatchLeaseCreated,
+  AmxDispatchEvidence,
+} from "./amx-node.js";
 export type { LiveEvent } from "./live.js";
 export type { DashboardSummary } from "./dashboard.js";
 export type { ActivityEvent } from "./activity.js";

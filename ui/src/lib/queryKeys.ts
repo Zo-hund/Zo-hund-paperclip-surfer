@@ -137,6 +137,11 @@ export const queryKeys = {
   mcpServers: {
     list: (companyId: string) => ["mcp-servers", companyId] as const,
   },
+  amxNodes: {
+    list: (companyId: string) => ["amx-nodes", companyId] as const,
+    leases: (companyId: string) => ["amx-nodes", companyId, "leases"] as const,
+    evidence: (companyId: string) => ["amx-nodes", companyId, "evidence"] as const,
+  },
   agentKpis: {
     list: (agentId: string) => ["agent-kpis", agentId] as const,
     trends: (agentId: string) => ["agent-kpis", agentId, "trends"] as const,

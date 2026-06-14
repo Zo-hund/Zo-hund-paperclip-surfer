@@ -45,6 +45,7 @@ Agents accumulate knowledge that persists across sessions:
 Built by Zohund on top of the V2 AMX LABS foundation. Industrial-grade integration for the AMX ecosystem, moving beyond orchestration into production and verified auditing:
 - **XP Exchange** — Dynamic earner marketplace with real-time XP tracking and human-agent payout settlement.
 - **AMX Chain Explorer** — Proof of Work auditing on an immutable ledger. Verifiable security events and cryptographic certificates for all agent deliverables.
+- **AMX Local + Cloud Work Mesh** — Route trusted laptops, desktops, phones, tablets, cloud VMs, hosted workers, and edge devices through scoped dispatch leases with OPPRRC evidence.
 - **RQ Portal** — Advanced "Requirement" submission system for Industrial AI context seeding and deployment mode selection (Online, Physical, Metaverse).
 - **LMS Dashboard (Tech at Nite)** — Integrated learning management system for up-skilling through workshops and simulations (e.g., Louisville FoodPort).
 - **Industrialized Backend** — Fully persistent Express API routes integrated with AMX service layers, replacing mock data with real-time production telemetry.

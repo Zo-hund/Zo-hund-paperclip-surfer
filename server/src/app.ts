@@ -38,6 +38,7 @@ import { mcpServerRoutes } from "./routes/mcp-servers.js";
 import { agentKpiRoutes } from "./routes/agent-kpis.js";
 import { agentExperimentRoutes } from "./routes/agent-experiments.js";
 import { amxRoutes } from "./routes/amx.js";
+import { amxNodeRoutes } from "./routes/amx-nodes.js";
 import { lmsRoutes } from "./routes/lms.js";
 import { auditRoutes } from "./routes/audit.js";
 import { skillChangeRoutes } from "./routes/skill-changes.js";
@@ -183,6 +184,7 @@ export async function createApp(
     }),
   );
   api.use("/companies", companyRoutes(db, opts.storageService));
+  api.use("/companies/:companyId/amx-nodes", amxNodeRoutes(db));
   api.use("/companies/:companyId/members", companyMembersRoutes(db));
   api.use(companySkillRoutes(db));
   api.use(agentRoutes(db));
