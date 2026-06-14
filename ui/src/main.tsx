@@ -13,6 +13,7 @@ import { SidebarProvider } from "./context/SidebarContext";
 import { DialogProvider } from "./context/DialogContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { MeetingProvider } from "./context/MeetingContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { initPluginBridge } from "./plugins/bridge-init";
 import { PluginLauncherProvider } from "./plugins/launchers";
@@ -65,19 +66,21 @@ createRoot(document.getElementById("root")!).render(
           <CompanyProvider>
             <ToastProvider>
               <LiveUpdatesProvider>
-                <TooltipProvider>
-                  <BreadcrumbProvider>
-                    <SidebarProvider>
-                      <PanelProvider>
-                        <PluginLauncherProvider>
-                          <DialogProvider>
-                            <App />
-                          </DialogProvider>
-                        </PluginLauncherProvider>
-                      </PanelProvider>
-                    </SidebarProvider>
-                  </BreadcrumbProvider>
-                </TooltipProvider>
+                <MeetingProvider>
+                  <TooltipProvider>
+                    <BreadcrumbProvider>
+                      <SidebarProvider>
+                        <PanelProvider>
+                          <PluginLauncherProvider>
+                            <DialogProvider>
+                              <App />
+                            </DialogProvider>
+                          </PluginLauncherProvider>
+                        </PanelProvider>
+                      </SidebarProvider>
+                    </BreadcrumbProvider>
+                  </TooltipProvider>
+                </MeetingProvider>
               </LiveUpdatesProvider>
             </ToastProvider>
           </CompanyProvider>
