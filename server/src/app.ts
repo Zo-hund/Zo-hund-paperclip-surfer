@@ -91,6 +91,65 @@ function isAssetLikePathname(pathname: string): boolean {
   return ext.length > 0 && UI_ASSET_EXTENSIONS.has(ext);
 }
 
+function isMobileUserAgent(userAgent: string | undefined): boolean {
+  return /\b(Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini)\b/i.test(userAgent ?? "");
+}
+
+function buildAmxRemoteWorkMobileHtml(origin: string): string {
+  const fullConsoleUrl = `${origin}/amx/remote-work?full=1`;
+  const apiBaseUrl = `${origin}/api`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AMX Remote Work Mobile</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #05070d; color: #f7f8fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #172033 0, #05070d 42rem); }
+    main { width: min(100%, 42rem); margin: 0 auto; padding: 28px 18px 36px; }
+    .eyebrow { color: #8bd3ff; font-size: 12px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+    h1 { margin: 10px 0 8px; font-size: clamp(30px, 10vw, 48px); line-height: .95; letter-spacing: 0; }
+    p { color: #b9c1cf; line-height: 1.55; }
+    .panel { margin-top: 18px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(255,255,255,.06); padding: 16px; }
+    .grid { display: grid; gap: 10px; }
+    a.button { display: flex; align-items: center; justify-content: center; min-height: 46px; border-radius: 10px; padding: 0 14px; font-weight: 800; text-decoration: none; color: #041016; background: #8bd3ff; }
+    a.secondary { background: rgba(255,255,255,.08); color: #f7f8fb; border: 1px solid rgba(255,255,255,.14); }
+    code { display: block; overflow-x: auto; padding: 12px; border-radius: 10px; background: rgba(0,0,0,.36); color: #d8e8ff; font-size: 12px; line-height: 1.5; white-space: pre; }
+    .status { display: inline-flex; gap: 8px; align-items: center; color: #99f6c8; font-weight: 800; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #34d399; box-shadow: 0 0 14px #34d399; }
+    ul { padding-left: 20px; color: #d8deea; line-height: 1.55; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">AMX Local + Cloud</div>
+    <h1>Remote Work Mobile</h1>
+    <p class="status"><span class="dot"></span>Cloud route reached this phone.</p>
+    <p>This is the lightweight mobile dispatch screen. Use it when the full AMX console is slow to boot on cellular or carrier-filtered networks.</p>
+    <div class="grid">
+      <a class="button" href="${fullConsoleUrl}">Open full Work Mesh console</a>
+      <a class="button secondary" href="${origin}/api/health">Check API health</a>
+    </div>
+    <section class="panel">
+      <strong>Dispatch test</strong>
+      <ul>
+        <li>Enroll the PC as an AMX node against the cloud API.</li>
+        <li>Create a read-only GitHub lease in the full console.</li>
+        <li>Run poll and execute on the PC, then submit evidence.</li>
+      </ul>
+      <code>paperclipai --api-base ${apiBaseUrl} --company-id &lt;company-id&gt; amx-node enroll --name "Owner PC" --capabilities heartbeat_worker,filesystem_read,git,github_repo</code>
+    </section>
+    <section class="panel">
+      <strong>If this page loads but the full console does not</strong>
+      <p>The cloud app is reachable. The full dashboard bundle may be blocked, cached, or slow on this mobile network. Try cellular vs Wi-Fi, clear site data, then use the full console button again.</p>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
 export function resolveViteHmrPort(serverPort: number): number {
   const preferred = serverPort + 10_000;
   if (preferred <= 65_535) return Math.max(1_024, preferred);
@@ -288,6 +347,23 @@ export async function createApp(
   app.use(pluginUiStaticRoutes(db, {
     localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR,
   }));
+
+  app.get(["/amx/remote-work", "/amx/dispatch"], (req, res, next) => {
+    if (req.query.full === "1" || !isMobileUserAgent(req.get("user-agent"))) {
+      next();
+      return;
+    }
+    const origin = `${req.protocol}://${req.get("host") ?? "localhost"}`;
+    res
+      .status(200)
+      .set({
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      })
+      .end(buildAmxRemoteWorkMobileHtml(origin));
+  });
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   if (opts.uiMode === "static") {
