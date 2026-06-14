@@ -14,6 +14,7 @@ import {
   ExternalLink,
   FileCheck2,
   Fingerprint,
+  Github,
   HelpCircle,
   Inbox,
   Laptop,
@@ -90,7 +91,8 @@ type RuntimeTarget =
   | "minimax"
   | "claude"
   | "codex"
-  | "gemini";
+  | "gemini"
+  | "github";
 
 type EnrollmentDraft = {
   name: string;
@@ -113,7 +115,17 @@ const runtimeTargets: { id: RuntimeTarget; label: string; helper: string }[] = [
   { id: "claude", label: "Claude", helper: "Claude local/cloud adapter" },
   { id: "codex", label: "Codex", helper: "Codex local adapter" },
   { id: "gemini", label: "Gemini", helper: "Gemini local/cloud adapter" },
+  { id: "github", label: "GitHub", helper: "Issues, PRs, Actions, and repo state" },
 ];
+
+const githubControlPlane = {
+  repoUrl: "https://github.com/Zo-hund/Zo-hund-paperclip-surfer",
+  repoSlug: "Zo-hund/Zo-hund-paperclip-surfer",
+  defaultBranch: "experimental",
+  deployWorkflow: "deploy-vps.yml",
+  deployEnvironment: "hostinger-prod",
+  cloudUrl: "https://amx-air-hubs.cc",
+};
 
 const kindIcons: Record<AmxNodeKind, typeof Laptop> = {
   local_desktop: MonitorSmartphone,
@@ -487,8 +499,8 @@ export function AmxDispatchConsole() {
     kind: "local_desktop",
     trustTier: "paired",
     connectionMode: "outbound_websocket",
-    capabilities: ["heartbeat_worker", "filesystem_read", "local_models", "git"],
-    labelText: "role=operator device=primary",
+    capabilities: ["heartbeat_worker", "filesystem_read", "local_models", "git", "github_repo"],
+    labelText: "role=operator device=primary repo=amx-air-hubs github=connected",
     allowReadRoot: "~/Documents",
     statePath: "~/.paperclip/amx-node.json",
   });
@@ -555,6 +567,14 @@ export function AmxDispatchConsole() {
   const policyBlocks = leases.filter((lease) => lease.status === "denied" || lease.status === "revoked").length;
   const nodesOnline = nodes.filter((node) => ["online", "idle", "busy"].includes(node.status)).length;
   const enabledMcpServers = mcpServers.filter((server) => server.enabled).length;
+  const githubMcpServers = mcpServers.filter((server) => {
+    const text = [server.name, server.description, server.command, server.transportUrl]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return text.includes("github") || text.includes("ghcr");
+  });
+  const enabledGithubMcpServers = githubMcpServers.filter((server) => server.enabled).length;
   const selectedLeaseEvidence = selectedLease
     ? evidence.find((entry) => entry.leaseId === selectedLease.id) ?? null
     : null;
@@ -590,6 +610,14 @@ export function AmxDispatchConsole() {
         enabledMcpServers > 0
           ? `${enabledMcpServers} MCP server(s) enabled`
           : "Connect at least one MCP server for routed work.",
+    },
+    {
+      title: "Connect GitHub control plane",
+      done: enabledGithubMcpServers > 0,
+      detail:
+        enabledGithubMcpServers > 0
+          ? `${enabledGithubMcpServers} GitHub MCP/server route(s) enabled`
+          : "Add GitHub in MCPs so agents can manage issues, PRs, checks, and repo context.",
     },
     {
       title: "Create a dispatch lease",
@@ -731,6 +759,16 @@ export function AmxDispatchConsole() {
         scope: {
           runtimeTarget,
           routeMode: selectedNode?.connectionMode,
+          repoUrl: githubControlPlane.repoUrl,
+          repoRef: githubControlPlane.defaultBranch,
+          githubRepo: githubControlPlane.repoSlug,
+          githubWorkflow: githubControlPlane.deployWorkflow,
+          deployEnvironment: githubControlPlane.deployEnvironment,
+          cloudUrl: githubControlPlane.cloudUrl,
+          repoPath:
+            capability === "git" || capability === "github_repo"
+              ? enrollmentDraft.allowReadRoot.split(/[\n,]+/).map((entry) => entry.trim()).find(Boolean)
+              : undefined,
           operatorIntent: "dispatch_console",
           mcpServersEnabled: enabledMcpServers,
           requestedPolicy:
@@ -1232,6 +1270,67 @@ export function AmxDispatchConsole() {
                       <div className="mt-1 break-all font-mono text-xs text-emerald-100">{createdLeaseToken}</div>
                     </div>
                   ) : null}
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border-border/70 bg-card/80">
+              <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
+                <div>
+                  <h2 className="text-[12px] font-black uppercase tracking-[0.24em]">GitHub Control Plane</h2>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Repo, Actions, PRs, and cloud release route.</p>
+                </div>
+                <Github className="h-4 w-4 text-primary" />
+              </div>
+              <div className="space-y-3 p-4">
+                <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                    Connected repo
+                  </div>
+                  <div className="mt-1 truncate text-sm font-bold text-foreground">
+                    {githubControlPlane.repoSlug}
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    Branch {githubControlPlane.defaultBranch} / deploy {githubControlPlane.deployEnvironment}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div className="text-lg font-black text-primary">{enabledGithubMcpServers}</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                      GitHub MCPs
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div className="text-lg font-black text-emerald-300">VPS</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                      Cloud route
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-primary/20 bg-primary/10 p-3 text-xs leading-relaxed text-muted-foreground">
+                  GitHub work is managed by agents through MCP context and by AMX nodes through scoped Git leases.
+                  Remote PCs do not need inbound ports; they enroll outbound, poll for signed leases, and submit evidence.
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="justify-start gap-2"
+                    onClick={() => window.open(githubControlPlane.repoUrl, "_blank", "noopener,noreferrer")}
+                  >
+                    <Github className="h-4 w-4" />
+                    GitHub
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="justify-start gap-2"
+                    onClick={() => openCompanyRoute("/mcp-servers")}
+                  >
+                    <Plug className="h-4 w-4" />
+                    MCPs
+                  </Button>
                 </div>
               </div>
             </Card>

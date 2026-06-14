@@ -1,4 +1,5 @@
 import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -87,6 +88,8 @@ const AMX_NODE_CAPABILITY_VALUES = [
   "cloud_models",
   "docker",
   "git",
+  "github_repo",
+  "github_actions",
 ] as const satisfies readonly AmxNodeCapability[];
 
 function resolveStatePath(input?: string): string {
@@ -348,6 +351,30 @@ async function executeLocalReadOnlyLease(state: AmxNodeState, lease: AmxDispatch
     } finally {
       fs.closeSync(fd);
     }
+  }
+
+  if (lease.capability === "git" || lease.capability === "github_repo") {
+    const repoPath = getStringScope(scope, "repoPath") ?? getStringScope(scope, "path") ?? process.cwd();
+    const targetPath = resolveScopedReadPath(state, repoPath);
+    const git = (args: string[]) =>
+      execFileSync("git", args, {
+        cwd: targetPath,
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 10_000,
+        maxBuffer: MAX_READ_BYTES,
+      }).trim();
+    return {
+      kind: "git_repo_status",
+      provider: lease.capability === "github_repo" ? "github" : "git",
+      repoPath: targetPath,
+      repoRoot: git(["rev-parse", "--show-toplevel"]),
+      head: git(["rev-parse", "HEAD"]),
+      branch: git(["branch", "--show-current"]),
+      remotes: git(["remote", "-v"]).split(/\r?\n/).filter(Boolean),
+      status: git(["status", "--short", "--branch"]).split(/\r?\n/).filter(Boolean),
+      recentCommits: git(["log", "--oneline", "-5"]).split(/\r?\n/).filter(Boolean),
+    };
   }
 
   throw new Error(`Local policy rejected lease: capability ${lease.capability} has no safe executor yet.`);

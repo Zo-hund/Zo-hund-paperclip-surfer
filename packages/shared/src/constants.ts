@@ -369,6 +369,8 @@ export const AMX_NODE_CAPABILITIES = [
   "cloud_models",
   "docker",
   "git",
+  "github_repo",
+  "github_actions",
 ] as const;
 export type AmxNodeCapability = (typeof AMX_NODE_CAPABILITIES)[number];
 
