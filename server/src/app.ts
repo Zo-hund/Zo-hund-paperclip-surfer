@@ -349,7 +349,7 @@ export async function createApp(
   }));
 
   app.get(["/amx/remote-work", "/amx/dispatch"], (req, res, next) => {
-    if (req.query.full === "1" || !isMobileUserAgent(req.get("user-agent"))) {
+    if (req.query.full === "1" || (req.query.lite !== "1" && !isMobileUserAgent(req.get("user-agent")))) {
       next();
       return;
     }
