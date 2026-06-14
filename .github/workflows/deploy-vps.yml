@@ -22,6 +22,9 @@ on:
         default: ""
         type: string
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -154,8 +157,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          GHCR_PULL_USERNAME: ${{ secrets.GHCR_PULL_USERNAME }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_PULL_USERNAME: ${{ secrets.REGISTRY_USERNAME || secrets.GHCR_PULL_USERNAME || github.repository_owner }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PAT || secrets.REGISTRY_TOKEN || secrets.GHCR_PULL_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           PAPERCLIP_AGENT_JWT_SECRET: ${{ secrets.PAPERCLIP_AGENT_JWT_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
