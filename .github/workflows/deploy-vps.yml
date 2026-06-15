@@ -198,18 +198,40 @@ jobs:
       - name: Create remote deploy directory
         shell: bash
         run: |
+          ssh_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if ssh -o ConnectTimeout=15 -o ConnectionAttempts=3 "$@"; then
+                return 0
+              fi
+              echo "ssh attempt ${attempt}/5 failed (connection likely dropped by remote host), retrying in 10s..." >&2
+              sleep 10
+            done
+            return 1
+          }
           if [ "${{ steps.vars.outputs.deploy_layout }}" = "hostinger-shared-traefik" ]; then
-            ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" \
+            ssh_retry -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" \
               "mkdir -p '${{ steps.vars.outputs.deploy_dir }}'"
           else
-            ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" \
+            ssh_retry -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" \
               "mkdir -p '${{ steps.vars.outputs.deploy_dir }}/traefik/acme' '${{ steps.vars.outputs.deploy_dir }}/paperclip-data'"
           fi
 
       - name: Upload VPS deployment bundle
         shell: bash
         run: |
-          scp -P "${{ secrets.VPS_SSH_PORT || 22 }}" \
+          scp_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if scp -o ConnectTimeout=15 -o ConnectionAttempts=3 "$@"; then
+                return 0
+              fi
+              echo "scp attempt ${attempt}/5 failed (connection likely dropped by remote host), retrying in 10s..." >&2
+              sleep 10
+            done
+            return 1
+          }
+          scp_retry -P "${{ secrets.VPS_SSH_PORT || 22 }}" \
             "${{ steps.vars.outputs.compose_template }}" \
             "deploy/vps/deploy-remote.sh" \
             "${RUNNER_TEMP}/${{ steps.vars.outputs.remote_env_file }}" \
@@ -218,7 +240,18 @@ jobs:
       - name: Rename uploaded deployment files on remote host
         shell: bash
         run: |
-          ssh -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
+          ssh_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if ssh -o ConnectTimeout=15 -o ConnectionAttempts=3 "$@"; then
+                return 0
+              fi
+              echo "ssh attempt ${attempt}/5 failed (connection likely dropped by remote host), retrying in 10s..." >&2
+              sleep 10
+            done
+            return 1
+          }
+          ssh_retry -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
             cd '${{ steps.vars.outputs.deploy_dir }}' && \
             mv '$(basename "${{ steps.vars.outputs.compose_template }}")' '${{ steps.vars.outputs.remote_compose_file }}' && \
             chmod +x deploy-remote.sh"
@@ -228,7 +261,18 @@ jobs:
         env:
           HEALTH_URL: https://${{ steps.vars.outputs.domain }}
         run: |
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
+          ssh_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if ssh -o ConnectTimeout=15 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "$@"; then
+                return 0
+              fi
+              echo "ssh attempt ${attempt}/5 failed (connection likely dropped by remote host), retrying in 10s..." >&2
+              sleep 10
+            done
+            return 1
+          }
+          ssh_retry -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
             cd '${{ steps.vars.outputs.deploy_dir }}' && \
             COMPOSE_FILE='${{ steps.vars.outputs.remote_compose_file }}' \
             ENV_FILE='${{ steps.vars.outputs.remote_env_file }}' \
