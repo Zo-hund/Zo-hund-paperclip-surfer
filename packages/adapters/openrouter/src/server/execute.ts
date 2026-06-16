@@ -140,7 +140,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     }
   }
 
+  const runModeNote = asString(context.paperclipRunModeNote, "").trim();
+
   const systemPrompt = [
+    runModeNote,
     "You are a helpful AI coding agent working in a local workspace environment.",
     instructionsPrefix,
     memoryPrefix,

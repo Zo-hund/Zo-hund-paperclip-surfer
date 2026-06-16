@@ -59,6 +59,7 @@ export function RunHistory() {
   const companyId = selectedCompanyId!;
   const [agentFilter, setAgentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [includeArchived, setIncludeArchived] = useState(false);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Run History" }]);
@@ -71,8 +72,9 @@ export function RunHistory() {
   });
 
   const runsQuery = useQuery({
-    queryKey: ["run-history", companyId, agentFilter],
-    queryFn: () => heartbeatsApi.list(companyId, agentFilter === "all" ? undefined : agentFilter, 250),
+    queryKey: ["run-history", companyId, agentFilter, includeArchived],
+    queryFn: () =>
+      heartbeatsApi.list(companyId, agentFilter === "all" ? undefined : agentFilter, 250, { includeArchived }),
     enabled: !!companyId,
     refetchInterval: 10_000,
   });
@@ -122,6 +124,15 @@ export function RunHistory() {
               <option key={status} value={status}>{status.replace(/_/g, " ")}</option>
             ))}
           </select>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(event) => setIncludeArchived(event.target.checked)}
+              className="h-3.5 w-3.5 rounded border-border"
+            />
+            Show archived
+          </label>
         </div>
       </div>
 
@@ -182,6 +193,9 @@ export function RunHistory() {
                           <Icon className={`h-3.5 w-3.5 ${run.status === "running" ? "animate-spin" : ""}`} />
                           <span className="capitalize">{run.status.replace(/_/g, " ")}</span>
                         </span>
+                        {run.archivedAt && (
+                          <Badge variant="secondary" className="ml-1.5 text-[10px]">archived</Badge>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         {agent ? (

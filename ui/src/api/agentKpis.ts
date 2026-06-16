@@ -66,20 +66,45 @@ export interface AgentExperiment {
   result?: string;
 }
 
+export interface AgentAnalyticsSummary {
+  agentId: string;
+  agentName: string;
+  totalRuns: number;
+  completionRate: number | null;
+  avgSelfAssessment: number | null;
+  avgCostCents: number | null;
+  totalCostCents: number;
+  avgDurationSeconds: number | null;
+  avgErrors: number | null;
+}
+
 export interface CompanyAnalytics {
+  companyId: string;
+  agentCount: number;
   totalRuns: number;
   avgCompletionRate: number;
   totalCostCents: number;
   activeAgents: number;
-  agentSummaries: Array<{
-    agentId: string;
-    agentName: string;
-    totalRuns: number;
-    completionRate: number;
-    avgCostCents: number;
-    avgDurationSeconds: number;
-  }>;
+  agentSummaries: AgentAnalyticsSummary[];
 }
+
+export interface OpprrcReportSummary {
+  id: string;
+  issueId: string;
+  issueIdentifier: string | null;
+  title: string;
+  summary: string | null;
+  generatedAt: string;
+}
+
+export interface ReportExportData {
+  generatedAt: string;
+  company: { id: string; name: string };
+  analytics: CompanyAnalytics;
+  opprrcReports: OpprrcReportSummary[];
+}
+
+export type ReportExportFormat = "json" | "csv" | "markdown" | "pdf";
 
 export interface ExperimentCreateRequest {
   hypothesis: string;
@@ -115,6 +140,8 @@ export const agentKpisApi = {
 export const analyticsApi = {
   getCompanyAnalytics: (companyId: string) =>
     api.get<CompanyAnalytics>(`/companies/${encodeURIComponent(companyId)}/analytics`),
+  getReportExport: (companyId: string) =>
+    api.get<ReportExportData>(`/companies/${encodeURIComponent(companyId)}/reports/export`),
   listObservations: (companyId: string) =>
     api.get<KpiObservation[]>(
       `/companies/${encodeURIComponent(companyId)}/analytics/observations`,
@@ -148,3 +175,7 @@ export const experimentsApi = {
       `/agents/${encodeURIComponent(agentId)}/experiments/${encodeURIComponent(experimentId)}`,
     ),
 };
+
+export function reportExportUrl(companyId: string, format: ReportExportFormat): string {
+  return `/api/companies/${encodeURIComponent(companyId)}/reports/export?format=${format}&download=1`;
+}

@@ -168,6 +168,37 @@ export function resolveExecutionWorkspaceMode(input: {
   return "shared_workspace";
 }
 
+/**
+ * Branch template used to isolate SIM runs. SIM runs are always realized as a
+ * dedicated git worktree (when the base workspace is a git repo) so they can
+ * never land commits on the branch a LIVE run would use.
+ */
+export const SIM_WORKSPACE_BRANCH_TEMPLATE = "sim/{{issue.identifier}}-{{slug}}";
+
+/**
+ * Forces a SIM run into an isolated git-worktree workspace, regardless of the
+ * project/issue workspace policy. This is the "true sandbox isolation"
+ * guarantee for SIM mode: file changes land on a disposable `sim/...` branch
+ * in a separate worktree, never on the branch a LIVE run would use.
+ */
+export function applySimWorkspaceOverride(input: {
+  issueSettings: IssueExecutionWorkspaceSettings | null;
+}): { mode: ParsedExecutionWorkspaceMode; issueSettings: IssueExecutionWorkspaceSettings } {
+  const existingStrategy = input.issueSettings?.workspaceStrategy;
+  return {
+    mode: "isolated_workspace",
+    issueSettings: {
+      ...input.issueSettings,
+      mode: "isolated_workspace",
+      workspaceStrategy: {
+        ...existingStrategy,
+        type: "git_worktree",
+        branchTemplate: existingStrategy?.branchTemplate ?? SIM_WORKSPACE_BRANCH_TEMPLATE,
+      },
+    },
+  };
+}
+
 export function buildExecutionWorkspaceAdapterConfig(input: {
   agentConfig: Record<string, unknown>;
   projectPolicy: ProjectExecutionWorkspacePolicy | null;

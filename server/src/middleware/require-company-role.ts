@@ -31,8 +31,13 @@ export function requireCompanyRole(
       return;
     }
 
-    // Agents have their own company-scoped auth — don't block them here
+    // Agents pass member/viewer gates via company scoping alone.
+    // Admin and owner routes are restricted to human board actors.
     if (actor.type === "agent") {
+      if (!hasCompanyRoleAtLeast("member", minRole)) {
+        next(forbidden(`Agents are not permitted to perform '${minRole}'-level operations`));
+        return;
+      }
       next();
       return;
     }

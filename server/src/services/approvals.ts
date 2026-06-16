@@ -7,13 +7,15 @@ import { agentService } from "./agents.js";
 import { budgetService } from "./budgets.js";
 import { notifyHireApproved } from "./hire-hook.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { webhookDeliveryService } from "./webhook-delivery.js";
 
 export function approvalService(db: Db) {
   const agentsSvc = agentService(db);
   const budgets = budgetService(db);
   const instanceSettings = instanceSettingsService(db);
-  const canResolveStatuses = new Set(["pending", "revision_requested"]);
+  const canResolveStatuses = new Set(["pending", "revision_requested", "escalated"]);
   const resolvableStatuses = Array.from(canResolveStatuses);
+  const canEscalateStatuses = new Set(["pending", "revision_requested"]);
   type ApprovalRecord = typeof approvals.$inferSelect;
   type ResolutionResult = { approval: ApprovalRecord; applied: boolean };
 
@@ -65,6 +67,13 @@ export function approvalService(db: Db) {
       .then((rows) => rows[0] ?? null);
 
     if (updated) {
+      void webhookDeliveryService(db).deliver(updated.companyId, "approval.decided", {
+        approvalId: updated.id,
+        status: targetStatus,
+        type: updated.type,
+        decidedByUserId,
+        decidedAt: now.toISOString(),
+      }).catch(() => {});
       return { approval: updated, applied: true };
     }
 
@@ -198,6 +207,27 @@ export function approvalService(db: Db) {
         .update(approvals)
         .set({
           status: "revision_requested",
+          decidedByUserId,
+          decisionNote: decisionNote ?? null,
+          decidedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(approvals.id, id))
+        .returning()
+        .then((rows) => rows[0]);
+    },
+
+    escalate: async (id: string, decidedByUserId: string, decisionNote?: string | null) => {
+      const existing = await getExistingApproval(id);
+      if (!canEscalateStatuses.has(existing.status)) {
+        throw unprocessable("Only pending or revision requested approvals can be escalated");
+      }
+
+      const now = new Date();
+      return db
+        .update(approvals)
+        .set({
+          status: "escalated",
           decidedByUserId,
           decisionNote: decisionNote ?? null,
           decidedAt: now,

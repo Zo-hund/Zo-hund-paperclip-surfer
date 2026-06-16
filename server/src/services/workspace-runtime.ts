@@ -365,7 +365,7 @@ async function runWorkspaceCommand(input: {
 async function recordGitOperation(
   recorder: WorkspaceOperationRecorder | null | undefined,
   input: {
-    phase: "worktree_prepare" | "worktree_cleanup";
+    phase: "worktree_prepare" | "worktree_cleanup" | "rollback";
     args: string[];
     cwd: string;
     metadata?: Record<string, unknown> | null;
@@ -469,6 +469,30 @@ async function recordWorkspaceCommandOperation(
       ? `${input.label} failed: ${details}`
       : `${input.label} failed with exit code ${code ?? -1}`,
   );
+}
+
+export async function rollbackWorktreeToCommit(input: {
+  worktreePath: string;
+  baseCommitSha: string;
+  recorder?: WorkspaceOperationRecorder | null;
+}): Promise<void> {
+  await recordGitOperation(input.recorder, {
+    phase: "rollback",
+    args: ["reset", "--hard", input.baseCommitSha],
+    cwd: input.worktreePath,
+    metadata: { worktreePath: input.worktreePath, baseCommitSha: input.baseCommitSha },
+    successMessage: `Reset worktree at ${input.worktreePath} to ${input.baseCommitSha}\n`,
+    failureLabel: `git reset --hard ${input.baseCommitSha}`,
+  });
+
+  await recordGitOperation(input.recorder, {
+    phase: "rollback",
+    args: ["clean", "-fd"],
+    cwd: input.worktreePath,
+    metadata: { worktreePath: input.worktreePath },
+    successMessage: `Cleaned untracked files in ${input.worktreePath}\n`,
+    failureLabel: `git clean -fd in ${input.worktreePath}`,
+  });
 }
 
 async function provisionExecutionWorktree(input: {
@@ -579,7 +603,23 @@ export async function realizeExecutionWorkspace(input: {
     };
   }
 
-  const repoRoot = await runGit(["rev-parse", "--show-toplevel"], input.base.baseCwd);
+  let repoRoot: string;
+  try {
+    repoRoot = await runGit(["rev-parse", "--show-toplevel"], input.base.baseCwd);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      ...input.base,
+      strategy: "project_primary",
+      cwd: input.base.baseCwd,
+      branchName: null,
+      worktreePath: null,
+      warnings: [
+        `Isolated workspace requested but "${input.base.baseCwd}" is not a git repository; using a shared workspace instead. (${reason})`,
+      ],
+      created: false,
+    };
+  }
   const branchTemplate = asString(rawStrategy.branchTemplate, "{{issue.identifier}}-{{slug}}");
   const renderedBranch = renderWorkspaceTemplate(branchTemplate, {
     issue: input.issue,
@@ -594,6 +634,7 @@ export async function realizeExecutionWorkspace(input: {
     : path.join(repoRoot, ".paperclip", "worktrees");
   const worktreePath = path.join(worktreeParentDir, branchName);
   const baseRef = asString(rawStrategy.baseRef, input.base.repoRef ?? "HEAD");
+  const baseCommitSha = await runGit(["rev-parse", baseRef], repoRoot).catch(() => null);
 
   await fs.mkdir(worktreeParentDir, { recursive: true });
 
@@ -654,6 +695,7 @@ export async function realizeExecutionWorkspace(input: {
         worktreePath,
         branchName,
         baseRef,
+        baseCommitSha,
         created: true,
       },
       successMessage: `Created git worktree at ${worktreePath}\n`,
@@ -672,6 +714,7 @@ export async function realizeExecutionWorkspace(input: {
         worktreePath,
         branchName,
         baseRef,
+        baseCommitSha,
         created: false,
         reusedExistingBranch: true,
       },

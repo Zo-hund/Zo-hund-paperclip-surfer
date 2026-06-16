@@ -24,6 +24,13 @@ export const requestApprovalRevisionSchema = z.object({
 
 export type RequestApprovalRevision = z.infer<typeof requestApprovalRevisionSchema>;
 
+export const escalateApprovalSchema = z.object({
+  decisionNote: z.string().optional().nullable(),
+  decidedByUserId: z.string().optional().default("board"),
+});
+
+export type EscalateApproval = z.infer<typeof escalateApprovalSchema>;
+
 export const resubmitApprovalSchema = z.object({
   payload: z.record(z.unknown()).optional(),
 });

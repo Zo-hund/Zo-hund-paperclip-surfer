@@ -70,3 +70,4 @@ export { rqSubmissions, rqAgentConfigs } from "./rq_factory.js";
 export { lmsWorkshops, lmsEnrollments, lmsSimulations } from "./lms_training.js";
 export { auditVerifications } from "./audit_verifications.js";
 export { agentChatMessages } from "./agent_chat_messages.js";
+export { companyWebhooks, companyWebhookDeliveries } from "./company_webhooks.js";

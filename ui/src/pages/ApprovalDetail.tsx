@@ -121,6 +121,15 @@ export function ApprovalDetail() {
     onError: (err) => setError(err instanceof Error ? err.message : "Resubmit failed"),
   });
 
+  const escalateMutation = useMutation({
+    mutationFn: () => approvalsApi.escalate(approvalId!),
+    onSuccess: () => {
+      setError(null);
+      refresh();
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Escalate failed"),
+  });
+
   const addCommentMutation = useMutation({
     mutationFn: () => approvalsApi.addComment(approvalId!, commentBody.trim()),
     onSuccess: () => {
@@ -146,7 +155,12 @@ export function ApprovalDetail() {
 
   const payload = approval.payload as Record<string, unknown>;
   const linkedAgentId = typeof payload.agentId === "string" ? payload.agentId : null;
-  const isActionable = approval.status === "pending" || approval.status === "revision_requested";
+  const simRunId = typeof payload.simRunId === "string" ? payload.simRunId : null;
+  const isActionable =
+    approval.status === "pending" ||
+    approval.status === "revision_requested" ||
+    approval.status === "escalated";
+  const canEscalate = approval.status === "pending" || approval.status === "revision_requested";
   const isBudgetApproval = approval.type === "budget_override_required";
   const TypeIcon = typeIcon[approval.type] ?? defaultTypeIcon;
   const showApprovedBanner = searchParams.get("resolved") === "approved" && approval.status === "approved";
@@ -219,7 +233,7 @@ export function ApprovalDetail() {
               />
             </div>
           )}
-          <ApprovalPayloadRenderer type={approval.type} payload={payload} />
+          <ApprovalPayloadRenderer type={approval.type} payload={payload} agentId={approval.requestedByAgentId} />
           <button
             type="button"
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-2"
@@ -304,6 +318,22 @@ export function ApprovalDetail() {
               disabled={resubmitMutation.isPending}
             >
               Mark resubmitted
+            </Button>
+          )}
+          {canEscalate && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700/50"
+              onClick={() => escalateMutation.mutate()}
+              disabled={escalateMutation.isPending}
+            >
+              Escalate
+            </Button>
+          )}
+          {approval.type === "pit_stop_review" && approval.requestedByAgentId && simRunId && (
+            <Button size="sm" variant="ghost" asChild>
+              <Link to={`/agents/${approval.requestedByAgentId}/runs/${simRunId}`}>Audit SIM run</Link>
             </Button>
           )}
           {approval.status === "rejected" && approval.type === "hire_agent" && linkedAgentId && (

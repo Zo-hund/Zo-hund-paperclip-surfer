@@ -176,11 +176,13 @@ export {
   createApprovalSchema,
   resolveApprovalSchema,
   requestApprovalRevisionSchema,
+  escalateApprovalSchema,
   resubmitApprovalSchema,
   addApprovalCommentSchema,
   type CreateApproval,
   type ResolveApproval,
   type RequestApprovalRevision,
+  type EscalateApproval,
   type ResubmitApproval,
   type AddApprovalComment,
 } from "./approval.js";

@@ -15,6 +15,8 @@ export const approvalsApi = {
     api.post<Approval>(`/approvals/${id}/reject`, { decisionNote }),
   requestRevision: (id: string, decisionNote?: string) =>
     api.post<Approval>(`/approvals/${id}/request-revision`, { decisionNote }),
+  escalate: (id: string, decisionNote?: string) =>
+    api.post<Approval>(`/approvals/${id}/escalate`, { decisionNote }),
   resubmit: (id: string, payload?: Record<string, unknown>) =>
     api.post<Approval>(`/approvals/${id}/resubmit`, { payload }),
   listComments: (id: string) => api.get<ApprovalComment[]>(`/approvals/${id}/comments`),

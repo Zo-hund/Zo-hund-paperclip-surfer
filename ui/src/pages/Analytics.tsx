@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   analyticsApi,
   experimentsApi,
+  reportExportUrl,
   type CompanyAnalytics,
   type KpiObservation,
   type AgentExperiment,
   type ObservationCreateRequest,
+  type ReportExportFormat,
 } from "../api/agentKpis";
 import { agentsApi } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
@@ -67,6 +70,10 @@ import {
   Rocket,
   ArrowRight,
   Building2,
+  Download,
+  FileSpreadsheet,
+  FileJson,
+  FileText,
 } from "lucide-react";
 
 const severityColors: Record<string, string> = {
@@ -90,7 +97,7 @@ export function Analytics() {
   const { pushToast } = useToast();
   const companyId = selectedCompanyId!;
 
-  const [activeTab, setActiveTab] = useState<"overview" | "evals">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "evals" | "reports">("overview");
   const [evalsMode, setEvalsMode] = useState<"sandbox" | "live">("sandbox");
   const [sandboxAgentId, setSandboxAgentId] = useState<string>("");
   const [evalModalOpen, setEvalModalOpen] = useState(false);
@@ -122,6 +129,12 @@ export function Analytics() {
     queryKey: queryKeys.companyAnalytics(companyId),
     queryFn: () => analyticsApi.getCompanyAnalytics(companyId),
     enabled: !!companyId,
+  });
+
+  const reportExportQuery = useQuery({
+    queryKey: ["report-export", companyId],
+    queryFn: () => analyticsApi.getReportExport(companyId),
+    enabled: !!companyId && activeTab === "reports",
   });
 
   const observationsQuery = useQuery({
@@ -209,6 +222,8 @@ export function Analytics() {
   const observations = observationsQuery.data ?? [];
   const agents = agentsQuery.data ?? [];
   const agentSummaries = analytics?.agentSummaries ?? [];
+  const reportData = reportExportQuery.data;
+  const opprrcReports = reportData?.opprrcReports ?? [];
 
   // Auto-select first agent for sandbox
   useEffect(() => {
@@ -753,15 +768,16 @@ export function Analytics() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "overview" | "evals")}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "overview" | "evals" | "reports")}>
         <PageTabBar
           align="start"
           items={[
             { value: "overview", label: "Overview" },
             { value: "evals", label: "Evals" },
+            { value: "reports", label: "Reports" },
           ]}
           value={activeTab}
-          onValueChange={(v) => setActiveTab(v as "overview" | "evals")}
+          onValueChange={(v) => setActiveTab(v as "overview" | "evals" | "reports")}
         />
 
         {/* ── Overview Tab ── */}
@@ -815,9 +831,15 @@ export function Analytics() {
                     {agentSummaries.map((trend) => (
                       <tr key={trend.agentId} className="border-b border-border last:border-b-0">
                         <td className="px-3 py-2 font-medium">{trend.agentName}</td>
-                        <td className="px-3 py-2">{Math.round(trend.completionRate * 100)}%</td>
-                        <td className="px-3 py-2">{formatCents(Math.round(trend.avgCostCents))}</td>
-                        <td className="px-3 py-2">{formatDuration(trend.avgDurationSeconds)}</td>
+                        <td className="px-3 py-2">
+                          {trend.completionRate != null ? `${Math.round(trend.completionRate * 100)}%` : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {trend.avgCostCents != null ? formatCents(Math.round(trend.avgCostCents)) : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {trend.avgDurationSeconds != null ? formatDuration(trend.avgDurationSeconds) : "—"}
+                        </td>
                         <td className="px-3 py-2">{trend.totalRuns}</td>
                       </tr>
                     ))}
@@ -1109,6 +1131,85 @@ export function Analytics() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* ── Reports Tab ── */}
+        <TabsContent value="reports" className="mt-6 space-y-8">
+          {/* Export buttons */}
+          <section>
+            <h3 className="text-sm font-semibold mb-3">Export Company Report</h3>
+            <div className="flex flex-wrap gap-2">
+              <ReportExportButton companyId={companyId} format="csv" label="CSV" icon={FileSpreadsheet} />
+              <ReportExportButton companyId={companyId} format="markdown" label="Markdown" icon={FileText} />
+              <ReportExportButton companyId={companyId} format="json" label="JSON" icon={FileJson} />
+              <ReportExportButton companyId={companyId} format="pdf" label="PDF" icon={Download} />
+            </div>
+          </section>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <SummaryCard
+              icon={Activity}
+              label="Total Runs"
+              value={reportData ? String(reportData.analytics.totalRuns) : "--"}
+            />
+            <SummaryCard
+              icon={TrendingUp}
+              label="Avg Completion Rate"
+              value={reportData ? `${Math.round(reportData.analytics.avgCompletionRate * 100)}%` : "--"}
+            />
+            <SummaryCard
+              icon={DollarSign}
+              label="Total Cost"
+              value={reportData ? formatCents(reportData.analytics.totalCostCents) : "--"}
+            />
+            <SummaryCard
+              icon={Users}
+              label="Active Agents"
+              value={reportData ? `${reportData.analytics.activeAgents} / ${reportData.analytics.agentCount}` : "--"}
+            />
+          </div>
+
+          {/* OPPRRC Completion Reports */}
+          <section>
+            <h3 className="text-sm font-semibold mb-3">OPPRRC Completion Reports</h3>
+            {reportExportQuery.isLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : opprrcReports.length === 0 ? (
+              <EmptySection icon={FileText} message="No OPPRRC reports generated yet." />
+            ) : (
+              <div className="space-y-2">
+                {opprrcReports.map((report) => (
+                  <Card key={report.id} className="p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h4 className="text-sm font-medium truncate">{report.title}</h4>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                            {report.issueIdentifier ?? report.issueId}
+                          </Badge>
+                        </div>
+                        {report.summary && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">{report.summary}</p>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">
+                          Generated {new Date(report.generatedAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <Link
+                        to={`/issues/${report.issueIdentifier ?? report.issueId}`}
+                        className="text-xs text-primary hover:underline shrink-0 flex items-center gap-1"
+                      >
+                        View Issue <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
         </TabsContent>
       </Tabs>
 
@@ -3049,6 +3150,27 @@ function DeliveryPipeline({
         </div>
       </div>
     </section>
+  );
+}
+
+function ReportExportButton({
+  companyId,
+  format,
+  label,
+  icon: Icon,
+}: {
+  companyId: string;
+  format: ReportExportFormat;
+  label: string;
+  icon: typeof Download;
+}) {
+  return (
+    <Button size="sm" variant="outline" asChild>
+      <a href={reportExportUrl(companyId, format)} target="_blank" rel="noopener noreferrer" download>
+        <Icon className="h-3.5 w-3.5 mr-1.5" />
+        {label}
+      </a>
+    </Button>
   );
 }
 

@@ -60,7 +60,7 @@ export function ApprovalCard({
       </div>
 
       {/* Payload */}
-      <ApprovalPayloadRenderer type={approval.type} payload={approval.payload} />
+      <ApprovalPayloadRenderer type={approval.type} payload={approval.payload} agentId={approval.requestedByAgentId} />
 
       {/* Decision note */}
       {approval.decisionNote && (

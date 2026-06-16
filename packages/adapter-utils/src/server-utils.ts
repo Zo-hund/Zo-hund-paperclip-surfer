@@ -200,6 +200,31 @@ export function joinPromptSections(
     .join(separator);
 }
 
+/**
+ * Guardrail note prepended to the prompt for SIM-mode runs. SIM runs execute in
+ * an isolated workspace (a disposable git worktree/branch when available), but
+ * the agent itself must still avoid real-world side effects — this note tells it
+ * to simulate/dry-run external actions and record what it *would* do instead of
+ * doing it.
+ */
+export function buildSimModeNote(): string {
+  return [
+    "## SIM MODE — Simulation Run",
+    "",
+    "This is a SIM run, not a LIVE run. It executes in an isolated workspace and its",
+    "results will be reviewed at a PIT STOP gate before anything is promoted to LIVE.",
+    "",
+    "- Do not perform irreversible or external-facing actions: no real emails, messages,",
+    "  payments, deployments, deletions, or calls to third-party/production APIs.",
+    "- For any tool or action that would normally mutate external/production state,",
+    "  describe what you *would* do (target, payload, expected effect) instead of doing it.",
+    "- File edits within this isolated workspace are fine and expected — that is how SIM",
+    "  exercises the real change.",
+    "- Summarize estimated cost, runtime, risk, and required permissions for the work in",
+    "  your final result so it can be reviewed before promotion to LIVE.",
+  ].join("\n");
+}
+
 export function redactEnvForLogs(env: Record<string, string>): Record<string, string> {
   const redacted: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {

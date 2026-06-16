@@ -12,6 +12,12 @@ export interface ActiveRunForIssue extends HeartbeatRun {
   adapterType: string;
 }
 
+export interface RollbackResult {
+  run: HeartbeatRun;
+  worktreePath: string;
+  baseCommitSha: string;
+}
+
 export interface LiveRunForIssue {
   id: string;
   status: string;
@@ -27,10 +33,11 @@ export interface LiveRunForIssue {
 }
 
 export const heartbeatsApi = {
-  list: (companyId: string, agentId?: string, limit?: number) => {
+  list: (companyId: string, agentId?: string, limit?: number, opts?: { includeArchived?: boolean }) => {
     const searchParams = new URLSearchParams();
     if (agentId) searchParams.set("agentId", agentId);
     if (limit) searchParams.set("limit", String(limit));
+    if (opts?.includeArchived) searchParams.set("includeArchived", "true");
     const qs = searchParams.toString();
     return api.get<HeartbeatRun[]>(`/companies/${companyId}/heartbeat-runs${qs ? `?${qs}` : ""}`);
   },
@@ -50,6 +57,10 @@ export const heartbeatsApi = {
       `/workspace-operations/${operationId}/log?offset=${encodeURIComponent(String(offset))}&limitBytes=${encodeURIComponent(String(limitBytes))}`,
     ),
   cancel: (runId: string) => api.post<void>(`/heartbeat-runs/${runId}/cancel`, {}),
+  pause: (runId: string) => api.post<HeartbeatRun>(`/heartbeat-runs/${runId}/pause`, {}),
+  archive: (runId: string) => api.post<HeartbeatRun>(`/heartbeat-runs/${runId}/archive`, {}),
+  unarchive: (runId: string) => api.post<HeartbeatRun>(`/heartbeat-runs/${runId}/unarchive`, {}),
+  rollback: (runId: string) => api.post<RollbackResult>(`/heartbeat-runs/${runId}/rollback`, {}),
   updateConfig: (runId: string, adapterType?: string, adapterConfig?: Record<string, unknown>) => 
     api.patch<HeartbeatRun>(`/heartbeat-runs/${runId}/config`, { adapterType, adapterConfig }),
   liveRunsForIssue: (issueId: string) =>

@@ -31,5 +31,9 @@ export function summarizeHeartbeatRunResultJson(
     }
   }
 
+  if (resultJson.simArtifacts && typeof resultJson.simArtifacts === "object") {
+    summary.simArtifacts = resultJson.simArtifacts;
+  }
+
   return Object.keys(summary).length > 0 ? summary : null;
 }

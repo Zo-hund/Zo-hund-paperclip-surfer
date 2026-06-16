@@ -421,6 +421,27 @@
       "when": 1781393056232,
       "tag": "0059_tough_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1781537508128,
+      "tag": "0060_careful_vivisector",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1781552371098,
+      "tag": "0061_nostalgic_nekra",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1781574105886,
+      "tag": "0062_classy_ben_grimm",
+      "breakpoints": true
     }
   ]
 }

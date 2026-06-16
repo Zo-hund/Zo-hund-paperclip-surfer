@@ -432,7 +432,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       ? renderTemplate(bootstrapPromptTemplate, templateData).trim()
       : "";
   const sessionHandoffNote = asString(context.paperclipSessionHandoffMarkdown, "").trim();
+  const runModeNote = asString(context.paperclipRunModeNote, "").trim();
   const prompt = joinPromptSections([
+    runModeNote,
     renderedBootstrapPrompt,
     sessionHandoffNote,
     renderedPrompt,
@@ -441,6 +443,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     promptChars: prompt.length,
     bootstrapPromptChars: renderedBootstrapPrompt.length,
     sessionHandoffChars: sessionHandoffNote.length,
+    runModeNoteChars: runModeNote.length,
     heartbeatPromptChars: renderedPrompt.length,
   };
 

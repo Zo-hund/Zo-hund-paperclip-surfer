@@ -1,10 +1,16 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
-import { agents } from "@paperclipai/db";
+import { agents, companies } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { postRunEvalService } from "../services/agent-runtime/post-run-eval.js";
 import { kpiAnalyticsService } from "../services/agent-runtime/kpi-analytics.js";
 import { assertCompanyAccess } from "./authz.js";
+import {
+  renderCompanyReportPdf,
+  formatCents,
+  slugify,
+  type ReportExportData,
+} from "../services/pdf-export.js";
 
 export function agentKpiRoutes(db: Db) {
   const router = Router();
@@ -62,6 +68,58 @@ export function agentKpiRoutes(db: Db) {
     res.json(result);
   });
 
+  // Company report export (Phase F: json | csv | markdown | pdf)
+  router.get("/companies/:companyId/reports/export", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+
+    const [company] = await db
+      .select({ id: companies.id, name: companies.name })
+      .from(companies)
+      .where(eq(companies.id, companyId))
+      .limit(1);
+    if (!company) {
+      res.status(404).json({ error: "Company not found" });
+      return;
+    }
+
+    const [companyAnalytics, opprrcReports] = await Promise.all([
+      analytics.getCompanyAnalytics(companyId),
+      analytics.listOpprrcReports(companyId),
+    ]);
+
+    const data: ReportExportData = {
+      generatedAt: new Date().toISOString(),
+      company,
+      analytics: companyAnalytics,
+      opprrcReports,
+    };
+
+    const format = (req.query.format as string | undefined) ?? "json";
+    const download = req.query.download === "1";
+    const filenameBase = slugify(company.name);
+
+    switch (format) {
+      case "pdf":
+        renderCompanyReportPdf(res, data);
+        return;
+      case "csv":
+        res.setHeader("Content-Type", "text/csv");
+        if (download) res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}-report.csv"`);
+        res.send(renderReportCsv(data));
+        return;
+      case "markdown":
+        res.setHeader("Content-Type", "text/markdown");
+        if (download) res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}-report.md"`);
+        res.send(renderReportMarkdown(data));
+        return;
+      default:
+        if (download) res.setHeader("Content-Disposition", `attachment; filename="${filenameBase}-report.json"`);
+        res.json(data);
+        return;
+    }
+  });
+
   // List observations
   router.get("/companies/:companyId/analytics/observations", async (req, res) => {
     const { companyId } = req.params;
@@ -113,4 +171,90 @@ export function agentKpiRoutes(db: Db) {
   });
 
   return router;
+}
+
+function escapeCsv(value: string): string {
+  if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+  return value;
+}
+
+function renderReportCsv(data: ReportExportData): string {
+  const lines: string[] = [];
+  lines.push(`Report,${escapeCsv(data.company.name)}`);
+  lines.push(`Generated,${data.generatedAt}`);
+  lines.push("");
+  lines.push(
+    "Agent,Total Runs,Completion Rate,Avg Self Assessment,Avg Cost Cents,Total Cost Cents,Avg Duration Seconds,Avg Errors",
+  );
+  for (const a of data.analytics.agentSummaries) {
+    lines.push(
+      [
+        escapeCsv(a.agentName),
+        a.totalRuns,
+        a.completionRate ?? "",
+        a.avgSelfAssessment ?? "",
+        a.avgCostCents ?? "",
+        a.totalCostCents,
+        a.avgDurationSeconds ?? "",
+        a.avgErrors ?? "",
+      ].join(","),
+    );
+  }
+  lines.push("");
+  lines.push("OPPRRC Report,Issue,Generated At,Summary");
+  for (const r of data.opprrcReports) {
+    lines.push(
+      [
+        escapeCsv(r.title),
+        escapeCsv(r.issueIdentifier ?? r.issueId),
+        r.generatedAt,
+        escapeCsv(r.summary ?? ""),
+      ].join(","),
+    );
+  }
+  return lines.join("\n");
+}
+
+function renderReportMarkdown(data: ReportExportData): string {
+  const lines: string[] = [];
+  lines.push(`# ${data.company.name} — Company Report`);
+  lines.push("");
+  lines.push(`Generated: ${data.generatedAt}`);
+  lines.push("");
+  lines.push("## Summary");
+  lines.push("");
+  lines.push(`- Total Runs: ${data.analytics.totalRuns}`);
+  lines.push(`- Avg Completion Rate: ${(data.analytics.avgCompletionRate * 100).toFixed(1)}%`);
+  lines.push(`- Total Cost: ${formatCents(data.analytics.totalCostCents)}`);
+  lines.push(`- Active Agents: ${data.analytics.activeAgents} / ${data.analytics.agentCount}`);
+  lines.push("");
+  lines.push("## Agent Summaries");
+  lines.push("");
+  if (data.analytics.agentSummaries.length === 0) {
+    lines.push("_No agent data yet._");
+  } else {
+    lines.push("| Agent | Runs | Completion | Avg Cost | Total Cost |");
+    lines.push("|---|---|---|---|---|");
+    for (const a of data.analytics.agentSummaries) {
+      const completion = a.completionRate != null ? `${Math.round(a.completionRate * 100)}%` : "—";
+      const avgCost = a.avgCostCents != null ? formatCents(a.avgCostCents) : "—";
+      lines.push(`| ${a.agentName} | ${a.totalRuns} | ${completion} | ${avgCost} | ${formatCents(a.totalCostCents)} |`);
+    }
+  }
+  lines.push("");
+  lines.push("## OPPRRC Completion Reports");
+  lines.push("");
+  if (data.opprrcReports.length === 0) {
+    lines.push("_No OPPRRC reports generated yet._");
+  } else {
+    for (const r of data.opprrcReports) {
+      lines.push(`### ${r.issueIdentifier ?? r.issueId} — ${r.title}`);
+      lines.push("");
+      lines.push(r.summary ?? "(no summary)");
+      lines.push("");
+      lines.push(`_Generated: ${r.generatedAt}_`);
+      lines.push("");
+    }
+  }
+  return lines.join("\n");
 }

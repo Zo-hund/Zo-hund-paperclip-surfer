@@ -12,6 +12,7 @@ import type {
   Approval,
   AgentConfigRevision,
   AgentChatMessage,
+  RouterPreviewResult,
 } from "@paperclipai/shared";
 import { isUuidLike, normalizeAgentUrlKey } from "@paperclipai/shared";
 import { ApiError, api } from "./client";
@@ -225,6 +226,8 @@ export const agentsApi = {
       `/companies/${encodeURIComponent(companyId)}/swarm/promote`,
       data,
     ),
+  routerPreview: (id: string, companyId?: string) =>
+    api.get<RouterPreviewResult>(agentPath(id, companyId, "/router/preview")),
 };
 
 export interface AvailableSkill {

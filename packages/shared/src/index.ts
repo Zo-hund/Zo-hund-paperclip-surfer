@@ -9,6 +9,8 @@ export {
   AGENT_ROLE_LABELS,
   AGENT_ICON_NAMES,
   ISSUE_STATUSES,
+  RUN_MODES,
+  ISSUE_LIFECYCLE_STAGES,
   ISSUE_PRIORITIES,
   ISSUE_ORIGIN_KINDS,
   GOAL_LEVELS,
@@ -86,6 +88,8 @@ export {
   type AgentRole,
   type AgentIconName,
   type IssueStatus,
+  type RunMode,
+  type IssueLifecycleStage,
   type IssuePriority,
   type IssueOriginKind,
   type GoalLevel,
@@ -155,6 +159,13 @@ export {
 export type {
   AgentChatMessage,
 } from "./types/agent-chat.js";
+
+export type {
+  AdapterCapabilities,
+  RouterPolicy,
+  RouterDecision,
+  RouterPreviewResult,
+} from "./types/router.js";
 
 export type {
   Company,
@@ -258,6 +269,7 @@ export type {
   FinanceByKind,
   HeartbeatRun,
   HeartbeatRunEvent,
+  SimArtifactBundle,
   AgentRuntimeState,
   AgentTaskSession,
   AgentWakeupRequest,
@@ -440,6 +452,7 @@ export {
   resolveBudgetIncidentSchema,
   resolveApprovalSchema,
   requestApprovalRevisionSchema,
+  escalateApprovalSchema,
   resubmitApprovalSchema,
   addApprovalCommentSchema,
   type CreateApproval,
@@ -447,6 +460,7 @@ export {
   type ResolveBudgetIncident,
   type ResolveApproval,
   type RequestApprovalRevision,
+  type EscalateApproval,
   type ResubmitApproval,
   type AddApprovalComment,
   envBindingPlainSchema,

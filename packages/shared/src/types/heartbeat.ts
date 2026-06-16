@@ -41,8 +41,34 @@ export interface HeartbeatRun {
   runMode: string;
   swarmBatchId: string | null;
   promotedFromRunId: string | null;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * Artifact bundle produced for SIM runs and merged into `heartbeat_runs.resultJson`
+ * under the `simArtifacts` key. Reviewed at the PIT STOP gate before a SIM run can
+ * be promoted to LIVE.
+ */
+export interface SimArtifactBundle {
+  runMode: "sim";
+  executionGraph: Array<{ seq: number; eventType: string; message: string | null }>;
+  estimatedRuntimeMs: number | null;
+  estimatedCostCents: number | null;
+  modelsUsed: string[];
+  requiredPermissions: string[];
+  workspace: {
+    strategy: string;
+    isolated: boolean;
+    branchName: string | null;
+    worktreePath: string | null;
+    cwd: string | null;
+    warnings: string[];
+  };
+  riskScore: number;
+  riskFactors: string[];
+  rollbackPlan: string;
 }
 
 export interface HeartbeatRunEvent {

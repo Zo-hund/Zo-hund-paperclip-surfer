@@ -47,17 +47,35 @@ export interface ChainLog {
   timestamp: string;
 }
 
-export interface Certificate {
-  id: string;
-  title: string;
-  issuedTo: string;
-  date: string;
-  footprint: string;
-}
-
 export interface ChainData {
   logs: ChainLog[];
-  certificates: Certificate[];
+}
+
+export interface AmxCertificate {
+  id: string;
+  companyId: string;
+  issueId: string | null;
+  taskId: string | null;
+  responsiblePrincipalId: string;
+  responsiblePrincipalName: string | null;
+  commitHashes: string[];
+  taskLogsSummary: string | null;
+  completionTimeMs: number;
+  finalCostTokens: number;
+  projects: string[];
+  resources: string[];
+  reports: string[];
+  certificateFootprint: string;
+  status: string;
+  issuedAt: string;
+  expiresAt: string | null;
+  issueIdentifier: string | null;
+}
+
+export interface VerifyCertificateResult {
+  valid: boolean;
+  error?: string;
+  cert?: AmxCertificate;
 }
 
 export interface Workshop {
@@ -81,18 +99,28 @@ export interface LmsData {
 }
 
 export const amxApi = {
-  getExchange: (companyId: string) => 
+  getExchange: (companyId: string) =>
     api.get<ExchangeData>(`/companies/${companyId}/amx/exchange`),
-  
-  getWallet: (companyId: string) => 
+
+  getWallet: (companyId: string) =>
     api.get<WalletData>(`/companies/${companyId}/amx/wallet`),
-  
-  getChain: (companyId: string) => 
+
+  getChain: (companyId: string) =>
     api.get<ChainData>(`/companies/${companyId}/amx/chain`),
-  
-  getLms: (companyId: string) => 
+
+  getCertificates: (companyId: string) =>
+    api.get<AmxCertificate[]>(`/companies/${companyId}/amx/certificates`),
+
+  verifyCertificate: (footprint: string) =>
+    api.get<VerifyCertificateResult>(`/certificates/verify/${encodeURIComponent(footprint)}`),
+
+  getLms: (companyId: string) =>
     api.get<LmsData>(`/companies/${companyId}/lms/dashboard`),
-  
-  submitRq: (companyId: string, data: any) => 
+
+  submitRq: (companyId: string, data: any) =>
     api.post(`/companies/${companyId}/amx/rq-portal`, data),
 };
+
+export function certificatePdfUrl(companyId: string, certId: string): string {
+  return `/api/companies/${encodeURIComponent(companyId)}/amx/certificates/${encodeURIComponent(certId)}/pdf`;
+}

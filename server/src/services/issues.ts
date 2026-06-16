@@ -21,7 +21,7 @@ import {
   projectWorkspaces,
   projects,
 } from "@paperclipai/db";
-import { extractAgentMentionIds, extractProjectMentionIds } from "@paperclipai/shared";
+import { extractAgentMentionIds, extractProjectMentionIds, ISSUE_LIFECYCLE_STAGES } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
 import {
   defaultIssueExecutionWorkspaceSettingsForProject,
@@ -32,6 +32,7 @@ import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText } from "../log-redaction.js";
 import { resolveIssueGoalId, resolveNextIssueGoalId } from "./issue-goal-fallback.js";
 import { getDefaultCompanyGoal } from "./goals.js";
+import { webhookDeliveryService } from "./webhook-delivery.js";
 
 const ALL_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "cancelled"];
 const MAX_ISSUE_COMMENT_PAGE_LIMIT = 500;
@@ -40,6 +41,27 @@ function assertTransition(from: string, to: string) {
   if (from === to) return;
   if (!ALL_ISSUE_STATUSES.includes(to)) {
     throw conflict(`Unknown issue status: ${to}`);
+  }
+}
+
+/**
+ * Guard for the AMX-AIR-HUBS lifecycle stage. Stages advance forward only
+ * (sim -> pit_stop -> live -> opprrc -> reports -> certified -> learning).
+ * Entering the lifecycle from `null` is allowed at any stage; idempotent
+ * (same-stage) writes are no-ops. Backward moves are rejected to keep the
+ * governing flow enforced by system design rather than user discipline.
+ */
+function assertLifecycleTransition(from: string | null | undefined, to: string) {
+  const toIndex = ISSUE_LIFECYCLE_STAGES.indexOf(to as (typeof ISSUE_LIFECYCLE_STAGES)[number]);
+  if (toIndex === -1) {
+    throw conflict(`Unknown lifecycle stage: ${to}`);
+  }
+  if (from == null) return;
+  if (from === to) return;
+  const fromIndex = ISSUE_LIFECYCLE_STAGES.indexOf(from as (typeof ISSUE_LIFECYCLE_STAGES)[number]);
+  if (fromIndex === -1) return; // legacy/unknown source stage: allow re-entry
+  if (toIndex < fromIndex) {
+    throw conflict(`Cannot move lifecycle stage backward: ${from} -> ${to}`);
   }
 }
 
@@ -979,6 +1001,9 @@ export function issueService(db: Db) {
       if (issueData.status) {
         assertTransition(existing.status, issueData.status);
       }
+      if (issueData.lifecycleStage != null) {
+        assertLifecycleTransition(existing.lifecycleStage, issueData.lifecycleStage);
+      }
 
       const patch: Partial<typeof issues.$inferInsert> = {
         ...issueData,
@@ -1031,7 +1056,7 @@ export function issueService(db: Db) {
         patch.checkoutRunId = null;
       }
 
-      return db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
         const defaultCompanyGoal = await getDefaultCompanyGoal(tx, existing.companyId);
         const [currentProjectGoalId, nextProjectGoalId] = await Promise.all([
           getProjectDefaultGoalId(tx, existing.companyId, existing.projectId),
@@ -1063,6 +1088,17 @@ export function issueService(db: Db) {
         const [enriched] = await withIssueLabels(tx, [updated]);
         return enriched;
       });
+
+      if (result && issueData.status && issueData.status !== existing.status) {
+        void webhookDeliveryService(db).deliver(existing.companyId, "issue.status_changed", {
+          issueId: result.id,
+          identifier: result.identifier,
+          previousStatus: existing.status,
+          status: result.status,
+        }).catch(() => {});
+      }
+
+      return result;
     },
 
     remove: (id: string) =>

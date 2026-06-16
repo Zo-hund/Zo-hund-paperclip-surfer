@@ -14,6 +14,7 @@ import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "
 import { formatAssigneeUserLabel } from "../lib/assignees";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
+import { LifecycleStepper } from "./LifecycleStepper";
 import { Identity } from "./Identity";
 import { formatDate, cn, projectUrl } from "../lib/utils";
 import { timeAgo } from "../lib/timeAgo";
@@ -498,6 +499,12 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             showLabel
           />
         </PropertyRow>
+
+        {issue.lifecycleStage ? (
+          <PropertyRow label="Lifecycle">
+            <LifecycleStepper stage={issue.lifecycleStage} />
+          </PropertyRow>
+        ) : null}
 
         <PropertyRow label="Priority">
           <PriorityIcon

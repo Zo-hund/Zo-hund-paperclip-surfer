@@ -123,6 +123,7 @@ export type { FinanceEvent, FinanceSummary, FinanceByBiller, FinanceByKind } fro
 export type {
   HeartbeatRun,
   HeartbeatRunEvent,
+  SimArtifactBundle,
   AgentRuntimeState,
   AgentTaskSession,
   AgentWakeupRequest,
@@ -177,6 +178,12 @@ export type {
   CompanyPortabilityImportResult,
   CompanyPortabilityExportRequest,
 } from "./company-portability.js";
+export type {
+  AdapterCapabilities,
+  RouterPolicy,
+  RouterDecision,
+  RouterPreviewResult,
+} from "./router.js";
 export type {
   JsonSchema,
   PluginJobDeclaration,

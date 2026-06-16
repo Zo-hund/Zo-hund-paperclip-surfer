@@ -1,11 +1,14 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
+import { amxChainEvents, amxCertificates, agents, issues } from "@paperclipai/db";
 import { amxChainService } from "../services/amxChainService.js";
 import { rqPortalService } from "../services/rqPortalService.js";
 import { financeService } from "../services/finance.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
+import { eq, desc, and, inArray } from "drizzle-orm";
+import { renderCertificatePdf } from "../services/pdf-export.js";
 
 const submitRqSchema = z.object({
   tier: z.enum(["starter", "pro", "enterprise"]),
@@ -110,24 +113,146 @@ export function amxRoutes(db: Db) {
 
   /**
    * GET /api/companies/:companyId/amx/chain
-   * Returns ledger logs and certificates.
+   * Returns real amx_chain_events as ledger logs (no certificates — moved to /amx/certificates).
    */
   router.get("/companies/:companyId/amx/chain", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    
-    // In a real implementation this would query amxChainEvents and amxCertificates
-    res.json({
-      logs: [
-        { id: "log_1", action: "CREDENTIAL_GRANT", principal: "User 4", status: "VERIFIED", hash: "0x8f2d...4a1b", timestamp: new Date().toISOString() },
-        { id: "log_2", action: "TASK_COMMIT", principal: "Agent SEO", status: "VERIFIED", hash: "0x3c1a...9e7f", timestamp: new Date(Date.now() - 3600000).toISOString() },
-        { id: "log_3", action: "BUDGET_APPROVAL", principal: "CEO", status: "VERIFIED", hash: "0xad42...f2e0", timestamp: new Date(Date.now() - 7200000).toISOString() },
-      ],
-      certificates: [
-        { id: "cert_1", title: "Master AI Architect", issuedTo: "User 4", date: "2026-03-25", footprint: "sha256:8f2d...4a1b" },
-        { id: "cert_2", title: "XR Development Expert", issuedTo: "User 2", date: "2026-03-20", footprint: "sha256:3c1a...9e7f" },
-      ]
-    });
+
+    const events = await db
+      .select()
+      .from(amxChainEvents)
+      .where(eq(amxChainEvents.companyId, companyId))
+      .orderBy(desc(amxChainEvents.createdAt))
+      .limit(50);
+
+    // Batch-resolve agent names for principalType === "agent"
+    const agentIds = [...new Set(
+      events.filter((e) => e.principalType === "agent").map((e) => e.principalId),
+    )];
+    const agentNameMap: Record<string, string> = {};
+    if (agentIds.length > 0) {
+      const rows = await db
+        .select({ id: agents.id, name: agents.name })
+        .from(agents)
+        .where(inArray(agents.id, agentIds));
+      for (const row of rows) agentNameMap[row.id] = row.name;
+    }
+
+    const logs = events.map((e) => ({
+      id: e.id,
+      action: e.action,
+      principal: e.principalType === "agent" ? (agentNameMap[e.principalId] ?? e.principalId) : e.principalId,
+      status: "VERIFIED",
+      hash: e.signature.length > 20 ? `${e.signature.slice(0, 20)}...` : e.signature,
+      timestamp: e.createdAt.toISOString(),
+    }));
+
+    res.json({ logs });
+  });
+
+  /**
+   * GET /api/companies/:companyId/amx/certificates
+   * Returns real amxCertificates for the company.
+   */
+  router.get("/companies/:companyId/amx/certificates", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const certs = await db
+      .select({
+        id: amxCertificates.id,
+        companyId: amxCertificates.companyId,
+        issueId: amxCertificates.issueId,
+        taskId: amxCertificates.taskId,
+        responsiblePrincipalId: amxCertificates.responsiblePrincipalId,
+        commitHashes: amxCertificates.commitHashes,
+        taskLogsSummary: amxCertificates.taskLogsSummary,
+        completionTimeMs: amxCertificates.completionTimeMs,
+        finalCostTokens: amxCertificates.finalCostTokens,
+        projects: amxCertificates.projects,
+        resources: amxCertificates.resources,
+        reports: amxCertificates.reports,
+        certificateFootprint: amxCertificates.certificateFootprint,
+        status: amxCertificates.status,
+        issuedAt: amxCertificates.issuedAt,
+        expiresAt: amxCertificates.expiresAt,
+        issueIdentifier: issues.identifier,
+      })
+      .from(amxCertificates)
+      .leftJoin(issues, eq(amxCertificates.issueId, issues.id))
+      .where(eq(amxCertificates.companyId, companyId))
+      .orderBy(desc(amxCertificates.issuedAt));
+
+    // Best-effort resolve principal names from agents table
+    const principalIds = [...new Set(certs.map((c) => c.responsiblePrincipalId))];
+    const principalNameMap: Record<string, string> = {};
+    if (principalIds.length > 0) {
+      const rows = await db
+        .select({ id: agents.id, name: agents.name })
+        .from(agents)
+        .where(inArray(agents.id, principalIds));
+      for (const row of rows) principalNameMap[row.id] = row.name;
+    }
+
+    const result = certs.map((c) => ({
+      ...c,
+      issuedAt: c.issuedAt.toISOString(),
+      expiresAt: c.expiresAt?.toISOString() ?? null,
+      responsiblePrincipalName: principalNameMap[c.responsiblePrincipalId] ?? null,
+    }));
+
+    res.json(result);
+  });
+
+  /**
+   * GET /api/companies/:companyId/amx/certificates/:id/pdf
+   * Streams a certificate PDF with embedded QR verify link.
+   */
+  router.get("/companies/:companyId/amx/certificates/:id/pdf", async (req, res) => {
+    const { companyId, id } = req.params;
+    assertCompanyAccess(req, companyId);
+
+    const [cert] = await db
+      .select()
+      .from(amxCertificates)
+      .where(and(eq(amxCertificates.id, id), eq(amxCertificates.companyId, companyId)))
+      .limit(1);
+
+    if (!cert) {
+      res.status(404).json({ error: "Certificate not found" });
+      return;
+    }
+
+    // Best-effort resolve principal name
+    let responsiblePrincipalName: string | null = null;
+    const [agentRow] = await db
+      .select({ name: agents.name })
+      .from(agents)
+      .where(eq(agents.id, cert.responsiblePrincipalId))
+      .limit(1);
+    if (agentRow) responsiblePrincipalName = agentRow.name;
+
+    const verifyUrl = `${req.protocol}://${req.get("host")}/api/certificates/verify/${cert.certificateFootprint}`;
+
+    await renderCertificatePdf(
+      res,
+      {
+        id: cert.id,
+        certificateFootprint: cert.certificateFootprint,
+        status: cert.status,
+        responsiblePrincipalId: cert.responsiblePrincipalId,
+        responsiblePrincipalName,
+        completionTimeMs: cert.completionTimeMs,
+        finalCostTokens: cert.finalCostTokens,
+        commitHashes: cert.commitHashes,
+        projects: cert.projects,
+        resources: cert.resources,
+        reports: cert.reports,
+        issuedAt: cert.issuedAt,
+      },
+      verifyUrl,
+    );
   });
 
   /**
@@ -145,6 +270,19 @@ export function amxRoutes(db: Db) {
     });
 
     res.status(201).json(submission);
+  });
+
+  /**
+   * GET /api/certificates/verify/:footprint
+   * Verifies an AMX certificate footprint issued by the OPPRRC lifecycle
+   * pipeline (CERTIFICATE phase). A footprint is an opaque SHA256 reference —
+   * this route is intentionally unscoped (no company check), analogous to a
+   * certificate "QR verify" code.
+   */
+  router.get("/certificates/verify/:footprint", async (req, res) => {
+    const footprint = req.params.footprint as string;
+    const result = await chainSvc.verifyCertificate(footprint);
+    res.json(result);
   });
 
   return router;

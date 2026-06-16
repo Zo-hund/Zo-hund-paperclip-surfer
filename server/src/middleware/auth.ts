@@ -8,9 +8,29 @@ import type { CompanyMembershipRole, DeploymentMode } from "@paperclipai/shared"
 import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "./logger.js";
 import { boardAuthService } from "../services/board-auth.js";
+import { unauthorized } from "../errors.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
+}
+
+/**
+ * Sliding-window rate limiter for failed bearer-token authentication attempts.
+ * Counts every unrecognised token presented from a given IP, returning true
+ * once the caller is over the threshold so the request can be rejected with 429.
+ */
+function createFailedAuthLimiter(maxAttempts: number, windowMs: number) {
+  const history = new Map<string, number[]>();
+  return {
+    record(ip: string): boolean {
+      const now = Date.now();
+      const windowStart = now - windowMs;
+      const existing = (history.get(ip) ?? []).filter((ts) => ts > windowStart);
+      existing.push(now);
+      history.set(ip, existing);
+      return existing.length > maxAttempts;
+    },
+  };
 }
 
 interface ActorMiddlewareOptions {
@@ -20,7 +40,9 @@ interface ActorMiddlewareOptions {
 
 export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHandler {
   const boardAuth = boardAuthService(db);
-  return async (req, _res, next) => {
+  // 20 unrecognised bearer tokens per IP per minute before 429
+  const failedAuthLimiter = createFailedAuthLimiter(20, 60_000);
+  return async (req, res, next) => {
     req.actor =
       opts.deploymentMode === "local_trusted"
         ? { type: "board", userId: "local-board", isInstanceAdmin: true, source: "local_implicit" }
@@ -121,6 +143,13 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
     if (!key) {
       const claims = verifyLocalAgentJwt(token);
       if (!claims) {
+        // Token was presented but matches no board key, agent key, or valid JWT.
+        // Rate-limit to prevent brute-force enumeration.
+        const ip = req.ip ?? req.socket?.remoteAddress ?? "unknown";
+        if (failedAuthLimiter.record(ip)) {
+          res.status(429).json({ error: "Too many authentication failures — try again later" });
+          return;
+        }
         next();
         return;
       }
@@ -132,12 +161,12 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         .then((rows) => rows[0] ?? null);
 
       if (!agentRecord || agentRecord.companyId !== claims.company_id) {
-        next();
+        next(unauthorized("Agent not found or company mismatch"));
         return;
       }
 
       if (agentRecord.status === "terminated" || agentRecord.status === "pending_approval") {
-        next();
+        next(unauthorized("Agent is not authorized"));
         return;
       }
 
@@ -165,7 +194,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
       .then((rows) => rows[0] ?? null);
 
     if (!agentRecord || agentRecord.status === "terminated" || agentRecord.status === "pending_approval") {
-      next();
+      next(unauthorized("Agent is not authorized"));
       return;
     }
 

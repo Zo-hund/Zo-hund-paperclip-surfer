@@ -2,10 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { and, asc, desc, eq, gt, inArray, isNotNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { nextCronTickInTimeZone, validateCron, assertValidTimeZone } from "./cron.js";
 import type { Db } from "@paperclipai/db";
 import type { BillingType } from "@paperclipai/shared";
+import { ISSUE_LIFECYCLE_STAGES } from "@paperclipai/shared";
+import { aiRouterService } from "./ai-router.js";
+import { webhookDeliveryService } from "./webhook-delivery.js";
 import {
   agents,
   agentRuntimeState,
@@ -39,12 +42,14 @@ import {
   persistAdapterManagedRuntimeServices,
   realizeExecutionWorkspace,
   releaseRuntimeServicesForRun,
+  rollbackWorktreeToCommit,
   sanitizeRuntimeServiceBaseEnv,
 } from "./workspace-runtime.js";
 import { issueService } from "./issues.js";
 import { executionWorkspaceService } from "./execution-workspaces.js";
 import { workspaceOperationService } from "./workspace-operations.js";
 import {
+  applySimWorkspaceOverride,
   buildExecutionWorkspaceAdapterConfig,
   gateProjectExecutionWorkspacePolicy,
   issueExecutionWorkspaceModeForPersistedWorkspace,
@@ -52,13 +57,19 @@ import {
   parseProjectExecutionWorkspacePolicy,
   resolveExecutionWorkspaceMode,
 } from "./execution-workspace-policy.js";
+import { buildSimArtifactBundle } from "./sim-artifacts.js";
+import { buildSimModeNote } from "@paperclipai/adapter-utils/server-utils";
 import { instanceSettingsService } from "./instance-settings.js";
+import { approvalService } from "./approvals.js";
+import { issueApprovalService } from "./issue-approvals.js";
+import { logActivity } from "./activity-log.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
 import {
   hasSessionCompactionThresholds,
   resolveSessionCompactionPolicy,
   type SessionCompactionPolicy,
 } from "@paperclipai/adapter-utils";
+import { postRunEvalService } from "./agent-runtime/post-run-eval.js";
 
 const MAX_LIVE_LOG_CHUNK_BYTES = 8 * 1024;
 const HEARTBEAT_MAX_CONCURRENT_RUNS_DEFAULT = 1;
@@ -175,6 +186,7 @@ const heartbeatRunListColumns = {
   retryOfRunId: heartbeatRuns.retryOfRunId,
   processLossRetryCount: heartbeatRuns.processLossRetryCount,
   contextSnapshot: heartbeatRuns.contextSnapshot,
+  archivedAt: heartbeatRuns.archivedAt,
   createdAt: heartbeatRuns.createdAt,
   updatedAt: heartbeatRuns.updatedAt,
 } as const;
@@ -204,6 +216,43 @@ async function withAgentStartLock<T>(agentId: string, fn: () => Promise<T>) {
       startLocksByAgent.delete(agentId);
     }
   }
+}
+
+/**
+ * Forward-only lifecycle-stage advance for an issue gaining an execution run.
+ * Returns the stage to write, or null when no change should be made (never moves
+ * backward, so re-running a SIM on an already-LIVE/certified issue is a no-op).
+ */
+function nextLifecycleStageForRun(
+  current: string | null | undefined,
+  runMode: "sim" | "live",
+): (typeof ISSUE_LIFECYCLE_STAGES)[number] | null {
+  const desired = runMode === "sim" ? "sim" : "live";
+  const desiredIndex = ISSUE_LIFECYCLE_STAGES.indexOf(desired);
+  if (current == null) return desired;
+  const currentIndex = ISSUE_LIFECYCLE_STAGES.indexOf(
+    current as (typeof ISSUE_LIFECYCLE_STAGES)[number],
+  );
+  if (currentIndex === -1) return desired; // legacy/unknown: adopt the run's stage
+  return desiredIndex > currentIndex ? desired : null;
+}
+
+/**
+ * Forward-only lifecycle-stage advance toward an explicit target stage.
+ * Returns the target when it moves the issue forward (or out of a legacy/
+ * unknown stage), or null when the issue is already at or past that stage
+ * (used by the OPPRRC -> REPORTS -> CERTIFICATE -> LEARNING completion
+ * pipeline so repeated LIVE runs on an already-certified issue are no-ops).
+ */
+function forwardLifecycleStage(
+  current: string | null | undefined,
+  target: (typeof ISSUE_LIFECYCLE_STAGES)[number],
+): (typeof ISSUE_LIFECYCLE_STAGES)[number] | null {
+  const targetIndex = ISSUE_LIFECYCLE_STAGES.indexOf(target);
+  if (current == null) return target;
+  const currentIndex = ISSUE_LIFECYCLE_STAGES.indexOf(current as (typeof ISSUE_LIFECYCLE_STAGES)[number]);
+  if (currentIndex === -1) return target; // legacy/unknown: adopt the target stage
+  return targetIndex > currentIndex ? target : null;
 }
 
 interface WakeupOptions {
@@ -782,6 +831,8 @@ export function heartbeatService(db: Db) {
   const secretsSvc = secretService(db);
   const companySkills = companySkillService(db);
   const issuesSvc = issueService(db);
+  const approvalsSvc = approvalService(db);
+  const issueApprovalsSvc = issueApprovalService(db);
   const executionWorkspacesSvc = executionWorkspaceService(db);
   const workspaceOperationsSvc = workspaceOperationService(db);
   const activeRunExecutions = new Set<string>();
@@ -1639,6 +1690,15 @@ export function heartbeatService(db: Db) {
         triggerRunEmailUpdate(updated).catch((err) => {
           console.error(`[Email Update] Error triggering run email update:`, err);
         });
+        const webhookEvent = updated.status === "succeeded" ? "agent.run.completed" : "agent.run.failed";
+        webhookDeliveryService(db).deliver(updated.companyId, webhookEvent, {
+          runId: updated.id,
+          agentId: updated.agentId,
+          status: updated.status,
+          runMode: updated.runMode ?? "live",
+          finishedAt: updated.finishedAt ? new Date(updated.finishedAt).toISOString() : null,
+          error: updated.error ?? null,
+        }).catch(() => {});
       }
     }
 
@@ -2217,7 +2277,17 @@ export function heartbeatService(db: Db) {
     const runtime = await ensureRuntimeState(agent);
     const context = parseObject(run.contextSnapshot);
     const adapterOverride = parseObject(context.adapterOverride);
-    const activeAdapterType = typeof adapterOverride.adapterType === "string" ? adapterOverride.adapterType : agent.adapterType;
+    const router = aiRouterService();
+    const routerDecision = typeof adapterOverride.adapterType === "string"
+      ? { adapterType: adapterOverride.adapterType, reason: "explicit_override" as const }
+      : router.route({
+          primaryAdapterType: agent.adapterType,
+          runtimeConfig: agent.runtimeConfig,
+          spentMonthlyCents: agent.spentMonthlyCents ?? null,
+          budgetMonthlyCents: agent.budgetMonthlyCents ?? null,
+        });
+    const activeAdapterType = routerDecision.adapterType;
+    context.routerDecision = routerDecision;
     const taskKey = deriveTaskKey(context, null);
     const sessionCodec = getAdapterSessionCodec(activeAdapterType);
     const issueId = readNonEmptyString(context.issueId);
@@ -2303,11 +2373,20 @@ export function heartbeatService(db: Db) {
     const config = adapterOverride.adapterConfig 
       ? { ...baseConfig, ...parseObject(adapterOverride.adapterConfig) } 
       : baseConfig;
-    const executionWorkspaceMode = resolveExecutionWorkspaceMode({
+    const runMode: "sim" | "live" = run.runMode === "sim" ? "sim" : "live";
+    let executionWorkspaceMode = resolveExecutionWorkspaceMode({
       projectPolicy: projectExecutionWorkspacePolicy,
       issueSettings: issueExecutionWorkspaceSettings,
       legacyUseProjectWorkspace: issueAssigneeOverrides?.useProjectWorkspace ?? null,
     });
+    let effectiveIssueExecutionWorkspaceSettings = issueExecutionWorkspaceSettings;
+    if (runMode === "sim") {
+      // SIM runs always get a forced, isolated git-worktree workspace — this is
+      // the "true sandbox isolation" guarantee, independent of project/issue policy.
+      const simOverride = applySimWorkspaceOverride({ issueSettings: effectiveIssueExecutionWorkspaceSettings });
+      executionWorkspaceMode = simOverride.mode;
+      effectiveIssueExecutionWorkspaceSettings = simOverride.issueSettings;
+    }
     const resolvedWorkspace = await resolveWorkspaceForRun(
       agent,
       context,
@@ -2317,7 +2396,7 @@ export function heartbeatService(db: Db) {
     const workspaceManagedConfig = buildExecutionWorkspaceAdapterConfig({
       agentConfig: config,
       projectPolicy: projectExecutionWorkspacePolicy,
-      issueSettings: issueExecutionWorkspaceSettings,
+      issueSettings: effectiveIssueExecutionWorkspaceSettings,
       mode: executionWorkspaceMode,
       legacyUseProjectWorkspace: issueAssigneeOverrides?.useProjectWorkspace ?? null,
     });
@@ -2543,12 +2622,18 @@ export function heartbeatService(db: Db) {
       repoRef: executionWorkspace.repoRef,
       branchName: executionWorkspace.branchName,
       worktreePath: executionWorkspace.worktreePath,
+      runMode,
       agentHome: await (async () => {
         const home = resolveDefaultAgentWorkspaceDir(agent.id);
         await fs.mkdir(home, { recursive: true });
         return home;
       })(),
     };
+    if (runMode === "sim") {
+      context.paperclipRunModeNote = buildSimModeNote();
+    } else {
+      delete context.paperclipRunModeNote;
+    }
 
     // Ensure PARA memory daily note if skill is enabled.
     // desiredSkills may be stored as an array OR as a legacy space-separated string
@@ -3081,8 +3166,32 @@ Keep memories concise and specific. Don't write vague platitudes.`;
             } as Record<string, unknown>)
           : null;
 
+      const finishedAt = new Date();
+      let resultJson = adapterResult.resultJson ?? null;
+      if (runMode === "sim") {
+        const runEvents = await db
+          .select({
+            seq: heartbeatRunEvents.seq,
+            eventType: heartbeatRunEvents.eventType,
+            message: heartbeatRunEvents.message,
+          })
+          .from(heartbeatRunEvents)
+          .where(eq(heartbeatRunEvents.runId, run.id))
+          .orderBy(asc(heartbeatRunEvents.seq));
+        const simArtifacts = buildSimArtifactBundle({
+          events: runEvents,
+          startedAt: run.startedAt,
+          finishedAt,
+          usageJson,
+          model: readNonEmptyString(adapterResult.model),
+          executionWorkspace,
+          resolvedConfig,
+        });
+        resultJson = { ...(resultJson ?? {}), simArtifacts };
+      }
+
       await setRunStatus(run.id, status, {
-        finishedAt: new Date(),
+        finishedAt,
         error:
           outcome === "succeeded"
             ? null
@@ -3101,7 +3210,7 @@ Keep memories concise and specific. Don't write vague platitudes.`;
         exitCode: adapterResult.exitCode,
         signal: adapterResult.signal,
         usageJson,
-        resultJson: adapterResult.resultJson ?? null,
+        resultJson,
         sessionIdAfter: nextSessionState.displayId ?? nextSessionState.legacySessionId,
         stdoutExcerpt,
         stderrExcerpt,
@@ -3154,6 +3263,156 @@ Keep memories concise and specific. Don't write vague platitudes.`;
             }
           } catch (err) {
             logger.warn({ err, runId: finalizedRun.id }, "V2: failed to post automated asset links");
+          }
+        }
+
+        // PIT STOP: a completed SIM run auto-creates a linked review approval
+        // carrying the SIM artifact bundle. Promotion to LIVE only happens via
+        // an approved pit_stop_review approval (see approvals.ts /approve).
+        if (runMode === "sim" && issueId && outcome !== "cancelled") {
+          try {
+            const simArtifacts = (resultJson as Record<string, unknown> | null)?.simArtifacts ?? null;
+            const approval = await approvalsSvc.create(agent.companyId, {
+              type: "pit_stop_review",
+              requestedByAgentId: agent.id,
+              requestedByUserId: null,
+              payload: {
+                issueId,
+                simRunId: finalizedRun.id,
+                outcome,
+                simArtifacts,
+              },
+              status: "pending",
+              decisionNote: null,
+              decidedByUserId: null,
+              decidedAt: null,
+              updatedAt: new Date(),
+            });
+            await issueApprovalsSvc.link(issueId, approval.id, { agentId: agent.id });
+            await issuesSvc.update(issueId, { lifecycleStage: "pit_stop" });
+
+            await logActivity(db, {
+              companyId: agent.companyId,
+              actorType: "agent",
+              actorId: agent.id,
+              agentId: agent.id,
+              action: "approval.pit_stop_created",
+              entityType: "approval",
+              entityId: approval.id,
+              details: {
+                issueId,
+                simRunId: finalizedRun.id,
+                outcome,
+              },
+            });
+
+            logger.info(
+              { runId: finalizedRun.id, issueId, approvalId: approval.id },
+              "PIT STOP: created review approval for SIM run completion",
+            );
+          } catch (err) {
+            logger.warn({ err, runId: finalizedRun.id, issueId }, "PIT STOP: failed to create review approval");
+          }
+        }
+
+        // OPPRRC -> REPORTS -> CERTIFICATE -> LEARNING: a successful LIVE run
+        // advances the issue through the remaining lifecycle stages. Binding
+        // (Phase E) is a "no orphan resources" gate: if any generated artifact
+        // can't be attached to a project, the pipeline halts at "opprrc" so
+        // the gap can be resolved before certification.
+        if (runMode !== "sim" && issueId && outcome === "succeeded") {
+          try {
+            const { opprrcService } = await import("./opprrc.js");
+            const opprrc = opprrcService(db);
+
+            const binding = await opprrc.bindArtifacts(agent.companyId, issueId);
+            let stage: string | null = binding.lifecycleStage;
+            const opprrcStage = forwardLifecycleStage(stage, "opprrc");
+            if (opprrcStage) {
+              await issuesSvc.update(issueId, { lifecycleStage: opprrcStage });
+              stage = opprrcStage;
+            }
+
+            if (binding.orphanCount === 0) {
+              const report = await opprrc.generateReport(agent.companyId, issueId, finalizedRun.id, binding);
+              const reportsStage = forwardLifecycleStage(stage, "reports");
+              if (reportsStage) {
+                await issuesSvc.update(issueId, { lifecycleStage: reportsStage });
+                stage = reportsStage;
+              }
+
+              const { amxChainService } = await import("./amxChainService.js");
+              const chain = amxChainService(db);
+              const completionTimeMs = run.startedAt ? finishedAt.getTime() - run.startedAt.getTime() : 0;
+              const finalCostTokens = (normalizedUsage?.inputTokens ?? 0) + (normalizedUsage?.outputTokens ?? 0);
+              const certificate = await chain.issueCertificate(agent.companyId, {
+                issueId,
+                responsiblePrincipalId: agent.id,
+                commitHashes: [],
+                taskLogsSummary: report.summary,
+                completionTimeMs,
+                finalCostTokens,
+                projects: binding.projects,
+                resources: binding.resources,
+                reports: [...binding.reports, report.id],
+              });
+              const certifiedStage = forwardLifecycleStage(stage, "certified");
+              if (certifiedStage) {
+                await issuesSvc.update(issueId, { lifecycleStage: certifiedStage });
+                stage = certifiedStage;
+              }
+
+              await opprrc.recordLearning(finalizedRun.id, { outcome, completionTimeMs, finalCostTokens });
+              const learningStage = forwardLifecycleStage(stage, "learning");
+              if (learningStage) {
+                await issuesSvc.update(issueId, { lifecycleStage: learningStage });
+                stage = learningStage;
+              }
+
+              await logActivity(db, {
+                companyId: agent.companyId,
+                actorType: "agent",
+                actorId: agent.id,
+                agentId: agent.id,
+                action: "lifecycle.certificate_issued",
+                entityType: "amx_certificate",
+                entityId: certificate.id,
+                details: {
+                  issueId,
+                  runId: finalizedRun.id,
+                  certificateFootprint: certificate.certificateFootprint,
+                  reportId: report.id,
+                },
+              });
+
+              logger.info(
+                {
+                  runId: finalizedRun.id,
+                  issueId,
+                  certificateId: certificate.id,
+                  footprint: certificate.certificateFootprint,
+                },
+                "OPPRRC: lifecycle pipeline completed through certification",
+              );
+            } else {
+              await logActivity(db, {
+                companyId: agent.companyId,
+                actorType: "agent",
+                actorId: agent.id,
+                agentId: agent.id,
+                action: "opprrc.orphan_resources_detected",
+                entityType: "issue",
+                entityId: issueId,
+                details: { issueId, runId: finalizedRun.id, orphanCount: binding.orphanCount },
+              });
+
+              logger.warn(
+                { runId: finalizedRun.id, issueId, orphanCount: binding.orphanCount },
+                "OPPRRC: orphan resources detected, halting lifecycle pipeline at opprrc",
+              );
+            }
+          } catch (err) {
+            logger.warn({ err, runId: finalizedRun.id, issueId }, "OPPRRC: lifecycle pipeline failed");
           }
         }
       }
@@ -3275,7 +3534,7 @@ Keep memories concise and specific. Don't write vague platitudes.`;
               const analytics = kpiAnalyticsService(db);
               const companyAnalytics = await analytics.getCompanyAnalytics(agent.companyId);
 
-              const agentSummaries = companyAnalytics.agents
+              const agentSummaries = companyAnalytics.agentSummaries
                 .filter((a) => a.totalRuns > 0)
                 .map((a) =>
                   `- **${a.agentName}**: ${a.totalRuns} runs, ${a.completionRate != null ? Math.round(a.completionRate * 100) : "?"}% completion, avg $${((a.avgCostCents ?? 0) / 100).toFixed(3)}/run`
@@ -3831,6 +4090,7 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
             companyId: issues.companyId,
             executionRunId: issues.executionRunId,
             executionAgentNameKey: issues.executionAgentNameKey,
+            lifecycleStage: issues.lifecycleStage,
           })
           .from(issues)
           .where(and(eq(issues.id, issueId), eq(issues.companyId, agent.companyId)))
@@ -4070,12 +4330,17 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
           })
           .where(eq(agentWakeupRequests.id, wakeupRequest.id));
 
+        const nextLifecycleStage = nextLifecycleStageForRun(
+          issue.lifecycleStage,
+          opts.runMode ?? "live",
+        );
         await tx
           .update(issues)
           .set({
             executionRunId: newRun.id,
             executionAgentNameKey: agentNameKey,
             executionLockedAt: new Date(),
+            ...(nextLifecycleStage ? { lifecycleStage: nextLifecycleStage } : {}),
             updatedAt: new Date(),
           })
           .where(eq(issues.id, issue.id));
@@ -4314,7 +4579,7 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
   async function cancelRunInternal(runId: string, reason = "Cancelled by control plane") {
     const run = await getRun(runId);
     if (!run) throw notFound("Heartbeat run not found");
-    if (run.status !== "running" && run.status !== "queued") return run;
+    if (run.status !== "running" && run.status !== "queued" && run.status !== "paused") return run;
 
     const running = runningProcesses.get(run.id);
     if (running) {
@@ -4411,16 +4676,176 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
     await cancelPendingWakeupsForBudgetScope(scope);
   }
 
+  async function pauseRunInternal(runId: string, reason = "Paused by control plane") {
+    const run = await getRun(runId);
+    if (!run) throw notFound("Heartbeat run not found");
+    if (run.status !== "running" && run.status !== "queued") {
+      throw conflict("Only running or queued runs can be paused");
+    }
+
+    const running = runningProcesses.get(run.id);
+    if (running) {
+      running.child.kill("SIGTERM");
+      const graceMs = Math.max(1, running.graceSec) * 1000;
+      setTimeout(() => {
+        if (!running.child.killed) {
+          running.child.kill("SIGKILL");
+        }
+      }, graceMs);
+    }
+
+    const paused = await setRunStatus(run.id, "paused", {
+      finishedAt: new Date(),
+      error: reason,
+      errorCode: "paused",
+    });
+
+    await setWakeupStatus(run.wakeupRequestId, "cancelled", {
+      finishedAt: new Date(),
+      error: reason,
+    });
+
+    if (paused) {
+      await appendRunEvent(paused, await nextRunEventSeq(paused.id), {
+        eventType: "lifecycle",
+        stream: "system",
+        level: "warn",
+        message: "run paused",
+      });
+      await releaseIssueExecutionAndPromote(paused);
+    }
+
+    runningProcesses.delete(run.id);
+    await finalizeAgentStatus(run.agentId, "cancelled");
+    await startNextQueuedRunForAgent(run.agentId);
+    return paused;
+  }
+
+  async function archiveRunInternal(runId: string) {
+    const run = await getRun(runId);
+    if (!run) throw notFound("Heartbeat run not found");
+    if (run.status === "running" || run.status === "queued") {
+      throw conflict("Cannot archive an active run");
+    }
+    if (run.archivedAt) return run;
+
+    const [updated] = await db
+      .update(heartbeatRuns)
+      .set({ archivedAt: new Date(), updatedAt: new Date() })
+      .where(eq(heartbeatRuns.id, runId))
+      .returning();
+    return updated ?? run;
+  }
+
+  async function unarchiveRunInternal(runId: string) {
+    const run = await getRun(runId);
+    if (!run) throw notFound("Heartbeat run not found");
+    if (!run.archivedAt) return run;
+
+    const [updated] = await db
+      .update(heartbeatRuns)
+      .set({ archivedAt: null, updatedAt: new Date() })
+      .where(eq(heartbeatRuns.id, runId))
+      .returning();
+    return updated ?? run;
+  }
+
+  async function rollbackRunInternal(runId: string) {
+    const run = await getRun(runId);
+    if (!run) throw notFound("Heartbeat run not found");
+    if (run.status === "running" || run.status === "queued") {
+      throw conflict("Cannot roll back an active run");
+    }
+
+    const operations = await workspaceOperationsSvc.listForRun(runId);
+    const prepareOp = operations.find(
+      (op) =>
+        op.phase === "worktree_prepare" &&
+        typeof op.metadata?.baseCommitSha === "string" &&
+        typeof op.metadata?.worktreePath === "string",
+    );
+    if (!prepareOp) {
+      throw conflict("No rollback point was recorded for this run");
+    }
+
+    const worktreePath = prepareOp.metadata!.worktreePath as string;
+    const baseCommitSha = prepareOp.metadata!.baseCommitSha as string;
+
+    await fs.access(worktreePath).catch(() => {
+      throw conflict("The run's workspace no longer exists; nothing to roll back");
+    });
+
+    const recorder = workspaceOperationsSvc.createRecorder({
+      companyId: run.companyId,
+      heartbeatRunId: run.id,
+      executionWorkspaceId: prepareOp.executionWorkspaceId,
+    });
+
+    await rollbackWorktreeToCommit({ worktreePath, baseCommitSha, recorder });
+
+    await appendRunEvent(run, await nextRunEventSeq(run.id), {
+      eventType: "lifecycle",
+      stream: "system",
+      level: "warn",
+      message: `workspace rolled back to ${baseCommitSha}`,
+      payload: { worktreePath, baseCommitSha },
+    });
+
+    return { run, worktreePath, baseCommitSha };
+  }
+
+  // Phase H: compute KPI-based priority score and throttle flag for a single agent.
+  // Returns no-op when <3 KPI samples exist (safe default for new/test agents).
+  async function computeSchedulingDecision(
+    agentId: string,
+  ): Promise<{ priorityScore: number; extendInterval: boolean }> {
+    const noOp = { priorityScore: 0, extendInterval: false };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = (await postRunEvalService(db).getAgentTrends(agentId, 5)) as any;
+      if (!r?.trends || !Array.isArray(r.recentWindow) || (r.recentWindow as unknown[]).length < 3) return noOp;
+      const direction: string = r.trends.avgSelfAssessment?.direction ?? "unknown";
+      let priorityScore = 0;
+      if (direction === "down") priorityScore -= 2;
+      else if (direction === "up") priorityScore += 1;
+      if (typeof r.avgSelfAssessment === "number" && r.avgSelfAssessment < 0.5) priorityScore -= 1;
+      const extendInterval =
+        typeof r.avgSelfAssessment === "number" &&
+        r.avgSelfAssessment >= 0.8 &&
+        typeof r.completionRate === "number" &&
+        r.completionRate >= 0.8 &&
+        direction !== "down";
+      return { priorityScore, extendInterval };
+    } catch {
+      return noOp;
+    }
+  }
+
+  // Phase H: check whether the agent has any non-terminal issues assigned to it.
+  async function agentHasPendingWork(agentId: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: issues.id })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.assigneeAgentId, agentId),
+          inArray(issues.status, ["backlog", "todo", "in_progress", "in_review", "blocked"]),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
   return {
-    list: async (companyId: string, agentId?: string, limit?: number) => {
+    list: async (companyId: string, agentId?: string, limit?: number, opts?: { includeArchived?: boolean }) => {
+      const conditions = [eq(heartbeatRuns.companyId, companyId)];
+      if (agentId) conditions.push(eq(heartbeatRuns.agentId, agentId));
+      if (!opts?.includeArchived) conditions.push(isNull(heartbeatRuns.archivedAt));
+
       const query = db
         .select(heartbeatRunListColumns)
         .from(heartbeatRuns)
-        .where(
-          agentId
-            ? and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agentId))
-            : eq(heartbeatRuns.companyId, companyId),
-        )
+        .where(and(...conditions))
         .orderBy(desc(heartbeatRuns.createdAt));
 
       const rows = limit ? await query.limit(limit) : await query;
@@ -4552,11 +4977,19 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
 
     tickTimers: async (now = new Date()) => {
       const allAgents = await db.select().from(agents);
+
+      // Phase H: stable-sort by KPI priority score (lower score = processed first).
+      const timerDecisions = await Promise.all(allAgents.map((a) => computeSchedulingDecision(a.id)));
+      const sortedAgents = allAgents
+        .map((a, i) => ({ agent: a, priority: timerDecisions[i].priorityScore }))
+        .sort((x, y) => x.priority - y.priority)
+        .map((x) => x.agent);
+
       let checked = 0;
       let enqueued = 0;
       let skipped = 0;
 
-      for (const agent of allAgents) {
+      for (const agent of sortedAgents) {
         if (agent.status === "paused" || agent.status === "terminated" || agent.status === "pending_approval") continue;
         const policy = parseHeartbeatPolicy(agent);
         if (!policy.enabled || policy.intervalSec <= 0) continue;
@@ -4598,14 +5031,36 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
           ),
         );
 
+      // Phase H: stable-sort by KPI priority score and compute throttle flags.
+      const schedDecisions = await Promise.all(dueAgents.map((a) => computeSchedulingDecision(a.id)));
+      const sortedDueAgents = dueAgents
+        .map((a, i) => ({ agent: a, decision: schedDecisions[i] }))
+        .sort((x, y) => x.decision.priorityScore - y.decision.priorityScore);
+
       let checked = 0;
       let enqueued = 0;
       let skipped = 0;
 
-      for (const agent of dueAgents) {
+      for (const { agent, decision } of sortedDueAgents) {
         if (NON_INVOKABLE.has(agent.status)) continue;
         if (!agent.cronExpression) continue;
         checked += 1;
+
+        const tz = agent.scheduleTimezone ?? "UTC";
+        const next = nextCronTickInTimeZone(agent.cronExpression, tz, now);
+
+        // Phase H: throttle consistently high-performing idle agents by extending their interval.
+        if (decision.extendInterval && !(await agentHasPendingWork(agent.id))) {
+          const throttledNext = next
+            ? new Date(next.getTime() + (next.getTime() - now.getTime()))
+            : next;
+          await db
+            .update(agents)
+            .set({ nextScheduledAt: throttledNext ?? undefined, updatedAt: new Date() })
+            .where(eq(agents.id, agent.id));
+          skipped += 1;
+          continue;
+        }
 
         const run = await enqueueWakeup(agent.id, {
           source: "timer",
@@ -4621,8 +5076,6 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
           },
         });
 
-        const tz = agent.scheduleTimezone ?? "UTC";
-        const next = nextCronTickInTimeZone(agent.cronExpression, tz, now);
         await db
           .update(agents)
           .set({ nextScheduledAt: next ?? undefined, updatedAt: new Date() })
@@ -4636,6 +5089,14 @@ Focus on **trends over time**, not single runs. Only act when you see a sustaine
     },
 
     cancelRun: (runId: string) => cancelRunInternal(runId),
+
+    pauseRun: (runId: string) => pauseRunInternal(runId),
+
+    archiveRun: (runId: string) => archiveRunInternal(runId),
+
+    unarchiveRun: (runId: string) => unarchiveRunInternal(runId),
+
+    rollbackRun: (runId: string) => rollbackRunInternal(runId),
 
     updateConfig: async (runId: string, adapterType?: string, adapterConfig?: Record<string, unknown>) => {
       const run = await getRun(runId);

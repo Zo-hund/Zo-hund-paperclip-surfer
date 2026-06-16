@@ -23,3 +23,6 @@ export { amxRoutes } from "./amx.js";
 export { lmsRoutes } from "./lms.js";
 export { auditRoutes } from "./audit.js";
 export { skillChangeRoutes } from "./skill-changes.js";
+export { webhookRoutes } from "./webhooks.js";
+export { mcpEndpointRoutes } from "./mcp-endpoint.js";
+export { openApiRoutes } from "./openapi.js";

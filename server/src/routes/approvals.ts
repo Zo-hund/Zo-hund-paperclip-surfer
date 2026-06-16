@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
+  escalateApprovalSchema,
   requestApprovalRevisionSchema,
   resolveApprovalSchema,
   resubmitApprovalSchema,
@@ -146,7 +147,81 @@ export function approvalRoutes(db: Db) {
         },
       });
 
-      if (approval.requestedByAgentId) {
+      if (approval.type === "pit_stop_review") {
+        // PIT STOP gate: promotion from SIM to LIVE only happens here, via an
+        // approved pit_stop_review approval. The new run carries promotedFromRunId
+        // so heartbeat advances the issue lifecycle from "pit_stop" to "live".
+        const pitStopPayload = approval.payload as Record<string, unknown>;
+        const simRunId = typeof pitStopPayload.simRunId === "string" ? pitStopPayload.simRunId : null;
+
+        if (approval.requestedByAgentId) {
+          try {
+            const wakeRun = await heartbeat.wakeup(approval.requestedByAgentId, {
+              source: "automation",
+              triggerDetail: "system",
+              reason: "pit_stop_approved",
+              runMode: "live",
+              promotedFromRunId: simRunId,
+              payload: {
+                approvalId: approval.id,
+                approvalStatus: approval.status,
+                issueId: primaryIssueId,
+                simRunId,
+              },
+              requestedByActorType: "user",
+              requestedByActorId: req.actor.userId ?? "board",
+              contextSnapshot: {
+                source: "approval.approved",
+                approvalId: approval.id,
+                approvalStatus: approval.status,
+                issueId: primaryIssueId,
+                issueIds: linkedIssueIds,
+                taskId: primaryIssueId,
+                wakeReason: "pit_stop_approved",
+                promotedFromRunId: simRunId,
+              },
+            });
+
+            await logActivity(db, {
+              companyId: approval.companyId,
+              actorType: "user",
+              actorId: req.actor.userId ?? "board",
+              action: "approval.pit_stop_promoted_to_live",
+              entityType: "approval",
+              entityId: approval.id,
+              details: {
+                requesterAgentId: approval.requestedByAgentId,
+                wakeRunId: wakeRun?.id ?? null,
+                simRunId,
+                linkedIssueIds,
+              },
+            });
+          } catch (err) {
+            logger.warn(
+              {
+                err,
+                approvalId: approval.id,
+                requestedByAgentId: approval.requestedByAgentId,
+              },
+              "failed to promote SIM run to LIVE after PIT STOP approval",
+            );
+            await logActivity(db, {
+              companyId: approval.companyId,
+              actorType: "user",
+              actorId: req.actor.userId ?? "board",
+              action: "approval.pit_stop_promotion_failed",
+              entityType: "approval",
+              entityId: approval.id,
+              details: {
+                requesterAgentId: approval.requestedByAgentId,
+                simRunId,
+                linkedIssueIds,
+                error: err instanceof Error ? err.message : String(err),
+              },
+            });
+          }
+        }
+      } else if (approval.requestedByAgentId) {
         try {
           const wakeRun = await heartbeat.wakeup(approval.requestedByAgentId, {
             source: "automation",
@@ -262,6 +337,28 @@ export function approvalRoutes(db: Db) {
       res.json(redactApprovalPayload(approval));
     },
   );
+
+  router.post("/approvals/:id/escalate", validate(escalateApprovalSchema), async (req, res) => {
+    assertBoard(req);
+    const id = req.params.id as string;
+    const approval = await svc.escalate(
+      id,
+      req.body.decidedByUserId ?? "board",
+      req.body.decisionNote,
+    );
+
+    await logActivity(db, {
+      companyId: approval.companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "approval.escalated",
+      entityType: "approval",
+      entityId: approval.id,
+      details: { type: approval.type },
+    });
+
+    res.json(redactApprovalPayload(approval));
+  });
 
   router.post("/approvals/:id/resubmit", validate(resubmitApprovalSchema), async (req, res) => {
     const id = req.params.id as string;

@@ -26,6 +26,7 @@ import { AgentConfigForm, AdapterTypeDropdown, ModelDropdown } from "../componen
 import { AgentMemoryTab } from "../components/AgentMemoryTab";
 import { AgentPerformanceTab } from "../components/AgentPerformanceTab";
 import { AgentMcpTab } from "../components/AgentMcpTab";
+import { AgentRouterTab } from "../components/AgentRouterTab";
 import { AgentSkillsTab } from "../components/AgentSkillsTab";
 import { AgentOnboardingLMS } from "../components/AgentOnboardingLMS";
 import { AgentChatPanel } from "../components/AgentChatPanel";
@@ -76,6 +77,10 @@ import {
   ArrowLeft,
   HelpCircle,
   FolderOpen,
+  Pause,
+  Archive,
+  ArchiveRestore,
+  History,
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -228,7 +233,7 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps" | "onboarding" | "chat";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "skills" | "runs" | "budget" | "memory" | "performance" | "mcps" | "onboarding" | "chat" | "router";
 
 function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "chat") return "chat";
@@ -240,6 +245,7 @@ function parseAgentDetailView(value: string | null): AgentDetailView {
   if (value === "performance") return "performance";
   if (value === "mcps") return "mcps";
   if (value === "onboarding") return "onboarding";
+  if (value === "router") return "router";
   if (value === "runs") return value;
   return "dashboard";
 }
@@ -578,8 +584,8 @@ export function AgentDetail() {
   });
 
   const { data: heartbeats } = useQuery({
-    queryKey: queryKeys.heartbeats(resolvedCompanyId!, agent?.id ?? undefined),
-    queryFn: () => heartbeatsApi.list(resolvedCompanyId!, agent?.id ?? undefined),
+    queryKey: [...queryKeys.heartbeats(resolvedCompanyId!, agent?.id ?? undefined), "includeArchived"],
+    queryFn: () => heartbeatsApi.list(resolvedCompanyId!, agent?.id ?? undefined, undefined, { includeArchived: true }),
     enabled: !!resolvedCompanyId && !!agent?.id && shouldLoadHeartbeats,
   });
 
@@ -672,7 +678,9 @@ export function AgentDetail() {
                         ? "onboarding"
                         : activeView === "chat"
                           ? "chat"
-                          : "dashboard";
+                          : activeView === "router"
+                            ? "router"
+                            : "dashboard";
     if (routeAgentRef !== canonicalAgentRef || urlTab !== canonicalTab) {
       navigate(`/agents/${canonicalAgentRef}/${canonicalTab}`, { replace: true });
       return;
@@ -943,6 +951,7 @@ export function AgentDetail() {
               { value: "performance", label: "Performance" },
               { value: "mcps", label: "MCPs" },
               { value: "budget", label: "Budget" },
+              { value: "router", label: "Router" },
             ]}
             value={activeView}
             onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
@@ -1102,6 +1111,10 @@ export function AgentDetail() {
           />
         </div>
       ) : null}
+
+      {activeView === "router" && resolvedCompanyId && (
+        <AgentRouterTab agentId={agent.id} companyId={resolvedCompanyId} />
+      )}
     </div>
   );
 }
@@ -2434,6 +2447,7 @@ function RunListItem({ run, isSelected, agentId }: { run: HeartbeatRun; isSelect
         )}>
           {sourceLabels[run.invocationSource] ?? run.invocationSource}
         </span>
+        {run.archivedAt && <StatusBadge status="archived" />}
         <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
           {relativeTime(run.createdAt)}
         </span>
@@ -2644,9 +2658,39 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
     mutationFn: () => heartbeatsApi.cancel(run.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runDetail(run.id) });
     },
   });
-  const canResumeLostRun = run.errorCode === "process_lost" && run.status === "failed";
+  const pauseRun = useMutation({
+    mutationFn: () => heartbeatsApi.pause(run.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runDetail(run.id) });
+    },
+  });
+  const archiveRun = useMutation({
+    mutationFn: () => heartbeatsApi.archive(run.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runDetail(run.id) });
+    },
+  });
+  const unarchiveRun = useMutation({
+    mutationFn: () => heartbeatsApi.unarchive(run.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runDetail(run.id) });
+    },
+  });
+  const rollbackRun = useMutation({
+    mutationFn: () => heartbeatsApi.rollback(run.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.heartbeats(run.companyId, run.agentId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runDetail(run.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.runWorkspaceOperations(run.id) });
+    },
+  });
+  const canResumeLostRun = (run.errorCode === "process_lost" && run.status === "failed") || run.status === "paused";
   const resumePayload = useMemo(() => {
     const payload: Record<string, unknown> = {
       resumeFromRunId: run.id,
@@ -2713,6 +2757,26 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
       navigate(`/agents/${agentRouteId}/runs/${newRun.id}`);
     },
   });
+
+  const isActiveRun = run.status === "running" || run.status === "queued";
+  const canArchive = !isActiveRun && !run.archivedAt;
+  const canUnarchive = !!run.archivedAt;
+
+  const { data: workspaceOperations = [] } = useQuery({
+    queryKey: queryKeys.runWorkspaceOperations(run.id),
+    queryFn: () => heartbeatsApi.workspaceOperations(run.id),
+  });
+  const rollbackPoint = useMemo(
+    () =>
+      workspaceOperations.find(
+        (op) =>
+          op.phase === "worktree_prepare" &&
+          typeof op.metadata?.baseCommitSha === "string" &&
+          typeof op.metadata?.worktreePath === "string",
+      ),
+    [workspaceOperations],
+  );
+  const canRollback = !isActiveRun && !!rollbackPoint;
 
   const { data: touchedIssues } = useQuery({
     queryKey: queryKeys.runIssues(run.id),
@@ -2781,9 +2845,22 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
           <div className="flex-1 p-4 space-y-3">
             <div className="flex items-center gap-2">
               <StatusBadge status={run.status} />
+              {run.archivedAt && <StatusBadge status="archived" />}
               {(run.status === "running" || run.status === "queued") && (
                 <div className="flex gap-2">
                   <SwitchModelPopover run={run} baseAdapterType={adapterType} baseAdapterConfig={adapterConfig} />
+                  {run.status === "running" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-6 px-2"
+                      onClick={() => pauseRun.mutate()}
+                      disabled={pauseRun.isPending}
+                    >
+                      <Pause className="h-3.5 w-3.5 mr-1" />
+                      {pauseRun.isPending ? "Pausing…" : "Pause"}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -2794,6 +2871,17 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
                     {cancelRun.isPending ? "Cancelling…" : "Cancel"}
                   </Button>
                 </div>
+              )}
+              {run.status === "paused" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive text-xs h-6 px-2"
+                  onClick={() => cancelRun.mutate()}
+                  disabled={cancelRun.isPending}
+                >
+                  {cancelRun.isPending ? "Cancelling…" : "Cancel"}
+                </Button>
               )}
               {canResumeLostRun && (
                 <Button
@@ -2819,6 +2907,48 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
                   {retryRun.isPending ? "Retrying…" : "Retry"}
                 </Button>
               )}
+              {canRollback && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-6 px-2"
+                  onClick={() => {
+                    const confirmed = window.confirm(
+                      "Roll back this run's workspace to its starting commit? Uncommitted changes in the worktree will be discarded.",
+                    );
+                    if (!confirmed) return;
+                    rollbackRun.mutate();
+                  }}
+                  disabled={rollbackRun.isPending}
+                >
+                  <History className="h-3.5 w-3.5 mr-1" />
+                  {rollbackRun.isPending ? "Rolling back…" : "Rollback"}
+                </Button>
+              )}
+              {canArchive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-6 px-2"
+                  onClick={() => archiveRun.mutate()}
+                  disabled={archiveRun.isPending}
+                >
+                  <Archive className="h-3.5 w-3.5 mr-1" />
+                  {archiveRun.isPending ? "Archiving…" : "Archive"}
+                </Button>
+              )}
+              {canUnarchive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-6 px-2"
+                  onClick={() => unarchiveRun.mutate()}
+                  disabled={unarchiveRun.isPending}
+                >
+                  <ArchiveRestore className="h-3.5 w-3.5 mr-1" />
+                  {unarchiveRun.isPending ? "Unarchiving…" : "Unarchive"}
+                </Button>
+              )}
             </div>
             {resumeRun.isError && (
               <div className="text-xs text-destructive">
@@ -2828,6 +2958,26 @@ function RunDetail({ run: initialRun, agentRouteId, adapterType, adapterConfig }
             {retryRun.isError && (
               <div className="text-xs text-destructive">
                 {retryRun.error instanceof Error ? retryRun.error.message : "Failed to retry run"}
+              </div>
+            )}
+            {pauseRun.isError && (
+              <div className="text-xs text-destructive">
+                {pauseRun.error instanceof Error ? pauseRun.error.message : "Failed to pause run"}
+              </div>
+            )}
+            {archiveRun.isError && (
+              <div className="text-xs text-destructive">
+                {archiveRun.error instanceof Error ? archiveRun.error.message : "Failed to archive run"}
+              </div>
+            )}
+            {unarchiveRun.isError && (
+              <div className="text-xs text-destructive">
+                {unarchiveRun.error instanceof Error ? unarchiveRun.error.message : "Failed to unarchive run"}
+              </div>
+            )}
+            {rollbackRun.isError && (
+              <div className="text-xs text-destructive">
+                {rollbackRun.error instanceof Error ? rollbackRun.error.message : "Failed to roll back run"}
               </div>
             )}
             {startTime && (

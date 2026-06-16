@@ -30,6 +30,10 @@ export const issues = pgTable(
     title: text("title").notNull(),
     description: text("description"),
     status: text("status").notNull().default("backlog"),
+    // AMX-AIR-HUBS governing lifecycle stage:
+    // sim -> pit_stop -> live -> opprrc -> reports -> certified -> learning.
+    // Null = legacy/unmanaged issue (direct execution, no lifecycle tracking).
+    lifecycleStage: text("lifecycle_stage"),
     priority: text("priority").notNull().default("medium"),
     assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
     assigneeUserId: text("assignee_user_id"),

@@ -45,6 +45,7 @@ import {
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
 import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { findServerAdapter, listAdapterModels, detectAdapterModel } from "../adapters/index.js";
+import { aiRouterService } from "../services/ai-router.js";
 import { redactEventPayload } from "../redaction.js";
 import { redactCurrentUserValue } from "../log-redaction.js";
 import { renderOrgChartSvg, renderOrgChartPng, type OrgNode, type OrgChartStyle, ORG_CHART_STYLES } from "./org-chart-svg.js";
@@ -1037,6 +1038,25 @@ export function agentRoutes(db: Db) {
     res.json(redactAgentConfiguration(agent));
   });
 
+  router.get("/agents/:id/router/preview", async (req, res) => {
+    const id = req.params.id as string;
+    const agent = await svc.getById(id);
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, agent.companyId);
+    await assertCanReadConfigurations(req, agent.companyId);
+    const router = aiRouterService();
+    const result = router.preview({
+      primaryAdapterType: agent.adapterType,
+      runtimeConfig: agent.runtimeConfig,
+      spentMonthlyCents: agent.spentMonthlyCents ?? null,
+      budgetMonthlyCents: agent.budgetMonthlyCents ?? null,
+    });
+    res.json(result);
+  });
+
   router.get("/agents/:id/config-revisions", async (req, res) => {
     const id = req.params.id as string;
     const agent = await svc.getById(id);
@@ -1965,6 +1985,16 @@ export function agentRoutes(db: Db) {
       res.status(404).json({ error: "Key not found" });
       return;
     }
+    await logActivity(db, {
+      companyId: revoked.companyId,
+      actorType: req.actor.type === "agent" ? "agent" : "user",
+      actorId: req.actor.type === "agent" ? (req.actor.agentId ?? "unknown") : (req.actor.userId ?? "system"),
+      action: "agent.key_revoked",
+      entityType: "agent_api_key",
+      entityId: keyId,
+      agentId: revoked.agentId,
+      details: { keyId, agentId: revoked.agentId },
+    });
     res.json({ ok: true });
   });
 
@@ -2105,7 +2135,8 @@ export function agentRoutes(db: Db) {
     const agentId = req.query.agentId as string | undefined;
     const limitParam = req.query.limit as string | undefined;
     const limit = limitParam ? Math.max(1, Math.min(1000, parseInt(limitParam, 10) || 200)) : undefined;
-    const runs = await heartbeat.list(companyId, agentId, limit);
+    const includeArchived = req.query.includeArchived === "true";
+    const runs = await heartbeat.list(companyId, agentId, limit, { includeArchived });
     res.json(runs);
   });
 
@@ -2365,6 +2396,80 @@ export function agentRoutes(db: Db) {
     }
 
     res.json(run);
+  });
+
+  router.post("/heartbeat-runs/:runId/pause", async (req, res) => {
+    assertBoard(req);
+    const runId = req.params.runId as string;
+    const run = await heartbeat.pauseRun(runId);
+
+    if (run) {
+      await logActivity(db, {
+        companyId: run.companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "heartbeat.paused",
+        entityType: "heartbeat_run",
+        entityId: run.id,
+        details: { agentId: run.agentId },
+      });
+    }
+
+    res.json(run);
+  });
+
+  router.post("/heartbeat-runs/:runId/archive", async (req, res) => {
+    assertBoard(req);
+    const runId = req.params.runId as string;
+    const run = await heartbeat.archiveRun(runId);
+
+    await logActivity(db, {
+      companyId: run.companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "heartbeat.archived",
+      entityType: "heartbeat_run",
+      entityId: run.id,
+      details: { agentId: run.agentId },
+    });
+
+    res.json(run);
+  });
+
+  router.post("/heartbeat-runs/:runId/unarchive", async (req, res) => {
+    assertBoard(req);
+    const runId = req.params.runId as string;
+    const run = await heartbeat.unarchiveRun(runId);
+
+    await logActivity(db, {
+      companyId: run.companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "heartbeat.unarchived",
+      entityType: "heartbeat_run",
+      entityId: run.id,
+      details: { agentId: run.agentId },
+    });
+
+    res.json(run);
+  });
+
+  router.post("/heartbeat-runs/:runId/rollback", async (req, res) => {
+    assertBoard(req);
+    const runId = req.params.runId as string;
+    const result = await heartbeat.rollbackRun(runId);
+
+    await logActivity(db, {
+      companyId: result.run.companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "heartbeat.rolled_back",
+      entityType: "heartbeat_run",
+      entityId: result.run.id,
+      details: { agentId: result.run.agentId, worktreePath: result.worktreePath, baseCommitSha: result.baseCommitSha },
+    });
+
+    res.json(result);
   });
 
   router.patch("/heartbeat-runs/:runId/config", async (req, res) => {

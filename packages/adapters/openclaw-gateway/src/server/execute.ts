@@ -1065,7 +1065,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   });
 
   const templateMessage = nonEmpty(payloadTemplate.message) ?? nonEmpty(payloadTemplate.text);
-  const message = templateMessage ? appendWakeText(templateMessage, wakeText) : wakeText;
+  const baseMessage = templateMessage ? appendWakeText(templateMessage, wakeText) : wakeText;
+  const runModeNote = asString(ctx.context.paperclipRunModeNote, "").trim();
+  const message = runModeNote ? `${runModeNote}\n\n${baseMessage}` : baseMessage;
   const paperclipPayload = buildStandardPaperclipPayload(ctx, wakePayload, paperclipEnv, payloadTemplate);
 
   const agentParams: Record<string, unknown> = {

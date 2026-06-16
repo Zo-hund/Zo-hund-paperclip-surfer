@@ -124,6 +124,30 @@ export const ISSUE_STATUSES = [
 ] as const;
 export type IssueStatus = (typeof ISSUE_STATUSES)[number];
 
+/**
+ * Per-task execution mode. Mirrors `heartbeat_runs.run_mode`.
+ * - `sim`  — runs in an isolated sandbox; no external/production mutation.
+ * - `live` — production execution.
+ */
+export const RUN_MODES = ["sim", "live"] as const;
+export type RunMode = (typeof RUN_MODES)[number];
+
+/**
+ * The governing AMX-AIR-HUBS task lifecycle: every managed task advances through
+ * these stages in order. `null` lifecycleStage means the issue predates / opts out
+ * of lifecycle tracking (legacy/unmanaged) and is treated as direct execution.
+ */
+export const ISSUE_LIFECYCLE_STAGES = [
+  "sim",
+  "pit_stop",
+  "live",
+  "opprrc",
+  "reports",
+  "certified",
+  "learning",
+] as const;
+export type IssueLifecycleStage = (typeof ISSUE_LIFECYCLE_STAGES)[number];
+
 export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 
@@ -189,12 +213,18 @@ export const PROJECT_COLORS = [
   "#3b82f6", // blue
 ] as const;
 
-export const APPROVAL_TYPES = ["hire_agent", "approve_ceo_strategy", "budget_override_required"] as const;
+export const APPROVAL_TYPES = [
+  "hire_agent",
+  "approve_ceo_strategy",
+  "budget_override_required",
+  "pit_stop_review",
+] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 
 export const APPROVAL_STATUSES = [
   "pending",
   "revision_requested",
+  "escalated",
   "approved",
   "rejected",
   "cancelled",
@@ -309,6 +339,7 @@ export const HEARTBEAT_RUN_STATUSES = [
   "failed",
   "cancelled",
   "timed_out",
+  "paused",
 ] as const;
 export type HeartbeatRunStatus = (typeof HEARTBEAT_RUN_STATUSES)[number];
 
