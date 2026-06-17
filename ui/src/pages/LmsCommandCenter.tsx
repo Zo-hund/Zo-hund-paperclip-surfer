@@ -166,7 +166,26 @@ function LearnerDetailPanel({
               {d.cohort && <span>Cohort: <strong className="text-foreground">{d.cohort}</strong></span>}
               {d.teamAssignment && <span>Team: <strong className="text-foreground">{d.teamAssignment}</strong></span>}
               {d.careerInterest && <span>Career: <strong className="text-foreground">{d.careerInterest}</strong></span>}
+              {d.partnerStatus && <span>Partner: <strong className="text-foreground capitalize">{d.partnerStatus}</strong></span>}
+              {d.ambassadorStatus && <span>Ambassador: <strong className="text-foreground capitalize">{d.ambassadorStatus}</strong></span>}
+              {d.sponsorshipTier && <span>Sponsorship: <strong className="text-foreground capitalize">{d.sponsorshipTier}</strong></span>}
             </div>
+            {(d.marketplaceRevenue > 0 || d.donationAmount > 0) && (
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                {d.marketplaceRevenue > 0 && (
+                  <div className="rounded-md bg-amber-500/10 border border-amber-500/20 p-2 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/70">Marketplace Rev</p>
+                    <p className="text-sm font-black text-amber-300">${(d.marketplaceRevenue / 100).toLocaleString()}</p>
+                  </div>
+                )}
+                {d.donationAmount > 0 && (
+                  <div className="rounded-md bg-orange-500/10 border border-orange-500/20 p-2 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-orange-400/70">Total Donated</p>
+                    <p className="text-sm font-black text-orange-300">${(d.donationAmount / 100).toLocaleString()}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Stats */}

@@ -97,6 +97,11 @@ export interface LearnerDetail extends LearnerRosterItem {
   cohort: string | null;
   learningStyle: string | null;
   careerInterest: string | null;
+  partnerStatus: string | null;
+  ambassadorStatus: string | null;
+  marketplaceRevenue: number;
+  donationAmount: number;
+  sponsorshipTier: string | null;
   enrollments: Array<{
     id: string;
     workshopName: string;

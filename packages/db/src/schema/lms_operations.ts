@@ -29,6 +29,12 @@ export const lmsMemberProfiles = pgTable(
     progressionStage: text("progression_stage").notNull().default("explorer"),
     linkedParentUserId: text("linked_parent_user_id"),
     linkedLearnerIds: jsonb("linked_learner_ids").$type<string[]>().notNull().default([]),
+    // CRM extended fields
+    partnerStatus: text("partner_status"), // pending | active | suspended
+    ambassadorStatus: text("ambassador_status"), // candidate | active | alumni
+    marketplaceRevenue: integer("marketplace_revenue").notNull().default(0), // cents earned via marketplace
+    donationAmount: integer("donation_amount").notNull().default(0), // cents donated lifetime
+    sponsorshipTier: text("sponsorship_tier"), // bronze | silver | gold | platinum
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

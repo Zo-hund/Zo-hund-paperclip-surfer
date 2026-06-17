@@ -58,6 +58,11 @@ export interface LearnerDetail extends LearnerRosterItem {
   cohort: string | null;
   learningStyle: string | null;
   careerInterest: string | null;
+  partnerStatus: string | null;
+  ambassadorStatus: string | null;
+  marketplaceRevenue: number;
+  donationAmount: number;
+  sponsorshipTier: string | null;
   enrollments: Array<{
     id: string;
     workshopName: string;
@@ -380,6 +385,11 @@ export function lmsAnalyticsService(db: Db) {
       cohort: profile.cohort,
       learningStyle: profile.learningStyle,
       careerInterest: profile.careerInterest,
+      partnerStatus: profile.partnerStatus,
+      ambassadorStatus: profile.ambassadorStatus,
+      marketplaceRevenue: profile.marketplaceRevenue,
+      donationAmount: profile.donationAmount,
+      sponsorshipTier: profile.sponsorshipTier,
       enrollments: enrollRows.map(e => ({
         id: e.id,
         workshopName: e.workshopName ?? "Unknown Workshop",

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
-import { stripePrices, amxLedger, amxTransactions } from "@paperclipai/db";
+import { stripePrices, amxLedger, amxTransactions, companies } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
 import { provisionMember, cancelMember, TIER_MEMBER_TYPES } from "../services/stripeProvisioningService.js";
 import type { Request as ExpressRequest } from "express";
@@ -199,6 +199,90 @@ export function stripeApiRoutes(db: Db): Router {
     }
 
     res.json({ seeded: results.length, results });
+  });
+
+  /**
+   * POST /stripe/provision-tenant
+   * Creates a new company row (idempotent by issuePrefix) and optionally seeds the Stripe catalog.
+   * Body: { name, issuePrefix, description?, seedStripe? }
+   */
+  router.post("/stripe/provision-tenant", async (req, res) => {
+    const { name, issuePrefix, description, seedStripe } = req.body as {
+      name: string;
+      issuePrefix: string;
+      description?: string;
+      seedStripe?: boolean;
+    };
+
+    if (!name || !issuePrefix) {
+      res.status(400).json({ error: "name and issuePrefix are required" });
+      return;
+    }
+
+    // Idempotent — return existing if already provisioned
+    const [existing] = await db.select({ id: companies.id, issuePrefix: companies.issuePrefix })
+      .from(companies)
+      .where(eq(companies.issuePrefix, issuePrefix.toUpperCase()))
+      .limit(1);
+
+    if (existing) {
+      res.json({ companyId: existing.id, issuePrefix: existing.issuePrefix, created: false });
+      return;
+    }
+
+    const [created] = await db.insert(companies).values({
+      name,
+      description: description ?? null,
+      issuePrefix: issuePrefix.toUpperCase(),
+      status: "active",
+    }).returning({ id: companies.id });
+
+    if (!created) {
+      res.status(500).json({ error: "Failed to create company" });
+      return;
+    }
+
+    const result: { companyId: string; issuePrefix: string; created: boolean; catalogSeeded?: boolean; catalogError?: string } = {
+      companyId: created.id,
+      issuePrefix: issuePrefix.toUpperCase(),
+      created: true,
+    };
+
+    if (seedStripe) {
+      try {
+        const stripe = getStripe();
+        for (const tier of CATALOG_TIERS) {
+          const product = await stripe.products.create({
+            name: `TECH AT NITE — ${tier.name.charAt(0).toUpperCase() + tier.name.slice(1)}`,
+            description: tier.description,
+            metadata: { tierName: tier.name, companyId: created.id },
+          });
+          const price = await stripe.prices.create({
+            product: product.id,
+            currency: "usd",
+            unit_amount: tier.amount,
+            metadata: { tierName: tier.name, companyId: created.id },
+            ...(tier.amount > 0 ? { recurring: { interval: tier.interval } } : {}),
+          });
+          await db.insert(stripePrices).values({
+            companyId: created.id,
+            tierName: tier.name,
+            stripeProductId: product.id,
+            stripePriceId: price.id,
+            currency: "usd",
+            amount: tier.amount,
+            interval: tier.interval,
+            isActive: 1,
+          });
+        }
+        result.catalogSeeded = true;
+      } catch (err) {
+        result.catalogSeeded = false;
+        result.catalogError = err instanceof Error ? err.message : "Stripe error";
+      }
+    }
+
+    res.status(201).json(result);
   });
 
   /**

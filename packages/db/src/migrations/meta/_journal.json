@@ -470,6 +470,13 @@
       "when": 1781666152356,
       "tag": "0066_adorable_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1781738027462,
+      "tag": "0067_outstanding_hellion",
+      "breakpoints": true
     }
   ]
 }

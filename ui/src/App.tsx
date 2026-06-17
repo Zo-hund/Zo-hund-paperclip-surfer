@@ -58,6 +58,7 @@ import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
 import { NotFoundPage } from "./pages/NotFound";
 import { AgentMarketplace } from "./pages/AgentMarketplace";
+import { TechAtNiteBrand } from "./pages/TechAtNiteBrand";
 import { AgentResumeProfile } from "./pages/AgentResumeProfile";
 import { BoardDeliverables } from "./pages/BoardDeliverables";
 import { AuditTeam } from "./pages/AuditTeam";
@@ -209,6 +210,7 @@ function boardRoutes() {
       <Route path="rq/portal" element={<RqPortal />} />
       <Route path="lms/dashboard" element={<LmsDashboard />} />
       <Route path="lms/command-center" element={<LmsCommandCenter />} />
+      <Route path="lms/brand" element={<TechAtNiteBrand />} />
       <Route path="amx/chain" element={<AmxChain />} />
       <Route path="amx/remote-work" element={<AmxDispatchConsole />} />
       <Route path="amx/dispatch" element={<AmxDispatchConsole />} />
@@ -399,6 +401,7 @@ export function App() {
           <Route path="xp/wallet" element={<UnprefixedBoardRedirect />} />
           <Route path="rq/portal" element={<UnprefixedBoardRedirect />} />
           <Route path="lms/dashboard" element={<UnprefixedBoardRedirect />} />
+          <Route path="lms/brand" element={<UnprefixedBoardRedirect />} />
           <Route path="amx/chain" element={<UnprefixedBoardRedirect />} />
           <Route path="amx/remote-work" element={<UnprefixedBoardRedirect />} />
           <Route path="amx/dispatch" element={<UnprefixedBoardRedirect />} />
