@@ -1,31 +1,86 @@
-import React from "react";
-import { 
-  Zap, 
-  Search, 
-  Filter, 
-  Star, 
-  MapPin, 
-  BadgeCheck, 
+import React, { useState } from "react";
+import {
+  Zap,
+  Search,
+  Filter,
+  Star,
+  MapPin,
+  BadgeCheck,
   TrendingUp,
   UserCheck,
   ShieldCheck,
   ArrowRight,
-  Loader2
+  Loader2,
+  X,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { amxApi } from "@/api/amx";
 import { useCompany } from "@/context/CompanyContext";
+import { lmsAnalyticsApi } from "@/api/lmsAnalytics";
 
 export function XpExchange() {
   const { selectedCompanyId } = useCompany();
-  
+  const qc = useQueryClient();
+
+  // Booking dialog state
+  const [bookingListingId, setBookingListingId] = useState<string | null>(null);
+  const [bookingTitle, setBookingTitle] = useState("");
+  const [bookingDesc, setBookingDesc] = useState("");
+  const [bookingBudget, setBookingBudget] = useState(100);
+
+  // Become earner form state
+  const [showEarnerForm, setShowEarnerForm] = useState(false);
+  const [earnerName, setEarnerName] = useState("");
+  const [earnerTitle, setEarnerTitle] = useState("");
+  const [earnerBio, setEarnerBio] = useState("");
+  const [earnerSkills, setEarnerSkills] = useState("");
+  const [earnerRate, setEarnerRate] = useState(50);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["amx", "exchange", selectedCompanyId],
     queryFn: () => amxApi.getExchange(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+  });
+
+  const bookMutation = useMutation({
+    mutationFn: (vars: { listingId: string; projectTitle: string; description: string; budgetSims: number }) =>
+      lmsAnalyticsApi.createMarketplaceBooking(selectedCompanyId!, {
+        listingId: vars.listingId,
+        clientMemberId: "current-user",
+        projectTitle: vars.projectTitle,
+        description: vars.description,
+        budgetSims: vars.budgetSims,
+      }),
+    onSuccess: () => {
+      setBookingListingId(null);
+      setBookingTitle("");
+      setBookingDesc("");
+      setBookingBudget(100);
+    },
+  });
+
+  const earnerMutation = useMutation({
+    mutationFn: () =>
+      lmsAnalyticsApi.createMarketplaceListing(selectedCompanyId!, {
+        memberId: "current-user",
+        displayName: earnerName,
+        title: earnerTitle,
+        bio: earnerBio,
+        skills: earnerSkills.split(",").map(s => s.trim()).filter(Boolean),
+        hourlyRateSims: earnerRate,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["amx", "exchange", selectedCompanyId] });
+      setShowEarnerForm(false);
+      setEarnerName("");
+      setEarnerTitle("");
+      setEarnerBio("");
+      setEarnerSkills("");
+      setEarnerRate(50);
+    },
   });
 
   if (isLoading) {
@@ -204,7 +259,8 @@ export function XpExchange() {
                       {earner.location}
                     </div>
                   </div>
-                  <Button size="sm" className="h-9 px-5 gap-2 font-black text-[11px] uppercase tracking-widest">
+                  <Button size="sm" className="h-9 px-5 gap-2 font-black text-[11px] uppercase tracking-widest"
+                    onClick={() => setBookingListingId(earner.id)}>
                     Book Now
                     <ArrowRight className="h-4 w-4" />
                   </Button>
@@ -213,18 +269,115 @@ export function XpExchange() {
             ))}
           </div>
 
-          {/* Call to Action */}
-          <div className="mt-16 p-10 rounded-2xl border border-primary/20 bg-primary/5 flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="max-w-lg">
-              <h2 className="text-2xl font-black text-foreground">Want to Become an Earner?</h2>
-              <p className="text-muted-foreground mt-2 leading-relaxed">
-                Build your skills, earn badges, and start offering your services to the community through the TECH AT NITE LMS.
-              </p>
+          {/* Booking Dialog */}
+          {bookingListingId && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-black">Book This Earner</h3>
+                  <button onClick={() => setBookingListingId(null)} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Project Title</label>
+                    <Input value={bookingTitle} onChange={e => setBookingTitle(e.target.value)} placeholder="What do you need built?" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Description</label>
+                    <textarea
+                      value={bookingDesc}
+                      onChange={e => setBookingDesc(e.target.value)}
+                      placeholder="Describe the project scope and requirements..."
+                      className="w-full h-24 px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Budget (SIMS)</label>
+                    <Input type="number" value={bookingBudget} onChange={e => setBookingBudget(parseInt(e.target.value) || 0)} min={0} />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setBookingListingId(null)}>Cancel</Button>
+                  <Button
+                    className="flex-1 font-black"
+                    disabled={!bookingTitle || bookMutation.isPending}
+                    onClick={() => bookMutation.mutate({ listingId: bookingListingId!, projectTitle: bookingTitle, description: bookingDesc, budgetSims: bookingBudget })}
+                  >
+                    {bookMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Booking"}
+                  </Button>
+                </div>
+                {bookMutation.isSuccess && <p className="text-xs text-green-600 font-bold text-center">Booking submitted!</p>}
+              </div>
             </div>
-            <Button size="lg" className="h-14 px-8 gap-3 font-black text-[13px] uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95">
-              Start Your Journey
-              <UserCheck className="h-5 w-5" />
-            </Button>
+          )}
+
+          {/* Become an Earner CTA / Form */}
+          <div className="mt-16 p-10 rounded-2xl border border-primary/20 bg-primary/5">
+            {!showEarnerForm ? (
+              <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="max-w-lg">
+                  <h2 className="text-2xl font-black text-foreground">Want to Become an Earner?</h2>
+                  <p className="text-muted-foreground mt-2 leading-relaxed">
+                    Reach Ambassador stage through the TECH AT NITE LMS, then list your skills to earn SIMS tokens on real projects.
+                  </p>
+                </div>
+                <Button size="lg" className="h-14 px-8 gap-3 font-black text-[13px] uppercase tracking-[0.2em] shadow-lg shadow-primary/20"
+                  onClick={() => setShowEarnerForm(true)}>
+                  List My Skills
+                  <UserCheck className="h-5 w-5" />
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4 max-w-lg mx-auto">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-black">Create Your Earner Listing</h3>
+                  <button onClick={() => setShowEarnerForm(false)} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Display Name</label>
+                    <Input value={earnerName} onChange={e => setEarnerName(e.target.value)} placeholder="Your name as shown to clients" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Professional Title</label>
+                    <Input value={earnerTitle} onChange={e => setEarnerTitle(e.target.value)} placeholder="e.g. AI Developer, XR Designer" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Bio</label>
+                    <textarea
+                      value={earnerBio}
+                      onChange={e => setEarnerBio(e.target.value)}
+                      placeholder="Tell clients about your experience..."
+                      className="w-full h-20 px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Skills (comma-separated)</label>
+                    <Input value={earnerSkills} onChange={e => setEarnerSkills(e.target.value)} placeholder="React, Python, Unity, Machine Learning" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">Hourly Rate (SIMS)</label>
+                    <Input type="number" value={earnerRate} onChange={e => setEarnerRate(parseInt(e.target.value) || 0)} min={1} />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowEarnerForm(false)}>Cancel</Button>
+                  <Button
+                    className="flex-1 font-black"
+                    disabled={!earnerName || !earnerTitle || earnerMutation.isPending}
+                    onClick={() => earnerMutation.mutate()}
+                  >
+                    {earnerMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Publish Listing"}
+                  </Button>
+                </div>
+                {earnerMutation.isSuccess && <p className="text-xs text-green-600 font-bold text-center">Listing created! Refresh to see it.</p>}
+                {earnerMutation.isError && <p className="text-xs text-red-600 font-bold text-center">Failed to create listing. Check your stage requirements.</p>}
+              </div>
+            )}
           </div>
         </div>
       </main>

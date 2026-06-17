@@ -80,17 +80,24 @@ export interface VerifyCertificateResult {
 
 export interface Workshop {
   id: string;
+  companyId: string;
   name: string;
   description: string;
-  level: string;
   category: string;
-  credits: number;
+  level: string;
+  format: string;
+  creditsRequired: number;
+  creditsAwarded: number;
+  status: string;
+  createdAt: string;
 }
 
 export interface LmsData {
   workshops: Workshop[];
   userLevel: number;
   userCredits: number;
+  tokenBalance: number;
+  progressionStage: string;
   stats: {
     certificates: number;
     simulationsCompleted: number;

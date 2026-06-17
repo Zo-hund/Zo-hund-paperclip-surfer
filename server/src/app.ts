@@ -45,6 +45,7 @@ import { skillChangeRoutes } from "./routes/skill-changes.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { mcpEndpointRoutes } from "./routes/mcp-endpoint.js";
 import { openApiRoutes } from "./routes/openapi.js";
+import { stripeWebhookRoutes, stripeApiRoutes } from "./routes/stripe.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -232,6 +233,7 @@ export async function createApp(
     app.all("/api/auth/*authPath", opts.betterAuthHandler);
   }
   app.use(llmRoutes(db));
+  app.use("/stripe", stripeWebhookRoutes(db));
 
   // Mount API routes
   const api = Router();
@@ -270,6 +272,7 @@ export async function createApp(
   api.use(agentExperimentRoutes(db));
   api.use(amxRoutes(db));
   api.use(lmsRoutes(db));
+  api.use(stripeApiRoutes(db));
   api.use(auditRoutes(db));
   api.use(skillChangeRoutes(db));
   api.use(webhookRoutes(db));

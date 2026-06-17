@@ -442,6 +442,34 @@
       "when": 1781574105886,
       "tag": "0062_classy_ben_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1781615641995,
+      "tag": "0063_acoustic_scream",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1781619781534,
+      "tag": "0064_uneven_supreme_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1781629842477,
+      "tag": "0065_left_lady_mastermind",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1781666152356,
+      "tag": "0066_adorable_guardian",
+      "breakpoints": true
     }
   ]
 }

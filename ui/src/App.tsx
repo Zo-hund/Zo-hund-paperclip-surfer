@@ -49,6 +49,7 @@ import { ResetPasswordPage } from "./pages/ResetPassword";
 import { XpExchange } from "./pages/XpExchange";
 import { RqPortal } from "./pages/RqPortal";
 import { LmsDashboard } from "./pages/LmsDashboard";
+import { LmsCommandCenter } from "./pages/LmsCommandCenter";
 import { AmxChain } from "./pages/AmxChain";
 import { AmxDispatchConsole } from "./pages/AmxDispatchConsole";
 import { XpWallet } from "./pages/XpWallet";
@@ -207,6 +208,7 @@ function boardRoutes() {
       <Route path="xp/wallet" element={<XpWallet />} />
       <Route path="rq/portal" element={<RqPortal />} />
       <Route path="lms/dashboard" element={<LmsDashboard />} />
+      <Route path="lms/command-center" element={<LmsCommandCenter />} />
       <Route path="amx/chain" element={<AmxChain />} />
       <Route path="amx/remote-work" element={<AmxDispatchConsole />} />
       <Route path="amx/dispatch" element={<AmxDispatchConsole />} />

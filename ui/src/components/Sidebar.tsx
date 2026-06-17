@@ -148,6 +148,7 @@ export function Sidebar() {
           <SidebarNavItem to="/xp/exchange" label="XP Exchange" icon={Zap} textBadge="Live" className="group" iconClassName="group-hover:animate-flash-shake group-hover:text-amber-300 drop-shadow-[0_0_4px_rgba(251,191,36,0.3)] transition-colors duration-200 text-amber-500" />
           <SidebarNavItem to="/rq/portal" label="RQ Portal" icon={Factory} />
           <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
+          <SidebarNavItem to="/lms/command-center" label="CRM Command" icon={BarChart3} />
           <SidebarNavItem to="/amx/remote-work" label="Local + Cloud" icon={Route} textBadge="Work" textBadgeTone="amber" />
           <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
           <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />

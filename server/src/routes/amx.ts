@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
-import { amxChainEvents, amxCertificates, agents, issues } from "@paperclipai/db";
+import { amxChainEvents, amxCertificates, agents, issues, lmsMarketplaceListings } from "@paperclipai/db";
 import { amxChainService } from "../services/amxChainService.js";
 import { rqPortalService } from "../services/rqPortalService.js";
 import { financeService } from "../services/finance.js";
@@ -33,61 +33,35 @@ export function amxRoutes(db: Db) {
   router.get("/companies/:companyId/amx/exchange", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    
-    // In a real implementation, this would fetch from an 'earners' table.
-    // For the industrialization demo, we return the structured earner data.
-    const earners = [
-      {
-        id: "U4",
-        name: "User 4",
-        title: "Master Earner",
-        bio: "Innovation leader with expertise in AI and cloud architecture. Available for consulting.",
-        skills: ["AWS", "Machine Learning", "System Design", "Leadership"],
-        rating: 5.0,
-        reviews: 45,
-        projects: 25,
-        badges: 9,
-        rate: 100,
-        location: "West Louisville FoodPort",
-        status: "Available Now"
-      },
-      {
-        id: "U2",
-        name: "User 2",
-        title: "Expert Earner",
-        bio: "Full-stack developer specializing in AI-powered applications. Mentor for junior learners.",
-        skills: ["React", "Node", "Python", "TensorFlow"],
-        rating: 4.9,
-        reviews: 28,
-        projects: 15,
-        badges: 8,
-        rate: 75,
-        location: "Jefferson Community College",
-        status: "Available Now"
-      },
-      {
-        id: "U5940022",
-        name: "User 5940022",
-        title: "Advanced Earner",
-        bio: "Experienced AI/XR developer specializing in spatial computing.",
-        skills: ["Unity", "C#", "XR", "Three.js"],
-        rating: 4.5,
-        reviews: 10,
-        projects: 0,
-        badges: 0,
-        rate: 50,
-        location: "Online",
-        status: "Available Now"
-      }
-    ];
+
+    const listings = await db.select().from(lmsMarketplaceListings)
+      .where(and(eq(lmsMarketplaceListings.companyId, companyId), eq(lmsMarketplaceListings.isActive, 1)))
+      .orderBy(desc(lmsMarketplaceListings.createdAt));
+
+    const earners = listings.map(l => ({
+      id: l.id,
+      name: l.displayName,
+      title: l.title,
+      bio: l.bio ?? "",
+      skills: (l.skills as string[]) ?? [],
+      rating: l.rating / 10,
+      reviews: l.reviewCount,
+      projects: l.projectsCompleted,
+      badges: 0,
+      rate: l.hourlyRateSims,
+      location: l.availability === "available" ? "Available Now" : l.availability === "on_project" ? "On Project" : "Busy",
+      status: l.availability === "available" ? "Available Now" : "On Project",
+    }));
+
+    const availableEarners = listings.filter(l => l.availability === "available").length;
+    const totalProjects = listings.reduce((sum, l) => sum + l.projectsCompleted, 0);
+    const avgRating = listings.length > 0
+      ? Math.round(listings.reduce((sum, l) => sum + l.rating, 0) / listings.length) / 10
+      : 0;
 
     res.json({
       earners,
-      stats: {
-        availableEarners: 7,
-        projectsCompleted: 40,
-        averageRating: 4.6
-      }
+      stats: { availableEarners, projectsCompleted: totalProjects, averageRating: avgRating },
     });
   });
 

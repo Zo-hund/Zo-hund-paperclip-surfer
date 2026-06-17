@@ -12,6 +12,8 @@ export const lmsWorkshops = pgTable(
     companyId: uuid("company_id").notNull().references(() => companies.id),
     name: text("name").notNull(),
     description: text("description").notNull(),
+    category: text("category").notNull().default("AI"), // 'AI', 'Simulation', 'Leadership', 'XR', 'Business'
+    level: text("level").notNull().default("Beginner"), // 'Beginner', 'Intermediate', 'Advanced', 'Master'
     creditsRequired: integer("credits_required").notNull(), // Cost to enroll
     creditsAwarded: integer("credits_awarded").notNull(), // Reward for completion
     format: text("format").notNull(), // 'in_person', 'online', 'metaverse'
