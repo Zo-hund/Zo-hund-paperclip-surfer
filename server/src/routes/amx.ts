@@ -1,13 +1,31 @@
 import { Router } from "express";
+import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
-import { amxChainEvents, amxCertificates, agents, issues, lmsMarketplaceListings } from "@paperclipai/db";
+import {
+  amxChainEvents, amxCertificates, agents, issues,
+  lmsMarketplaceListings, amxLedger, amxTransactions,
+  lmsMemberProfiles, lmsLearnerBadges, lmsBadgeDefinitions, stripePrices,
+} from "@paperclipai/db";
 import { amxChainService } from "../services/amxChainService.js";
 import { rqPortalService } from "../services/rqPortalService.js";
 import { financeService } from "../services/finance.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and, or, inArray } from "drizzle-orm";
+
+function getStripe(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
+  return new Stripe(key, { apiVersion: "2026-05-27.dahlia" });
+}
+
+const CREDIT_AMOUNT_MAP: Record<string, number> = {
+  credits_starter: 1000,
+  credits_pro: 5000,
+  credits_enterprise: 25000,
+  credits_scale: 100000,
+};
 import { renderCertificatePdf } from "../services/pdf-export.js";
 
 const submitRqSchema = z.object({
@@ -67,22 +85,112 @@ export function amxRoutes(db: Db) {
 
   /**
    * GET /api/companies/:companyId/amx/wallet
-   * Returns SIMS balance and transactions.
+   * Returns real ledger balances, transactions, engagement score, and badges.
    */
   router.get("/companies/:companyId/amx/wallet", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    
-    // Mock wallet data until full ledger integration
+    const { actorId } = getActorInfo(req);
+
+    const [ledger] = await db.select().from(amxLedger)
+      .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, actorId)))
+      .limit(1);
+
+    const transactions = await db.select().from(amxTransactions)
+      .where(and(
+        or(
+          and(eq(amxTransactions.fromPrincipalId, actorId), eq(amxTransactions.fromCompanyId, companyId)),
+          and(eq(amxTransactions.toPrincipalId, actorId), eq(amxTransactions.toCompanyId, companyId)),
+        )
+      ))
+      .orderBy(desc(amxTransactions.occurredAt))
+      .limit(20);
+
+    const [profile] = await db
+      .select({ engagementScore: lmsMemberProfiles.engagementScore })
+      .from(lmsMemberProfiles)
+      .where(and(eq(lmsMemberProfiles.companyId, companyId), eq(lmsMemberProfiles.userId, actorId)))
+      .limit(1);
+
+    const badges = await db
+      .select({
+        id: lmsLearnerBadges.id,
+        name: lmsBadgeDefinitions.name,
+        category: lmsBadgeDefinitions.category,
+        iconUrl: lmsBadgeDefinitions.iconUrl,
+        awardedAt: lmsLearnerBadges.awardedAt,
+      })
+      .from(lmsLearnerBadges)
+      .innerJoin(lmsBadgeDefinitions, eq(lmsLearnerBadges.badgeDefinitionId, lmsBadgeDefinitions.id))
+      .where(and(eq(lmsLearnerBadges.companyId, companyId), eq(lmsLearnerBadges.memberId, actorId)));
+
     res.json({
-      balance: 12500,
-      currency: "SIMS",
-      transactions: [
-        { id: "tx_1", type: "credit", amount: 5000, description: "Project Milestone: FoodPort AI", date: new Date().toISOString() },
-        { id: "tx_2", type: "debit", amount: 1500, description: "Agent Swarm: SEO Analysis", date: new Date(Date.now() - 86400000).toISOString() },
-        { id: "tx_3", type: "credit", amount: 200, description: "LMS Certification Reward", date: new Date(Date.now() - 172800000).toISOString() },
-      ]
+      creditBalance: ledger?.creditBalance ?? 0,
+      tokenBalance: ledger?.tokenBalance ?? 0,
+      engagementScore: profile?.engagementScore ?? 0,
+      badges: badges.map(b => ({ ...b, awardedAt: b.awardedAt.toISOString() })),
+      transactions: transactions.map(tx => ({
+        id: tx.id,
+        amount: tx.amount,
+        currency: tx.currency,
+        transactionType: tx.transactionType,
+        fromPrincipalId: tx.fromPrincipalId,
+        toPrincipalId: tx.toPrincipalId,
+        status: tx.status,
+        occurredAt: tx.occurredAt.toISOString(),
+        metadata: tx.metadata ?? null,
+      })),
     });
+  });
+
+  /**
+   * POST /api/companies/:companyId/amx/buy-credits
+   * Creates a Stripe Checkout session for a one-time credit package purchase.
+   */
+  const buyCreditsSchema = z.object({
+    packageTier: z.enum(["credits_starter", "credits_pro", "credits_enterprise", "credits_scale"]),
+    principalId: z.string().min(1),
+  });
+
+  router.post("/companies/:companyId/amx/buy-credits", validate(buyCreditsSchema), async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const { packageTier, principalId } = req.body as z.infer<typeof buyCreditsSchema>;
+
+    let stripe: Stripe;
+    try {
+      stripe = getStripe();
+    } catch {
+      res.status(503).json({ error: "Stripe not configured — set STRIPE_SECRET_KEY" });
+      return;
+    }
+
+    const [price] = await db.select().from(stripePrices)
+      .where(and(
+        eq(stripePrices.companyId, companyId),
+        eq(stripePrices.tierName, packageTier),
+        eq(stripePrices.isActive, 1),
+        eq(stripePrices.interval, "one_time"),
+      ))
+      .limit(1);
+
+    if (!price) {
+      res.status(404).json({ error: "Credit package not found — run POST /stripe/seed-credit-packages first" });
+      return;
+    }
+
+    const creditAmount = CREDIT_AMOUNT_MAP[packageTier] ?? 0;
+    const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: [{ price: price.stripePriceId, quantity: 1 }],
+      metadata: { companyId, principalId, packageTier, creditAmount: String(creditAmount) },
+      success_url: `${publicUrl}/wallet?payment=success`,
+      cancel_url: `${publicUrl}/wallet`,
+    });
+
+    res.json({ checkoutUrl: session.url });
   });
 
   /**

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
-import { stripePrices } from "@paperclipai/db";
+import { stripePrices, amxLedger, amxTransactions } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
 import { provisionMember, cancelMember, TIER_MEMBER_TYPES } from "../services/stripeProvisioningService.js";
 import type { Request as ExpressRequest } from "express";
@@ -137,6 +137,71 @@ export function stripeApiRoutes(db: Db): Router {
   });
 
   /**
+   * POST /companies/:companyId/stripe/seed-credit-packages
+   * Creates 4 one-time Stripe products for SIMS credit bundles.
+   * Safe to re-run — existing entries are skipped.
+   */
+  const CREDIT_PACKAGES = [
+    { name: "credits_starter",    credits: 1000,   amount: 900 },
+    { name: "credits_pro",        credits: 5000,   amount: 3900 },
+    { name: "credits_enterprise", credits: 25000,  amount: 14900 },
+    { name: "credits_scale",      credits: 100000, amount: 49900 },
+  ];
+
+  router.post("/companies/:companyId/stripe/seed-credit-packages", async (req, res) => {
+    const { companyId } = req.params as { companyId: string };
+
+    let stripe: Stripe;
+    try {
+      stripe = getStripe();
+    } catch {
+      res.status(503).json({ error: "Stripe not configured — set STRIPE_SECRET_KEY" });
+      return;
+    }
+
+    const results: Array<{ tier: string; priceId: string; skipped?: boolean }> = [];
+
+    for (const pkg of CREDIT_PACKAGES) {
+      const existing = await db.select({ stripePriceId: stripePrices.stripePriceId })
+        .from(stripePrices)
+        .where(and(eq(stripePrices.companyId, companyId), eq(stripePrices.tierName, pkg.name), eq(stripePrices.isActive, 1)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        results.push({ tier: pkg.name, priceId: existing[0]!.stripePriceId, skipped: true });
+        continue;
+      }
+
+      const product = await stripe.products.create({
+        name: `SIMS Credits — ${pkg.credits.toLocaleString()}`,
+        metadata: { tierName: pkg.name, companyId, creditAmount: String(pkg.credits) },
+      });
+
+      const price = await stripe.prices.create({
+        product: product.id,
+        currency: "usd",
+        unit_amount: pkg.amount,
+        metadata: { tierName: pkg.name, companyId },
+      });
+
+      await db.insert(stripePrices).values({
+        companyId,
+        tierName: pkg.name,
+        stripeProductId: product.id,
+        stripePriceId: price.id,
+        currency: "usd",
+        amount: pkg.amount,
+        interval: "one_time",
+        isActive: 1,
+      });
+
+      results.push({ tier: pkg.name, priceId: price.id });
+    }
+
+    res.json({ seeded: results.length, results });
+  });
+
+  /**
    * GET /companies/:companyId/stripe/prices
    * Lists all active prices for this company with checkout URLs.
    */
@@ -165,13 +230,54 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
-      if (session.mode !== "subscription") return;
       const companyId = session.metadata?.companyId;
       const userId = session.metadata?.userId ?? session.client_reference_id;
+
+      // One-time credit purchase — metadata.creditAmount present
+      if (session.metadata?.creditAmount) {
+        const creditAmount = parseInt(session.metadata.creditAmount, 10);
+        const principalId = session.metadata?.principalId ?? userId;
+        if (companyId && principalId && creditAmount > 0) {
+          await db.insert(amxTransactions).values({
+            fromCompanyId: companyId,
+            toCompanyId: companyId,
+            fromPrincipalType: "system",
+            fromPrincipalId: "stripe-checkout",
+            toPrincipalType: "user",
+            toPrincipalId: principalId,
+            amount: creditAmount,
+            currency: "CREDIT",
+            transactionType: "credit_purchase",
+            status: "completed",
+            metadata: { packageTier: session.metadata?.packageTier, stripeSessionId: session.id },
+          });
+
+          const [existing] = await db.select().from(amxLedger)
+            .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, principalId)));
+
+          if (existing) {
+            await db.update(amxLedger)
+              .set({ creditBalance: existing.creditBalance + creditAmount, updatedAt: new Date() })
+              .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, principalId)));
+          } else {
+            await db.insert(amxLedger).values({
+              companyId,
+              principalType: "user",
+              principalId,
+              creditBalance: creditAmount,
+              tokenBalance: 0,
+            });
+          }
+        }
+        break;
+      }
+
+      // Subscription checkout flow
+      if (session.mode !== "subscription") break;
       const tierName = session.metadata?.tierName;
       if (!companyId || !userId || !tierName) {
         console.warn("[stripe] checkout.session.completed missing metadata", session.id);
-        return;
+        break;
       }
       const subscriptionId = session.subscription as string;
       const stripe = getStripe();

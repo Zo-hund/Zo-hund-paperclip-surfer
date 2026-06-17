@@ -1,5 +1,5 @@
 import type { Db } from "@paperclipai/db";
-import { stripeSubscriptions, lmsMemberProfiles, stripePrices } from "@paperclipai/db";
+import { stripeSubscriptions, lmsMemberProfiles, stripePrices, amxLedger, amxTransactions } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
 
 // Maps each tier name to the memberTypes[] it grants (additive — each tier includes lower tiers)
@@ -13,6 +13,19 @@ export const TIER_MEMBER_TYPES: Record<string, string[]> = {
   volunteer:  ["volunteer"],
   sponsor:    ["sponsor"],
   donor:      ["donor"],
+};
+
+// Credits and tokens granted when a subscription becomes active
+export const TIER_CREDIT_AWARD: Record<string, { credits: number; tokens: number }> = {
+  learner:    { credits: 200,  tokens: 0 },
+  builder:    { credits: 500,  tokens: 50 },
+  ambassador: { credits: 1000, tokens: 150 },
+  earner:     { credits: 2000, tokens: 500 },
+  parent:     { credits: 100,  tokens: 0 },
+  community:  { credits: 50,   tokens: 0 },
+  volunteer:  { credits: 0,    tokens: 0 },
+  sponsor:    { credits: 5000, tokens: 0 },
+  donor:      { credits: 2500, tokens: 0 },
 };
 
 // Maps tier name to the minimum progressionStage it unlocks
@@ -98,6 +111,45 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
       .update(lmsMemberProfiles)
       .set({ memberTypes: mergedTypes, progressionStage: advancedStage, updatedAt: new Date() })
       .where(eq(lmsMemberProfiles.id, profile.id));
+  }
+
+  // Award credits/tokens for the active subscription tier
+  const award = TIER_CREDIT_AWARD[input.tierName];
+  if (award && (award.credits > 0 || award.tokens > 0)) {
+    await db.insert(amxTransactions).values({
+      fromCompanyId: input.companyId,
+      toCompanyId: input.companyId,
+      fromPrincipalType: "system",
+      fromPrincipalId: "stripe-subscription",
+      toPrincipalType: "user",
+      toPrincipalId: input.userId,
+      amount: award.credits + award.tokens,
+      currency: "CREDIT",
+      transactionType: "subscription_award",
+      status: "completed",
+      metadata: { tierName: input.tierName, credits: award.credits, tokens: award.tokens },
+    });
+
+    const [existingLedger] = await db.select().from(amxLedger)
+      .where(and(eq(amxLedger.companyId, input.companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, input.userId)));
+
+    if (existingLedger) {
+      await db.update(amxLedger)
+        .set({
+          creditBalance: existingLedger.creditBalance + award.credits,
+          tokenBalance: existingLedger.tokenBalance + award.tokens,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(amxLedger.companyId, input.companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, input.userId)));
+    } else {
+      await db.insert(amxLedger).values({
+        companyId: input.companyId,
+        principalType: "user",
+        principalId: input.userId,
+        creditBalance: award.credits,
+        tokenBalance: award.tokens,
+      });
+    }
   }
 }
 

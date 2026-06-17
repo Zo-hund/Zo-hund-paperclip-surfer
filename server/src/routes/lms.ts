@@ -700,8 +700,107 @@ export function lmsRoutes(db: Db) {
     const { companyId } = req.params as { companyId: string };
     assertCompanyAccess(req, companyId);
     const body = req.body as z.infer<typeof bookingCreateSchema>;
+
+    // Deduct tokens from client if budgetSims > 0
+    if (body.budgetSims > 0) {
+      const [clientLedger] = await db.select().from(amxLedger)
+        .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, body.clientMemberId)));
+
+      if (!clientLedger || clientLedger.tokenBalance < body.budgetSims) {
+        res.status(402).json({ error: "Insufficient token balance" });
+        return;
+      }
+
+      await db.update(amxLedger)
+        .set({ tokenBalance: clientLedger.tokenBalance - body.budgetSims, updatedAt: new Date() })
+        .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, body.clientMemberId)));
+
+      await db.insert(amxTransactions).values({
+        fromCompanyId: companyId,
+        toCompanyId: companyId,
+        fromPrincipalType: "user",
+        fromPrincipalId: body.clientMemberId,
+        toPrincipalType: "system",
+        toPrincipalId: "marketplace-escrow",
+        amount: body.budgetSims,
+        currency: "AMX",
+        transactionType: "marketplace_booking",
+        status: "completed",
+        metadata: { projectTitle: body.projectTitle },
+      });
+    }
+
     const [row] = await db.insert(lmsMarketplaceBookings).values({ companyId, ...body }).returning();
     res.status(201).json(row);
+  });
+
+  const bookingUpdateSchema = z.object({
+    status: z.enum(["pending", "active", "completed", "cancelled"]),
+  });
+
+  router.patch("/companies/:companyId/lms/marketplace/bookings/:bookingId", validate(bookingUpdateSchema), async (req, res) => {
+    const { companyId, bookingId } = req.params as { companyId: string; bookingId: string };
+    assertCompanyAccess(req, companyId);
+    const { status } = req.body as z.infer<typeof bookingUpdateSchema>;
+
+    const [booking] = await db.select().from(lmsMarketplaceBookings)
+      .where(and(eq(lmsMarketplaceBookings.id, bookingId), eq(lmsMarketplaceBookings.companyId, companyId)))
+      .limit(1);
+
+    if (!booking) {
+      res.status(404).json({ error: "Booking not found" });
+      return;
+    }
+
+    await db.update(lmsMarketplaceBookings)
+      .set({ status, ...(status === "completed" ? { completedAt: new Date() } : {}) })
+      .where(eq(lmsMarketplaceBookings.id, bookingId));
+
+    // On completion, credit tokens to earner
+    if (status === "completed" && booking.budgetSims > 0) {
+      const [listingRow] = await db.select({ memberId: lmsMarketplaceListings.memberId })
+        .from(lmsMarketplaceListings)
+        .where(eq(lmsMarketplaceListings.id, booking.listingId))
+        .limit(1);
+
+      const earnerMemberId = listingRow?.memberId;
+      if (earnerMemberId) {
+        const [earnerLedger] = await db.select().from(amxLedger)
+          .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, earnerMemberId)));
+
+        if (earnerLedger) {
+          await db.update(amxLedger)
+            .set({ tokenBalance: earnerLedger.tokenBalance + booking.budgetSims, updatedAt: new Date() })
+            .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, earnerMemberId)));
+        } else {
+          await db.insert(amxLedger).values({
+            companyId,
+            principalType: "user",
+            principalId: earnerMemberId,
+            creditBalance: 0,
+            tokenBalance: booking.budgetSims,
+          });
+        }
+
+        await db.insert(amxTransactions).values({
+          fromCompanyId: companyId,
+          toCompanyId: companyId,
+          fromPrincipalType: "system",
+          fromPrincipalId: "marketplace-escrow",
+          toPrincipalType: "user",
+          toPrincipalId: earnerMemberId,
+          amount: booking.budgetSims,
+          currency: "AMX",
+          transactionType: "marketplace_booking",
+          status: "completed",
+          metadata: { bookingId, projectTitle: booking.projectTitle },
+        });
+      }
+    }
+
+    const [updated] = await db.select().from(lmsMarketplaceBookings)
+      .where(eq(lmsMarketplaceBookings.id, bookingId)).limit(1);
+    res.json(updated);
   });
 
   // ── Gap 4: Earn Route ──────────────────────────────────────────────────────

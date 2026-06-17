@@ -26,15 +26,29 @@ export interface ExchangeData {
 
 export interface WalletTransaction {
   id: string;
-  type: "credit" | "debit";
   amount: number;
-  description: string;
-  date: string;
+  currency: string;
+  transactionType: string;
+  fromPrincipalId: string;
+  toPrincipalId: string;
+  status: string;
+  occurredAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface WalletBadge {
+  id: string;
+  name: string;
+  category: string;
+  iconUrl: string | null;
+  awardedAt: string;
 }
 
 export interface WalletData {
-  balance: number;
-  currency: string;
+  creditBalance: number;
+  tokenBalance: number;
+  engagementScore: number;
+  badges: WalletBadge[];
   transactions: WalletTransaction[];
 }
 
@@ -126,6 +140,9 @@ export const amxApi = {
 
   submitRq: (companyId: string, data: any) =>
     api.post(`/companies/${companyId}/amx/rq-portal`, data),
+
+  buyCredits: (companyId: string, packageTier: string, principalId: string) =>
+    api.post<{ checkoutUrl: string }>(`/companies/${companyId}/amx/buy-credits`, { packageTier, principalId }),
 };
 
 export function certificatePdfUrl(companyId: string, certId: string): string {

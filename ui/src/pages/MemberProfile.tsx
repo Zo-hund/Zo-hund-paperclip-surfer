@@ -209,7 +209,7 @@ export function MemberProfile() {
     <PublicLayout>
       <div className="relative min-h-[90vh] py-12 px-4 md:px-8">
         {/* Modals */}
-        {showCreditsModal && <BuyCreditsModal currency="SIMS" onClose={() => setShowCreditsModal(false)} />}
+        {showCreditsModal && <BuyCreditsModal onClose={() => setShowCreditsModal(false)} />}
         {showEngageModal && selectedAgent && (
            <EngageModal 
               talent={selectedAgent} 

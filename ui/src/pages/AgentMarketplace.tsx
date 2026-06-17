@@ -314,8 +314,8 @@ export function AgentMarketplace() {
     queryFn: () => amxApi.getWallet(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
-  const balance  = walletData?.balance ?? 0;
-  const currency = walletData?.currency ?? "SIMS";
+  const balance  = walletData?.creditBalance ?? 0;
+  const currency = "SIMS";
 
   const currentPool = useMemo(() => {
     const pool = activeTab === "agents" ? MOCK_AGENTS : activeTab === "humans" ? MOCK_HUMANS : activeTab === "coop" ? MOCK_COOP : MOCK_TEAMS;
