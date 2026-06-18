@@ -4,7 +4,7 @@ import type { Db } from "@paperclipai/db";
 import {
   amxChainEvents, amxCertificates, agents, issues,
   lmsMarketplaceListings, amxLedger, amxTransactions,
-  lmsMemberProfiles, lmsLearnerBadges, lmsBadgeDefinitions, stripePrices,
+  lmsMemberProfiles, lmsLearnerBadges, lmsBadgeDefinitions, stripePrices, companies,
 } from "@paperclipai/db";
 import { amxChainService } from "../services/amxChainService.js";
 import { rqPortalService } from "../services/rqPortalService.js";
@@ -182,14 +182,19 @@ export function amxRoutes(db: Db) {
     const creditAmount = CREDIT_AMOUNT_MAP[packageTier] ?? 0;
     const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`;
 
+    // Routes are company-prefixed (e.g. /AMXA/xp/wallet); build the return URL with the prefix.
+    const [company] = await db.select({ issuePrefix: companies.issuePrefix })
+      .from(companies).where(eq(companies.id, companyId)).limit(1);
+    const walletPath = company?.issuePrefix ? `/${company.issuePrefix}/xp/wallet` : "/xp/wallet";
+
     let session: Stripe.Checkout.Session;
     try {
       session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{ price: price.stripePriceId, quantity: 1 }],
         metadata: { companyId, principalId, packageTier, creditAmount: String(creditAmount) },
-        success_url: `${publicUrl}/wallet?payment=success`,
-        cancel_url: `${publicUrl}/wallet`,
+        success_url: `${publicUrl}${walletPath}?payment=success`,
+        cancel_url: `${publicUrl}${walletPath}`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Stripe error";
