@@ -73,8 +73,9 @@ export function BuyCreditsModal({
         pushToast({ tone: "warn", title: "No checkout URL returned" });
         setLoading(false);
       }
-    } catch {
-      pushToast({ tone: "warn", title: "Failed to start checkout — Stripe may not be configured" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to start checkout";
+      pushToast({ tone: "warn", title: msg });
       setLoading(false);
     }
   };

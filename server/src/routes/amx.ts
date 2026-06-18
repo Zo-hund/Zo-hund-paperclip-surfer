@@ -182,13 +182,20 @@ export function amxRoutes(db: Db) {
     const creditAmount = CREDIT_AMOUNT_MAP[packageTier] ?? 0;
     const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`;
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [{ price: price.stripePriceId, quantity: 1 }],
-      metadata: { companyId, principalId, packageTier, creditAmount: String(creditAmount) },
-      success_url: `${publicUrl}/wallet?payment=success`,
-      cancel_url: `${publicUrl}/wallet`,
-    });
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [{ price: price.stripePriceId, quantity: 1 }],
+        metadata: { companyId, principalId, packageTier, creditAmount: String(creditAmount) },
+        success_url: `${publicUrl}/wallet?payment=success`,
+        cancel_url: `${publicUrl}/wallet`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Stripe error";
+      res.status(502).json({ error: `Stripe checkout failed: ${msg}` });
+      return;
+    }
 
     res.json({ checkoutUrl: session.url });
   });
