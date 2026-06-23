@@ -101,7 +101,7 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const search = typeof req.query.search === "string" ? req.query.search : undefined;
     const type = typeof req.query.type === "string" ? req.query.type : undefined;
     const allDeliverables = await workProducts.listCompanyDeliverables(company.id, search, type);
-    const deliverables = allDeliverables.filter((d: any) => d.reviewState !== "rejected");
+    const deliverables = allDeliverables.filter((d: any) => d.reviewState !== "rejected" && d.status !== "archived");
 
     res.json({
       company: {

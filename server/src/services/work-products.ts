@@ -180,6 +180,30 @@ export function workProductService(db: Db) {
               ),
             );
         }
+
+        if (data.externalId) {
+          const existing = await tx
+            .select({ id: issueWorkProducts.id })
+            .from(issueWorkProducts)
+            .where(
+              and(
+                eq(issueWorkProducts.issueId, issueId),
+                eq(issueWorkProducts.provider, data.provider),
+                eq(issueWorkProducts.externalId, data.externalId),
+              ),
+            )
+            .then((rows) => rows[0] ?? null);
+
+          if (existing) {
+            return await tx
+              .update(issueWorkProducts)
+              .set({ ...data, updatedAt: new Date() })
+              .where(eq(issueWorkProducts.id, existing.id))
+              .returning()
+              .then((rows) => rows[0] ?? null);
+          }
+        }
+
         return await tx
           .insert(issueWorkProducts)
           .values({ ...data, companyId, issueId })

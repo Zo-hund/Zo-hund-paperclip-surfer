@@ -1,7 +1,11 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Download } from "lucide-react";
 
 export function ContentPreview({ dl }: { dl: any }) {
   const type = dl.type?.toLowerCase();
+  const docKey = dl.metadata?.documentKey;
+  const exportUrl = docKey && dl.issueId
+    ? `/api/issues/${dl.issueId}/documents/${docKey}/export`
+    : dl.url;
 
   if (type === "image" && dl.url) {
     return <img src={dl.url} alt={dl.title} className="w-full rounded-lg border border-border/40 max-h-80 object-contain" />;
@@ -26,8 +30,15 @@ export function ContentPreview({ dl }: { dl: any }) {
   }
   if (dl.summary) {
     return (
-      <div className="prose prose-sm prose-invert max-w-none bg-muted/20 rounded-lg border border-border/40 p-4 max-h-80 overflow-y-auto">
-        <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{dl.summary}</p>
+      <div className="space-y-2">
+        <div className="prose prose-sm prose-invert max-w-none bg-muted/20 rounded-lg border border-border/40 p-4 max-h-80 overflow-y-auto">
+          <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{dl.summary}</p>
+        </div>
+        {exportUrl && (
+          <a href={exportUrl} download className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+            <Download className="h-3 w-3" /> Download markdown
+          </a>
+        )}
       </div>
     );
   }

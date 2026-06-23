@@ -489,6 +489,24 @@ export function issueRoutes(db: Db, storage: StorageService) {
     res.json(doc);
   });
 
+  router.get("/issues/:id/documents/:key/export", async (req, res) => {
+    const id = req.params.id as string;
+    const issue = await svc.getById(id);
+    if (!issue) { res.status(404).json({ error: "Issue not found" }); return; }
+    assertCompanyAccess(req, issue.companyId);
+    const keyParsed = issueDocumentKeySchema.safeParse(String(req.params.key ?? "").trim().toLowerCase());
+    if (!keyParsed.success) { res.status(400).json({ error: "Invalid document key" }); return; }
+    const doc = await documentsSvc.getIssueDocumentByKey(issue.id, keyParsed.data);
+    if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+
+    const title = (doc.title || issue.identifier || "document").replace(/[^a-zA-Z0-9_\- ]/g, "");
+    const body = (doc as any).body ?? "";
+
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${title}.md"`);
+    res.send(body);
+  });
+
   router.put("/issues/:id/documents/:key", validate(upsertIssueDocumentSchema), async (req, res) => {
     const id = req.params.id as string;
     const issue = await svc.getById(id);
@@ -533,6 +551,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
           type: "document",
           provider: "agent-sync",
           externalId: `doc:${doc.id}`,
+          url: `/api/issues/${issue.id}/documents/${doc.key}/export`,
           status: "active",
           isPrimary: true,
           summary: req.body.changeSummary || "Automated report delivery via Strategic Pipeline.",

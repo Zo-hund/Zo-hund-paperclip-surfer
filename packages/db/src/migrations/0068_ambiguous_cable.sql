@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "issue_work_products_issue_provider_external_id_uq" ON "issue_work_products" USING btree ("issue_id","provider","external_id") WHERE external_id IS NOT NULL;

@@ -152,23 +152,53 @@ export function opprrcService(db: Db) {
       ...(binding.projects.length ? binding.projects.map((id) => `- \`${id}\``) : ["- (none)"]),
     ].join("\n");
 
-    const [row] = await db
-      .insert(issueWorkProducts)
-      .values({
-        companyId,
-        issueId,
-        type: "document",
-        provider: "system",
-        title: `OPPRRC Report — ${identifier}`,
-        status: "completed",
-        reviewState: "none",
-        isPrimary: false,
-        healthStatus: "healthy",
-        summary,
-        metadata: { format: "markdown", content, generatedAt: generatedAt.toISOString() },
-        createdByRunId: runId,
-      })
-      .returning({ id: issueWorkProducts.id });
+    const opprrcExternalId = `opprrc-report:${issueId}`;
+    const existing = await db
+      .select({ id: issueWorkProducts.id })
+      .from(issueWorkProducts)
+      .where(
+        and(
+          eq(issueWorkProducts.issueId, issueId),
+          eq(issueWorkProducts.provider, "system"),
+          eq(issueWorkProducts.externalId, opprrcExternalId),
+        ),
+      )
+      .then((rows) => rows[0] ?? null);
+
+    let row: { id: string };
+    if (existing) {
+      await db
+        .update(issueWorkProducts)
+        .set({
+          title: `OPPRRC Report — ${identifier}`,
+          summary,
+          metadata: { format: "markdown", content, generatedAt: generatedAt.toISOString() },
+          createdByRunId: runId,
+          updatedAt: new Date(),
+        })
+        .where(eq(issueWorkProducts.id, existing.id));
+      row = existing;
+    } else {
+      const [inserted] = await db
+        .insert(issueWorkProducts)
+        .values({
+          companyId,
+          issueId,
+          type: "document",
+          provider: "system",
+          externalId: opprrcExternalId,
+          title: `OPPRRC Report — ${identifier}`,
+          status: "completed",
+          reviewState: "none",
+          isPrimary: false,
+          healthStatus: "healthy",
+          summary,
+          metadata: { format: "markdown", content, generatedAt: generatedAt.toISOString() },
+          createdByRunId: runId,
+        })
+        .returning({ id: issueWorkProducts.id });
+      row = inserted;
+    }
 
     await db
       .update(amxCertificates)
