@@ -64,6 +64,6 @@ export const issueWorkProducts = pgTable(
     ),
     issueProviderExternalIdUq: uniqueIndex("issue_work_products_issue_provider_external_id_uq")
       .on(table.issueId, table.provider, table.externalId)
-      .where(sql`external_id IS NOT NULL`),
+      .where(sql`external_id IS NOT NULL AND status != 'archived'`),
   }),
 );
