@@ -1,1 +1,2 @@
-CREATE UNIQUE INDEX "issue_work_products_issue_provider_external_id_uq" ON "issue_work_products" USING btree ("issue_id","provider","external_id") WHERE external_id IS NOT NULL AND status != 'archived';
+-- Safely drop the unique index if a prior failed deploy partially created it.
+DROP INDEX IF EXISTS "issue_work_products_issue_provider_external_id_uq";

@@ -1,6 +1,6 @@
 {
-  "id": "be2b61d0-445a-43f8-a8c4-6cee6210f01d",
-  "prevId": "fb223de1-5b4f-4c3d-9a03-9e14dc6759e7",
+  "id": "2e84bbb1-cab0-4ef3-8b28-b47126cba7e9",
+  "prevId": "be2b61d0-445a-43f8-a8c4-6cee6210f01d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11020,34 +11020,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "issue_work_products_issue_provider_external_id_uq": {
-          "name": "issue_work_products_issue_provider_external_id_uq",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "external_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "external_id IS NOT NULL AND status != 'archived'",
           "concurrently": false,
           "method": "btree",
           "with": {}
