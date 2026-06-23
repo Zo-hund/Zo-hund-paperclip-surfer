@@ -21,6 +21,13 @@ export const DEFAULT_ALLOWED_TYPES: readonly string[] = [
   "image/jpg",
   "image/webp",
   "image/gif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/ogg",
+  "audio/webm",
   "application/pdf",
   "text/markdown",
   "text/plain",
@@ -71,4 +78,4 @@ export function isAllowedContentType(contentType: string): boolean {
 }
 
 export const MAX_ATTACHMENT_BYTES =
-  Number(process.env.PAPERCLIP_ATTACHMENT_MAX_BYTES) || 10 * 1024 * 1024;
+  Number(process.env.PAPERCLIP_ATTACHMENT_MAX_BYTES) || 100 * 1024 * 1024;

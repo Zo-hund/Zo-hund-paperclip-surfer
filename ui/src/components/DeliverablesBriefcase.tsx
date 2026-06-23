@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Briefcase, Search, ExternalLink, User, Activity, BarChart3,
   Clock, CheckCircle2, XCircle, AlertTriangle, FileText, Code2,
-  Image, Music, Palette, BadgeCheck, ShieldCheck, ChevronRight,
+  Image, Music, Film, Palette, BadgeCheck, ShieldCheck, ChevronRight,
   Loader2, Eye, ThumbsUp, ThumbsDown, RotateCcw, X, Tag, Zap,
   GitPullRequest, GitBranch, GitCommit, Globe, PackageOpen,
 } from "lucide-react";
@@ -23,11 +23,12 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; label: string; colo
   commit:          { icon: GitCommit,      label: "Commit",    color: "text-violet-400",  bg: "bg-violet-400/10" },
   preview_url:     { icon: Globe,          label: "Preview",   color: "text-emerald-400", bg: "bg-emerald-400/10" },
   runtime_service: { icon: Zap,            label: "Service",   color: "text-amber-400",   bg: "bg-amber-400/10" },
+  video:           { icon: Film,           label: "Video",     color: "text-rose-400",    bg: "bg-rose-400/10" },
+  audio:           { icon: Music,          label: "Audio",     color: "text-amber-400",   bg: "bg-amber-400/10" },
   // Legacy / custom agent types
   text:   { icon: FileText, label: "Text",   color: "text-blue-400",    bg: "bg-blue-400/10" },
   code:   { icon: Code2,    label: "Code",   color: "text-emerald-400", bg: "bg-emerald-400/10" },
   image:  { icon: Image,    label: "Image",  color: "text-violet-400",  bg: "bg-violet-400/10" },
-  audio:  { icon: Music,    label: "Audio",  color: "text-amber-400",   bg: "bg-amber-400/10" },
   visual: { icon: Palette,  label: "Visual", color: "text-pink-400",    bg: "bg-pink-400/10" },
   pr:     { icon: GitPullRequest, label: "PR", color: "text-orange-400", bg: "bg-orange-400/10" },
 };
@@ -170,6 +171,17 @@ function ContentPreview({ dl }: { dl: any }) {
 
   if (type === "image" && dl.url) {
     return <img src={dl.url} alt={dl.title} className="w-full rounded-lg border border-border/40 max-h-80 object-contain" />;
+  }
+  if (type === "video" && dl.url) {
+    return (
+      <video controls className="w-full rounded-lg border border-border/40 max-h-80">
+        <source src={dl.url} type="video/mp4" />
+        <source src={dl.url} type="video/webm" />
+      </video>
+    );
+  }
+  if (type === "audio" && dl.url) {
+    return <audio controls className="w-full" src={dl.url} />;
   }
   if (type === "code" && dl.summary) {
     return (

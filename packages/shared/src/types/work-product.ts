@@ -5,7 +5,9 @@ export type IssueWorkProductType =
   | "branch"
   | "commit"
   | "artifact"
-  | "document";
+  | "document"
+  | "video"
+  | "audio";
 
 export type IssueWorkProductProvider =
   | "paperclip"

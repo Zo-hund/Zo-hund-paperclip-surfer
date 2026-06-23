@@ -163,6 +163,15 @@ export function companyService(db: Db) {
       return enrichCompany(hydrated);
     },
 
+    getByPrefix: async (prefix: string) => {
+      const row = await getCompanyQuery(db)
+        .where(sql`lower(${companies.issuePrefix}) = lower(${prefix})`)
+        .then((rows) => rows[0] ?? null);
+      if (!row) return null;
+      const [hydrated] = await hydrateCompanySpend([row], db);
+      return enrichCompany(hydrated);
+    },
+
     create: async (data: typeof companies.$inferInsert) => {
       const created = await createCompanyWithUniquePrefix(data);
       const row = await getCompanyQuery(db)

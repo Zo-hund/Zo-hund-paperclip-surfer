@@ -93,6 +93,29 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     });
   });
 
+  // ── Public portal — no board auth required ──────────────────────────────────
+  router.get("/public/:slug/portal", async (req, res) => {
+    const company = await svc.getByPrefix(req.params.slug as string);
+    if (!company) { res.status(404).json({ error: "Company not found" }); return; }
+
+    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+    const type = typeof req.query.type === "string" ? req.query.type : undefined;
+    const allDeliverables = await workProducts.listCompanyDeliverables(company.id, search, type);
+    const deliverables = allDeliverables.filter((d: any) => d.reviewState !== "rejected");
+
+    res.json({
+      company: {
+        id: company.id,
+        name: company.name,
+        description: company.description,
+        brandColor: company.brandColor,
+        logoUrl: company.logoUrl,
+        issuePrefix: company.issuePrefix,
+      },
+      deliverables,
+    });
+  });
+
   // Board deliverable routes must be before /:companyId to avoid "board" being treated as a companyId.
   router.get("/board/deliverables", async (req, res) => {
     assertBoard(req);

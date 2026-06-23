@@ -67,6 +67,7 @@ import { PublicHome } from "./pages/PublicHome";
 import { PublicAgentProfile } from "./pages/PublicAgentProfile";
 import { PublicCompanyProfile } from "./pages/PublicCompanyProfile";
 import { ServiceRequest } from "./pages/ServiceRequest";
+import { ClientPortal } from "./pages/ClientPortal";
 import { MemberProfile } from "./pages/MemberProfile";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
@@ -355,6 +356,7 @@ export function App() {
         <Route path="p/agent/:agentId" element={<PublicAgentProfile />} />
         <Route path="request" element={<ServiceRequest />} />
         <Route path="join" element={<ServiceRequest />} />
+        <Route path="portal/:companySlug" element={<ClientPortal />} />
         <Route path="profile" element={<MemberProfile />} />
 
         {/* ── Auth-required routes ── */}

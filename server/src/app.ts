@@ -45,6 +45,7 @@ import { skillChangeRoutes } from "./routes/skill-changes.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { mcpEndpointRoutes } from "./routes/mcp-endpoint.js";
 import { openApiRoutes } from "./routes/openapi.js";
+import { livekitRouter } from "./routes/livekit.js";
 import { stripeWebhookRoutes, stripeApiRoutes } from "./routes/stripe.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
@@ -278,6 +279,7 @@ export async function createApp(
   api.use(webhookRoutes(db));
   api.use(mcpEndpointRoutes(db));
   api.use(openApiRoutes());
+  api.use(livekitRouter);
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
   const pluginRegistry = pluginRegistryService(db);

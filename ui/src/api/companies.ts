@@ -76,4 +76,15 @@ export const companiesApi = {
   getCompanyMetrics: (companyId: string) => api.get<any>(`/companies/${companyId}/metrics`),
   updateDeploymentTarget: (companyId: string, target: string) =>
     api.post<{ ok: true; target: string }>(`/companies/${companyId}/deployment-target`, { target }),
+
+  getPublicPortal: (slug: string, opts?: { search?: string; type?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.search) params.set("search", opts.search);
+    if (opts?.type) params.set("type", opts.type);
+    const qs = params.toString();
+    return api.get<{
+      company: { id: string; name: string; description: string | null; brandColor: string | null; logoUrl: string | null; issuePrefix: string };
+      deliverables: any[];
+    }>(`/companies/public/${slug}/portal${qs ? `?${qs}` : ""}`);
+  },
 };
