@@ -1,6 +1,6 @@
 {
-  "id": "fb223de1-5b4f-4c3d-9a03-9e14dc6759e7",
-  "prevId": "9037df3b-8e73-488d-95b9-77683c665728",
+  "id": "be2b61d0-445a-43f8-a8c4-6cee6210f01d",
+  "prevId": "fb223de1-5b4f-4c3d-9a03-9e14dc6759e7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11047,7 +11047,7 @@
             }
           ],
           "isUnique": true,
-          "where": "external_id IS NOT NULL",
+          "where": "external_id IS NOT NULL AND status != 'archived'",
           "concurrently": false,
           "method": "btree",
           "with": {}
