@@ -194,7 +194,7 @@ export function InviteLandingPage() {
               <div className="flex gap-2 mt-4">
                 {mem?.credentialId && (
                   <Button asChild>
-                    <Link to={`/profile?company=${payload.companyId}&user=${mem.principalId}`}>
+                    <Link to={`/profile?credId=${encodeURIComponent(mem.credentialId)}&tier=${encodeURIComponent(mem.credentialData?.tier ?? "member")}&issued=${encodeURIComponent(mem.credentialData?.issuedAt ?? "")}`}>
                       View membership pass
                     </Link>
                   </Button>

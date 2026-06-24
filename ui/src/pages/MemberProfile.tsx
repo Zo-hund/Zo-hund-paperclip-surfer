@@ -196,30 +196,23 @@ export function MemberProfile() {
   const [member, setMember] = useState(DEFAULT_MEMBER);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
 
-  // Fetch real credential if available (from query params after invite accept)
+  // Read credential from URL params (passed from invite accept — no API call needed)
   const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
-  const qCompany = searchParams.get("company");
-  const qUser = searchParams.get("user");
+  const qCredId = searchParams.get("credId");
+  const qTier = searchParams.get("tier");
+  const qIssued = searchParams.get("issued");
 
   React.useEffect(() => {
-    if (!qCompany || !qUser) return;
-    fetch(`/api/companies/${qCompany}/members/${qUser}/credential`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return;
-        const cd = data.credentialData || {};
-        const tierMap: Record<string, MembershipTier> = { member: "Community Partner", admin: "Collective", owner: "Expert" };
-        setMember(prev => ({
-          ...prev,
-          id: data.credentialId ?? prev.id,
-          name: data.userName ?? data.userEmail ?? prev.name,
-          tier: tierMap[data.role ?? "member"] ?? "Community Partner",
-          issuedAt: cd.issuedAt ? new Date(cd.issuedAt as string).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() : prev.issuedAt,
-          status: data.status === "active" ? "Verified" : "Pending",
-        }));
-      })
-      .catch(() => {});
-  }, [qCompany, qUser]);
+    if (!qCredId) return;
+    const tierMap: Record<string, MembershipTier> = { member: "Community Partner", client: "Community Partner", admin: "Collective", owner: "Expert" };
+    setMember(prev => ({
+      ...prev,
+      id: qCredId,
+      tier: tierMap[qTier ?? "member"] ?? "Community Partner",
+      issuedAt: qIssued ? new Date(qIssued).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() : prev.issuedAt,
+      status: "Verified",
+    }));
+  }, [qCredId, qTier, qIssued]);
   const [showEngageModal, setShowEngageModal] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
 
@@ -279,11 +272,11 @@ export function MemberProfile() {
                    <Sparkles className="h-4 w-4" /> Getting started
                  </h3>
                  <div className="grid gap-2">
-                   <Link to="/auth" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
+                   <Link to="/auth?next=/" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
                      <div className="p-2 rounded-lg bg-primary/10"><Terminal className="h-4 w-4 text-primary" /></div>
                      <div className="flex-1">
                        <p className="text-sm font-bold text-white">Create your company</p>
-                       <p className="text-[11px] text-muted-foreground">Set up your organization and deploy your first AI agent</p>
+                       <p className="text-[11px] text-muted-foreground">Sign in, then set up your organization and deploy your first AI agent</p>
                      </div>
                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                    </Link>
