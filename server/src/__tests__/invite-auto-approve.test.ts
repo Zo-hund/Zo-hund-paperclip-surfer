@@ -181,7 +181,7 @@ describe("POST /invites/:token/accept Auto Approval", () => {
       "company-1",
       "user",
       "user-1",
-      "member",
+      "client",
       "active"
     );
   });
@@ -210,7 +210,7 @@ describe("POST /invites/:token/accept Auto Approval", () => {
       "company-1",
       "user",
       "user-1",
-      "member",
+      "client",
       "active"
     );
   });
