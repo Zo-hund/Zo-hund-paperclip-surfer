@@ -88,7 +88,7 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
           req.actor = {
             type: "board",
             userId,
-            companyIds: memberships.map((row) => row.companyId),
+            companyIds: memberships.filter((row) => row.membershipRole !== "client").map((row) => row.companyId),
             companyRoles,
             isInstanceAdmin: Boolean(roleRow),
             runId: runIdHeader ?? undefined,

@@ -282,8 +282,8 @@ export function MemberProfile() {
                    <Link to="/auth" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
                      <div className="p-2 rounded-lg bg-primary/10"><Terminal className="h-4 w-4 text-primary" /></div>
                      <div className="flex-1">
-                       <p className="text-sm font-bold text-white">Sign in to your dashboard</p>
-                       <p className="text-[11px] text-muted-foreground">Access the board to create companies, agents, and projects</p>
+                       <p className="text-sm font-bold text-white">Create your company</p>
+                       <p className="text-[11px] text-muted-foreground">Set up your organization and deploy your first AI agent</p>
                      </div>
                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                    </Link>

@@ -2325,7 +2325,7 @@ export function accessRoutes(
                   companyId,
                   "user",
                   requestingUserId,
-                  "member",
+                  "client",
                   "active"
                 );
                 const grants = grantsFromDefaults(
