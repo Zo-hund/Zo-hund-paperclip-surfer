@@ -206,12 +206,13 @@ export function MemberProfile() {
     fetch(`/api/companies/${qCompany}/members/${qUser}/credential`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (!data?.credentialId) return;
+        if (!data) return;
         const cd = data.credentialData || {};
         const tierMap: Record<string, MembershipTier> = { member: "Community Partner", admin: "Collective", owner: "Expert" };
         setMember(prev => ({
           ...prev,
-          id: data.credentialId,
+          id: data.credentialId ?? prev.id,
+          name: data.userName ?? data.userEmail ?? prev.name,
           tier: tierMap[data.role ?? "member"] ?? "Community Partner",
           issuedAt: cd.issuedAt ? new Date(cd.issuedAt as string).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() : prev.issuedAt,
           status: data.status === "active" ? "Verified" : "Pending",

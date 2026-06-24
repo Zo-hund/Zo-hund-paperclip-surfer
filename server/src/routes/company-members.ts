@@ -7,7 +7,9 @@
  * DELETE /companies/:companyId/members/:userId  — remove a member (owner only)
  */
 import { Router } from "express";
+import { eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
+import { authUsers } from "@paperclipai/db";
 import { z } from "zod";
 import { COMPANY_MEMBERSHIP_ROLES } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
@@ -151,6 +153,9 @@ export function companyMembersRoutes(db: Db) {
     const membership = await access.getMembership(companyId, "user", userId);
     if (!membership) { res.status(404).json({ error: "Membership not found" }); return; }
 
+    const user = await db.select({ name: authUsers.name, email: authUsers.email })
+      .from(authUsers).where(eq(authUsers.id, userId)).then((rows) => rows[0] ?? null);
+
     res.json({
       membershipId: membership.id,
       credentialId: membership.credentialId ?? null,
@@ -158,6 +163,8 @@ export function companyMembersRoutes(db: Db) {
       status: membership.status,
       role: membership.membershipRole,
       companyId: membership.companyId,
+      userName: user?.name ?? null,
+      userEmail: user?.email ?? null,
       createdAt: membership.createdAt,
     });
   });
