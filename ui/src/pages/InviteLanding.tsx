@@ -188,11 +188,23 @@ export function InviteLandingPage() {
           <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             Request ID: <span className="font-mono">{payload.id}</span>
           </div>
-          {payload.status === "approved" && (
-            <Button asChild className="mt-4">
-              <Link to="/">Go to board</Link>
-            </Button>
-          )}
+          {payload.status === "approved" && (() => {
+            const mem = (payload as any).membership;
+            return (
+              <div className="flex gap-2 mt-4">
+                {mem?.credentialId && (
+                  <Button asChild>
+                    <Link to={`/profile?company=${payload.companyId}&user=${mem.principalId}`}>
+                      View membership pass
+                    </Link>
+                  </Button>
+                )}
+                <Button asChild variant={mem?.credentialId ? "outline" : "default"}>
+                  <Link to="/">Go to board</Link>
+                </Button>
+              </div>
+            );
+          })()}
           {claimSecret && claimApiKeyPath && (
             <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
               <p className="font-medium text-foreground">One-time claim secret (save now)</p>

@@ -77,6 +77,17 @@ export const companiesApi = {
   updateDeploymentTarget: (companyId: string, target: string) =>
     api.post<{ ok: true; target: string }>(`/companies/${companyId}/deployment-target`, { target }),
 
+  getMemberCredential: (companyId: string, userId: string) =>
+    api.get<{
+      membershipId: string;
+      credentialId: string | null;
+      credentialData: Record<string, unknown> | null;
+      status: string;
+      role: string | null;
+      companyId: string;
+      createdAt: string;
+    }>(`/companies/${companyId}/members/${userId}/credential`),
+
   getPublicPortal: (slug: string, opts?: { search?: string; type?: string }) => {
     const params = new URLSearchParams();
     if (opts?.search) params.set("search", opts.search);

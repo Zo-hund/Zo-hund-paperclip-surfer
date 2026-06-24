@@ -2314,13 +2314,14 @@ export function accessRoutes(
             let createdAgentId: string | null = null;
             let approvedByUserId: string | null = null;
             let approvedAt: Date | null = null;
+            let humanMembership: { id: string; credentialId: string | null; credentialData: Record<string, unknown> | null; status: string } | null = null;
 
             if (effectiveStatus === "approved") {
               approvedAt = new Date();
               if (requestType === "human") {
                 const requestingUserId = req.actor.userId ?? "local-board";
                 approvedByUserId = requestingUserId;
-                await access.ensureMembership(
+                humanMembership = await access.ensureMembership(
                   companyId,
                   "user",
                   requestingUserId,
@@ -2406,7 +2407,7 @@ export function accessRoutes(
               })
               .returning()
               .then((rows) => rows[0]);
-            return row;
+            return { ...row, _humanMembership: humanMembership };
           })
         : await db
             .update(joinRequests)
@@ -2599,6 +2600,9 @@ export function accessRoutes(
       }
       res.status(202).json({
         ...response,
+        ...((created as any)?._humanMembership
+          ? { membership: { id: (created as any)._humanMembership.id, principalId: (created as any)._humanMembership.principalId, credentialId: (created as any)._humanMembership.credentialId, credentialData: (created as any)._humanMembership.credentialData, status: (created as any)._humanMembership.status } }
+          : {}),
         ...(joinDefaults.diagnostics.length > 0
           ? { diagnostics: joinDefaults.diagnostics }
           : {})

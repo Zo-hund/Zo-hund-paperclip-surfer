@@ -195,6 +195,30 @@ function MarketItemCard({ item, onBuy }: { item: MarketplaceItem; onBuy: (item: 
 export function MemberProfile() {
   const [member, setMember] = useState(DEFAULT_MEMBER);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
+
+  // Fetch real credential if available (from query params after invite accept)
+  const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  const qCompany = searchParams.get("company");
+  const qUser = searchParams.get("user");
+
+  React.useEffect(() => {
+    if (!qCompany || !qUser) return;
+    fetch(`/api/companies/${qCompany}/members/${qUser}/credential`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.credentialId) return;
+        const cd = data.credentialData || {};
+        const tierMap: Record<string, MembershipTier> = { member: "Community Partner", admin: "Collective", owner: "Expert" };
+        setMember(prev => ({
+          ...prev,
+          id: data.credentialId,
+          tier: tierMap[data.role ?? "member"] ?? "Community Partner",
+          issuedAt: cd.issuedAt ? new Date(cd.issuedAt as string).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() : prev.issuedAt,
+          status: data.status === "active" ? "Verified" : "Pending",
+        }));
+      })
+      .catch(() => {});
+  }, [qCompany, qUser]);
   const [showEngageModal, setShowEngageModal] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
 
