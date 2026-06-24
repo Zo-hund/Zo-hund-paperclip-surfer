@@ -273,6 +273,47 @@ export function MemberProfile() {
                   </Link>
                </div>
 
+               {/* Getting Started — new member onboarding */}
+               <div className="p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
+                 <h3 className="text-sm font-black uppercase tracking-widest text-emerald-400 mb-3 flex items-center gap-2">
+                   <Sparkles className="h-4 w-4" /> Getting started
+                 </h3>
+                 <div className="grid gap-2">
+                   <Link to="/auth" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
+                     <div className="p-2 rounded-lg bg-primary/10"><Terminal className="h-4 w-4 text-primary" /></div>
+                     <div className="flex-1">
+                       <p className="text-sm font-bold text-white">Sign in to your dashboard</p>
+                       <p className="text-[11px] text-muted-foreground">Access the board to create companies, agents, and projects</p>
+                     </div>
+                     <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                   </Link>
+                   <Link to="/request" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
+                     <div className="p-2 rounded-lg bg-violet-500/10"><ArrowUpRight className="h-4 w-4 text-violet-400" /></div>
+                     <div className="flex-1">
+                       <p className="text-sm font-bold text-white">Request a service</p>
+                       <p className="text-[11px] text-muted-foreground">Submit a work order for agent-powered delivery</p>
+                     </div>
+                     <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                   </Link>
+                   <Link to="/portal/AMXA" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
+                     <div className="p-2 rounded-lg bg-blue-500/10"><Cpu className="h-4 w-4 text-blue-400" /></div>
+                     <div className="flex-1">
+                       <p className="text-sm font-bold text-white">Browse OPPRRC portal</p>
+                       <p className="text-[11px] text-muted-foreground">View deliverables, video reviews, and agent work</p>
+                     </div>
+                     <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                   </Link>
+                   <Link to="/home#companies" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
+                     <div className="p-2 rounded-lg bg-amber-500/10"><TrendingUp className="h-4 w-4 text-amber-400" /></div>
+                     <div className="flex-1">
+                       <p className="text-sm font-bold text-white">Explore companies & agents</p>
+                       <p className="text-[11px] text-muted-foreground">Discover available AI teams and hire specialists</p>
+                     </div>
+                     <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                   </Link>
+                 </div>
+               </div>
+
                {/* Agent Digital Dasher Quick Rent */}
                {dashAgent && (
                   <div className="p-6 rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent relative overflow-hidden group">
