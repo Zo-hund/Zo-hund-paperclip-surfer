@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
@@ -6,6 +7,11 @@ import {
   principalPermissionGrants,
 } from "@paperclipai/db";
 import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
+
+function generateCredentialId(prefix: string): string {
+  const hex = randomBytes(4).toString("hex").toUpperCase();
+  return `AMX-PASS-${hex.slice(0, 4)}-${prefix.slice(0, 3).toUpperCase()}`;
+}
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
@@ -219,6 +225,7 @@ export function accessService(db: Db) {
       return existing;
     }
 
+    const credId = generateCredentialId(membershipRole ?? "MBR");
     return db
       .insert(companyMemberships)
       .values({
@@ -227,6 +234,14 @@ export function accessService(db: Db) {
         principalId,
         status,
         membershipRole,
+        credentialId: credId,
+        credentialData: {
+          passId: credId,
+          tier: membershipRole ?? "member",
+          issuedAt: new Date().toISOString(),
+          principalType,
+          qrPayload: `amx://pass/${credId}/${companyId}/${principalId}`,
+        },
       })
       .returning()
       .then((rows) => rows[0]);

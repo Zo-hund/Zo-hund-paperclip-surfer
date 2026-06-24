@@ -143,5 +143,24 @@ export function companyMembersRoutes(db: Db) {
     res.json({ ok: true });
   });
 
+  router.get("/:userId/credential", async (req, res) => {
+    const { companyId, userId } = req.params as { companyId: string; userId: string };
+    assertBoard(req);
+    assertCompanyAccess(req, companyId);
+
+    const membership = await access.getMembership(companyId, "user", userId);
+    if (!membership) { res.status(404).json({ error: "Membership not found" }); return; }
+
+    res.json({
+      membershipId: membership.id,
+      credentialId: membership.credentialId ?? null,
+      credentialData: membership.credentialData ?? null,
+      status: membership.status,
+      role: membership.membershipRole,
+      companyId: membership.companyId,
+      createdAt: membership.createdAt,
+    });
+  });
+
   return router;
 }
