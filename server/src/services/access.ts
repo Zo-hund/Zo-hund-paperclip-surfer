@@ -56,6 +56,10 @@ export function accessService(db: Db) {
   ): Promise<boolean> {
     const membership = await getMembership(companyId, principalType, principalId);
     if (!membership || membership.status !== "active") return false;
+    // A company owner has full control of their own company — no per-key grant
+    // needed. (Self-created companies make the creator an owner without
+    // populating explicit permission grants.)
+    if (membership.membershipRole === "owner") return true;
     const grant = await db
       .select({ id: principalPermissionGrants.id })
       .from(principalPermissionGrants)
