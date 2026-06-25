@@ -68,12 +68,25 @@ async function sendViaSmtp(input: SendEmailInput): Promise<void> {
   });
 }
 
-export async function sendEmail(input: SendEmailInput): Promise<void> {
+/** True when a real delivery transport (Resend or SMTP) is configured. */
+export function isEmailConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY || process.env.SMTP_HOST);
+}
+
+/**
+ * Sends an email. Returns true when it was actually dispatched via a configured
+ * transport, false when no transport is configured (the body is logged instead
+ * so callers can surface "email not delivered" to the user rather than failing
+ * silently).
+ */
+export async function sendEmail(input: SendEmailInput): Promise<boolean> {
   if (process.env.RESEND_API_KEY) {
-    return sendViaResend(input);
+    await sendViaResend(input);
+    return true;
   }
   if (process.env.SMTP_HOST) {
-    return sendViaSmtp(input);
+    await sendViaSmtp(input);
+    return true;
   }
   // Dev fallback — print to console so the developer can click the link
   console.warn(
@@ -88,4 +101,5 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       "",
     ].join("\n"),
   );
+  return false;
 }

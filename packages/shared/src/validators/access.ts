@@ -7,10 +7,21 @@ import {
   PERMISSION_KEYS,
 } from "../constants.js";
 
+// Roles an invite may grant on accept. Mirrors COMPANY_MEMBERSHIP_ROLES plus
+// "client" (a valid stored membership_role used for external client access).
+export const INVITE_MEMBERSHIP_ROLES = ["owner", "admin", "member", "viewer", "client"] as const;
+export type InviteMembershipRole = (typeof INVITE_MEMBERSHIP_ROLES)[number];
+
 export const createCompanyInviteSchema = z.object({
   allowedJoinTypes: z.enum(INVITE_JOIN_TYPES).default("both"),
   defaultsPayload: z.record(z.string(), z.unknown()).optional().nullable(),
   agentMessage: z.string().max(4000).optional().nullable(),
+  // Optional: email an onboarding invite to this address when the invite is
+  // created (requires server email config — Resend/SMTP).
+  inviteEmail: z.string().email().max(320).optional().nullable(),
+  // Optional: membership role a human accepting this invite is granted.
+  // Defaults to "client" when omitted (external client access).
+  membershipRole: z.enum(INVITE_MEMBERSHIP_ROLES).optional().nullable(),
 });
 
 export type CreateCompanyInvite = z.infer<typeof createCompanyInviteSchema>;

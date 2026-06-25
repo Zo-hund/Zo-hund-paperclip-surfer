@@ -43,10 +43,12 @@ import {
   accessService,
   agentService,
   boardAuthService,
+  companyService,
   deduplicateAgentName,
   logActivity,
   notifyHireApproved
 } from "../services/index.js";
+import { sendEmail, isEmailConfigured } from "../auth/email-service.js";
 import { assertCompanyAccess } from "./authz.js";
 import {
   claimBoardOwnership,
@@ -1347,6 +1349,70 @@ function mergeInviteDefaults(
   return Object.keys(merged).length ? merged : null;
 }
 
+const INVITE_ROLE_VALUES = new Set(["owner", "admin", "member", "viewer", "client"]);
+
+/**
+ * Explicit membership role an invite grants a human on accept, stored in the
+ * invite's defaultsPayload under `membershipRole`. Returns null when the invite
+ * did not specify one, so each call site can apply its own historical default.
+ */
+function readInviteMembershipRole(
+  defaultsPayload: Record<string, unknown> | null | undefined
+): string | null {
+  if (defaultsPayload && typeof defaultsPayload === "object") {
+    const raw = (defaultsPayload as Record<string, unknown>).membershipRole;
+    if (typeof raw === "string" && INVITE_ROLE_VALUES.has(raw)) return raw;
+  }
+  return null;
+}
+
+function buildInviteEmail(opts: {
+  companyName: string;
+  inviteUrl: string;
+  role: string;
+}): { subject: string; text: string; html: string } {
+  const { companyName, inviteUrl, role } = opts;
+  const roleLabel = role === "owner" ? "owner" : role === "client" ? "member" : role;
+  const subject = `You're invited to ${companyName} on AMX Air Hubs`;
+  const text = [
+    `Hi,`,
+    "",
+    `You've been invited to join ${companyName} on the AMX Air Hubs platform as ${roleLabel}.`,
+    "",
+    `Accept your invitation and set up your account here:`,
+    inviteUrl,
+    "",
+    `Once you're in, you'll have your own workspace with a digital membership credential. Only you and people you invite can see your data.`,
+    "",
+    `— AMX Air Hubs`,
+  ].join("\n");
+  const html = `<!DOCTYPE html>
+<html>
+  <body style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0b0e14; color:#e6e9ef; padding:24px;">
+    <div style="max-width:520px; margin:0 auto; background:#11151f; border:1px solid #232a39; border-radius:16px; padding:32px;">
+      <h1 style="font-size:20px; margin:0 0 16px;">You're invited to ${companyName}</h1>
+      <p style="color:#aab2c5; line-height:1.6;">
+        You've been invited to join <strong>${companyName}</strong> on the AMX Air Hubs platform as <strong>${roleLabel}</strong>.
+      </p>
+      <p style="text-align:center; margin:28px 0;">
+        <a href="${inviteUrl}" style="display:inline-block; background:#3b82f6; color:#fff; text-decoration:none; padding:12px 28px; border-radius:10px; font-weight:600;">Accept invitation</a>
+      </p>
+      <p style="color:#7c8499; font-size:13px; line-height:1.6;">
+        Once you're in, you'll have your own workspace with a digital membership credential. Only you and people you invite can see your data.
+      </p>
+      <p style="color:#5b6478; font-size:12px; word-break:break-all;">${inviteUrl}</p>
+      <p style="color:#5b6478; font-size:12px; margin-top:24px;">— AMX Air Hubs</p>
+    </div>
+  </body>
+</html>`;
+  return { subject, text, html };
+}
+
+function absoluteInviteUrl(token: string): string {
+  const base = (process.env.PAPERCLIP_PUBLIC_URL ?? "").replace(/\/+$/, "");
+  return base ? `${base}/invite/${token}` : `/invite/${token}`;
+}
+
 function requestIp(req: Request) {
   const forwarded = req.header("x-forwarded-for");
   if (forwarded) {
@@ -1565,6 +1631,7 @@ export function accessRoutes(
   const access = accessService(db);
   const boardAuth = boardAuthService(db);
   const agents = agentService(db);
+  const companies = companyService(db);
 
   async function assertInstanceAdmin(req: Request) {
     if (req.actor.type !== "board") throw unauthorized();
@@ -1836,17 +1903,26 @@ export function accessRoutes(
     allowedJoinTypes: "human" | "agent" | "both";
     defaultsPayload?: Record<string, unknown> | null;
     agentMessage?: string | null;
+    inviteEmail?: string | null;
+    membershipRole?: string | null;
   }) {
     const normalizedAgentMessage =
       typeof input.agentMessage === "string"
         ? input.agentMessage.trim() || null
         : null;
+    // Persist recipient email + target role inside defaultsPayload (no schema
+    // migration needed; read back via readInviteEmail / readInviteMembershipRole).
+    const defaultsWithInviteMeta: Record<string, unknown> = {
+      ...(input.defaultsPayload ?? {}),
+    };
+    if (input.inviteEmail) defaultsWithInviteMeta.inviteEmail = input.inviteEmail;
+    if (input.membershipRole) defaultsWithInviteMeta.membershipRole = input.membershipRole;
     const insertValues = {
       companyId: input.companyId,
       inviteType: "company_join" as const,
       allowedJoinTypes: input.allowedJoinTypes,
       defaultsPayload: mergeInviteDefaults(
-        input.defaultsPayload ?? null,
+        defaultsWithInviteMeta,
         normalizedAgentMessage
       ),
       expiresAt: companyInviteExpiresAt(),
@@ -1915,13 +1991,19 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       await assertCompanyPermission(req, companyId, "users:invite");
+      const inviteEmail =
+        typeof req.body.inviteEmail === "string" ? req.body.inviteEmail.trim() || null : null;
+      const membershipRole =
+        typeof req.body.membershipRole === "string" ? req.body.membershipRole : null;
       const { token, created, normalizedAgentMessage } =
         await createCompanyInviteForCompany({
           req,
           companyId,
           allowedJoinTypes: req.body.allowedJoinTypes,
           defaultsPayload: req.body.defaultsPayload ?? null,
-          agentMessage: req.body.agentMessage ?? null
+          agentMessage: req.body.agentMessage ?? null,
+          inviteEmail,
+          membershipRole
         });
 
       await logActivity(db, {
@@ -1938,9 +2020,29 @@ export function accessRoutes(
           inviteType: created.inviteType,
           allowedJoinTypes: created.allowedJoinTypes,
           expiresAt: created.expiresAt.toISOString(),
-          hasAgentMessage: Boolean(normalizedAgentMessage)
+          hasAgentMessage: Boolean(normalizedAgentMessage),
+          invitedEmail: inviteEmail ?? undefined,
+          membershipRole: membershipRole ?? undefined
         }
       });
+
+      // Optionally email an onboarding invite to the recipient.
+      let emailSent = false;
+      const emailConfigured = isEmailConfigured();
+      if (inviteEmail) {
+        const company = await companies.getById(companyId);
+        const { subject, text, html } = buildInviteEmail({
+          companyName: company?.name ?? "your workspace",
+          inviteUrl: absoluteInviteUrl(token),
+          role: membershipRole ?? "client"
+        });
+        try {
+          emailSent = await sendEmail({ to: inviteEmail, subject, text, html });
+        } catch (err) {
+          logger.warn({ err, companyId, inviteEmail }, "Failed to send invite email");
+          emailSent = false;
+        }
+      }
 
       const inviteSummary = toInviteSummaryResponse(req, token, created);
       res.status(201).json({
@@ -1949,7 +2051,10 @@ export function accessRoutes(
         inviteUrl: `/invite/${token}`,
         onboardingTextPath: inviteSummary.onboardingTextPath,
         onboardingTextUrl: inviteSummary.onboardingTextUrl,
-        inviteMessage: inviteSummary.inviteMessage
+        inviteMessage: inviteSummary.inviteMessage,
+        invitedEmail: inviteEmail,
+        emailSent,
+        emailConfigured
       });
     }
   );
@@ -2321,11 +2426,15 @@ export function accessRoutes(
               if (requestType === "human") {
                 const requestingUserId = req.actor.userId ?? "local-board";
                 approvedByUserId = requestingUserId;
+                const inviteRole =
+                  readInviteMembershipRole(
+                    invite.defaultsPayload as Record<string, unknown> | null
+                  ) ?? "client";
                 humanMembership = await access.ensureMembership(
                   companyId,
                   "user",
                   requestingUserId,
-                  "client",
+                  inviteRole,
                   "active"
                 );
                 const grants = grantsFromDefaults(
@@ -2701,11 +2810,15 @@ export function accessRoutes(
       if (existing.requestType === "human") {
         if (!existing.requestingUserId)
           throw conflict("Join request missing user identity");
+        const inviteRole =
+          readInviteMembershipRole(
+            invite.defaultsPayload as Record<string, unknown> | null
+          ) ?? "member";
         await access.ensureMembership(
           companyId,
           "user",
           existing.requestingUserId,
-          "member",
+          inviteRole,
           "active"
         );
         const grants = grantsFromDefaults(
