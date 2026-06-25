@@ -68,6 +68,7 @@ import { PublicAgentProfile } from "./pages/PublicAgentProfile";
 import { PublicCompanyProfile } from "./pages/PublicCompanyProfile";
 import { ServiceRequest } from "./pages/ServiceRequest";
 import { ClientPortal } from "./pages/ClientPortal";
+import { VerifyPassPage } from "./pages/VerifyPass";
 import { MemberProfile } from "./pages/MemberProfile";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
@@ -366,6 +367,7 @@ export function App() {
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
         <Route path="invite/:token" element={<InviteLandingPage />} />
+        <Route path="verify/pass/:passId" element={<VerifyPassPage />} />
 
         <Route element={<CloudAccessGate />}>
           <Route index element={<CompanyRootRedirect />} />

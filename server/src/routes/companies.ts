@@ -956,11 +956,14 @@ function copyToClipboard(btn) {
 
   router.post("/", validate(createCompanySchema), async (req, res) => {
     assertBoard(req);
-    if (!(req.actor.source === "local_implicit" || req.actor.isInstanceAdmin)) {
-      throw forbidden("Instance admin required");
+    // Any signed-in board user may create their own company and become its owner.
+    const ownerUserId = req.actor.userId
+      ?? (req.actor.source === "local_implicit" ? "local-board" : null);
+    if (!ownerUserId) {
+      throw forbidden("Sign in required to create a company");
     }
     const company = await svc.create(req.body);
-    await access.ensureMembership(company.id, "user", req.actor.userId ?? "local-board", "owner", "active");
+    await access.ensureMembership(company.id, "user", ownerUserId, "owner", "active");
     await logActivity(db, {
       companyId: company.id,
       actorType: "user",

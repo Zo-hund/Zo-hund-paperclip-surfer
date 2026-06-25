@@ -46,6 +46,8 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { mcpEndpointRoutes } from "./routes/mcp-endpoint.js";
 import { openApiRoutes } from "./routes/openapi.js";
 import { livekitRouter } from "./routes/livekit.js";
+import { meRoutes } from "./routes/me.js";
+import { verifyRoutes } from "./routes/verify.js";
 import { stripeWebhookRoutes, stripeApiRoutes } from "./routes/stripe.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
@@ -280,6 +282,8 @@ export async function createApp(
   api.use(mcpEndpointRoutes(db));
   api.use(openApiRoutes());
   api.use(livekitRouter);
+  api.use(meRoutes(db));
+  api.use(verifyRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
   const pluginRegistry = pluginRegistryService(db);
@@ -430,15 +434,20 @@ export async function createApp(
   if (opts.uiMode === "vite-dev") {
     const uiRoot = path.resolve(__dirname, "../../ui");
     const { createServer: createViteServer } = await import("vite");
+    const hmrPort = resolveViteHmrPort(opts.serverPort);
+    // When bound to a non-loopback host (e.g. 0.0.0.0 in authenticated-private
+    // dev), the browser cannot open ws://0.0.0.0:<port>. Leave hmr.host
+    // undefined so the client connects via its own page hostname (localhost,
+    // tailscale IP, etc.) and use clientPort for the websocket port.
+    const isLoopbackBind = ["127.0.0.1", "::1", "localhost"].includes(opts.bindHost);
     const vite = await createViteServer({
       root: uiRoot,
       appType: "custom",
       server: {
         middlewareMode: true,
-        hmr: {
-          host: opts.bindHost,
-          port: resolveViteHmrPort(opts.serverPort),
-        },
+        hmr: isLoopbackBind
+          ? { host: opts.bindHost, port: hmrPort }
+          : { port: hmrPort, clientPort: hmrPort },
         allowedHosts: privateHostnameGateEnabled ? Array.from(privateHostnameAllowSet) : undefined,
       },
     });

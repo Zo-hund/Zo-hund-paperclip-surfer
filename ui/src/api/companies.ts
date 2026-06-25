@@ -88,6 +88,30 @@ export const companiesApi = {
       createdAt: string;
     }>(`/companies/${companyId}/members/${userId}/credential`),
 
+  getMyCredential: () =>
+    api.get<{
+      userName: string | null;
+      userEmail: string | null;
+      credentialId: string | null;
+      credentialData: Record<string, unknown> | null;
+      role: string | null;
+      status: string | null;
+      companyId: string | null;
+      createdAt: string | null;
+    }>(`/me/credential`),
+
+  verifyPass: (passId: string) =>
+    api.get<{
+      valid: boolean;
+      passId: string;
+      memberName: string | null;
+      tier: string;
+      role: string | null;
+      status: string;
+      company: string | null;
+      issuedAt: string | null;
+    }>(`/verify/pass/${encodeURIComponent(passId)}`),
+
   getPublicPortal: (slug: string, opts?: { search?: string; type?: string }) => {
     const params = new URLSearchParams();
     if (opts?.search) params.set("search", opts.search);

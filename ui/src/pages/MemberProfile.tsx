@@ -1,13 +1,35 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Zap, ShieldCheck, Globe, QrCode, Sparkles, Share2, Download,
+  Zap, ShieldCheck, Globe, Sparkles, Share2, Download,
   CheckCircle2, CreditCard, Award, Crown, User, ArrowLeft, RefreshCw,
   Plus, Play, ShoppingBag, Terminal, Cpu, ArrowUpRight, BadgeCheck,
   TrendingUp, Info, AlertCircle, ShoppingCart, Bot, ChevronRight
 } from "lucide-react";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/lib/router";
 import { PublicLayout } from "@/components/PublicLayout";
+import { companiesApi } from "@/api/companies";
+
+// Renders a QR as a data-URL <img> so it shows reliably inside the 3D-flipped
+// card back (a canvas drawn via ref can come up blank under backface-hidden).
+function PassQr({ payload, size = 96 }: { payload: string; size?: number }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(payload || "amx://pass", {
+      width: size,
+      margin: 1,
+      color: { dark: "#000000", light: "#ffffff" },
+    })
+      .then((url) => { if (!cancelled) setSrc(url); })
+      .catch(() => { /* QR is a nice-to-have */ });
+    return () => { cancelled = true; };
+  }, [payload, size]);
+  return src
+    ? <img src={src} width={size} height={size} alt="Membership QR" className="block rounded" />
+    : <div style={{ width: size, height: size }} className="bg-white rounded" />;
+}
 import { BuyCreditsModal } from "./XpWallet";
 import { EngageModal, MOCK_AGENTS } from "./AgentMarketplace";
 import { MOCK_MARKET_ITEMS, MarketplaceItem } from "@/lib/marketplace_data";
@@ -28,20 +50,29 @@ interface MemberPassData {
   color: string;
   secondary: string;
   icon: React.ReactNode;
+  qrPayload: string;
 }
 
 const DEFAULT_MEMBER: MemberPassData = {
-  id: "AMX-PASS-0941-ZKD",
-  name: "Zomorpheus",
+  id: "AMX-PASS-0000-AMX",
+  name: "AMX Member",
   tier: "Community Partner",
-  issuedAt: "OCT 2023",
+  issuedAt: "—",
   expiresAt: "LIFETIME",
-  xp: 14500,
-  tokens: 2540,
+  xp: 0,
+  tokens: 0,
   status: "Verified",
   color: "from-primary via-violet-500 to-primary",
   secondary: "text-violet-400",
   icon: <Crown className="h-4 w-4" />,
+  qrPayload: "amx://pass",
+};
+
+const TIER_BY_ROLE: Record<string, MembershipTier> = {
+  owner: "Expert",
+  admin: "Collective",
+  member: "Community Partner",
+  client: "Community Partner",
 };
 
 // ── MemberPassCard Component ──────────────────────────────────────────────────
@@ -60,7 +91,6 @@ function MemberPassCard({ data }: { data: MemberPassData }) {
           <div className="absolute inset-0 bg-[#0a0a0a]/90 backdrop-blur-3xl" />
           <div className={`absolute inset-0 bg-gradient-to-br ${data.color} opacity-10`} />
           <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.03)_0%,transparent_70%)] animate-pulse" />
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
 
           <div className="relative h-full p-6 flex flex-col justify-between">
             <div className="flex items-start justify-between">
@@ -128,7 +158,7 @@ function MemberPassCard({ data }: { data: MemberPassData }) {
                 <div className="h-2 w-8 bg-white/20 rounded-full" />
             </div>
             <div className="p-4 bg-white rounded-2xl shadow-inner group/qr relative">
-                <QrCode className="h-24 w-24 text-black" />
+                <PassQr payload={data.qrPayload} size={96} />
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/qr:opacity-100 transition-opacity bg-black/80 rounded-2xl backdrop-blur-sm">
                    <span className="text-white text-[10px] font-black uppercase tracking-widest">Scan to Sync</span>
                 </div>
@@ -196,7 +226,7 @@ export function MemberProfile() {
   const [member, setMember] = useState(DEFAULT_MEMBER);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
 
-  // Read credential from URL params (passed from invite accept — no API call needed)
+  // Fast path: credential from URL params (passed from invite accept).
   const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const qCredId = searchParams.get("credId");
   const qTier = searchParams.get("tier");
@@ -204,15 +234,43 @@ export function MemberProfile() {
 
   React.useEffect(() => {
     if (!qCredId) return;
-    const tierMap: Record<string, MembershipTier> = { member: "Community Partner", client: "Community Partner", admin: "Collective", owner: "Expert" };
     setMember(prev => ({
       ...prev,
       id: qCredId,
-      tier: tierMap[qTier ?? "member"] ?? "Community Partner",
+      tier: TIER_BY_ROLE[qTier ?? "member"] ?? "Community Partner",
       issuedAt: qIssued ? new Date(qIssued).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() : prev.issuedAt,
       status: "Verified",
+      xp: 0,
+      tokens: 0,
+      qrPayload: `${window.location.origin}/verify/pass/${qCredId}`,
     }));
   }, [qCredId, qTier, qIssued]);
+
+  // Source of truth: fetch the signed-in user's real credential.
+  React.useEffect(() => {
+    let cancelled = false;
+    companiesApi.getMyCredential()
+      .then((data) => {
+        if (cancelled || !data?.credentialId) return;
+        const cd = (data.credentialData ?? {}) as Record<string, unknown>;
+        const issuedRaw = (cd.issuedAt as string) ?? data.createdAt ?? null;
+        setMember(prev => ({
+          ...prev,
+          id: data.credentialId!,
+          name: data.userName ?? data.userEmail ?? prev.name,
+          tier: TIER_BY_ROLE[data.role ?? "member"] ?? "Community Partner",
+          issuedAt: issuedRaw
+            ? new Date(issuedRaw).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase()
+            : prev.issuedAt,
+          status: data.status === "active" ? "Verified" : "Pending",
+          xp: 0,
+          tokens: 0,
+          qrPayload: `${window.location.origin}/verify/pass/${data.credentialId}`,
+        }));
+      })
+      .catch(() => { /* not signed in / no membership — keep current */ });
+    return () => { cancelled = true; };
+  }, []);
   const [showEngageModal, setShowEngageModal] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
 
@@ -272,11 +330,11 @@ export function MemberProfile() {
                    <Sparkles className="h-4 w-4" /> Getting started
                  </h3>
                  <div className="grid gap-2">
-                   <Link to="/auth?next=/" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
+                   <Link to="/onboarding" className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/30 hover:border-primary/40 hover:bg-primary/5 transition-colors group">
                      <div className="p-2 rounded-lg bg-primary/10"><Terminal className="h-4 w-4 text-primary" /></div>
                      <div className="flex-1">
                        <p className="text-sm font-bold text-white">Create your company</p>
-                       <p className="text-[11px] text-muted-foreground">Sign in, then set up your organization and deploy your first AI agent</p>
+                       <p className="text-[11px] text-muted-foreground">Set up your organization and deploy your first AI agent</p>
                      </div>
                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                    </Link>

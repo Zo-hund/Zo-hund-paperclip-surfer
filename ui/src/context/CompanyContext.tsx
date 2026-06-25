@@ -46,7 +46,10 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       try {
         return await companiesApi.list();
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
+        // 401 = not signed in, 403 = signed in but no board access (e.g. a
+        // client-role user). Both mean "no companies" — return an empty list
+        // so the app routes to onboarding/profile instead of erroring.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           return [];
         }
         throw err;
@@ -61,7 +64,15 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
   // Auto-select first company when list loads
   useEffect(() => {
-    if (companies.length === 0) return;
+    if (companies.length === 0) {
+      // No accessible companies: clear any stale selection so board queries
+      // don't fire against a company the user can no longer access (403 storm).
+      if (!isLoading && selectedCompanyId !== null) {
+        setSelectedCompanyIdState(null);
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      return;
+    }
 
     const selectableCompanies = sidebarCompanies.length > 0 ? sidebarCompanies : companies;
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -72,7 +83,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     setSelectedCompanyIdState(next);
     setSelectionSource("bootstrap");
     localStorage.setItem(STORAGE_KEY, next);
-  }, [companies, selectedCompanyId, sidebarCompanies]);
+  }, [companies, selectedCompanyId, sidebarCompanies, isLoading]);
 
   const setSelectedCompanyId = useCallback((companyId: string, options?: CompanySelectionOptions) => {
     setSelectedCompanyIdState(companyId);
