@@ -124,6 +124,10 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     const companyId = typeof req.query.companyId === "string" ? req.query.companyId : undefined;
 
     if (companyId) {
+      // Tenant isolation: a non-admin board user may only read deliverables
+      // for a company they belong to. Without this an authenticated user could
+      // pass any companyId and read another tenant's data.
+      assertCompanyAccess(req, companyId);
       const result = await workProducts.listCompanyDeliverables(companyId, search, type);
       res.json(result);
       return;
@@ -133,9 +137,10 @@ export function companyRoutes(db: Db, storage?: StorageService) {
       res.json(result);
       return;
     }
+    // Non-admin, no companyId filter: scope the board feed to ONLY the
+    // companies this user is an active member of (never the global feed).
     const companyIds = req.actor.companyIds ?? [];
-    if (companyIds.length === 0) { res.json([]); return; }
-    const result = await workProducts.listGlobalDeliverables(search, type);
+    const result = await workProducts.listDeliverablesForCompanies(companyIds, search, type);
     res.json(result);
   });
 
@@ -143,6 +148,8 @@ export function companyRoutes(db: Db, storage?: StorageService) {
     assertBoard(req);
     const detail = await workProducts.getDetailById(req.params.id as string);
     if (!detail) { res.status(404).json({ error: "Deliverable not found" }); return; }
+    // Tenant isolation: only members of the owning company may read the detail.
+    assertCompanyAccess(req, detail.companyId);
     res.json(detail);
   });
 

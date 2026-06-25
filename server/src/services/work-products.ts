@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { alias } from "drizzle-orm/pg-core";
 import { issueWorkProducts, issues, projects, agents, amxCertificates, auditVerifications } from "@paperclipai/db";
@@ -50,7 +50,15 @@ export function workProductService(db: Db) {
   /**
    * Full JOIN query used by both global and company deliverable feeds.
    */
-  async function queryDeliverables(companyId?: string, search?: string, type?: string): Promise<BriefcaseDeliverable[]> {
+  async function queryDeliverables(
+    companyId?: string,
+    search?: string,
+    type?: string,
+    companyIds?: string[],
+  ): Promise<BriefcaseDeliverable[]> {
+    // Scoped multi-company callers pass companyIds; an empty list must return
+    // nothing (a user with no company access can see no deliverables).
+    if (companyIds && companyIds.length === 0) return [];
     const rows = await db
       .select({
         wp: issueWorkProducts,
@@ -73,6 +81,7 @@ export function workProductService(db: Db) {
       .where(
         and(
           companyId ? eq(issueWorkProducts.companyId, companyId) : undefined,
+          companyIds ? inArray(issueWorkProducts.companyId, companyIds) : undefined,
           type ? eq(issueWorkProducts.type, type) : undefined,
           search
             ? or(
@@ -256,6 +265,11 @@ export function workProductService(db: Db) {
 
     listGlobalDeliverables: (search?: string, type?: string) =>
       queryDeliverables(undefined, search, type),
+
+    // Tenant-scoped board feed: only deliverables belonging to companies the
+    // caller is an active member of. Empty list → no results.
+    listDeliverablesForCompanies: (companyIds: string[], search?: string, type?: string) =>
+      queryDeliverables(undefined, search, type, companyIds),
 
     listCompanyDeliverables: (companyId: string, search?: string, type?: string) =>
       queryDeliverables(companyId, search, type),
