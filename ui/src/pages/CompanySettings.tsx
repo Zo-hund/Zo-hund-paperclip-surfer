@@ -471,7 +471,9 @@ export function CompanySettings() {
             <Button
               size="sm"
               onClick={() => {
-                const email = personEmail.trim();
+                // Strip stray wrapping quotes / angle-brackets / whitespace that
+                // commonly sneak in via copy-paste (e.g. "name@x.com" or <name@x.com>).
+                const email = personEmail.trim().replace(/^["'<\s]+|["'>\s]+$/g, "");
                 if (!email) {
                   setPersonInviteError("Enter an email address");
                   return;
