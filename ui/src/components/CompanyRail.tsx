@@ -295,7 +295,15 @@ export function CompanyRail() {
                   setSelectedCompanyId(company.id);
                   if (isInstanceRoute) {
                     navigate(`/${company.issuePrefix}/dashboard`);
+                    return;
                   }
+                  // Board route: move the URL to the new company immediately so it
+                  // stays the source of truth (data queries follow the URL prefix).
+                  // Keep the same top-level section, dropping any entity-specific
+                  // deep path since per-company ids don't transfer (e.g.
+                  // /AMXA/issues/AMXA-123 -> /COMPB/issues).
+                  const section = location.pathname.split("/").filter(Boolean)[1] ?? "dashboard";
+                  navigate(`/${company.issuePrefix}/${section}`);
                 }}
               />
             ))}

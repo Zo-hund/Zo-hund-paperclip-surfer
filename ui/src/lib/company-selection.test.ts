@@ -12,14 +12,14 @@ describe("shouldSyncCompanySelectionFromRoute", () => {
     ).toBe(false);
   });
 
-  it("defers route sync while a manual company switch is in flight", () => {
+  it("syncs to the route company even after a manual switch (URL is authoritative)", () => {
     expect(
       shouldSyncCompanySelectionFromRoute({
         selectionSource: "manual",
         selectedCompanyId: "pap",
         routeCompanyId: "ret",
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("syncs back to the route company for non-manual mismatches", () => {
@@ -27,6 +27,16 @@ describe("shouldSyncCompanySelectionFromRoute", () => {
       shouldSyncCompanySelectionFromRoute({
         selectionSource: "route_sync",
         selectedCompanyId: "pap",
+        routeCompanyId: "ret",
+      }),
+    ).toBe(true);
+  });
+
+  it("syncs when selection is null and the route names a company", () => {
+    expect(
+      shouldSyncCompanySelectionFromRoute({
+        selectionSource: "bootstrap",
+        selectedCompanyId: null,
         routeCompanyId: "ret",
       }),
     ).toBe(true);
