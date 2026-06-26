@@ -101,6 +101,9 @@ type CompanyInviteCreated = {
   onboardingTextPath?: string;
   onboardingTextUrl?: string;
   inviteMessage?: string | null;
+  invitedEmail?: string | null;
+  emailSent?: boolean;
+  emailConfigured?: boolean;
 };
 
 export const accessApi = {
@@ -110,6 +113,8 @@ export const accessApi = {
       allowedJoinTypes?: "human" | "agent" | "both";
       defaultsPayload?: Record<string, unknown> | null;
       agentMessage?: string | null;
+      inviteEmail?: string | null;
+      membershipRole?: "owner" | "admin" | "member" | "viewer" | "client" | null;
     } = {},
   ) =>
     api.post<CompanyInviteCreated>(`/companies/${companyId}/invites`, input),

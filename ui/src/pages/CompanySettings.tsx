@@ -135,6 +135,46 @@ export function CompanySettings() {
     }
   });
 
+  // Human onboarding-email invite
+  const [personEmail, setPersonEmail] = useState("");
+  const [personRole, setPersonRole] = useState<CompanyMembershipRole | "client">("client");
+  const [personInviteError, setPersonInviteError] = useState<string | null>(null);
+  const [personInviteResult, setPersonInviteResult] = useState<{
+    inviteUrl: string;
+    invitedEmail: string | null;
+    emailSent: boolean;
+    emailConfigured: boolean;
+  } | null>(null);
+
+  const personInviteMutation = useMutation({
+    mutationFn: (vars: { email: string; role: CompanyMembershipRole | "client" }) =>
+      accessApi.createCompanyInvite(selectedCompanyId!, {
+        allowedJoinTypes: "human",
+        inviteEmail: vars.email,
+        membershipRole: vars.role,
+      }),
+    onSuccess: (invite) => {
+      setPersonInviteError(null);
+      const base = window.location.origin.replace(/\/+$/, "");
+      const absoluteUrl = invite.inviteUrl.startsWith("http")
+        ? invite.inviteUrl
+        : `${base}${invite.inviteUrl}`;
+      setPersonInviteResult({
+        inviteUrl: absoluteUrl,
+        invitedEmail: invite.invitedEmail ?? null,
+        emailSent: Boolean(invite.emailSent),
+        emailConfigured: Boolean(invite.emailConfigured),
+      });
+      setPersonEmail("");
+    },
+    onError: (err) => {
+      setPersonInviteResult(null);
+      setPersonInviteError(
+        err instanceof Error ? err.message : "Failed to create invite"
+      );
+    },
+  });
+
   const syncLogoState = (nextLogoUrl: string | null) => {
     setLogoUrl(nextLogoUrl ?? "");
     void queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
@@ -390,6 +430,108 @@ export function CompanySettings() {
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
             onChange={(v) => settingsMutation.mutate(v)}
           />
+        </div>
+      </div>
+
+      {/* Invite a person (onboarding email) */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Invite a person
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">
+              Email someone an invite to this company and choose the role they get on accept.
+            </span>
+            <HintIcon text="Sends an onboarding email with an invite link. Choose 'owner' to onboard a new tenant owner. Requires server email (Resend/SMTP) to be configured." />
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[16rem] space-y-1">
+              <label className="text-xs text-muted-foreground">Email address</label>
+              <input
+                type="email"
+                value={personEmail}
+                onChange={(e) => setPersonEmail(e.target.value)}
+                placeholder="name@example.com"
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-ring focus-visible:ring-[3px]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Role on accept</label>
+              <select
+                value={personRole}
+                onChange={(e) => setPersonRole(e.target.value as CompanyMembershipRole | "client")}
+                className="rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-ring focus-visible:ring-[3px]"
+              >
+                {[...COMPANY_MEMBERSHIP_ROLES, "client"].map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                const email = personEmail.trim();
+                if (!email) {
+                  setPersonInviteError("Enter an email address");
+                  return;
+                }
+                personInviteMutation.mutate({ email, role: personRole });
+              }}
+              disabled={personInviteMutation.isPending}
+            >
+              {personInviteMutation.isPending ? "Sending..." : "Send invite"}
+            </Button>
+          </div>
+          {personInviteError && (
+            <p className="text-sm text-destructive">{personInviteError}</p>
+          )}
+          {personInviteResult && (
+            <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+              {personInviteResult.invitedEmail && (
+                <div className="flex items-center gap-2 text-sm">
+                  {personInviteResult.emailSent ? (
+                    <>
+                      <Check className="h-4 w-4 text-green-500" />
+                      <span>Onboarding email sent to <strong>{personInviteResult.invitedEmail}</strong></span>
+                    </>
+                  ) : (
+                    <span className="text-orange-500">
+                      Invite created, but the email was not delivered
+                      {!personInviteResult.emailConfigured
+                        ? " — server email (Resend/SMTP) is not configured."
+                        : " — check server email logs."}{" "}
+                      Share the link below manually.
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Invite link</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={personInviteResult.inviteUrl}
+                    className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(personInviteResult.inviteUrl);
+                        pushToast({ title: "Invite link copied" });
+                      } catch {
+                        /* clipboard may not be available */
+                      }
+                    }}
+                  >
+                    Copy link
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
