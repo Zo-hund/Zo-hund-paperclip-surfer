@@ -29,6 +29,7 @@ import {
   Route,
   UserPlus,
   Building2,
+  CalendarDays,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -109,7 +110,7 @@ export function Sidebar() {
               <span className="truncate">New Issue</span>
             </button>
             <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
-            <SidebarNavItem to="/meetings" label="Meetings" icon={Mic} textBadge="New" textBadgeTone="amber" />
+            <SidebarNavItem to="/meetings" label="Calendar" icon={CalendarDays} />
             <SidebarNavItem
               to="/inbox"
               label="Inbox"

@@ -21,13 +21,15 @@ import {
   Wallet,
   PieChart,
   UserCheck,
-  TrendingUp,
   Loader2
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { amxApi } from "@/api/amx";
+import { agentsApi } from "@/api/agents";
 import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
+import { queryKeys } from "@/lib/queryKeys";
 import { DeliverablesBriefcase } from "@/components/DeliverablesBriefcase";
 
 const TIERS = [
@@ -91,13 +93,11 @@ const TIERS = [
   }
 ];
 
-const AGENTS = [
-  { name: "Strategy Agent", role: "GPT-4 powered planning & copy", icon: Cpu },
-  { name: "Visual Agent", role: "Fal.ai image generation", icon: Sparkles },
-  { name: "Spatial Agent", role: "Hunyuan3D for 3D models", icon: Globe },
-  { name: "Document Agent", role: "PDF generation & formatting", icon: Package },
-  { name: "Content Agent", role: "Copywriting & SEO optimization", icon: Dna }
-];
+const ROLE_ICONS: Record<string, React.ElementType> = {
+  ceo: Zap, cto: Cpu, cmo: Sparkles, cfo: PieChart, engineer: Layers,
+  designer: Globe, pm: Workflow, qa: ShieldCheck, devops: Package,
+  researcher: Dna, auditor: UserCheck, general: Activity,
+};
 
 export function RqPortal() {
   const { selectedCompanyId } = useCompany();
@@ -112,11 +112,32 @@ export function RqPortal() {
     institutionalMemory: ""
   });
 
-  // Simulated wallet data for the demo
+  const walletQuery = useQuery({
+    queryKey: ["amx-wallet", selectedCompanyId],
+    queryFn: () => amxApi.getWallet(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
   const wallet = {
-    credits: 2450,
-    tokens: 420,
-    extensionFactor: "100x"
+    credits: walletQuery.data?.creditBalance ?? 0,
+    tokens: walletQuery.data?.tokenBalance ?? 0,
+  };
+
+  const agentsQuery = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const scrollToTiers = () => document.getElementById("tiers")?.scrollIntoView({ behavior: "smooth" });
+
+  const handleBuyCredits = async () => {
+    if (!selectedCompanyId) return;
+    try {
+      const { checkoutUrl } = await amxApi.buyCredits(selectedCompanyId, "default", "self");
+      window.location.href = checkoutUrl;
+    } catch {
+      pushToast({ tone: "warn", title: "Credit purchase unavailable" });
+    }
   };
 
   const handleOpenModal = (tier: any) => {
@@ -189,12 +210,6 @@ export function RqPortal() {
             <div className="flex items-center gap-4 bg-card/80 backdrop-blur-md p-4 rounded-3xl border border-border/60 shadow-xl">
               <div className="flex flex-col px-4 border-r border-border/40">
                 <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3 text-emerald-500" /> Digital Twin Capacity
-                </span>
-                <span className="text-2xl font-black text-foreground">{wallet.extensionFactor} <span className="text-[10px] text-primary">Extension</span></span>
-              </div>
-              <div className="flex flex-col px-4 border-r border-border/40">
-                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
                   <PieChart className="h-3 w-3 text-primary" /> Learning Credits
                 </span>
                 <span className="text-2xl font-black text-foreground">{wallet.credits.toLocaleString()}</span>
@@ -205,7 +220,7 @@ export function RqPortal() {
                 </span>
                 <span className="text-2xl font-black text-foreground">{wallet.tokens.toLocaleString()}</span>
               </div>
-              <Button size="sm" variant="outline" className="rounded-2xl border-primary/20 bg-primary/5 hover:bg-primary/10 font-bold text-[10px] uppercase tracking-widest px-4 h-10">
+              <Button size="sm" variant="outline" onClick={handleBuyCredits} className="rounded-2xl border-primary/20 bg-primary/5 hover:bg-primary/10 font-bold text-[10px] uppercase tracking-widest px-4 h-10">
                 Buy Credit Block
               </Button>
             </div>
@@ -219,11 +234,11 @@ export function RqPortal() {
           </p>
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 mt-8 md:mt-12">
-            <Button size="lg" className="h-14 px-8 gap-3 font-black text-[13px] uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95">
+            <Button size="lg" onClick={scrollToTiers} className="h-14 px-8 gap-3 font-black text-[13px] uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95">
               Submit Your RQ
               <ArrowRight className="h-5 w-5 shrink-0" />
             </Button>
-            <Button variant="outline" size="lg" className="h-14 px-8 gap-3 font-black text-[13px] uppercase tracking-[0.2em] border-border/60">
+            <Button variant="outline" size="lg" onClick={scrollToTiers} className="h-14 px-8 gap-3 font-black text-[13px] uppercase tracking-[0.2em] border-border/60">
               Explore Service Tiers
               <History className="h-5 w-5 shrink-0" />
             </Button>
@@ -232,7 +247,7 @@ export function RqPortal() {
       </section>
 
       {/* Tiers Section */}
-      <section className="px-4 md:px-8 py-12 md:py-20 bg-background">
+      <section id="tiers" className="px-4 md:px-8 py-12 md:py-20 bg-background">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center text-center mb-10 md:mb-16">
             <h2 className="text-[13px] font-black tracking-[0.3em] uppercase text-primary mb-3">Service Tiers</h2>
@@ -335,17 +350,29 @@ export function RqPortal() {
               </p>
               
               <div className="flex flex-col gap-6">
-                {AGENTS.map((agent) => (
-                  <div key={agent.name} className="flex items-center gap-4 p-4 rounded-xl border border-border/40 bg-card/50 hover:border-primary/30 hover:bg-card transition-all group">
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-all duration-300">
-                      <agent.icon className="h-6 w-6" />
+                {(agentsQuery.data ?? []).slice(0, 8).map((agent) => {
+                  const Icon = ROLE_ICONS[agent.role] ?? Activity;
+                  return (
+                    <div key={agent.id} className="flex items-center gap-4 p-4 rounded-xl border border-border/40 bg-card/50 hover:border-primary/30 hover:bg-card transition-all group">
+                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-all duration-300">
+                        <Icon className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-[14px] font-black text-foreground">{agent.name}</h4>
+                        <p className="text-[12px] text-muted-foreground font-medium">{agent.role} · {agent.adapterType}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-[14px] font-black text-foreground">{agent.name}</h4>
-                      <p className="text-[12px] text-muted-foreground font-medium">{agent.role}</p>
-                    </div>
+                  );
+                })}
+                {agentsQuery.isLoading && (
+                  <div className="flex items-center gap-3 p-4 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm">Loading agents...</span>
                   </div>
-                ))}
+                )}
+                {!agentsQuery.isLoading && (agentsQuery.data ?? []).length === 0 && (
+                  <p className="text-sm text-muted-foreground p-4">No agents deployed yet. Create your first agent to start manufacturing.</p>
+                )}
               </div>
             </div>
 
@@ -361,17 +388,21 @@ export function RqPortal() {
                 </div>
                 
                 {/* Orbital Icon Slots */}
-                {[0, 72, 144, 216, 288].map((degree, idx) => (
-                  <div 
-                    key={idx}
-                    className="absolute"
-                    style={{ transform: `rotate(${degree}deg) translateY(-40%)` }}
-                  >
-                    <div className="w-14 h-14 bg-card border border-primary/40 rounded-xl flex items-center justify-center text-primary shadow-lg animate-bounce" style={{ animationDelay: `${idx * 0.2}s` }}>
-                      {React.createElement(AGENTS[idx].icon, { className: "h-6 w-6" })}
+                {[0, 72, 144, 216, 288].map((degree, idx) => {
+                  const agent = (agentsQuery.data ?? [])[idx];
+                  const Icon = agent ? (ROLE_ICONS[agent.role] ?? Activity) : Cpu;
+                  return (
+                    <div
+                      key={idx}
+                      className="absolute"
+                      style={{ transform: `rotate(${degree}deg) translateY(-40%)` }}
+                    >
+                      <div className="w-14 h-14 bg-card border border-primary/40 rounded-xl flex items-center justify-center text-primary shadow-lg animate-bounce" style={{ animationDelay: `${idx * 0.2}s` }}>
+                        <Icon className="h-6 w-6" />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               
               {/* Context Indicators */}
@@ -434,7 +465,7 @@ export function RqPortal() {
             ))}
           </div>
 
-          <Button size="lg" className="w-full sm:w-auto h-14 md:h-16 px-6 md:px-12 mt-12 md:mt-20 gap-3 font-black text-[12px] md:text-[15px] uppercase tracking-[0.2em] md:tracking-[0.3em] shadow-2xl shadow-primary/40 transition-all hover:scale-105 active:scale-95 whitespace-normal sm:whitespace-nowrap flex-wrap h-auto py-4">
+          <Button size="lg" onClick={scrollToTiers} className="w-full sm:w-auto h-14 md:h-16 px-6 md:px-12 mt-12 md:mt-20 gap-3 font-black text-[12px] md:text-[15px] uppercase tracking-[0.2em] md:tracking-[0.3em] shadow-2xl shadow-primary/40 transition-all hover:scale-105 active:scale-95 whitespace-normal sm:whitespace-nowrap flex-wrap h-auto py-4">
             Ready to Transform Your Business?
             <Zap className="h-5 w-5 md:h-6 md:w-6 shrink-0" />
           </Button>
