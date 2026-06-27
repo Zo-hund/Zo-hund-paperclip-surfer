@@ -48,8 +48,12 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
     return () => { if (ref.current) ref.current.srcObject = null; };
   }, [track]);
 
+  const isSpeaking = status === "thinking" || status === "responding" || status === "speaking";
+
   return (
-    <div className="relative rounded-xl overflow-hidden bg-black/60 border border-[#94a3b8]/20 aspect-video">
+    <div className={`relative rounded-xl overflow-hidden bg-black/60 aspect-video transition-all duration-300 ${
+      isSpeaking ? "border-2 border-emerald-500/60 shadow-[0_0_20px_rgba(16,185,129,0.3)]" : "border border-[#94a3b8]/20"
+    }`}>
       {track ? (
         <video ref={ref} autoPlay playsInline muted className="w-full h-full object-cover" />
       ) : (
@@ -57,9 +61,18 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
           <span className="text-3xl font-black text-[#94a3b8]/30">{name[0]?.toUpperCase()}</span>
         </div>
       )}
+      {isSpeaking && (
+        <div className="absolute bottom-10 left-0 right-0">
+          <AudioEqualizer />
+        </div>
+      )}
       <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 bg-gradient-to-t from-black/80">
         <span className="text-[11px] font-black text-white/90 uppercase tracking-wide">{name}</span>
-        {status && <span className="text-[9px] text-white/40 ml-2">{status}</span>}
+        {status && (
+          <span className={`text-[9px] ml-2 ${isSpeaking ? "text-emerald-400" : "text-white/40"}`}>
+            {isSpeaking ? "● speaking" : status}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -173,6 +186,16 @@ export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCame
             <span className={`text-[10px] font-black uppercase tracking-widest ${isExpanded ? "text-[#94a3b8]" : "text-red-400"}`}>
                {isExpanded ? "A.I. LIVE" : "LIVE"}
             </span>
+            {micActive && (
+              <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-wide ml-2">
+                <Mic className="h-3 w-3 animate-pulse" /> On Air
+              </span>
+            )}
+            {recording && (
+              <span className="flex items-center gap-1 text-[9px] font-black text-red-400 uppercase tracking-wide animate-pulse ml-2">
+                <Circle className="h-2 w-2 fill-red-500" /> REC
+              </span>
+            )}
           </div>
           
           <h2 className="flex-1 text-[12px] md:text-[14px] font-black uppercase tracking-widest text-white/90 truncate ml-1 md:ml-2">
@@ -212,22 +235,25 @@ export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCame
 
           <div className="w-[1px] h-6 bg-white/10 mx-1 hidden sm:block" />
 
-          {/* Media controls */}
+          {/* Media controls — labeled for mobile */}
           {toggleCamera && (
-            <Button size="icon" variant="ghost" onClick={toggleCamera}
-              className={`h-8 w-8 rounded-lg ${cameraEnabled ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/30 hover:text-white/60"}`}>
+            <Button size="sm" variant="ghost" onClick={toggleCamera}
+              className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${cameraEnabled ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/30 hover:text-white/60"}`}>
               {cameraEnabled ? <Video className="h-3.5 w-3.5" /> : <VideoOff className="h-3.5 w-3.5" />}
+              <span>Cam</span>
             </Button>
           )}
           {toggleScreenShare && (
-            <Button size="icon" variant="ghost" onClick={toggleScreenShare}
-              className={`h-8 w-8 rounded-lg ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : "text-white/30 hover:text-white/60"}`}>
+            <Button size="sm" variant="ghost" onClick={toggleScreenShare}
+              className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : "text-white/30 hover:text-white/60"}`}>
               {screenShareEnabled ? <ScreenShare className="h-3.5 w-3.5" /> : <ScreenShareOff className="h-3.5 w-3.5" />}
+              <span>Share</span>
             </Button>
           )}
-          <Button size="icon" variant="ghost" onClick={() => setRecording((r) => !r)}
-            className={`h-8 w-8 rounded-lg ${recording ? "bg-red-500/20 text-red-400" : "text-white/30 hover:text-white/60"}`}>
+          <Button size="sm" variant="ghost" onClick={() => setRecording((r) => !r)}
+            className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${recording ? "bg-red-500/20 text-red-400" : "text-white/30 hover:text-white/60"}`}>
             <Circle className={`h-3.5 w-3.5 ${recording ? "fill-red-500" : ""}`} />
+            <span>{recording ? "Stop" : "Rec"}</span>
           </Button>
 
           <Button
