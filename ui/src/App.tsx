@@ -422,7 +422,7 @@ export function App() {
           {/* Global Board Routes */}
           <Route path="board" element={<Layout />}>
             <Route index element={<Navigate to="briefcase" replace />} />
-            <Route path="briefcase" element={<BoardDeliverables />} />
+            <Route path="briefcase" element={<BoardDeliverables global />} />
           </Route>
 
           <Route path=":companyPrefix" element={<Layout />}>

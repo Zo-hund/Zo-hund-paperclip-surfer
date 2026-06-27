@@ -184,4 +184,7 @@ export const accessApi = {
 
   removeMember: (companyId: string, userId: string) =>
     api.delete<{ ok: boolean }>(`/companies/${companyId}/members/${userId}`),
+
+  leaveCompany: (companyId: string) =>
+    api.post<{ ok: boolean }>(`/companies/${companyId}/members/me/leave`, {}),
 };

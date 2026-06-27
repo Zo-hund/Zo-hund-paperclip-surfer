@@ -239,6 +239,25 @@ export function CompanySettings() {
     }
   });
 
+  const leaveMutation = useMutation({
+    mutationFn: (companyId: string) => accessApi.leaveCompany(companyId),
+    onSuccess: async () => {
+      const nextCompanyId =
+        companies.find(
+          (c) => c.id !== selectedCompanyId && c.status !== "archived"
+        )?.id ?? null;
+      if (nextCompanyId) {
+        setSelectedCompanyId(nextCompanyId);
+      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.stats });
+      pushToast({ title: "You left this company" });
+    },
+    onError: (err) => {
+      pushToast({ tone: "warn", title: err instanceof Error ? err.message : "Failed to leave company" });
+    },
+  });
+
   useEffect(() => {
     setBreadcrumbs([
       { label: selectedCompany?.name ?? "Company", href: "/dashboard" },
@@ -688,6 +707,35 @@ export function CompanySettings() {
                   : "Failed to archive company"}
               </span>
             )}
+          </div>
+          <div className="mt-4 border-t border-destructive/20 pt-4">
+            <p className="text-sm text-muted-foreground">
+              Leave this company to remove it from your sidebar. Other members keep access.
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={leaveMutation.isPending}
+                onClick={() => {
+                  if (!selectedCompanyId) return;
+                  const confirmed = window.confirm(
+                    `Leave "${selectedCompany.name}"? You will lose access unless re-invited.`
+                  );
+                  if (!confirmed) return;
+                  leaveMutation.mutate(selectedCompanyId);
+                }}
+              >
+                {leaveMutation.isPending ? "Leaving..." : "Leave this company"}
+              </Button>
+              {leaveMutation.isError && (
+                <span className="text-xs text-destructive">
+                  {leaveMutation.error instanceof Error
+                    ? leaveMutation.error.message
+                    : "Failed to leave company"}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

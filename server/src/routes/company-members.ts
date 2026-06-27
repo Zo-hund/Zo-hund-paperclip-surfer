@@ -145,6 +145,48 @@ export function companyMembersRoutes(db: Db) {
     res.json({ ok: true });
   });
 
+  /**
+   * POST /companies/:companyId/members/me/leave
+   * Self-removal: the current user leaves this company.
+   * Blocks if the user is the sole owner (prevents orphaned companies).
+   */
+  router.post("/me/leave", async (req, res) => {
+    const { companyId } = req.params as { companyId: string };
+    assertBoard(req);
+    assertCompanyAccess(req, companyId);
+    const userId = req.actor.userId;
+    if (!userId) { res.status(401).json({ error: "Sign in required" }); return; }
+
+    const membership = await access.getMembership(companyId, "user", userId);
+    if (!membership) { res.status(404).json({ error: "You are not a member of this company" }); return; }
+
+    if (membership.membershipRole === "owner") {
+      const allMembers = await access.listMembers(companyId);
+      const otherOwners = allMembers.filter(
+        (m) => m.principalType === "user" && m.principalId !== userId && m.membershipRole === "owner" && m.status === "active",
+      );
+      if (otherOwners.length === 0) {
+        res.status(422).json({ error: "Cannot leave — you are the only owner. Transfer ownership first." });
+        return;
+      }
+    }
+
+    await access.removeMember(companyId, "user", userId);
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      action: "company.member_left",
+      entityType: "company",
+      entityId: companyId,
+      details: { userId },
+    });
+
+    res.json({ ok: true });
+  });
+
   router.get("/:userId/credential", async (req, res) => {
     const { companyId, userId } = req.params as { companyId: string; userId: string };
     assertBoard(req);

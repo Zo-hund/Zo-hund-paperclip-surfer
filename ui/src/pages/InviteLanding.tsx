@@ -83,9 +83,11 @@ export function InviteLandingPage() {
     }
   }, [availableJoinTypes, joinType]);
 
+  const sessionResolving = sessionQuery.isLoading || sessionQuery.isRefetching;
   const requiresAuthForHuman =
     joinType === "human" &&
     healthQuery.data?.deploymentMode === "authenticated" &&
+    !sessionResolving &&
     !sessionQuery.data;
 
   const acceptMutation = useMutation({
@@ -106,7 +108,7 @@ export function InviteLandingPage() {
     },
     onSuccess: async (payload) => {
       setError(null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
+      await queryClient.refetchQueries({ queryKey: queryKeys.auth.session });
       await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
       const asBootstrap =
         payload && typeof payload === "object" && "bootstrapAccepted" in (payload as Record<string, unknown>);
@@ -308,6 +310,12 @@ export function InviteLandingPage() {
           </div>
         )}
 
+        {sessionResolving && joinType === "human" && healthQuery.data?.deploymentMode === "authenticated" && (
+          <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            Checking your session…
+          </div>
+        )}
+
         {requiresAuthForHuman && (
           <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
             Sign in or create an account before submitting a human join request.
@@ -326,7 +334,8 @@ export function InviteLandingPage() {
           disabled={
             acceptMutation.isPending ||
             (joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && agentName.trim().length === 0) ||
-            requiresAuthForHuman
+            requiresAuthForHuman ||
+            sessionResolving
           }
           onClick={() => acceptMutation.mutate()}
         >

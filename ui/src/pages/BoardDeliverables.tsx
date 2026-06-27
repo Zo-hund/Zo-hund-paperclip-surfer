@@ -3,7 +3,7 @@ import { Briefcase } from "lucide-react";
 import { DeliverablesBriefcase } from "@/components/DeliverablesBriefcase";
 import { useBreadcrumbs } from "@/context/BreadcrumbContext";
 
-export function BoardDeliverables() {
+export function BoardDeliverables({ global = false }: { global?: boolean }) {
   const { setBreadcrumbs } = useBreadcrumbs();
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export function BoardDeliverables() {
         </div>
       </div>
 
-      <DeliverablesBriefcase global={true} />
+      <DeliverablesBriefcase global={global} />
     </div>
   );
 }
