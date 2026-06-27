@@ -420,7 +420,9 @@ export function App() {
           <Route path="marketplace" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace/agent/:marketplaceAgentId" element={<UnprefixedBoardRedirect />} />
           <Route path="briefcase" element={<UnprefixedBoardRedirect />} />
-          
+          <Route path="calendar" element={<UnprefixedBoardRedirect />} />
+          <Route path="meetings" element={<UnprefixedBoardRedirect />} />
+
           {/* Global Board Routes */}
           <Route path="board" element={<Layout />}>
             <Route index element={<Navigate to="briefcase" replace />} />

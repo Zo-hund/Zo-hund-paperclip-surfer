@@ -16,6 +16,7 @@ const BOARD_ROUTE_ROOTS = new Set([
   "inbox",
   "design-guide",
   "meetings",
+  "calendar",
   "tests",
   "analytics",
   "mcp-servers",
