@@ -15,6 +15,7 @@ import { Issues } from "./pages/Issues";
 import { IssueDetail } from "./pages/IssueDetail";
 import { Routines } from "./pages/Routines";
 import Meetings from "./pages/Meetings";
+import { Calendar } from "./pages/Calendar";
 import { RoutineDetail } from "./pages/RoutineDetail";
 import { ExecutionWorkspaceDetail } from "./pages/ExecutionWorkspaceDetail";
 import { Goals } from "./pages/Goals";
@@ -188,6 +189,7 @@ function boardRoutes() {
       <Route path="issues/:issueId" element={<IssueDetail />} />
       <Route path="meetings" element={<Meetings />} />
       <Route path="meetings/:meetingId" element={<Meetings />} />
+      <Route path="calendar" element={<Calendar />} />
       <Route path="routines" element={<Routines />} />
       <Route path="routines/:routineId" element={<RoutineDetail />} />
       <Route path="execution-workspaces/:workspaceId" element={<ExecutionWorkspaceDetail />} />

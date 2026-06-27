@@ -110,7 +110,8 @@ export function Sidebar() {
               <span className="truncate">New Issue</span>
             </button>
             <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
-            <SidebarNavItem to="/meetings" label="Calendar" icon={CalendarDays} />
+            <SidebarNavItem to="/meetings" label="Meeting Hub" icon={Mic} />
+            <SidebarNavItem to="/calendar" label="Calendar" icon={CalendarDays} />
             <SidebarNavItem
               to="/inbox"
               label="Inbox"
