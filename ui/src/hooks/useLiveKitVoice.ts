@@ -15,8 +15,13 @@ import { useNavigate } from "react-router-dom";
 import {
   Room,
   RoomEvent,
+  Track,
+  VideoPresets,
   type RemoteParticipant,
+  type RemoteTrack,
+  type RemoteTrackPublication,
   type LocalParticipant,
+  type LocalTrackPublication,
   ConnectionState,
   type RoomOptions,
 } from "livekit-client";
@@ -36,6 +41,9 @@ export interface TranscriptEntry {
   text: string;
   ts: number;
 }
+
+export type VideoTrackEntry = { video?: MediaStreamTrack; screen?: MediaStreamTrack };
+export type VideoTrackMap = Map<string, VideoTrackEntry>;
 
 export interface UseLiveKitVoiceOptions {
   /** LiveKit room name. Defaults to "amx-command-room" (the global orb room). */
@@ -71,6 +79,9 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [participantCount, setParticipantCount] = useState(0);
   const [agentJoined, setAgentJoined] = useState(false);
+  const [cameraEnabled, setCameraEnabledState] = useState(false);
+  const [screenShareEnabled, setScreenShareEnabledState] = useState(false);
+  const [videoTracks, setVideoTracks] = useState<VideoTrackMap>(new Map());
 
   /** Resolve a relative path to include company prefix */
   const resolvePath = useCallback(
@@ -157,6 +168,9 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
           noiseSuppression: true,
           autoGainControl: true,
         },
+        videoCaptureDefaults: {
+          resolution: VideoPresets.h720.resolution,
+        },
       };
 
       const room = new Room(roomOptions);
@@ -184,6 +198,43 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
         setParticipantCount(room.remoteParticipants.size);
       });
 
+      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Video) {
+          setVideoTracks((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(participant.identity) ?? {};
+            if (pub.source === Track.Source.ScreenShare) {
+              existing.screen = track.mediaStreamTrack;
+            } else {
+              existing.video = track.mediaStreamTrack;
+            }
+            next.set(participant.identity, existing);
+            return next;
+          });
+        }
+      });
+
+      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Video) {
+          track.detach();
+          setVideoTracks((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(participant.identity);
+            if (existing) {
+              if (pub.source === Track.Source.ScreenShare) delete existing.screen;
+              else delete existing.video;
+              if (!existing.video && !existing.screen) next.delete(participant.identity);
+              else next.set(participant.identity, { ...existing });
+            }
+            return next;
+          });
+        }
+      });
+
+      room.on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+        pub.track?.detach();
+      });
+
       await room.connect(url, token);
       await room.localParticipant.setMicrophoneEnabled(true);
       setStatus("listening");
@@ -200,7 +251,30 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     roomRef.current = null;
     setStatus("idle");
     setAgentJoined(false);
+    setCameraEnabledState(false);
+    setScreenShareEnabledState(false);
+    setVideoTracks(new Map());
   }, []);
+
+  /** Toggle local camera */
+  const toggleCamera = useCallback(async () => {
+    if (!roomRef.current) return;
+    const next = !cameraEnabled;
+    await roomRef.current.localParticipant.setCameraEnabled(next);
+    setCameraEnabledState(next);
+  }, [cameraEnabled]);
+
+  /** Toggle screen share */
+  const toggleScreenShare = useCallback(async () => {
+    if (!roomRef.current) return;
+    const next = !screenShareEnabled;
+    try {
+      await roomRef.current.localParticipant.setScreenShareEnabled(next, { cursor: "always" } as any);
+      setScreenShareEnabledState(next);
+    } catch {
+      setScreenShareEnabledState(false);
+    }
+  }, [screenShareEnabled]);
 
   /** Mute/unmute local mic */
   const setMuted = useCallback((muted: boolean) => {
@@ -235,5 +309,11 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     setMuted,
     sendText,
     isConnected: status !== "idle" && status !== "error" && status !== "disconnected",
+    cameraEnabled,
+    toggleCamera,
+    screenShareEnabled,
+    toggleScreenShare,
+    videoTracks,
+    room: roomRef.current,
   };
 }

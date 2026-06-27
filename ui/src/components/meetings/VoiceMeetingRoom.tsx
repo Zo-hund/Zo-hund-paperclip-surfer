@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Bot, Mic, MicOff, PhoneOff, UserPlus, Send,
-  CheckCircle2, AlertTriangle, Zap, Maximize, Minimize, Video,
+  CheckCircle2, AlertTriangle, Zap, Maximize, Minimize,
+  Video, VideoOff, ScreenShare, ScreenShareOff, Circle,
   Activity, Cpu, Radar, Crosshair, Network, BarChart2
 } from "lucide-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
@@ -11,10 +12,16 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "../../context/ToastContext";
 import { useQuery } from "@tanstack/react-query";
 import { InviteAgentsDialog } from "./InviteAgentsDialog";
+import type { VideoTrackMap } from "../../hooks/useLiveKitVoice";
 
 interface VoiceMeetingRoomProps {
   meetingId: string;
   onClose: () => void;
+  cameraEnabled?: boolean;
+  toggleCamera?: () => void;
+  screenShareEnabled?: boolean;
+  toggleScreenShare?: () => void;
+  videoTracks?: VideoTrackMap;
 }
 
 const SPEAKER_COLORS = [
@@ -32,12 +39,39 @@ const AudioEqualizer = () => (
   </div>
 );
 
-export function VoiceMeetingRoom({ meetingId, onClose }: VoiceMeetingRoomProps) {
+function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: string; status?: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (ref.current && track) {
+      ref.current.srcObject = new MediaStream([track]);
+    }
+    return () => { if (ref.current) ref.current.srcObject = null; };
+  }, [track]);
+
+  return (
+    <div className="relative rounded-xl overflow-hidden bg-black/60 border border-[#94a3b8]/20 aspect-video">
+      {track ? (
+        <video ref={ref} autoPlay playsInline muted className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-[#0a0a14]">
+          <span className="text-3xl font-black text-[#94a3b8]/30">{name[0]?.toUpperCase()}</span>
+        </div>
+      )}
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 bg-gradient-to-t from-black/80">
+        <span className="text-[11px] font-black text-white/90 uppercase tracking-wide">{name}</span>
+        {status && <span className="text-[9px] text-white/40 ml-2">{status}</span>}
+      </div>
+    </div>
+  );
+}
+
+export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks }: VoiceMeetingRoomProps) {
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [mode, setMode] = useState<"chat" | "cockpit" | "video">("cockpit");
+  const [recording, setRecording] = useState(false);
   
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -178,6 +212,24 @@ export function VoiceMeetingRoom({ meetingId, onClose }: VoiceMeetingRoomProps) 
 
           <div className="w-[1px] h-6 bg-white/10 mx-1 hidden sm:block" />
 
+          {/* Media controls */}
+          {toggleCamera && (
+            <Button size="icon" variant="ghost" onClick={toggleCamera}
+              className={`h-8 w-8 rounded-lg ${cameraEnabled ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/30 hover:text-white/60"}`}>
+              {cameraEnabled ? <Video className="h-3.5 w-3.5" /> : <VideoOff className="h-3.5 w-3.5" />}
+            </Button>
+          )}
+          {toggleScreenShare && (
+            <Button size="icon" variant="ghost" onClick={toggleScreenShare}
+              className={`h-8 w-8 rounded-lg ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : "text-white/30 hover:text-white/60"}`}>
+              {screenShareEnabled ? <ScreenShare className="h-3.5 w-3.5" /> : <ScreenShareOff className="h-3.5 w-3.5" />}
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" onClick={() => setRecording((r) => !r)}
+            className={`h-8 w-8 rounded-lg ${recording ? "bg-red-500/20 text-red-400" : "text-white/30 hover:text-white/60"}`}>
+            <Circle className={`h-3.5 w-3.5 ${recording ? "fill-red-500" : ""}`} />
+          </Button>
+
           <Button
             size="sm"
             variant="ghost"
@@ -266,54 +318,32 @@ export function VoiceMeetingRoom({ meetingId, onClose }: VoiceMeetingRoomProps) 
               </div>
             </div>
           ) : isVideo ? (
-            <div className="flex-1 rounded-xl p-4 md:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+            <div className="flex-1 rounded-xl p-4 md:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+              {/* Local participant tile */}
+              <VideoTile name="You" status={micActive ? "speaking" : "muted"} />
+
+              {/* Remote participants — use real video tracks when available */}
               {participants.map((p) => {
-                const color = colorMap.get(p.agentId) ?? "#94a3b8";
-                const isSpeaking = lastSpeakerId === p.agentId || p.status === "thinking" || p.status === "responding";
+                const remoteTracks = videoTracks?.get(p.name);
                 return (
-                  <div key={p.id} className="relative rounded-2xl overflow-hidden aspect-video bg-black/60 border border-white/10 flex flex-col items-center justify-center transition-all duration-300 group"
-                       style={{ 
-                         borderColor: isSpeaking ? `${color}60` : undefined, 
-                         boxShadow: isSpeaking ? `0 0 30px ${color}30, inset 0 0 20px ${color}15` : undefined 
-                       }}>
-                     
-                     <div className="absolute top-3 left-4 flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full shadow-lg" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-shadow-sm text-white/90 drop-shadow-md">{p.name}</span>
-                     </div>
-
-                     {p.status === "thinking" && (
-                        <div className="absolute top-3 right-4 flex items-center gap-1.5 opacity-80 bg-black/40 px-2 py-1 rounded-md border border-white/10">
-                           <Cpu className="h-3 w-3 text-amber-400 animate-spin" />
-                           <span className="text-[8px] font-black uppercase tracking-[0.2em] text-amber-400">Processing</span>
-                        </div>
-                     )}
-
-                     <div className="relative mt-2">
-                        {isSpeaking && <div className="absolute inset-0 bg-white/5 blur-2xl rounded-full scale-150 mix-blend-screen" style={{ background: `${color}40` }} />}
-                        <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-[30px] flex items-center justify-center text-4xl relative z-10 border-2 shadow-2xl transition-all duration-500"
-                           style={{
-                              background: `linear-gradient(145deg, ${color}20, rgba(0,0,0,0.8))`,
-                              borderColor: isSpeaking ? color : `${color}40`,
-                              boxShadow: isSpeaking ? `0 0 40px ${color}80, inset 0 0 20px ${color}50` : `0 0 10px rgba(0,0,0,0.5)`,
-                              color: isSpeaking ? '#ffffff' : color,
-                           }}>
-                           {p.icon ? <span>{p.icon}</span> : <Bot className="h-10 w-10" />}
-                        </div>
-                     </div>
-                     
-                     {/* Equalizer Waveform overlay when speaking */}
-                     <div className="absolute bottom-4 left-0 right-0 transition-opacity duration-300" style={{ color, opacity: isSpeaking ? 1 : 0 }}>
-                        {isSpeaking && <AudioEqualizer />}
-                     </div>
-
-                     <div className="absolute bottom-3 left-4 right-4 flex justify-between items-center opacity-40 text-[9px] uppercase font-black tracking-[0.3em]">
-                        <span>[ {p.status} ]</span>
-                        <span>NODE ACTIVE</span>
-                     </div>
-                  </div>
+                  <VideoTile
+                    key={p.id}
+                    track={remoteTracks?.video}
+                    name={p.name}
+                    status={p.status}
+                  />
                 );
               })}
+
+              {/* Screen share tile — prominent if anyone is sharing */}
+              {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
+                tracks.screen ? (
+                  <div key={`screen-${identity}`} className="col-span-full relative rounded-xl overflow-hidden border border-blue-500/40 aspect-video">
+                    <VideoTile track={tracks.screen} name={`${identity} — Screen`} />
+                    <span className="absolute top-2 left-2 text-[10px] font-black uppercase tracking-wide bg-blue-500/80 text-white px-2 py-0.5 rounded">Screen Share</span>
+                  </div>
+                ) : null
+              )}
             </div>
           ) : (
             participants.length > 0 && (

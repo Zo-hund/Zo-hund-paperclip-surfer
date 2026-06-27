@@ -1,6 +1,6 @@
 import { eq, and, ilike } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { meetingParticipants, meetingOutcomes, meetingTranscripts, agents, meetings } from "@paperclipai/db";
+import { meetingParticipants, meetingOutcomes, meetingTranscripts, agents, meetings, agentMemories } from "@paperclipai/db";
 import { publishLiveEvent } from "./live-events.js";
 
 type HeartbeatService = { wakeup: (agentId: string, opts?: Record<string, unknown>) => Promise<void> };
@@ -167,6 +167,44 @@ export function meetingAgentService(db: Db, heartbeat?: HeartbeatService) {
          agentId,
          status: "unresolved",
        }).returning().then(rows => rows[0]);
-    }
+    },
+
+    async logOutcomesToMemory(meetingId: string, companyId: string) {
+      const outcomes = await db.select().from(meetingOutcomes).where(eq(meetingOutcomes.meetingId, meetingId));
+      if (outcomes.length === 0) return;
+
+      const participants = await db.select({ agentId: meetingParticipants.agentId })
+        .from(meetingParticipants)
+        .where(eq(meetingParticipants.meetingId, meetingId));
+
+      type MemoryCategory = "pattern" | "preference" | "decision" | "learning" | "feedback";
+      const CATEGORY_MAP: Record<string, MemoryCategory> = {
+        decision: "decision",
+        risk: "feedback",
+        action_item: "pattern",
+        question: "learning",
+      };
+
+      for (const outcome of outcomes) {
+        const targetAgentIds = outcome.agentId
+          ? [outcome.agentId]
+          : participants.map((p) => p.agentId);
+
+        const category: MemoryCategory = CATEGORY_MAP[outcome.type] ?? "learning";
+
+        for (const agentId of targetAgentIds) {
+          await db.insert(agentMemories).values({
+            agentId,
+            companyId,
+            scope: "global" as const,
+            category,
+            title: `Meeting ${outcome.type}: ${outcome.content.slice(0, 80)}`,
+            content: outcome.content,
+            source: "board" as const,
+            confidence: 1.0,
+          });
+        }
+      }
+    },
   };
 }

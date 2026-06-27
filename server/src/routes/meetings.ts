@@ -5,6 +5,7 @@ import { meetings, meetingTranscripts, meetingOutcomes } from "@paperclipai/db";
 import { forbidden, notFound } from "../errors.js";
 import { recordingService, meetingAgentService as createMeetingAgentService } from "../services/index.js";
 import { publishLiveEvent } from "../services/live-events.js";
+import { logger } from "../middleware/logger.js";
 
 /**
  * AMX LABS Meetings API factory
@@ -148,6 +149,13 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
         updatedAt: new Date(),
       })
       .where(eq(meetings.id, meetingId));
+
+    // Log meeting outcomes to agent memories so agents retain decisions/risks/actions
+    try {
+      await meetingAgentSvc.logOutcomesToMemory(meetingId, meeting.companyId);
+    } catch (err) {
+      logger.warn({ err, meetingId }, "Failed to log meeting outcomes to agent memories");
+    }
 
     publishLiveEvent({ companyId: meeting.companyId, type: "meeting.ended", payload: { meetingId } });
 
