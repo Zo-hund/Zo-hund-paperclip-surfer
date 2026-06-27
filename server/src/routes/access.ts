@@ -14,6 +14,7 @@ import type { Db } from "@paperclipai/db";
 import {
   agentApiKeys,
   authUsers,
+  companyMemberships,
   invites,
   joinRequests
 } from "@paperclipai/db";
@@ -3123,6 +3124,54 @@ export function accessRoutes(
       res.json(memberships);
     }
   );
+
+  router.post("/admin/users/:userId/suspend", async (req, res) => {
+    await assertInstanceAdmin(req);
+    const { userId } = req.params as { userId: string };
+    const memberships = await access.listUserCompanyAccess(userId);
+    for (const m of memberships) {
+      if (m.status === "active") {
+        await db
+          .update(companyMemberships)
+          .set({ status: "suspended", updatedAt: new Date() })
+          .where(eq(companyMemberships.id, m.id));
+      }
+    }
+    await logActivity(db, {
+      companyId: memberships[0]?.companyId ?? "instance",
+      actorType: "user",
+      actorId: req.actor.userId ?? "admin",
+      action: "admin.user_suspended",
+      entityType: "user",
+      entityId: userId,
+      details: { membershipsAffected: memberships.length },
+    });
+    res.json({ ok: true, suspended: memberships.length });
+  });
+
+  router.post("/admin/users/:userId/unsuspend", async (req, res) => {
+    await assertInstanceAdmin(req);
+    const { userId } = req.params as { userId: string };
+    const memberships = await access.listUserCompanyAccess(userId);
+    for (const m of memberships) {
+      if (m.status === "suspended") {
+        await db
+          .update(companyMemberships)
+          .set({ status: "active", updatedAt: new Date() })
+          .where(eq(companyMemberships.id, m.id));
+      }
+    }
+    await logActivity(db, {
+      companyId: memberships[0]?.companyId ?? "instance",
+      actorType: "user",
+      actorId: req.actor.userId ?? "admin",
+      action: "admin.user_unsuspended",
+      entityType: "user",
+      entityId: userId,
+      details: { membershipsAffected: memberships.length },
+    });
+    res.json({ ok: true, unsuspended: memberships.length });
+  });
 
   return router;
 }

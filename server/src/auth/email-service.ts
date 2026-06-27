@@ -93,7 +93,7 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
     [
       "",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      `[Paperclip] EMAIL NOT SENT (no RESEND_API_KEY or SMTP_HOST)`,
+      `[AMX Air Hubs] EMAIL NOT SENT (no RESEND_API_KEY or SMTP_HOST)`,
       `  To: ${input.to}`,
       `  Subject: ${input.subject}`,
       `  Body: ${input.text}`,

@@ -113,7 +113,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         const greeting = user.name ? ` ${user.name}` : "";
         await sendEmail({
           to: user.email,
-          subject: "Reset your Paperclip password",
+          subject: "Reset your AMX Air Hubs password",
           text: [
             `Hi${greeting},`,
             "",
@@ -123,7 +123,7 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
             "",
             "If you didn't request this, you can safely ignore this email.",
             "",
-            "— The Paperclip team",
+            "— AMX Air Hubs",
           ].join("\n"),
           html: `<!DOCTYPE html>
 <html>
@@ -133,11 +133,11 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
     <tr><td align="center">
       <table width="100%" style="max-width:520px;background:#18181b;border:1px solid #27272a;border-radius:12px;padding:40px">
         <tr><td>
-          <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#71717a">AMX LABS x Paperclip</p>
+          <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#71717a">AMX AIR HUBS</p>
           <h1 style="margin:0 0 24px;font-size:22px;font-weight:600;color:#fafafa">Reset your password</h1>
           <p style="margin:0 0 8px;font-size:14px;color:#a1a1aa">Hi${greeting},</p>
           <p style="margin:0 0 24px;font-size:14px;color:#a1a1aa;line-height:1.6">
-            We received a request to reset the password for your Paperclip account.<br>
+            We received a request to reset the password for your AMX Air Hubs account.<br>
             Click the button below to choose a new password. This link expires in <strong style="color:#fafafa">1 hour</strong>.
           </p>
           <a href="${url}" style="display:inline-block;padding:10px 24px;background:#6366f1;color:#fff;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px">Reset Password</a>

@@ -1949,6 +1949,16 @@ export function heartbeatService(db: Db) {
       return null;
     }
 
+    const company = await db
+      .select({ status: companies.status })
+      .from(companies)
+      .where(eq(companies.id, run.companyId))
+      .then((rows) => rows[0] ?? null);
+    if (!company || company.status !== "active") {
+      await cancelRunInternal(run.id, `Cancelled because the company is ${company?.status ?? "missing"}`);
+      return null;
+    }
+
     const context = parseObject(run.contextSnapshot);
     const budgetBlock = await budgets.getInvocationBlock(run.companyId, run.agentId, {
       issueId: readNonEmptyString(context.issueId),
