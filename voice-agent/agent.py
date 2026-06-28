@@ -129,9 +129,12 @@ server = AgentServer()
 
 @server.rtc_session(agent_name="amx-voice-agent")
 async def entrypoint(ctx: JobContext):
+    import json
+    from livekit import rtc
+
     session = AgentSession(
         stt=inference.STT(model="deepgram/nova-3", language="en"),
-        llm=inference.LLM(model="anthropic/claude-sonnet-4-6"),
+        llm=inference.LLM(model="openai/gpt-4o-mini"),
         tts=inference.TTS(
             model="cartesia/sonic-3",
             voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
@@ -146,6 +149,24 @@ async def entrypoint(ctx: JobContext):
         agent=JAZSupportGuide(),
         room=ctx.room,
     )
+
+    @ctx.room.on("data_received")
+    def on_data(data: rtc.DataPacket):
+        try:
+            msg = json.loads(data.data.decode("utf-8"))
+            if msg.get("type") == "text" and isinstance(msg.get("text"), str):
+                text = msg["text"].strip()
+                if text:
+                    logger.info("Chat text from %s: %s", data.participant.identity if data.participant else "user", text)
+                    import asyncio
+                    asyncio.ensure_future(
+                        session.generate_reply(
+                            instructions=f"The user typed: {text}\nRespond helpfully via voice.",
+                            allow_interruptions=True,
+                        )
+                    )
+        except Exception as e:
+            logger.debug("data parse error: %s", e)
 
 
 if __name__ == "__main__":
