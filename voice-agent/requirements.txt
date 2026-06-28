@@ -1,2 +1,2 @@
-livekit-agents[anthropic,deepgram,cartesia]~=1.5
+livekit-agents[anthropic]~=1.5
 python-dotenv>=1.0.0
