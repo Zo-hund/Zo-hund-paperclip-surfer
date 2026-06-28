@@ -74,6 +74,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
 
   const navigate = useNavigate();
   const roomRef = useRef<Room | null>(null);
+  const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [status, setStatus] = useState<LiveKitVoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -140,17 +141,19 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     [navigate, resolvePath, onNavigate, onToolCall],
   );
 
-  /** Connect to a LiveKit room */
-  const connect = useCallback(async () => {
+  /** Connect to a LiveKit room. Pass a roomName to override the default
+   *  (needed because callers set the meeting id and connect in the same tick). */
+  const connect = useCallback(async (roomNameOverride?: string) => {
     if (roomRef.current?.state === ConnectionState.Connected) return;
     setStatus("connecting");
     setError(null);
+    const targetRoom = roomNameOverride ?? roomName;
 
     try {
       const resp = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName, identity }),
+        body: JSON.stringify({ roomName: targetRoom, identity }),
       });
 
       if (!resp.ok) {
@@ -199,6 +202,19 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       });
 
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Audio) {
+          // Attach + play the remote audio (e.g. the JAZ voice agent speaking).
+          // Without this the audio track is subscribed but never heard.
+          const sid = track.sid ?? track.mediaStreamTrack.id;
+          const el = track.attach() as HTMLAudioElement;
+          el.autoplay = true;
+          el.style.display = "none";
+          document.body.appendChild(el);
+          el.play().catch(() => { /* autoplay may need a gesture; mic-enable already provided one */ });
+          audioElsRef.current.set(sid, el);
+          setAgentJoined(true);
+          return;
+        }
         if (track.kind === Track.Kind.Video) {
           setVideoTracks((prev) => {
             const next = new Map(prev);
@@ -215,6 +231,13 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       });
 
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Audio) {
+          track.detach();
+          const sid = track.sid ?? track.mediaStreamTrack.id;
+          const el = audioElsRef.current.get(sid);
+          if (el) { el.remove(); audioElsRef.current.delete(sid); }
+          return;
+        }
         if (track.kind === Track.Kind.Video) {
           track.detach();
           setVideoTracks((prev) => {
@@ -249,6 +272,8 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const disconnect = useCallback(() => {
     roomRef.current?.disconnect();
     roomRef.current = null;
+    audioElsRef.current.forEach((el) => el.remove());
+    audioElsRef.current.clear();
     setStatus("idle");
     setAgentJoined(false);
     setCameraEnabledState(false);

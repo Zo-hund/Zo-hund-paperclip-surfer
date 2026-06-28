@@ -62,7 +62,7 @@ export default function Meetings() {
     onSuccess: async (meeting) => {
       setActiveMeetingId(meeting.id);
       queryClient.invalidateQueries({ queryKey: ["meetings", selectedCompanyId] });
-      await liveKit.connect();
+      await liveKit.connect(`meeting-${meeting.id}`);
     }
   });
 
@@ -193,7 +193,7 @@ export default function Meetings() {
                                  +2
                               </div>
                            </div>
-                           <Button size="sm" className="h-8 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/80 text-[10px] font-black uppercase tracking-widest shadow-lg" onClick={async () => { setActiveMeetingId(m.id); await liveKit.connect(); }}>
+                           <Button size="sm" className="h-8 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/80 text-[10px] font-black uppercase tracking-widest shadow-lg" onClick={async () => { setActiveMeetingId(m.id); await liveKit.connect(`meeting-${m.id}`); }}>
                              Rejoin
                            </Button>
                         </div>
