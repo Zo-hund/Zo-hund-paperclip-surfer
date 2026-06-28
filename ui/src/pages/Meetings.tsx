@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { VoiceMeetingRoom } from "../components/meetings/VoiceMeetingRoom";
 import { InviteAgentsDialog } from "../components/meetings/InviteAgentsDialog";
+import { useLiveKitVoice } from "../hooks/useLiveKitVoice";
 
 /**
  * AMX LABS Meetings Page - Agentic Command Center
@@ -28,6 +29,12 @@ export default function Meetings() {
   const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+
+  const liveKit = useLiveKitVoice({
+    roomName: activeMeetingId ? `meeting-${activeMeetingId}` : "amx-command-room",
+    identity: "board-user",
+    companyPrefix: selectedCompanyId ?? undefined,
+  });
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Meeting Hub" }]);
@@ -46,20 +53,35 @@ export default function Meetings() {
   });
 
   const startMeeting = useMutation({
-    mutationFn: (title: string) => 
-      meetingsApi.start({ 
-        companyId: selectedCompanyId!, 
-        title, 
-        type: "board_meet" 
+    mutationFn: (title: string) =>
+      meetingsApi.start({
+        companyId: selectedCompanyId!,
+        title,
+        type: "board_meet"
       }),
-    onSuccess: (meeting) => {
+    onSuccess: async (meeting) => {
       setActiveMeetingId(meeting.id);
       queryClient.invalidateQueries({ queryKey: ["meetings", selectedCompanyId] });
+      await liveKit.connect();
     }
   });
 
   if (activeMeetingId) {
-    return <VoiceMeetingRoom meetingId={activeMeetingId} onClose={() => setActiveMeetingId(null)} />;
+    return (
+      <VoiceMeetingRoom
+        meetingId={activeMeetingId}
+        onClose={() => {
+          liveKit.disconnect();
+          setActiveMeetingId(null);
+        }}
+        cameraEnabled={liveKit.cameraEnabled}
+        toggleCamera={liveKit.toggleCamera}
+        screenShareEnabled={liveKit.screenShareEnabled}
+        toggleScreenShare={liveKit.toggleScreenShare}
+        videoTracks={liveKit.videoTracks}
+        sendText={liveKit.sendText}
+      />
+    );
   }
 
   return (
@@ -171,7 +193,7 @@ export default function Meetings() {
                                  +2
                               </div>
                            </div>
-                           <Button size="sm" className="h-8 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/80 text-[10px] font-black uppercase tracking-widest shadow-lg" onClick={() => setActiveMeetingId(m.id)}>
+                           <Button size="sm" className="h-8 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/80 text-[10px] font-black uppercase tracking-widest shadow-lg" onClick={async () => { setActiveMeetingId(m.id); await liveKit.connect(); }}>
                              Rejoin
                            </Button>
                         </div>

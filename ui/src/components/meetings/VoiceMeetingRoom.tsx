@@ -22,6 +22,7 @@ interface VoiceMeetingRoomProps {
   screenShareEnabled?: boolean;
   toggleScreenShare?: () => void;
   videoTracks?: VideoTrackMap;
+  sendText?: (text: string) => void;
 }
 
 const SPEAKER_COLORS = [
@@ -78,7 +79,7 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
   );
 }
 
-export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, sendText: sendLiveKitText }: VoiceMeetingRoomProps) {
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
@@ -124,6 +125,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCame
     const text = commandText.trim();
     if (!text) return;
     setCommandText("");
+    sendLiveKitText?.(text);
     await meetingsApi.addTranscript(meetingId, {
       actorType: "user",
       actorId: "Board Member",
