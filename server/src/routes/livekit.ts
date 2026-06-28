@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, AgentDispatchClient } from "livekit-server-sdk";
 import { logger } from "../middleware/logger.js";
 
 const router = Router();
@@ -48,6 +48,17 @@ router.post("/livekit/token", async (req, res) => {
 
     const token = await at.toJwt();
     logger.info({ roomName, identity }, "livekit token issued");
+
+    // Dispatch the AMX voice agent into this room so JAZ auto-joins
+    try {
+      const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
+      const dispatchClient = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
+      await dispatchClient.createDispatch(roomName, "amx-voice-agent");
+      logger.info({ roomName }, "dispatched amx-voice-agent to room");
+    } catch (dispatchErr) {
+      logger.warn({ err: dispatchErr, roomName }, "agent dispatch failed (non-blocking)");
+    }
+
     return res.json({ token, url: livekitUrl, roomName, identity });
   } catch (err) {
     logger.error({ err }, "Failed to generate LiveKit token");
