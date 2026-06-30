@@ -122,4 +122,23 @@ export const companiesApi = {
       deliverables: any[];
     }>(`/companies/public/${slug}/portal${qs ? `?${qs}` : ""}`);
   },
+
+  getPublicContent: (slug: string) =>
+    api.get<{
+      company: { id: string; name: string; description: string | null; brandColor: string | null };
+      staff: Array<{ id: string; name: string; title: string; photoUrl: string | null; sortOrder: number }>;
+      events: Array<{
+        id: string;
+        title: string;
+        subtitle: string | null;
+        startDate: string;
+        endDate: string;
+        timeRange: string | null;
+        ageRange: string | null;
+        description: string | null;
+        flyerUrl: string | null;
+        registrationUrl: string | null;
+        qrCodeUrl: string | null;
+      }>;
+    }>(`/companies/public/${slug}/content`),
 };

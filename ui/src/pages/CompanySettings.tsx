@@ -10,6 +10,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Settings, Check, Download, Upload, Users, Trash2 } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
+import { CompanyContentSettings } from "../components/CompanyContentSettings";
 import type { CompanyMembershipRole } from "@paperclipai/shared";
 import { COMPANY_MEMBERSHIP_ROLES } from "@paperclipai/shared";
 import {
@@ -451,6 +452,8 @@ export function CompanySettings() {
           />
         </div>
       </div>
+
+      <CompanyContentSettings companyId={selectedCompany.id} issuePrefix={selectedCompany.issuePrefix} />
 
       {/* Invite a person (onboarding email) */}
       <div className="space-y-4">

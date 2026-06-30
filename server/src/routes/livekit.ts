@@ -1,79 +1,125 @@
 import { Router } from "express";
 import { AccessToken, AgentDispatchClient } from "livekit-server-sdk";
+import type { Db } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
+import { agentService } from "../services/index.js";
 
-const router = Router();
+const LIVEKIT_VOICE_AGENT_NAME = "amx-voice-agent";
 
 /**
- * POST /api/livekit/token
- * Generate a LiveKit access token for the board user to join a room.
- * Body: { roomName?: string; identity?: string }
+ * Looks up the company's designated LiveKit voice persona (an agent row
+ * tagged metadata.livekitAgentName === "amx-voice-agent"), if any. Used to
+ * give the single shared voice-agent process a per-company persona via
+ * dispatch metadata instead of registering a separate agent identity.
  */
-router.post("/livekit/token", async (req, res) => {
-  try {
-    const apiKey = process.env.LIVEKIT_API_KEY;
-    const apiSecret = process.env.LIVEKIT_API_SECRET;
-    const livekitUrl = process.env.LIVEKIT_URL;
+async function findVoicePersonaAgent(db: Db, companyId: string) {
+  const agents = agentService(db);
+  const companyAgents = await agents.list(companyId);
+  return (
+    companyAgents.find(
+      (agent: any) => agent.metadata?.livekitAgentName === LIVEKIT_VOICE_AGENT_NAME,
+    ) ?? null
+  );
+}
 
-    if (!apiKey || !apiSecret || !livekitUrl) {
-      return res.status(503).json({
-        error: "LiveKit is not configured. Add LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET to .env",
-      });
-    }
+export function livekitRoutes(db: Db) {
+  const router = Router();
 
-    const { roomName = "amx-command-room", identity = "board-user" } = req.body as {
-      roomName?: string;
-      identity?: string;
-    };
-
-    if (!roomName || roomName.length > 200) {
-      return res.status(400).json({ error: "Invalid roomName" });
-    }
-    if (!identity || identity.length > 100) {
-      return res.status(400).json({ error: "Invalid identity" });
-    }
-
-    const at = new AccessToken(apiKey, apiSecret, {
-      identity,
-      ttl: "4h",
-    });
-
-    at.addGrant({
-      roomJoin: true,
-      room: roomName,
-      canPublish: true,
-      canSubscribe: true,
-      canPublishData: true,
-    });
-
-    const token = await at.toJwt();
-    logger.info({ roomName, identity }, "livekit token issued");
-
-    // Dispatch the AMX voice agent into this room so JAZ auto-joins
+  /**
+   * POST /api/livekit/token
+   * Generate a LiveKit access token for the board user to join a room.
+   * Body: { roomName?: string; identity?: string; companyId?: string }
+   */
+  router.post("/livekit/token", async (req, res) => {
     try {
-      const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
-      const dispatchClient = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
-      await dispatchClient.createDispatch(roomName, "amx-voice-agent");
-      logger.info({ roomName }, "dispatched amx-voice-agent to room");
-    } catch (dispatchErr) {
-      logger.warn({ err: dispatchErr, roomName }, "agent dispatch failed (non-blocking)");
+      const apiKey = process.env.LIVEKIT_API_KEY;
+      const apiSecret = process.env.LIVEKIT_API_SECRET;
+      const livekitUrl = process.env.LIVEKIT_URL;
+
+      if (!apiKey || !apiSecret || !livekitUrl) {
+        return res.status(503).json({
+          error: "LiveKit is not configured. Add LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET to .env",
+        });
+      }
+
+      const { roomName = "amx-command-room", identity = "board-user", companyId } = req.body as {
+        roomName?: string;
+        identity?: string;
+        companyId?: string;
+      };
+
+      if (!roomName || roomName.length > 200) {
+        return res.status(400).json({ error: "Invalid roomName" });
+      }
+      if (!identity || identity.length > 100) {
+        return res.status(400).json({ error: "Invalid identity" });
+      }
+
+      const at = new AccessToken(apiKey, apiSecret, {
+        identity,
+        ttl: "4h",
+      });
+
+      at.addGrant({
+        roomJoin: true,
+        room: roomName,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+      });
+
+      const token = await at.toJwt();
+      logger.info({ roomName, identity }, "livekit token issued");
+
+      // Dispatch the AMX voice agent into this room so JAZ auto-joins.
+      // If the room's company has a designated voice-persona agent, pass its
+      // name/title/persona instructions through dispatch metadata so the
+      // single shared voice-agent process can answer in that persona for
+      // this room only — no new agent identity or registry needed.
+      try {
+        const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
+        const dispatchClient = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
+
+        let dispatchMetadata: string | undefined;
+        if (companyId) {
+          const personaAgent = await findVoicePersonaAgent(db, companyId);
+          if (personaAgent) {
+            dispatchMetadata = JSON.stringify({
+              companyId,
+              agentPersonaName: personaAgent.name,
+              agentPersonaTitle: personaAgent.title ?? null,
+              systemPromptOverride:
+                (personaAgent.metadata as Record<string, unknown> | null)?.voiceSystemPrompt ?? null,
+            });
+          }
+        }
+
+        await dispatchClient.createDispatch(
+          roomName,
+          LIVEKIT_VOICE_AGENT_NAME,
+          dispatchMetadata ? { metadata: dispatchMetadata } : undefined,
+        );
+        logger.info({ roomName, companyId, hasPersona: Boolean(dispatchMetadata) }, "dispatched amx-voice-agent to room");
+      } catch (dispatchErr) {
+        logger.warn({ err: dispatchErr, roomName }, "agent dispatch failed (non-blocking)");
+      }
+
+      return res.json({ token, url: livekitUrl, roomName, identity });
+    } catch (err) {
+      logger.error({ err }, "Failed to generate LiveKit token");
+      return res.status(500).json({ error: "Failed to generate token" });
     }
+  });
 
-    return res.json({ token, url: livekitUrl, roomName, identity });
-  } catch (err) {
-    logger.error({ err }, "Failed to generate LiveKit token");
-    return res.status(500).json({ error: "Failed to generate token" });
-  }
-});
+  /**
+   * GET /api/livekit/config
+   * Returns public LiveKit URL for the browser client.
+   */
+  router.get("/livekit/config", (_req, res) => {
+    const url = process.env.LIVEKIT_URL;
+    if (!url) return res.json({ configured: false });
+    return res.json({ configured: true, url });
+  });
 
-/**
- * GET /api/livekit/config
- * Returns public LiveKit URL for the browser client.
- */
-router.get("/livekit/config", (_req, res) => {
-  const url = process.env.LIVEKIT_URL;
-  if (!url) return res.json({ configured: false });
-  return res.json({ configured: true, url });
-});
-
-export { router as livekitRouter };
+  return router;
+}

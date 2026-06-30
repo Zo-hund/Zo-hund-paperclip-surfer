@@ -75,3 +75,5 @@ export { stripeSubscriptions, stripePrices } from "./stripe.js";
 export { auditVerifications } from "./audit_verifications.js";
 export { agentChatMessages } from "./agent_chat_messages.js";
 export { companyWebhooks, companyWebhookDeliveries } from "./company_webhooks.js";
+export { companyStaff } from "./company_staff.js";
+export { companyEvents } from "./company_events.js";

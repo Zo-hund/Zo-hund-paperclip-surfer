@@ -58,6 +58,9 @@ export interface UseLiveKitVoiceOptions {
   onToolCall?: (name: string, args: Record<string, unknown>) => void;
   /** Company prefix for building navigation paths (e.g. "AMXA"). */
   companyPrefix?: string;
+  /** Company id (UUID) — passed to the token endpoint so the dispatched
+   *  voice agent can adopt that company's persona, if one is configured. */
+  companyId?: string;
 }
 
 const decoder = new TextDecoder();
@@ -70,6 +73,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     onNavigate,
     onToolCall,
     companyPrefix,
+    companyId,
   } = options;
 
   const navigate = useNavigate();
@@ -83,6 +87,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const [cameraEnabled, setCameraEnabledState] = useState(false);
   const [screenShareEnabled, setScreenShareEnabledState] = useState(false);
   const [videoTracks, setVideoTracks] = useState<VideoTrackMap>(new Map());
+  const [localVideoTrack, setLocalVideoTrack] = useState<MediaStreamTrack | null>(null);
 
   /** Resolve a relative path to include company prefix */
   const resolvePath = useCallback(
@@ -153,7 +158,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       const resp = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName: targetRoom, identity }),
+        body: JSON.stringify({ roomName: targetRoom, identity, companyId }),
       });
 
       if (!resp.ok) {
@@ -254,8 +259,17 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
         }
       });
 
+      room.on(RoomEvent.LocalTrackPublished, (pub: LocalTrackPublication) => {
+        if (pub.track?.kind === Track.Kind.Video && pub.source === Track.Source.Camera) {
+          setLocalVideoTrack(pub.track.mediaStreamTrack);
+        }
+      });
+
       room.on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         pub.track?.detach();
+        if (pub.track?.kind === Track.Kind.Video && pub.source === Track.Source.Camera) {
+          setLocalVideoTrack(null);
+        }
       });
 
       await room.connect(url, token);
@@ -266,7 +280,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       setError(msg);
       setStatus("error");
     }
-  }, [roomName, identity, handleData]);
+  }, [roomName, identity, companyId, handleData]);
 
   /** Disconnect from the room */
   const disconnect = useCallback(() => {
@@ -279,6 +293,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     setCameraEnabledState(false);
     setScreenShareEnabledState(false);
     setVideoTracks(new Map());
+    setLocalVideoTrack(null);
   }, []);
 
   /** Toggle local camera */
@@ -339,6 +354,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     screenShareEnabled,
     toggleScreenShare,
     videoTracks,
+    localVideoTrack,
     room: roomRef.current,
   };
 }

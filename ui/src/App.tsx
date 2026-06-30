@@ -67,6 +67,7 @@ import { TeamRoster } from "./pages/TeamRoster";
 import { PublicHome } from "./pages/PublicHome";
 import { PublicAgentProfile } from "./pages/PublicAgentProfile";
 import { PublicCompanyProfile } from "./pages/PublicCompanyProfile";
+import { PublicCompanyContent } from "./pages/PublicCompanyContent";
 import { ServiceRequest } from "./pages/ServiceRequest";
 import { ClientPortal } from "./pages/ClientPortal";
 import { VerifyPassPage } from "./pages/VerifyPass";
@@ -356,6 +357,7 @@ export function App() {
         {/* ── Public routes — no auth required ── */}
         <Route path="home" element={<PublicHome />} />
         <Route path="p/company/:slug" element={<PublicCompanyProfile />} />
+        <Route path="c/:slug" element={<PublicCompanyContent />} />
         <Route path="p/agent/:agentId" element={<PublicAgentProfile />} />
         <Route path="request" element={<ServiceRequest />} />
         <Route path="join" element={<ServiceRequest />} />

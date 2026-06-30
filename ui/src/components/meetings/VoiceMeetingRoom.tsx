@@ -22,6 +22,7 @@ interface VoiceMeetingRoomProps {
   screenShareEnabled?: boolean;
   toggleScreenShare?: () => void;
   videoTracks?: VideoTrackMap;
+  localVideoTrack?: MediaStreamTrack | null;
   sendText?: (text: string) => void;
 }
 
@@ -79,7 +80,7 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
   );
 }
 
-export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, sendText: sendLiveKitText }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, localVideoTrack, sendText: sendLiveKitText }: VoiceMeetingRoomProps) {
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
@@ -348,7 +349,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCame
           ) : isVideo ? (
             <div className="flex-1 rounded-xl p-4 md:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
               {/* Local participant tile */}
-              <VideoTile name="You" status={micActive ? "speaking" : "muted"} />
+              <VideoTile track={localVideoTrack ?? undefined} name="You" status={micActive ? "speaking" : "muted"} />
 
               {/* Remote participants — use real video tracks when available */}
               {participants.map((p) => {

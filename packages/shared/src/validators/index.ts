@@ -252,6 +252,17 @@ export {
 } from "./asset.js";
 
 export {
+  createCompanyStaffSchema,
+  updateCompanyStaffSchema,
+  type CreateCompanyStaff,
+  type UpdateCompanyStaff,
+  createCompanyEventSchema,
+  updateCompanyEventSchema,
+  type CreateCompanyEvent,
+  type UpdateCompanyEvent,
+} from "./company-content.js";
+
+export {
   createCompanyInviteSchema,
   createOpenClawInvitePromptSchema,
   acceptInviteSchema,

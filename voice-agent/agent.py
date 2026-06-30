@@ -114,14 +114,49 @@ End the call when the user confirms the issue is resolved, says they do not need
 
 
 class JAZSupportGuide(Agent):
-    def __init__(self) -> None:
-        super().__init__(instructions=JAZ_INSTRUCTIONS)
+    def __init__(self, instructions: str | None = None, greeting: str | None = None) -> None:
+        super().__init__(instructions=instructions or JAZ_INSTRUCTIONS)
+        self._greeting = greeting or (
+            "Hi, this is JAZ Support Guide for AMX AIR HUBS. I can help with questions, "
+            "troubleshooting, onboarding, bookings, billing direction, or agent setup. "
+            "What are you trying to do today?"
+        )
 
     async def on_enter(self):
         await self.session.generate_reply(
-            instructions="Hi, this is JAZ Support Guide for AMX AIR HUBS. I can help with questions, troubleshooting, onboarding, bookings, billing direction, or agent setup. What are you trying to do today?",
+            instructions=self._greeting,
             allow_interruptions=True,
         )
+
+
+def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | None:
+    """Builds a per-room persona override from LiveKit dispatch metadata set by
+    POST /api/livekit/token. Returns (instructions, greeting) or None if the
+    metadata doesn't carry a persona — callers should fall back to JAZ defaults.
+    """
+    persona_name = dispatch_metadata.get("agentPersonaName")
+    if not persona_name:
+        return None
+
+    persona_title = dispatch_metadata.get("agentPersonaTitle")
+    company_name = dispatch_metadata.get("companyName")
+    override = dispatch_metadata.get("systemPromptOverride")
+
+    if override:
+        instructions = override
+    else:
+        role_line = f", {persona_title}" if persona_title else ""
+        company_line = f" at {company_name}" if company_name else ""
+        instructions = (
+            f"You are {persona_name}{role_line}, a digital assistant{company_line}. "
+            "Follow the same support style as JAZ Support Guide: calm, clear, friendly, "
+            "and practical. Use short spoken sentences, ask one question at a time, and "
+            "do not use markdown, bullets, JSON, code, or long lists in voice responses.\n\n"
+            + JAZ_INSTRUCTIONS
+        )
+
+    greeting = f"Hi, this is {persona_name}{f' at {company_name}' if company_name else ''}. How can I help you today?"
+    return instructions, greeting
 
 
 server = AgentServer()
@@ -145,8 +180,27 @@ async def entrypoint(ctx: JobContext):
         ),
     )
 
+    # Per-room persona override (e.g. Burnett Avenue Assistant) sent via
+    # createDispatch(roomName, "amx-voice-agent", { metadata }) in
+    # server/src/routes/livekit.ts. Falls back to default JAZ behavior when
+    # absent, so existing AMX rooms are unaffected.
+    persona = None
+    raw_metadata = getattr(ctx.job, "metadata", None)
+    if raw_metadata:
+        try:
+            dispatch_metadata = json.loads(raw_metadata)
+            persona = build_persona_instructions(dispatch_metadata)
+        except Exception as e:
+            logger.debug("dispatch metadata parse error: %s", e)
+
+    if persona:
+        instructions, greeting = persona
+        agent = JAZSupportGuide(instructions=instructions, greeting=greeting)
+    else:
+        agent = JAZSupportGuide()
+
     await session.start(
-        agent=JAZSupportGuide(),
+        agent=agent,
         room=ctx.room,
     )
 

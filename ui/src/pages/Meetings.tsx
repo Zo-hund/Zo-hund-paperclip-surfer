@@ -34,6 +34,7 @@ export default function Meetings() {
     roomName: activeMeetingId ? `meeting-${activeMeetingId}` : "amx-command-room",
     identity: "board-user",
     companyPrefix: selectedCompanyId ?? undefined,
+    companyId: selectedCompanyId ?? undefined,
   });
 
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function Meetings() {
         screenShareEnabled={liveKit.screenShareEnabled}
         toggleScreenShare={liveKit.toggleScreenShare}
         videoTracks={liveKit.videoTracks}
+        localVideoTrack={liveKit.localVideoTrack}
         sendText={liveKit.sendText}
       />
     );
