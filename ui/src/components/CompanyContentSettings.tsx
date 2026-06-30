@@ -11,6 +11,247 @@ function toDateInputValue(iso: string | undefined) {
   return new Date(iso).toISOString().slice(0, 10);
 }
 
+// ── Staff card ────────────────────────────────────────────────────────────────
+
+function StaffCard({
+  member,
+  companyId,
+  onDelete,
+}: {
+  member: CompanyStaffRow;
+  companyId: string;
+  onDelete: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({ name: member.name, title: member.title });
+  const dirty = form.name !== member.name || form.title !== member.title;
+
+  const update = useMutation({
+    mutationFn: (data: Partial<CompanyStaffRow>) =>
+      companyContentApi.updateStaff(companyId, member.id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-staff", companyId] }),
+  });
+
+  async function handlePhoto(file: File) {
+    const asset = await assetsApi.uploadImage(companyId, file, "staff-photos");
+    update.mutate({ photoAssetId: asset.assetId });
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-border px-4 py-3">
+      <div className="flex flex-wrap gap-2">
+        <div className="flex-1 min-w-[10rem] space-y-1">
+          <label className="text-xs text-muted-foreground">Name</label>
+          <input
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          />
+        </div>
+        <div className="flex-1 min-w-[12rem] space-y-1">
+          <label className="text-xs text-muted-foreground">Title</label>
+          <input
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          />
+        </div>
+      </div>
+      <input
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs outline-none file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handlePhoto(file);
+        }}
+      />
+      {member.photoAssetId && (
+        <span className="text-[11px] text-muted-foreground">Photo set ✓</span>
+      )}
+      <div className="flex items-center justify-between pt-1">
+        <Button size="icon" variant="ghost" onClick={onDelete}>
+          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => update.mutate(form)}
+          disabled={update.isPending || !dirty}
+        >
+          {update.isPending ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Event card ────────────────────────────────────────────────────────────────
+
+type EventForm = {
+  title: string;
+  subtitle: string;
+  startDate: string;
+  endDate: string;
+  timeRange: string;
+  ageRange: string;
+  description: string;
+  registrationUrl: string;
+};
+
+function eventToForm(event: CompanyEventRow): EventForm {
+  return {
+    title: event.title,
+    subtitle: event.subtitle ?? "",
+    startDate: toDateInputValue(event.startDate),
+    endDate: toDateInputValue(event.endDate),
+    timeRange: event.timeRange ?? "",
+    ageRange: event.ageRange ?? "",
+    description: event.description ?? "",
+    registrationUrl: event.registrationUrl ?? "",
+  };
+}
+
+function EventCard({
+  event,
+  companyId,
+  onDelete,
+}: {
+  event: CompanyEventRow;
+  companyId: string;
+  onDelete: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<EventForm>(() => eventToForm(event));
+  const initial = eventToForm(event);
+  const dirty = (Object.keys(form) as (keyof EventForm)[]).some((k) => form[k] !== initial[k]);
+
+  const update = useMutation({
+    mutationFn: (data: Partial<CompanyEventRow>) =>
+      companyContentApi.updateEvent(companyId, event.id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-events", companyId] }),
+  });
+
+  async function handleFlyer(file: File) {
+    const asset = await assetsApi.uploadImage(companyId, file, "events");
+    update.mutate({ flyerAssetId: asset.assetId } as Partial<CompanyEventRow>);
+  }
+
+  function handleSave() {
+    update.mutate({
+      title: form.title,
+      subtitle: form.subtitle || null,
+      startDate: form.startDate ? new Date(form.startDate).toISOString() : undefined,
+      endDate: form.endDate ? new Date(form.endDate).toISOString() : undefined,
+      timeRange: form.timeRange || null,
+      ageRange: form.ageRange || null,
+      description: form.description || null,
+      registrationUrl: form.registrationUrl || null,
+    } as Partial<CompanyEventRow>);
+  }
+
+  const set = (key: keyof EventForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  return (
+    <div className="space-y-3 rounded-md border border-border px-4 py-4">
+      <Field label="Title">
+        <input
+          className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+          value={form.title}
+          onChange={set("title")}
+        />
+      </Field>
+      <Field label="Subtitle">
+        <input
+          className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+          value={form.subtitle}
+          onChange={set("subtitle")}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Start date">
+          <input
+            type="date"
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+            value={form.startDate}
+            onChange={set("startDate")}
+          />
+        </Field>
+        <Field label="End date">
+          <input
+            type="date"
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+            value={form.endDate}
+            onChange={set("endDate")}
+          />
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Time range" hint='e.g. "6:00 — 8:00 PM Nightly"'>
+          <input
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+            value={form.timeRange}
+            onChange={set("timeRange")}
+          />
+        </Field>
+        <Field label="Age range" hint='e.g. "Pre-K — 12th Grade"'>
+          <input
+            className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+            value={form.ageRange}
+            onChange={set("ageRange")}
+          />
+        </Field>
+      </div>
+      <Field label="Description">
+        <textarea
+          className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+          rows={3}
+          value={form.description}
+          onChange={set("description")}
+        />
+      </Field>
+      <Field
+        label="Registration URL"
+        hint="A QR code linking here is generated automatically when saved."
+      >
+        <input
+          type="url"
+          className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+          value={form.registrationUrl}
+          onChange={set("registrationUrl")}
+        />
+      </Field>
+      {event.qrCodeAssetId && (
+        <span className="text-[11px] text-muted-foreground">QR code generated ✓</span>
+      )}
+      <Field label="Flyer image">
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs outline-none file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFlyer(file);
+          }}
+        />
+      </Field>
+      {event.flyerAssetId && (
+        <span className="text-[11px] text-muted-foreground">Flyer set ✓</span>
+      )}
+      <div className="flex items-center justify-between pt-1">
+        <Button size="icon" variant="ghost" onClick={onDelete}>
+          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+        </Button>
+        <Button size="sm" onClick={handleSave} disabled={update.isPending || !dirty}>
+          {update.isPending ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Parent panel ──────────────────────────────────────────────────────────────
+
 export function CompanyContentSettings({ companyId, issuePrefix }: { companyId: string; issuePrefix: string }) {
   const queryClient = useQueryClient();
 
@@ -33,12 +274,6 @@ export function CompanyContentSettings({ companyId, issuePrefix }: { companyId: 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-staff", companyId] }),
   });
 
-  const updateStaffMutation = useMutation({
-    mutationFn: ({ staffId, data }: { staffId: string; data: Partial<CompanyStaffRow> }) =>
-      companyContentApi.updateStaff(companyId, staffId, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-staff", companyId] }),
-  });
-
   const deleteStaffMutation = useMutation({
     mutationFn: (staffId: string) => companyContentApi.deleteStaff(companyId, staffId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-staff", companyId] }),
@@ -57,26 +292,10 @@ export function CompanyContentSettings({ companyId, issuePrefix }: { companyId: 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-events", companyId] }),
   });
 
-  const updateEventMutation = useMutation({
-    mutationFn: ({ eventId, data }: { eventId: string; data: Partial<CompanyEventRow> }) =>
-      companyContentApi.updateEvent(companyId, eventId, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-events", companyId] }),
-  });
-
   const deleteEventMutation = useMutation({
     mutationFn: (eventId: string) => companyContentApi.deleteEvent(companyId, eventId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["company-events", companyId] }),
   });
-
-  async function handleStaffPhoto(staffId: string, file: File) {
-    const asset = await assetsApi.uploadImage(companyId, file, "staff-photos");
-    updateStaffMutation.mutate({ staffId, data: { photoAssetId: asset.assetId } });
-  }
-
-  async function handleFlyerUpload(eventId: string, file: File) {
-    const asset = await assetsApi.uploadImage(companyId, file, "events");
-    updateEventMutation.mutate({ eventId, data: { flyerAssetId: asset.assetId } as Partial<CompanyEventRow> });
-  }
 
   return (
     <>
@@ -86,60 +305,23 @@ export function CompanyContentSettings({ companyId, issuePrefix }: { companyId: 
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Staff (public page)
           </div>
-          <Button size="sm" variant="outline" onClick={() => addStaffMutation.mutate()} disabled={addStaffMutation.isPending}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => addStaffMutation.mutate()}
+            disabled={addStaffMutation.isPending}
+          >
             <Plus className="h-3.5 w-3.5 mr-1" /> Add staff
           </Button>
         </div>
         <div className="space-y-3">
           {(staffQuery.data ?? []).map((member) => (
-            <div key={member.id} className="space-y-2 rounded-md border border-border px-4 py-3">
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="flex-1 min-w-[10rem] space-y-1">
-                  <label className="text-xs text-muted-foreground">Name</label>
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    defaultValue={member.name}
-                    onBlur={(e) => {
-                      if (e.target.value !== member.name) {
-                        updateStaffMutation.mutate({ staffId: member.id, data: { name: e.target.value } });
-                      }
-                    }}
-                  />
-                </div>
-                <div className="flex-1 min-w-[12rem] space-y-1">
-                  <label className="text-xs text-muted-foreground">Title</label>
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    defaultValue={member.title}
-                    onBlur={(e) => {
-                      if (e.target.value !== member.title) {
-                        updateStaffMutation.mutate({ staffId: member.id, data: { title: e.target.value } });
-                      }
-                    }}
-                  />
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => deleteStaffMutation.mutate(member.id)}
-                  disabled={deleteStaffMutation.isPending}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
-              </div>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs outline-none file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleStaffPhoto(member.id, file);
-                }}
-              />
-              {member.photoAssetId && (
-                <span className="text-[11px] text-muted-foreground">Photo set ✓</span>
-              )}
-            </div>
+            <StaffCard
+              key={member.id}
+              member={member}
+              companyId={companyId}
+              onDelete={() => deleteStaffMutation.mutate(member.id)}
+            />
           ))}
           {staffQuery.data?.length === 0 && (
             <p className="text-xs text-muted-foreground">No staff members yet.</p>
@@ -153,147 +335,23 @@ export function CompanyContentSettings({ companyId, issuePrefix }: { companyId: 
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Events / flyers (public page)
           </div>
-          <Button size="sm" variant="outline" onClick={() => addEventMutation.mutate()} disabled={addEventMutation.isPending}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => addEventMutation.mutate()}
+            disabled={addEventMutation.isPending}
+          >
             <Plus className="h-3.5 w-3.5 mr-1" /> Add event
           </Button>
         </div>
         <div className="space-y-4">
           {(eventsQuery.data ?? []).map((event) => (
-            <div key={event.id} className="space-y-3 rounded-md border border-border px-4 py-4">
-              <div className="flex items-start justify-between gap-2">
-                <Field label="Title">
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    defaultValue={event.title}
-                    onBlur={(e) => {
-                      if (e.target.value !== event.title) {
-                        updateEventMutation.mutate({ eventId: event.id, data: { title: e.target.value } });
-                      }
-                    }}
-                  />
-                </Field>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => deleteEventMutation.mutate(event.id)}
-                  disabled={deleteEventMutation.isPending}
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                </Button>
-              </div>
-              <Field label="Subtitle">
-                <input
-                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                  defaultValue={event.subtitle ?? ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (event.subtitle ?? "")) {
-                      updateEventMutation.mutate({ eventId: event.id, data: { subtitle: e.target.value || null } });
-                    }
-                  }}
-                />
-              </Field>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Start date">
-                  <input
-                    type="date"
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    defaultValue={toDateInputValue(event.startDate)}
-                    onBlur={(e) => {
-                      if (e.target.value) {
-                        updateEventMutation.mutate({
-                          eventId: event.id,
-                          data: { startDate: new Date(e.target.value).toISOString() } as Partial<CompanyEventRow>,
-                        });
-                      }
-                    }}
-                  />
-                </Field>
-                <Field label="End date">
-                  <input
-                    type="date"
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    defaultValue={toDateInputValue(event.endDate)}
-                    onBlur={(e) => {
-                      if (e.target.value) {
-                        updateEventMutation.mutate({
-                          eventId: event.id,
-                          data: { endDate: new Date(e.target.value).toISOString() } as Partial<CompanyEventRow>,
-                        });
-                      }
-                    }}
-                  />
-                </Field>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Time range" hint='e.g. "6:00 — 8:00 PM Nightly"'>
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    defaultValue={event.timeRange ?? ""}
-                    onBlur={(e) => {
-                      if (e.target.value !== (event.timeRange ?? "")) {
-                        updateEventMutation.mutate({ eventId: event.id, data: { timeRange: e.target.value || null } });
-                      }
-                    }}
-                  />
-                </Field>
-                <Field label="Age range" hint='e.g. "Pre-K — 12th Grade"'>
-                  <input
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                    defaultValue={event.ageRange ?? ""}
-                    onBlur={(e) => {
-                      if (e.target.value !== (event.ageRange ?? "")) {
-                        updateEventMutation.mutate({ eventId: event.id, data: { ageRange: e.target.value || null } });
-                      }
-                    }}
-                  />
-                </Field>
-              </div>
-              <Field label="Description">
-                <textarea
-                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                  rows={3}
-                  defaultValue={event.description ?? ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (event.description ?? "")) {
-                      updateEventMutation.mutate({ eventId: event.id, data: { description: e.target.value || null } });
-                    }
-                  }}
-                />
-              </Field>
-              <Field
-                label="Registration URL"
-                hint="A QR code linking here is generated automatically when this is set."
-              >
-                <input
-                  type="url"
-                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
-                  defaultValue={event.registrationUrl ?? ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (event.registrationUrl ?? "")) {
-                      updateEventMutation.mutate({
-                        eventId: event.id,
-                        data: { registrationUrl: e.target.value || null } as Partial<CompanyEventRow>,
-                      });
-                    }
-                  }}
-                />
-              </Field>
-              {event.qrCodeAssetId && (
-                <span className="text-[11px] text-muted-foreground">QR code generated ✓</span>
-              )}
-              <Field label="Flyer image">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-xs outline-none file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFlyerUpload(event.id, file);
-                  }}
-                />
-              </Field>
-              {event.flyerAssetId && <span className="text-[11px] text-muted-foreground">Flyer set ✓</span>}
-            </div>
+            <EventCard
+              key={event.id}
+              event={event}
+              companyId={companyId}
+              onDelete={() => deleteEventMutation.mutate(event.id)}
+            />
           ))}
           {eventsQuery.data?.length === 0 && (
             <p className="text-xs text-muted-foreground">No events yet.</p>
