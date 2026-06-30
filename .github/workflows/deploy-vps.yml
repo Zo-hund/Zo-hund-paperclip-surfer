@@ -166,6 +166,9 @@ jobs:
           PAPERCLIP_EMAIL_REPLY_TO: ${{ secrets.PAPERCLIP_EMAIL_REPLY_TO }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
         run: |
           cat > "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
           COMPOSE_PROJECT_NAME=${STACK_NAME}
@@ -189,6 +192,9 @@ jobs:
           PAPERCLIP_EMAIL_REPLY_TO=${PAPERCLIP_EMAIL_REPLY_TO}
           STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
           STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+          LIVEKIT_URL=${LIVEKIT_URL}
+          LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+          LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
           EOF
           if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
             cat >> "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
