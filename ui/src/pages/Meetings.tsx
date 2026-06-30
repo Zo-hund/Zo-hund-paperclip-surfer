@@ -101,6 +101,7 @@ export default function Meetings() {
         toggleScreenShare={liveKit.toggleScreenShare}
         videoTracks={liveKit.videoTracks}
         localVideoTrack={liveKit.localVideoTrack}
+        localScreenTrack={liveKit.localScreenTrack}
         sendText={liveKit.sendText}
       />
     );

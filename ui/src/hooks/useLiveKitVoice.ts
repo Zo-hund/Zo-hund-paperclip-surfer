@@ -88,6 +88,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const [screenShareEnabled, setScreenShareEnabledState] = useState(false);
   const [videoTracks, setVideoTracks] = useState<VideoTrackMap>(new Map());
   const [localVideoTrack, setLocalVideoTrack] = useState<MediaStreamTrack | null>(null);
+  const [localScreenTrack, setLocalScreenTrack] = useState<MediaStreamTrack | null>(null);
 
   /** Resolve a relative path to include company prefix */
   const resolvePath = useCallback(
@@ -260,15 +261,39 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       });
 
       room.on(RoomEvent.LocalTrackPublished, (pub: LocalTrackPublication) => {
-        if (pub.track?.kind === Track.Kind.Video && pub.source === Track.Source.Camera) {
+        if (pub.track?.kind !== Track.Kind.Video) return;
+        if (pub.source === Track.Source.Camera) {
           setLocalVideoTrack(pub.track.mediaStreamTrack);
+        } else if (pub.source === Track.Source.ScreenShare) {
+          const mst = pub.track.mediaStreamTrack;
+          setLocalScreenTrack(mst);
+          setVideoTracks((prev) => {
+            const next = new Map(prev);
+            const existing = next.get("local") ?? {};
+            existing.screen = mst;
+            next.set("local", existing);
+            return next;
+          });
         }
       });
 
       room.on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         pub.track?.detach();
-        if (pub.track?.kind === Track.Kind.Video && pub.source === Track.Source.Camera) {
+        if (pub.track?.kind !== Track.Kind.Video) return;
+        if (pub.source === Track.Source.Camera) {
           setLocalVideoTrack(null);
+        } else if (pub.source === Track.Source.ScreenShare) {
+          setLocalScreenTrack(null);
+          setVideoTracks((prev) => {
+            const next = new Map(prev);
+            const existing = next.get("local");
+            if (existing) {
+              delete existing.screen;
+              if (!existing.video && !existing.screen) next.delete("local");
+              else next.set("local", { ...existing });
+            }
+            return next;
+          });
         }
       });
 
@@ -294,6 +319,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     setScreenShareEnabledState(false);
     setVideoTracks(new Map());
     setLocalVideoTrack(null);
+    setLocalScreenTrack(null);
   }, []);
 
   /** Toggle local camera */
@@ -355,6 +381,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     toggleScreenShare,
     videoTracks,
     localVideoTrack,
+    localScreenTrack,
     room: roomRef.current,
   };
 }

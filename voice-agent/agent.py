@@ -6,6 +6,9 @@ Joins LiveKit rooms, responds via voice using Claude for reasoning,
 Deepgram Nova-3 for STT, Cartesia Sonic-3 for TTS.
 """
 
+import asyncio
+import base64
+import io
 import json
 import logging
 from dotenv import load_dotenv
@@ -122,7 +125,46 @@ Dashboard tools:
 You can navigate the user's browser to a different page and open pre-filled creation forms for issues, agents, and projects using your tools.
 These tools never create or change anything by themselves — they open a form with the details filled in, and a human still has to review and click Create or Save. Always tell the user you've opened the form for them to confirm, never say the thing has been created.
 Use navigate_to_page to move the user to a different screen (for example company settings, the agents list, or the issues board).
-Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things."""
+Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things.
+
+Vision:
+You can see what is on screen or camera using the analyze_screen tool.
+Use it when the user asks you to look at the screen, describe what you see, read something visible, or analyze any content being shared in the room.
+Describe what you see naturally in a few sentences, as if speaking to someone who cannot see the screen."""
+
+
+async def _capture_frame(room) -> bytes | None:
+    """Grab one JPEG frame from the first screen-share or camera video track in the room."""
+    from livekit import rtc as _rtc
+
+    target_track = None
+    for participant in room.remote_participants.values():
+        for pub in participant.track_publications.values():
+            if pub.subscribed and pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+                target_track = pub.track
+                break
+        if target_track:
+            break
+
+    if not target_track:
+        return None
+
+    stream = _rtc.VideoStream(track=target_track, format=_rtc.VideoBufferType.RGBA)
+    try:
+        async with asyncio.timeout(5.0):
+            async for event in stream:
+                frame = event.frame
+                from PIL import Image
+                pil = Image.frombytes("RGBA", (frame.width, frame.height), bytes(frame.data)).convert("RGB")
+                buf = io.BytesIO()
+                pil.save(buf, format="JPEG", quality=85)
+                return buf.getvalue()
+    except Exception as e:
+        logger.debug("frame capture error: %s", e)
+        return None
+    finally:
+        await stream.aclose()
+    return None
 
 
 class JAZSupportGuide(Agent):
@@ -205,6 +247,34 @@ class JAZSupportGuide(Agent):
         """
         await self._publish_tool_call(context, "open_modal", {"modal": "new_project"})
         return "Opened the new project form for you to fill in and submit."
+
+    @function_tool()
+    async def analyze_screen(self, context: RunContext) -> str:
+        """Look at what is currently visible on screen or camera and describe it.
+
+        Use this when the user asks you to look at the screen, describe what
+        you see, analyze a document or dashboard, read text that's visible,
+        or identify anything shown in the room.
+        """
+        import anthropic
+        room = context.session.room_io.room
+        frame_bytes = await _capture_frame(room)
+        if not frame_bytes:
+            return "I don't see any active screen share or camera in this room right now."
+        client = anthropic.Anthropic()
+        encoded = base64.standard_b64encode(frame_bytes).decode("utf-8")
+        response = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=512,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded}},
+                    {"type": "text", "text": "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible."},
+                ],
+            }],
+        )
+        return response.content[0].text if response.content else "I could see the screen but couldn't interpret it."
 
 
 def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | None:

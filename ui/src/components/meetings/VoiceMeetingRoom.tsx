@@ -23,6 +23,7 @@ interface VoiceMeetingRoomProps {
   toggleScreenShare?: () => void;
   videoTracks?: VideoTrackMap;
   localVideoTrack?: MediaStreamTrack | null;
+  localScreenTrack?: MediaStreamTrack | null;
   sendText?: (text: string) => void;
 }
 
@@ -80,7 +81,7 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
   );
 }
 
-export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, localVideoTrack, sendText: sendLiveKitText }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText }: VoiceMeetingRoomProps) {
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
@@ -240,14 +241,16 @@ export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCame
 
           {/* Media controls — labeled for mobile */}
           {toggleCamera && (
-            <Button size="sm" variant="ghost" onClick={toggleCamera}
+            <Button size="sm" variant="ghost"
+              onClick={() => { toggleCamera(); if (!cameraEnabled) setMode("video"); }}
               className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${cameraEnabled ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/30 hover:text-white/60"}`}>
               {cameraEnabled ? <Video className="h-3.5 w-3.5" /> : <VideoOff className="h-3.5 w-3.5" />}
               <span>Cam</span>
             </Button>
           )}
           {toggleScreenShare && (
-            <Button size="sm" variant="ghost" onClick={toggleScreenShare}
+            <Button size="sm" variant="ghost"
+              onClick={() => { toggleScreenShare(); if (!screenShareEnabled) setMode("video"); }}
               className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : "text-white/30 hover:text-white/60"}`}>
               {screenShareEnabled ? <ScreenShare className="h-3.5 w-3.5" /> : <ScreenShareOff className="h-3.5 w-3.5" />}
               <span>Share</span>
@@ -364,11 +367,11 @@ export function VoiceMeetingRoom({ meetingId, onClose, cameraEnabled, toggleCame
                 );
               })}
 
-              {/* Screen share tile — prominent if anyone is sharing */}
+              {/* Screen share tile — prominent, col-span-full */}
               {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
                 tracks.screen ? (
                   <div key={`screen-${identity}`} className="col-span-full relative rounded-xl overflow-hidden border border-blue-500/40 aspect-video">
-                    <VideoTile track={tracks.screen} name={`${identity} — Screen`} />
+                    <VideoTile track={tracks.screen} name={identity === "local" ? "Your Screen" : `${identity} — Screen`} />
                     <span className="absolute top-2 left-2 text-[10px] font-black uppercase tracking-wide bg-blue-500/80 text-white px-2 py-0.5 rounded">Screen Share</span>
                   </div>
                 ) : null
