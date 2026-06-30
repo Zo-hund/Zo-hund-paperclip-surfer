@@ -11,6 +11,7 @@ import base64
 import io
 import json
 import logging
+import os
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -333,6 +334,7 @@ async def entrypoint(ctx: JobContext):
     # server/src/routes/livekit.ts. Falls back to default JAZ behavior when
     # absent, so existing AMX rooms are unaffected.
     persona = None
+    dispatch_metadata: dict = {}
     raw_metadata = getattr(ctx.job, "metadata", None)
     if raw_metadata:
         try:
@@ -346,6 +348,22 @@ async def entrypoint(ctx: JobContext):
         agent = JAZSupportGuide(instructions=instructions, greeting=greeting)
     else:
         agent = JAZSupportGuide()
+
+    # Optional Runway visual avatar — enabled per-room via dispatch metadata
+    # avatarEnabled=true + RUNWAY_AVATAR_ID env var. Falls back gracefully if
+    # the runway plugin isn't installed or the env var is absent.
+    avatar_session = None
+    avatar_id = os.environ.get("RUNWAY_AVATAR_ID") or os.environ.get("RUNWAY_AVATAR_PRESET_ID")
+    if dispatch_metadata.get("avatarEnabled") and avatar_id:
+        try:
+            from livekit.plugins import runway as _runway
+            avatar_session = _runway.AvatarSession(avatar_id=avatar_id)
+            await avatar_session.start(session, room=ctx.room)
+            logger.info("Runway avatar session started (id=%s)", avatar_id)
+        except ImportError:
+            logger.warning("livekit-agents[runway] not installed; avatar skipped")
+        except Exception as e:
+            logger.warning("Runway avatar start failed: %s", e)
 
     await session.start(
         agent=agent,

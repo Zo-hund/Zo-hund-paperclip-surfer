@@ -42,10 +42,11 @@ export function livekitRoutes(db: Db) {
         });
       }
 
-      const { roomName = "amx-command-room", identity = "board-user", companyId } = req.body as {
+      const { roomName = "amx-command-room", identity = "board-user", companyId, avatarEnabled } = req.body as {
         roomName?: string;
         identity?: string;
         companyId?: string;
+        avatarEnabled?: boolean;
       };
 
       if (!roomName || roomName.length > 200) {
@@ -90,7 +91,10 @@ export function livekitRoutes(db: Db) {
               agentPersonaTitle: personaAgent.title ?? null,
               systemPromptOverride:
                 (personaAgent.metadata as Record<string, unknown> | null)?.voiceSystemPrompt ?? null,
+              avatarEnabled: avatarEnabled === true,
             });
+          } else if (avatarEnabled) {
+            dispatchMetadata = JSON.stringify({ companyId, avatarEnabled: true });
           }
         }
 

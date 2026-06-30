@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { 
-  Bot, History, Radio, Users, Search, 
-  Shield, Target, AlertTriangle, 
-  CheckCircle2, MessageSquare, Zap, 
-  Eye, PlayCircle, BarChart3, TrendingUp
+import {
+  Bot, History, Radio, Users, Search,
+  Shield, Target, AlertTriangle,
+  CheckCircle2, MessageSquare, Zap,
+  Eye, PlayCircle, BarChart3, TrendingUp, Sparkles
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { meetingsApi } from "../api/meetings";
@@ -30,6 +30,7 @@ export default function Meetings() {
   const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [avatarEnabled, setAvatarEnabled] = useState(false);
   const { openNewIssue, openNewAgent, openNewProject } = useDialog();
 
   const liveKit = useLiveKitVoice({
@@ -37,6 +38,7 @@ export default function Meetings() {
     identity: "board-user",
     companyPrefix: selectedCompanyId ?? undefined,
     companyId: selectedCompanyId ?? undefined,
+    avatarEnabled,
     onToolCall: (name, args) => {
       // Voice agent tool calls only ever open a pre-filled form — a human
       // still has to review and submit it. See voice-agent/agent.py for the
@@ -137,8 +139,21 @@ export default function Meetings() {
             <Bot className="h-4 w-4" />
             Invite Agents
           </Button>
-          <Button 
-            size="lg" 
+          <Button
+            variant="outline"
+            onClick={() => setAvatarEnabled((v) => !v)}
+            className={`rounded-full px-6 h-12 font-bold uppercase tracking-widest text-[11px] gap-2 transition-all ${
+              avatarEnabled
+                ? "border-primary bg-primary/10 text-primary hover:bg-primary/20"
+                : "border-primary/20 bg-background/40 backdrop-blur-sm hover:bg-primary/5 hover:border-primary/40"
+            }`}
+            title={avatarEnabled ? "Avatar ON — JAZ will appear as a visual participant" : "Avatar OFF — voice only"}
+          >
+            <Sparkles className="h-4 w-4" />
+            Avatar {avatarEnabled ? "On" : "Off"}
+          </Button>
+          <Button
+            size="lg"
             className="rounded-full px-8 bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl shadow-primary/20 transition-all hover:scale-105 gap-2 h-12 font-black uppercase tracking-widest text-[11px]"
             onClick={() => startMeeting.mutate(`Strategic Session - ${new Date().toLocaleDateString()}`)}
           >

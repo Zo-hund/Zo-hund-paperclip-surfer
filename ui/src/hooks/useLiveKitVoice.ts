@@ -61,6 +61,9 @@ export interface UseLiveKitVoiceOptions {
   /** Company id (UUID) — passed to the token endpoint so the dispatched
    *  voice agent can adopt that company's persona, if one is configured. */
   companyId?: string;
+  /** When true, the agent will attempt to start a Runway visual avatar in the
+   *  room (requires RUNWAY_AVATAR_ID to be set in the agent's environment). */
+  avatarEnabled?: boolean;
 }
 
 const decoder = new TextDecoder();
@@ -74,6 +77,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     onToolCall,
     companyPrefix,
     companyId,
+    avatarEnabled,
   } = options;
 
   const navigate = useNavigate();
@@ -159,7 +163,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       const resp = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName: targetRoom, identity, companyId }),
+        body: JSON.stringify({ roomName: targetRoom, identity, companyId, avatarEnabled }),
       });
 
       if (!resp.ok) {
@@ -305,7 +309,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       setError(msg);
       setStatus("error");
     }
-  }, [roomName, identity, companyId, handleData]);
+  }, [roomName, identity, companyId, avatarEnabled, handleData]);
 
   /** Disconnect from the room */
   const disconnect = useCallback(() => {
