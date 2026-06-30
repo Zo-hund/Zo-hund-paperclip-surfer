@@ -240,6 +240,14 @@ jobs:
             "deploy/vps/deploy-remote.sh" \
             "${RUNNER_TEMP}/${{ steps.vars.outputs.remote_env_file }}" \
             "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}:${{ steps.vars.outputs.deploy_dir }}/"
+          # The hostinger-shared-traefik compose template builds a voice-agent
+          # image locally on the VPS (no published image for it), so its build
+          # context has to exist alongside docker-compose.yml on the remote host.
+          if [ "${{ steps.vars.outputs.deploy_layout }}" = "hostinger-shared-traefik" ]; then
+            scp_retry -r -P "${{ secrets.VPS_SSH_PORT || 22 }}" \
+              "voice-agent" \
+              "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}:${{ steps.vars.outputs.deploy_dir }}/"
+          fi
 
       - name: Rename uploaded deployment files on remote host
         shell: bash

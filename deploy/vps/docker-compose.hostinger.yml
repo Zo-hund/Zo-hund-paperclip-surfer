@@ -63,7 +63,7 @@ services:
 
   voice-agent:
     build:
-      context: ../../voice-agent
+      context: ./voice-agent
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
