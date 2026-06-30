@@ -19,6 +19,9 @@ from livekit.agents import (
     cli,
     function_tool,
     inference,
+    llm,
+    stt,
+    tts,
 )
 
 logger = logging.getLogger("agent-JAZ")
@@ -278,6 +281,26 @@ async def entrypoint(ctx: JobContext):
         agent=agent,
         room=ctx.room,
     )
+
+    @session.on("error")
+    def on_error(ev):
+        if ev.error.recoverable:
+            return
+        if isinstance(ev.source, (llm.LLM, tts.TTS)):
+            ev.error.recoverable = True
+            return
+        if isinstance(ev.source, stt.STT):
+            session.update_agent(session.current_agent)
+            ev.error.recoverable = True
+            return
+        logger.error("unrecoverable session error from %s: %s", type(ev.source).__name__, ev.error)
+        import asyncio
+        asyncio.ensure_future(
+            session.say(
+                "I'm having trouble right now — please try again in a moment.",
+                allow_interruptions=False,
+            )
+        )
 
     @ctx.room.on("data_received")
     def on_data(data: rtc.DataPacket):
