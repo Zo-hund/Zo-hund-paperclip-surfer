@@ -44,7 +44,7 @@ export function companyContentRoutes(db: Db, storage: StorageService) {
   }
 
   // ── Public, unauthenticated content for a company's marketing page ─────────
-  router.get("/public/:slug/content", async (req, res) => {
+  router.get("/companies/public/:slug/content", async (req, res) => {
     const company = await companies.getByPrefix(req.params.slug as string);
     if (!company) {
       res.status(404).json({ error: "Company not found" });
