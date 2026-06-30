@@ -6,6 +6,7 @@ Joins LiveKit rooms, responds via voice using Claude for reasoning,
 Deepgram Nova-3 for STT, Cartesia Sonic-3 for TTS.
 """
 
+import json
 import logging
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -13,8 +14,10 @@ from livekit.agents import (
     AgentServer,
     AgentSession,
     JobContext,
+    RunContext,
     TurnHandlingOptions,
     cli,
+    function_tool,
     inference,
 )
 
@@ -110,7 +113,13 @@ Spell out numbers, phone numbers, or email addresses.
 Omit https and other formatting if listing a web url.
 Avoid acronyms and words with unclear pronunciation, when possible.
 
-End the call when the user confirms the issue is resolved, says they do not need anything else, or asks to end the call. Before ending, briefly summarize the resolution or next step."""
+End the call when the user confirms the issue is resolved, says they do not need anything else, or asks to end the call. Before ending, briefly summarize the resolution or next step.
+
+Dashboard tools:
+You can navigate the user's browser to a different page and open pre-filled creation forms for issues, agents, and projects using your tools.
+These tools never create or change anything by themselves — they open a form with the details filled in, and a human still has to review and click Create or Save. Always tell the user you've opened the form for them to confirm, never say the thing has been created.
+Use navigate_to_page to move the user to a different screen (for example company settings, the agents list, or the issues board).
+Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things."""
 
 
 class JAZSupportGuide(Agent):
@@ -127,6 +136,72 @@ class JAZSupportGuide(Agent):
             instructions=self._greeting,
             allow_interruptions=True,
         )
+
+    async def _publish_tool_call(self, context: RunContext, name: str, args: dict) -> None:
+        """Sends a {type:"tool_call", name, args} message over the room data
+        channel. The browser's useLiveKitVoice hook listens for these and
+        either navigates or opens the matching dialog — nothing here ever
+        mutates data directly, a human always confirms in the UI."""
+        room = context.session.room_io.room
+        payload = json.dumps({"type": "tool_call", "name": name, "args": args})
+        room.local_participant.publish_data(payload, reliable=True, topic="tool_call")
+
+    @function_tool()
+    async def navigate_to_page(self, context: RunContext, path: str) -> str:
+        """Navigate the user's browser to a page in the dashboard.
+
+        Use this to move the user to a different screen, such as company
+        settings, the agents list, the issues board, or the dashboard home.
+
+        Args:
+            path: The relative dashboard path to navigate to, e.g. "/agents",
+                "/issues", "/company/settings", or "/dashboard".
+        """
+        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        return f"Navigated to {path}."
+
+    @function_tool()
+    async def open_new_issue(
+        self, context: RunContext, title: str, description: str = "", priority: str = ""
+    ) -> str:
+        """Open the New Issue form, pre-filled, for the user to review and create.
+
+        This does not create the issue automatically — it opens the form so a
+        human can confirm the details and click Create. Use this whenever the
+        user asks to file, log, create, or track an issue, task, or bug.
+
+        Args:
+            title: A short title summarizing the issue.
+            description: Optional longer description of the issue.
+            priority: Optional priority — one of "low", "medium", "high", or
+                "urgent". Leave empty if the user didn't specify one.
+        """
+        await self._publish_tool_call(
+            context,
+            "open_modal",
+            {"modal": "new_issue", "title": title, "description": description, "priority": priority},
+        )
+        return f'Opened a new issue form titled "{title}" for you to review and submit.'
+
+    @function_tool()
+    async def open_new_agent(self, context: RunContext) -> str:
+        """Open the New Agent creation form for the user to review and submit.
+
+        This does not hire or create the agent automatically — it opens the
+        form for a human to fill in details and confirm. Use this when the
+        user asks to add, hire, or create a new AI agent.
+        """
+        await self._publish_tool_call(context, "open_modal", {"modal": "new_agent"})
+        return "Opened the new agent form for you to fill in and submit."
+
+    @function_tool()
+    async def open_new_project(self, context: RunContext) -> str:
+        """Open the New Project creation form for the user to review and submit.
+
+        Use this when the user asks to start, add, or create a new project.
+        """
+        await self._publish_tool_call(context, "open_modal", {"modal": "new_project"})
+        return "Opened the new project form for you to fill in and submit."
 
 
 def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | None:

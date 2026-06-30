@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { VoiceMeetingRoom } from "../components/meetings/VoiceMeetingRoom";
 import { InviteAgentsDialog } from "../components/meetings/InviteAgentsDialog";
 import { useLiveKitVoice } from "../hooks/useLiveKitVoice";
+import { useDialog } from "../context/DialogContext";
 
 /**
  * AMX LABS Meetings Page - Agentic Command Center
@@ -29,12 +30,31 @@ export default function Meetings() {
   const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const { openNewIssue, openNewAgent, openNewProject } = useDialog();
 
   const liveKit = useLiveKitVoice({
     roomName: activeMeetingId ? `meeting-${activeMeetingId}` : "amx-command-room",
     identity: "board-user",
     companyPrefix: selectedCompanyId ?? undefined,
     companyId: selectedCompanyId ?? undefined,
+    onToolCall: (name, args) => {
+      // Voice agent tool calls only ever open a pre-filled form — a human
+      // still has to review and submit it. See voice-agent/agent.py for the
+      // tools that publish these (open_new_issue, open_new_agent, open_new_project).
+      if (name !== "open_modal") return;
+      const modal = args.modal;
+      if (modal === "new_issue") {
+        openNewIssue({
+          title: typeof args.title === "string" && args.title ? args.title : undefined,
+          description: typeof args.description === "string" && args.description ? args.description : undefined,
+          priority: typeof args.priority === "string" && args.priority ? args.priority : undefined,
+        });
+      } else if (modal === "new_agent") {
+        openNewAgent();
+      } else if (modal === "new_project") {
+        openNewProject();
+      }
+    },
   });
 
   useEffect(() => {
