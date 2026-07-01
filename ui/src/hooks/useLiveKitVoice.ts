@@ -11,7 +11,7 @@
  *   { type: "transcript", role: "user" | "model", text: "..." }
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Room,
   RoomEvent,
@@ -81,6 +81,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   } = options;
 
   const navigate = useNavigate();
+  const location = useLocation();
   const roomRef = useRef<Room | null>(null);
   const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [status, setStatus] = useState<LiveKitVoiceStatus>("idle");
@@ -360,6 +361,21 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     room.localParticipant.publishData(data, { reliable: true });
   }, []);
 
+  /** PTT mode: call with true to unmute (hold), false to mute (release) */
+  const setPTTActive = useCallback((active: boolean) => {
+    roomRef.current?.localParticipant.setMicrophoneEnabled(active);
+  }, []);
+
+  // Broadcast current page path to agent whenever the route changes
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!room || room.state !== ConnectionState.Connected) return;
+    const data = new TextEncoder().encode(
+      JSON.stringify({ type: "page_state", path: location.pathname, search: location.search }),
+    );
+    room.localParticipant.publishData(data, { reliable: true });
+  }, [location.pathname, location.search]);
+
   useEffect(() => {
     if (autoConnect) void connect();
     return () => {
@@ -386,6 +402,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     videoTracks,
     localVideoTrack,
     localScreenTrack,
+    setPTTActive,
     room: roomRef.current,
   };
 }

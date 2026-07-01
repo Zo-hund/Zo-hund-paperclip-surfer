@@ -14,10 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { VoiceMeetingRoom } from "../components/meetings/VoiceMeetingRoom";
 import { InviteAgentsDialog } from "../components/meetings/InviteAgentsDialog";
-import { useLiveKitVoice } from "../hooks/useLiveKitVoice";
-import { useDialog } from "../context/DialogContext";
+import { useMeeting } from "../context/MeetingContext";
 
 /**
  * AMX LABS Meetings Page - Agentic Command Center
@@ -27,37 +25,10 @@ export default function Meetings() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
-  const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [avatarEnabled, setAvatarEnabled] = useState(false);
-  const { openNewIssue, openNewAgent, openNewProject } = useDialog();
-
-  const liveKit = useLiveKitVoice({
-    roomName: activeMeetingId ? `meeting-${activeMeetingId}` : "amx-command-room",
-    identity: "board-user",
-    companyPrefix: selectedCompanyId ?? undefined,
-    companyId: selectedCompanyId ?? undefined,
-    avatarEnabled,
-    onToolCall: (name, args) => {
-      // Voice agent tool calls only ever open a pre-filled form — a human
-      // still has to review and submit it. See voice-agent/agent.py for the
-      // tools that publish these (open_new_issue, open_new_agent, open_new_project).
-      if (name !== "open_modal") return;
-      const modal = args.modal;
-      if (modal === "new_issue") {
-        openNewIssue({
-          title: typeof args.title === "string" && args.title ? args.title : undefined,
-          description: typeof args.description === "string" && args.description ? args.description : undefined,
-          priority: typeof args.priority === "string" && args.priority ? args.priority : undefined,
-        });
-      } else if (modal === "new_agent") {
-        openNewAgent();
-      } else if (modal === "new_project") {
-        openNewProject();
-      }
-    },
-  });
+  const { requestLiveKit } = useMeeting();
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Meeting Hub" }]);
@@ -82,35 +53,14 @@ export default function Meetings() {
         title,
         type: "board_meet"
       }),
-    onSuccess: async (meeting) => {
-      setActiveMeetingId(meeting.id);
+    onSuccess: (meeting) => {
       queryClient.invalidateQueries({ queryKey: ["meetings", selectedCompanyId] });
-      await liveKit.connect(`meeting-${meeting.id}`);
+      requestLiveKit(`meeting-${meeting.id}`, avatarEnabled);
     }
   });
 
-  if (activeMeetingId) {
-    return (
-      <VoiceMeetingRoom
-        meetingId={activeMeetingId}
-        onClose={() => {
-          liveKit.disconnect();
-          setActiveMeetingId(null);
-        }}
-        cameraEnabled={liveKit.cameraEnabled}
-        toggleCamera={liveKit.toggleCamera}
-        screenShareEnabled={liveKit.screenShareEnabled}
-        toggleScreenShare={liveKit.toggleScreenShare}
-        videoTracks={liveKit.videoTracks}
-        localVideoTrack={liveKit.localVideoTrack}
-        localScreenTrack={liveKit.localScreenTrack}
-        sendText={liveKit.sendText}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-10 max-w-7xl mx-auto py-10 px-6">
+    <div className="space-y-8 sm:space-y-10 max-w-7xl mx-auto py-6 sm:py-10 px-4 sm:px-6">
       {/* Cockpit Header */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-primary/10">
         <div className="space-y-2">
@@ -129,10 +79,10 @@ export default function Meetings() {
              </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <Button
             variant="outline"
-            className="rounded-full px-6 border-primary/20 bg-background/40 backdrop-blur-sm hover:bg-primary/5 hover:border-primary/40 transition-all gap-2 h-12 font-bold uppercase tracking-widest text-[11px]"
+            className="flex-1 sm:flex-none rounded-full px-6 border-primary/20 bg-background/40 backdrop-blur-sm hover:bg-primary/5 hover:border-primary/40 transition-all gap-2 h-12 font-bold uppercase tracking-widest text-[11px]"
             onClick={() => setInviteOpen(true)}
             disabled={!meetings?.find(m => m.status === "active")}
           >
@@ -142,7 +92,7 @@ export default function Meetings() {
           <Button
             variant="outline"
             onClick={() => setAvatarEnabled((v) => !v)}
-            className={`rounded-full px-6 h-12 font-bold uppercase tracking-widest text-[11px] gap-2 transition-all ${
+            className={`flex-1 sm:flex-none rounded-full px-6 h-12 font-bold uppercase tracking-widest text-[11px] gap-2 transition-all ${
               avatarEnabled
                 ? "border-primary bg-primary/10 text-primary hover:bg-primary/20"
                 : "border-primary/20 bg-background/40 backdrop-blur-sm hover:bg-primary/5 hover:border-primary/40"
@@ -154,7 +104,7 @@ export default function Meetings() {
           </Button>
           <Button
             size="lg"
-            className="rounded-full px-8 bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl shadow-primary/20 transition-all hover:scale-105 gap-2 h-12 font-black uppercase tracking-widest text-[11px]"
+            className="w-full sm:w-auto rounded-full px-8 bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl shadow-primary/20 transition-all hover:scale-105 gap-2 h-12 font-black uppercase tracking-widest text-[11px]"
             onClick={() => startMeeting.mutate(`Strategic Session - ${new Date().toLocaleDateString()}`)}
           >
             <Radio className="h-4 w-4 animate-pulse" />
@@ -231,7 +181,7 @@ export default function Meetings() {
                                  +2
                               </div>
                            </div>
-                           <Button size="sm" className="h-8 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/80 text-[10px] font-black uppercase tracking-widest shadow-lg" onClick={async () => { setActiveMeetingId(m.id); await liveKit.connect(`meeting-${m.id}`); }}>
+                           <Button size="sm" className="h-8 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/80 text-[10px] font-black uppercase tracking-widest shadow-lg" onClick={() => requestLiveKit(`meeting-${m.id}`)}>
                              Rejoin
                            </Button>
                         </div>

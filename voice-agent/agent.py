@@ -4,6 +4,7 @@ AMX Air Hubs — JAZ Support Guide Voice Agent
 Production voice agent for amx-air-hubs.cc customer support.
 Joins LiveKit rooms, responds via voice using Claude for reasoning,
 Deepgram Nova-3 for STT, Cartesia Sonic-3 for TTS.
+Gemini Flash is used for vision (analyze_screen tool).
 """
 
 import asyncio
@@ -126,12 +127,24 @@ Dashboard tools:
 You can navigate the user's browser to a different page and open pre-filled creation forms for issues, agents, and projects using your tools.
 These tools never create or change anything by themselves — they open a form with the details filled in, and a human still has to review and click Create or Save. Always tell the user you've opened the form for them to confirm, never say the thing has been created.
 Use navigate_to_page to move the user to a different screen (for example company settings, the agents list, or the issues board).
+Use navigate_to_company to switch to a different company's board by name.
 Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things.
 
 Vision:
 You can see what is on screen or camera using the analyze_screen tool.
 Use it when the user asks you to look at the screen, describe what you see, read something visible, or analyze any content being shared in the room.
 Describe what you see naturally in a few sentences, as if speaking to someone who cannot see the screen."""
+
+
+def build_company_nav_block(companies: list[dict]) -> str:
+    """Build a navigation reference block from the company roster."""
+    if not companies:
+        return ""
+    lines = ["Global board access — available companies and their navigation prefixes:"]
+    for c in companies:
+        lines.append(f"  - {c['name']}: /{c['prefix']}/")
+    lines.append("Use navigate_to_company(company_prefix, section) to switch between companies.")
+    return "\n".join(lines)
 
 
 async def _capture_frame(room) -> bytes | None:
@@ -184,13 +197,12 @@ class JAZSupportGuide(Agent):
         )
 
     async def _publish_tool_call(self, context: RunContext, name: str, args: dict) -> None:
-        """Sends a {type:"tool_call", name, args} message over the room data
-        channel. The browser's useLiveKitVoice hook listens for these and
-        either navigates or opens the matching dialog — nothing here ever
-        mutates data directly, a human always confirms in the UI."""
+        """Sends a {type:"tool_call", name, args} message over the room data channel."""
         room = context.session.room_io.room
         payload = json.dumps({"type": "tool_call", "name": name, "args": args})
         room.local_participant.publish_data(payload, reliable=True, topic="tool_call")
+
+    # ── Navigation tools ──────────────────────────────────────────────────────
 
     @function_tool()
     async def navigate_to_page(self, context: RunContext, path: str) -> str:
@@ -205,6 +217,91 @@ class JAZSupportGuide(Agent):
         """
         await self._publish_tool_call(context, "navigate_to", {"path": path})
         return f"Navigated to {path}."
+
+    @function_tool()
+    async def navigate_to_company(
+        self, context: RunContext, company_prefix: str, section: str = "dashboard"
+    ) -> str:
+        """Navigate to a different company's board section.
+
+        Use this when the user wants to switch to another company or
+        access a specific section of a named company.
+
+        Args:
+            company_prefix: The company issue prefix, e.g. "AMXA" or "BURN".
+            section: The section to open — dashboard, agents, issues, projects,
+                meetings, costs, approvals, analytics, etc. Defaults to dashboard.
+        """
+        path = f"/{company_prefix.upper()}/{section}"
+        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        return f"Navigated to {company_prefix} {section}."
+
+    @function_tool()
+    async def navigate_to_agent(
+        self, context: RunContext, agent_id: str, tab: str = ""
+    ) -> str:
+        """Navigate to a specific agent's detail page.
+
+        Args:
+            agent_id: The agent UUID.
+            tab: Optional tab to open — "runs", "issues", "skills", "config".
+        """
+        path = f"/agents/{agent_id}" + (f"/{tab}" if tab else "")
+        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        return f"Navigated to agent {agent_id}."
+
+    @function_tool()
+    async def navigate_to_issue(self, context: RunContext, issue_id: str) -> str:
+        """Navigate to a specific issue detail page.
+
+        Args:
+            issue_id: The issue UUID or short key (e.g. AMXA-42).
+        """
+        await self._publish_tool_call(context, "navigate_to", {"path": f"/issues/{issue_id}"})
+        return f"Navigated to issue {issue_id}."
+
+    @function_tool()
+    async def navigate_to_project(self, context: RunContext, project_id: str) -> str:
+        """Navigate to a specific project page.
+
+        Args:
+            project_id: The project UUID.
+        """
+        await self._publish_tool_call(context, "navigate_to", {"path": f"/projects/{project_id}"})
+        return f"Navigated to project {project_id}."
+
+    @function_tool()
+    async def navigate_to_approval(
+        self, context: RunContext, approval_id: str = ""
+    ) -> str:
+        """Navigate to the approvals board, or a specific approval.
+
+        Args:
+            approval_id: Optional approval UUID. Leave empty to open the
+                pending approvals list.
+        """
+        path = f"/approvals/{approval_id}" if approval_id else "/approvals/pending"
+        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        return "Navigated to approvals."
+
+    @function_tool()
+    async def open_search(self, context: RunContext, query: str = "") -> str:
+        """Open the inbox or search view, optionally with a pre-filled search query.
+
+        Args:
+            query: Optional search terms to pre-fill in the search box.
+        """
+        path = "/inbox/mine" + (f"?q={query}" if query else "")
+        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        return f"Opened search{f' for {query}' if query else ''}."
+
+    @function_tool()
+    async def open_new_meeting(self, context: RunContext) -> str:
+        """Open the Meetings hub so the user can start a new live meeting."""
+        await self._publish_tool_call(context, "navigate_to", {"path": "/meetings"})
+        return "Opened the meetings hub."
+
+    # ── Creation tools (open pre-filled forms, human confirms) ───────────────
 
     @function_tool()
     async def open_new_issue(
@@ -249,6 +346,8 @@ class JAZSupportGuide(Agent):
         await self._publish_tool_call(context, "open_modal", {"modal": "new_project"})
         return "Opened the new project form for you to fill in and submit."
 
+    # ── Vision tool ───────────────────────────────────────────────────────────
+
     @function_tool()
     async def analyze_screen(self, context: RunContext) -> str:
         """Look at what is currently visible on screen or camera and describe it.
@@ -257,11 +356,27 @@ class JAZSupportGuide(Agent):
         you see, analyze a document or dashboard, read text that's visible,
         or identify anything shown in the room.
         """
-        import anthropic
         room = context.session.room_io.room
         frame_bytes = await _capture_frame(room)
         if not frame_bytes:
             return "I don't see any active screen share or camera in this room right now."
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if api_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel("gemini-2.0-flash")
+                response = model.generate_content([
+                    {"mime_type": "image/jpeg", "data": frame_bytes},
+                    "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible.",
+                ])
+                return response.text if response.text else "I could see the screen but couldn't interpret it."
+            except Exception as e:
+                logger.warning("Gemini vision failed, falling back to Claude: %s", e)
+
+        # Fallback to Claude Opus if GOOGLE_API_KEY is absent or Gemini fails
+        import anthropic
         client = anthropic.Anthropic()
         encoded = base64.standard_b64encode(frame_bytes).decode("utf-8")
         response = client.messages.create(
@@ -279,9 +394,9 @@ class JAZSupportGuide(Agent):
 
 
 def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | None:
-    """Builds a per-room persona override from LiveKit dispatch metadata set by
-    POST /api/livekit/token. Returns (instructions, greeting) or None if the
-    metadata doesn't carry a persona — callers should fall back to JAZ defaults.
+    """Builds a per-room persona override from LiveKit dispatch metadata.
+
+    Returns (instructions, greeting) or None to fall back to JAZ defaults.
     """
     persona_name = dispatch_metadata.get("agentPersonaName")
     if not persona_name:
@@ -329,10 +444,7 @@ async def entrypoint(ctx: JobContext):
         ),
     )
 
-    # Per-room persona override (e.g. Burnett Avenue Assistant) sent via
-    # createDispatch(roomName, "amx-voice-agent", { metadata }) in
-    # server/src/routes/livekit.ts. Falls back to default JAZ behavior when
-    # absent, so existing AMX rooms are unaffected.
+    # Per-room persona override sent via createDispatch metadata
     persona = None
     dispatch_metadata: dict = {}
     raw_metadata = getattr(ctx.job, "metadata", None)
@@ -343,15 +455,20 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.debug("dispatch metadata parse error: %s", e)
 
+    # Append company roster to instructions for global cross-company navigation
+    roster = dispatch_metadata.get("companies", [])
+    nav_block = build_company_nav_block(roster)
+
     if persona:
         instructions, greeting = persona
+        if nav_block:
+            instructions = instructions + "\n\n" + nav_block
         agent = JAZSupportGuide(instructions=instructions, greeting=greeting)
     else:
-        agent = JAZSupportGuide()
+        instructions = JAZ_INSTRUCTIONS + ("\n\n" + nav_block if nav_block else "")
+        agent = JAZSupportGuide(instructions=instructions)
 
-    # Optional Runway visual avatar — enabled per-room via dispatch metadata
-    # avatarEnabled=true + RUNWAY_AVATAR_ID env var. Falls back gracefully if
-    # the runway plugin isn't installed or the env var is absent.
+    # Optional Runway visual avatar
     avatar_session = None
     avatar_id = os.environ.get("RUNWAY_AVATAR_ID") or os.environ.get("RUNWAY_AVATAR_PRESET_ID")
     if dispatch_metadata.get("avatarEnabled") and avatar_id:
@@ -370,6 +487,16 @@ async def entrypoint(ctx: JobContext):
         room=ctx.room,
     )
 
+    # Auto-subscribe to remote video tracks so analyze_screen can capture them.
+    # livekit-agents voice sessions don't auto-subscribe to video; we must opt in.
+    @ctx.room.on("track_published")
+    async def on_track_published(
+        pub: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant
+    ):
+        if pub.kind == rtc.TrackKind.KIND_VIDEO and not pub.subscribed:
+            await pub.set_subscribed(True)
+            logger.debug("subscribed to video track from %s", participant.identity)
+
     @session.on("error")
     def on_error(ev):
         if ev.error.recoverable:
@@ -382,7 +509,6 @@ async def entrypoint(ctx: JobContext):
             ev.error.recoverable = True
             return
         logger.error("unrecoverable session error from %s: %s", type(ev.source).__name__, ev.error)
-        import asyncio
         asyncio.ensure_future(
             session.say(
                 "I'm having trouble right now — please try again in a moment.",
@@ -394,17 +520,38 @@ async def entrypoint(ctx: JobContext):
     def on_data(data: rtc.DataPacket):
         try:
             msg = json.loads(data.data.decode("utf-8"))
+
             if msg.get("type") == "text" and isinstance(msg.get("text"), str):
                 text = msg["text"].strip()
                 if text:
-                    logger.info("Chat text from %s: %s", data.participant.identity if data.participant else "user", text)
-                    import asyncio
+                    logger.info(
+                        "Chat text from %s: %s",
+                        data.participant.identity if data.participant else "user",
+                        text,
+                    )
                     asyncio.ensure_future(
                         session.generate_reply(
                             instructions=f"The user typed: {text}\nRespond helpfully via voice.",
                             allow_interruptions=True,
                         )
                     )
+                return
+
+            if msg.get("type") == "page_state" and isinstance(msg.get("path"), str):
+                path = msg["path"]
+                logger.info("user page: %s", path)
+                asyncio.ensure_future(
+                    session.generate_reply(
+                        instructions=(
+                            f"The user is now viewing the page: {path}. "
+                            "Briefly acknowledge only if it's directly relevant to what you're helping with. "
+                            "Otherwise stay silent."
+                        ),
+                        allow_interruptions=True,
+                    )
+                )
+                return
+
         except Exception as e:
             logger.debug("data parse error: %s", e)
 

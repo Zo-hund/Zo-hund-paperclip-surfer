@@ -75,6 +75,16 @@ interface MeetingContextValue {
   setGeminiError: (error: string | null) => void;
   reconnectCount: number;
   triggerReconnect: () => void;
+
+  // ── LiveKit global session ───────────────────────────────────────────────
+  /** LiveKit room name the global overlay should connect to (null = no session) */
+  liveKitSessionId: string | null;
+  /** Whether the Runway visual avatar is requested for this session */
+  liveKitAvatarEnabled: boolean;
+  /** Request the GlobalVoiceMeetingOverlay to start a LiveKit session */
+  requestLiveKit: (sessionId: string, avatarEnabled?: boolean) => void;
+  /** Release the LiveKit session (overlay disconnects and hides) */
+  releaseLiveKit: () => void;
 }
 
 const MeetingContext = createContext<MeetingContextValue | null>(null);
@@ -94,12 +104,24 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
   const [screenEye, setScreenEye] = useState(true);
   const [geminiError, setGeminiError] = useState<string | null>(null);
   const [reconnectCount, setReconnectCount] = useState(0);
+  const [liveKitSessionId, setLiveKitSessionId] = useState<string | null>(null);
+  const [liveKitAvatarEnabled, setLiveKitAvatarEnabled] = useState(false);
 
   // Shared WS ref — VoiceMeetingRoom writes it, MeetingBubble reads it
   const wsRef = useRef<WebSocket | null>(null);
 
   const triggerReconnect = useCallback(() => {
     setReconnectCount((c) => c + 1);
+  }, []);
+
+  const requestLiveKit = useCallback((id: string, avatar = false) => {
+    setLiveKitSessionId(id);
+    setLiveKitAvatarEnabled(avatar);
+  }, []);
+
+  const releaseLiveKit = useCallback(() => {
+    setLiveKitSessionId(null);
+    setLiveKitAvatarEnabled(false);
   }, []);
 
   const startMeeting = useCallback((id: string, title: string) => {
@@ -143,6 +165,8 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     setTranscript([]);
     setCommandLog([]);
     setGeminiError(null);
+    setLiveKitSessionId(null);
+    setLiveKitAvatarEnabled(false);
   }, []);
 
   const sendToRelay = useCallback((payload: object) => {
@@ -185,6 +209,10 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
         setGeminiError,
         reconnectCount,
         triggerReconnect,
+        liveKitSessionId,
+        liveKitAvatarEnabled,
+        requestLiveKit,
+        releaseLiveKit,
       }}
     >
       {children}

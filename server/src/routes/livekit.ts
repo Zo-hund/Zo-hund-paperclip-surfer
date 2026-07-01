@@ -2,7 +2,7 @@ import { Router } from "express";
 import { AccessToken, AgentDispatchClient } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
-import { agentService } from "../services/index.js";
+import { agentService, companyService } from "../services/index.js";
 
 const LIVEKIT_VOICE_AGENT_NAME = "amx-voice-agent";
 
@@ -81,12 +81,20 @@ export function livekitRoutes(db: Db) {
         const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
         const dispatchClient = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
 
+        // Fetch all companies so JAZ can navigate cross-company by voice
+        const allCompanies = await companyService(db).list().catch(() => []);
+        const companyRoster = allCompanies.map((c) => ({
+          name: c.name,
+          prefix: c.issuePrefix.toUpperCase(),
+        }));
+
         let dispatchMetadata: string | undefined;
         if (companyId) {
           const personaAgent = await findVoicePersonaAgent(db, companyId);
           if (personaAgent) {
             dispatchMetadata = JSON.stringify({
               companyId,
+              companies: companyRoster,
               agentPersonaName: personaAgent.name,
               agentPersonaTitle: personaAgent.title ?? null,
               systemPromptOverride:
@@ -94,8 +102,12 @@ export function livekitRoutes(db: Db) {
               avatarEnabled: avatarEnabled === true,
             });
           } else if (avatarEnabled) {
-            dispatchMetadata = JSON.stringify({ companyId, avatarEnabled: true });
+            dispatchMetadata = JSON.stringify({ companyId, companies: companyRoster, avatarEnabled: true });
+          } else {
+            dispatchMetadata = JSON.stringify({ companyId, companies: companyRoster });
           }
+        } else if (companyRoster.length > 0) {
+          dispatchMetadata = JSON.stringify({ companies: companyRoster });
         }
 
         await dispatchClient.createDispatch(
