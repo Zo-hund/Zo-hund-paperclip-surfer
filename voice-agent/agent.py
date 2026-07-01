@@ -499,11 +499,11 @@ async def entrypoint(ctx: JobContext):
     # Auto-subscribe to remote video tracks so analyze_screen can capture them.
     # livekit-agents voice sessions don't auto-subscribe to video; we must opt in.
     @ctx.room.on("track_published")
-    async def on_track_published(
+    def on_track_published(
         pub: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant
     ):
         if pub.kind == rtc.TrackKind.KIND_VIDEO and not pub.subscribed:
-            await pub.set_subscribed(True)
+            asyncio.create_task(pub.set_subscribed(True))
             logger.debug("subscribed to video track from %s", participant.identity)
 
     # Subscribe to tracks that were already published before the agent joined.
