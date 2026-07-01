@@ -88,12 +88,17 @@ export function livekitRoutes(db: Db) {
           prefix: c.issuePrefix.toUpperCase(),
         }));
 
+        // Active company prefix — lets JAZ know which company it's talking to
+        const activeCompanyPrefix =
+          allCompanies.find((c: any) => c.id === companyId)?.issuePrefix?.toUpperCase() ?? null;
+
         let dispatchMetadata: string | undefined;
         if (companyId) {
           const personaAgent = await findVoicePersonaAgent(db, companyId);
           if (personaAgent) {
             dispatchMetadata = JSON.stringify({
               companyId,
+              companyPrefix: activeCompanyPrefix,
               companies: companyRoster,
               agentPersonaName: personaAgent.name,
               agentPersonaTitle: personaAgent.title ?? null,
@@ -102,9 +107,9 @@ export function livekitRoutes(db: Db) {
               avatarEnabled: avatarEnabled === true,
             });
           } else if (avatarEnabled) {
-            dispatchMetadata = JSON.stringify({ companyId, companies: companyRoster, avatarEnabled: true });
+            dispatchMetadata = JSON.stringify({ companyId, companyPrefix: activeCompanyPrefix, companies: companyRoster, avatarEnabled: true });
           } else {
-            dispatchMetadata = JSON.stringify({ companyId, companies: companyRoster });
+            dispatchMetadata = JSON.stringify({ companyId, companyPrefix: activeCompanyPrefix, companies: companyRoster });
           }
         } else if (companyRoster.length > 0) {
           dispatchMetadata = JSON.stringify({ companies: companyRoster });

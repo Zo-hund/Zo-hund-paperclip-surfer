@@ -147,6 +147,18 @@ def build_company_nav_block(companies: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def build_active_company_block(company_prefix: str | None) -> str:
+    """Tell JAZ which company is currently active so it can navigate correctly."""
+    if not company_prefix:
+        return ""
+    return (
+        f"Active company prefix: {company_prefix}\n"
+        f"Use navigate_to_page for navigation within this company — paths like /agents or /issues "
+        f"(do NOT include the prefix; the board adds it automatically).\n"
+        f"Use navigate_to_company ONLY when the user explicitly asks to switch to a DIFFERENT company."
+    )
+
+
 # Module-level store: populated by `track_subscribed` events in entrypoint().
 # Keyed by participant identity, value is the ready RemoteVideoTrack.
 _live_video_tracks: dict = {}
@@ -491,17 +503,22 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.debug("dispatch metadata parse error: %s", e)
 
-    # Append company roster to instructions for global cross-company navigation
+    # Append company roster + active company context to instructions
     roster = dispatch_metadata.get("companies", [])
+    company_prefix = dispatch_metadata.get("companyPrefix")
     nav_block = build_company_nav_block(roster)
+    active_block = build_active_company_block(company_prefix)
 
     if persona:
         instructions, greeting = persona
         if nav_block:
-            instructions = instructions + "\n\n" + nav_block
+            instructions += "\n\n" + nav_block
+        if active_block:
+            instructions += "\n\n" + active_block
         agent = JAZSupportGuide(instructions=instructions, greeting=greeting)
     else:
-        instructions = JAZ_INSTRUCTIONS + ("\n\n" + nav_block if nav_block else "")
+        extra = "\n\n".join(filter(None, [nav_block, active_block]))
+        instructions = JAZ_INSTRUCTIONS + ("\n\n" + extra if extra else "")
         agent = JAZSupportGuide(instructions=instructions)
 
     # Optional Runway visual avatar

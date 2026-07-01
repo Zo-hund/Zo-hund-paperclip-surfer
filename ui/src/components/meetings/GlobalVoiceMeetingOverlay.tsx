@@ -91,7 +91,7 @@ export function GlobalVoiceMeetingOverlay() {
     expand,
   } = useMeeting();
 
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { selectedCompanyId, selectedCompany, companies } = useCompany();
   const { openNewIssue, openNewAgent, openNewProject } = useDialog();
 
   const liveKit = useLiveKitVoice({
@@ -99,6 +99,7 @@ export function GlobalVoiceMeetingOverlay() {
     identity: "board-user",
     companyId: selectedCompanyId ?? undefined,
     companyPrefix: selectedCompany?.issuePrefix ?? undefined,
+    companiesPrefixes: companies.map((c) => c.issuePrefix.toUpperCase()),
     avatarEnabled: liveKitAvatarEnabled,
     onToolCall: (name, args) => {
       if (name !== "open_modal") return;
@@ -161,6 +162,7 @@ export function GlobalVoiceMeetingOverlay() {
       toggleCamera={liveKit.toggleCamera}
       screenShareEnabled={liveKit.screenShareEnabled}
       toggleScreenShare={liveKit.toggleScreenShare}
+      screenShareSupported={liveKit.screenShareSupported}
       videoTracks={liveKit.videoTracks}
       localVideoTrack={liveKit.localVideoTrack}
       localScreenTrack={liveKit.localScreenTrack}

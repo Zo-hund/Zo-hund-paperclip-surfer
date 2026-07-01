@@ -56,8 +56,10 @@ export interface UseLiveKitVoiceOptions {
   onNavigate?: (path: string) => void;
   /** Called when the agent issues any tool_call. */
   onToolCall?: (name: string, args: Record<string, unknown>) => void;
-  /** Company prefix for building navigation paths (e.g. "AMXA"). */
+  /** Company prefix for the active company (e.g. "AMXA"). Used to resolve bare paths. */
   companyPrefix?: string;
+  /** All known company prefixes — prevents double-prefixing cross-company paths. */
+  companiesPrefixes?: string[];
   /** Company id (UUID) — passed to the token endpoint so the dispatched
    *  voice agent can adopt that company's persona, if one is configured. */
   companyId?: string;
@@ -76,6 +78,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     onNavigate,
     onToolCall,
     companyPrefix,
+    companiesPrefixes,
     companyId,
     avatarEnabled,
   } = options;
@@ -102,11 +105,13 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const resolvePath = useCallback(
     (path: string) => {
       if (!companyPrefix) return path;
-      if (path.startsWith(`/${companyPrefix}/`) || path.startsWith(`/${companyPrefix}`)) return path;
+      // Don't double-prefix: if path already starts with any known company prefix, return as-is
+      const known = companiesPrefixes?.length ? companiesPrefixes : [companyPrefix];
+      if (known.some((p) => path.startsWith(`/${p}/`) || path === `/${p}`)) return path;
       const clean = path.startsWith("/") ? path : `/${path}`;
       return `/${companyPrefix}${clean}`;
     },
-    [companyPrefix],
+    [companyPrefix, companiesPrefixes],
   );
 
   /** Handle incoming data channel messages from the AMX Voice Agent */
@@ -350,8 +355,9 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     try {
       await roomRef.current.localParticipant.setScreenShareEnabled(next, { cursor: "always" } as any);
       setScreenShareEnabledState(next);
-    } catch {
+    } catch (err) {
       setScreenShareEnabledState(false);
+      throw err;
     }
   }, [screenShareEnabled]);
 
@@ -407,6 +413,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     toggleCamera,
     screenShareEnabled,
     toggleScreenShare,
+    screenShareSupported: typeof navigator?.mediaDevices?.getDisplayMedia === "function",
     videoTracks,
     localVideoTrack,
     localScreenTrack,

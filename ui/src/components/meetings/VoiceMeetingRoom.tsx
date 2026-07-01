@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Bot, Mic, MicOff, PhoneOff, UserPlus, Send,
   CheckCircle2, AlertTriangle, Zap, Maximize, Minimize,
@@ -38,7 +38,8 @@ interface VoiceMeetingRoomProps {
   cameraEnabled?: boolean;
   toggleCamera?: () => void;
   screenShareEnabled?: boolean;
-  toggleScreenShare?: () => void;
+  toggleScreenShare?: () => Promise<void>;
+  screenShareSupported?: boolean;
   videoTracks?: VideoTrackMap;
   localVideoTrack?: MediaStreamTrack | null;
   localScreenTrack?: MediaStreamTrack | null;
@@ -100,7 +101,7 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
   );
 }
 
-export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive }: VoiceMeetingRoomProps) {
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
@@ -168,6 +169,18 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
       onClose();
     }
   };
+
+  const handleScreenShare = useCallback(() => {
+    if (!screenShareSupported) {
+      pushToast({ title: "Not Available", body: "Screen sharing requires a desktop browser. Use camera sharing instead.", tone: "info" });
+      return;
+    }
+    void toggleScreenShare?.()
+      .then(() => { if (!screenShareEnabled) setMode("video"); })
+      .catch(() => {
+        pushToast({ title: "Screen Share Failed", body: "Permission denied or not supported by this browser.", tone: "error" });
+      });
+  }, [screenShareSupported, screenShareEnabled, toggleScreenShare, pushToast]);
 
   const transcripts = meeting?.transcripts ?? [];
   const participants = meeting?.participants ?? [];
@@ -279,8 +292,8 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             )}
             {toggleScreenShare && (
               <Button size="sm" variant="ghost"
-                onClick={() => { toggleScreenShare(); if (!screenShareEnabled) setMode("video"); }}
-                className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : "text-white/30 hover:text-white/60"}`}>
+                onClick={handleScreenShare}
+                className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : !screenShareSupported ? "text-white/20 cursor-not-allowed" : "text-white/30 hover:text-white/60"}`}>
                 {screenShareEnabled ? <ScreenShare className="h-3.5 w-3.5" /> : <ScreenShareOff className="h-3.5 w-3.5" />}
                 Share
               </Button>
@@ -611,8 +624,8 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
           {/* Screen share */}
           {toggleScreenShare && (
             <button
-              onClick={() => { toggleScreenShare(); if (!screenShareEnabled) setMode("video"); }}
-              className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : "text-white/40"}`}>
+              onClick={handleScreenShare}
+              className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : !screenShareSupported ? "text-white/20" : "text-white/40"}`}>
               {screenShareEnabled ? <ScreenShare className="h-5 w-5" /> : <ScreenShareOff className="h-5 w-5" />}
               <span className="text-[8px] font-black uppercase tracking-wide">Share</span>
             </button>
