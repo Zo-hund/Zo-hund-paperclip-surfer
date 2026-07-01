@@ -159,15 +159,14 @@ async def _capture_frame(room) -> bytes | None:
             # Lazily subscribe if not yet subscribed, then wait briefly for track object.
             if not pub.subscribed:
                 try:
-                    await pub.set_subscribed(True)
+                    pub.set_subscribed(True)  # sync in livekit-rtc 1.x
                 except Exception:
                     pass
-            # Poll up to 5 s for the track object to become available after subscription.
-            if pub.subscribed:
-                for _ in range(50):
-                    if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
-                        break
-                    await asyncio.sleep(0.1)
+            # Poll up to 5 s for the track to become available after subscription.
+            for _ in range(50):
+                if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+                    break
+                await asyncio.sleep(0.1)
             if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
                 target_track = pub.track
                 break
@@ -503,7 +502,7 @@ async def entrypoint(ctx: JobContext):
         pub: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant
     ):
         if pub.kind == rtc.TrackKind.KIND_VIDEO and not pub.subscribed:
-            asyncio.create_task(pub.set_subscribed(True))
+            pub.set_subscribed(True)  # sync in livekit-rtc 1.x
             logger.debug("subscribed to video track from %s", participant.identity)
 
     await session.start(
@@ -517,7 +516,7 @@ async def entrypoint(ctx: JobContext):
     for _participant in ctx.room.remote_participants.values():
         for _pub in _participant.track_publications.values():
             if _pub.kind == rtc.TrackKind.KIND_VIDEO and not _pub.subscribed:
-                asyncio.create_task(_pub.set_subscribed(True))
+                _pub.set_subscribed(True)  # sync in livekit-rtc 1.x
                 logger.debug("subscribed to pre-existing video track from %s", _participant.identity)
 
     @session.on("error")
