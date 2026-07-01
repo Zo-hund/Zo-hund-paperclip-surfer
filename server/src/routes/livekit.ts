@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AccessToken, AgentDispatchClient } from "livekit-server-sdk";
+import { AccessToken, AgentDispatchClient, RoomServiceClient, DataPacket_Kind } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 import { agentService, companyService } from "../services/index.js";
@@ -129,6 +129,41 @@ export function livekitRoutes(db: Db) {
     } catch (err) {
       logger.error({ err }, "Failed to generate LiveKit token");
       return res.status(500).json({ error: "Failed to generate token" });
+    }
+  });
+
+  /**
+   * POST /api/livekit/room-action
+   * Push a data-channel message to all participants in a room via the server SDK.
+   * Body: { roomName: string; action: object }
+   * The action object is forwarded verbatim — use the same shape the frontend
+   * DataReceived handler expects, e.g.:
+   *   { type: "tool_call", name: "navigate_to", args: { path: "/AMXA/agents" } }
+   */
+  router.post("/livekit/room-action", async (req, res) => {
+    try {
+      const { roomName, action } = req.body as { roomName?: string; action?: unknown };
+      if (!roomName || !action) {
+        return res.status(400).json({ error: "roomName and action required" });
+      }
+
+      const apiKey = process.env.LIVEKIT_API_KEY;
+      const apiSecret = process.env.LIVEKIT_API_SECRET;
+      const livekitUrl = process.env.LIVEKIT_URL;
+      if (!apiKey || !apiSecret || !livekitUrl) {
+        return res.status(503).json({ error: "LiveKit not configured" });
+      }
+
+      const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
+      const roomService = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+      const payload = Buffer.from(JSON.stringify(action));
+      await roomService.sendData(roomName, payload, DataPacket_Kind.RELIABLE);
+
+      logger.info({ roomName, action }, "room-action dispatched");
+      return res.json({ ok: true });
+    } catch (err) {
+      logger.error({ err }, "room-action failed");
+      return res.status(500).json({ error: "Failed to send room action" });
     }
   });
 

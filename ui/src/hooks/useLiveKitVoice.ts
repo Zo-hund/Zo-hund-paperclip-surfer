@@ -90,6 +90,11 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   // Stable ref so the room's DataReceived handler always calls the latest handleData,
   // even if companyPrefix loads after the room is connected.
   const handleDataRef = useRef<((payload: Uint8Array, p?: RemoteParticipant | LocalParticipant) => void) | null>(null);
+  // Stable refs for RPC handlers — updated each render so handlers see latest callbacks.
+  const resolvePathRef = useRef<(path: string) => string>((p) => p);
+  const navigateRef = useRef(navigate);
+  const onNavigateRef = useRef(onNavigate);
+  const onToolCallRef = useRef(onToolCall);
   const [status, setStatus] = useState<LiveKitVoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -160,8 +165,12 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     [navigate, resolvePath, onNavigate, onToolCall],
   );
 
-  // Keep ref current so the room event handler always uses the latest handleData.
+  // Keep refs current so event handlers and RPC handlers always see the latest values.
   handleDataRef.current = handleData;
+  resolvePathRef.current = resolvePath;
+  navigateRef.current = navigate;
+  onNavigateRef.current = onNavigate;
+  onToolCallRef.current = onToolCall;
 
   /** Connect to a LiveKit room. Pass a roomName to override the default
    *  (needed because callers set the meeting id and connect in the same tick). */
@@ -316,6 +325,30 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       });
 
       await room.connect(url, token);
+
+      // Register RPC handlers so the voice agent can drive the UI.
+      // Uses refs so handlers always see the latest resolvePath/navigate/callbacks
+      // even as companyPrefix loads asynchronously after connect.
+      room.localParticipant.registerRpcMethod("navigate_to", async (data) => {
+        try {
+          const args = JSON.parse(data.payload) as { path?: string };
+          if (typeof args.path === "string") {
+            const resolved = resolvePathRef.current(args.path);
+            onNavigateRef.current?.(resolved);
+            navigateRef.current(resolved);
+          }
+        } catch { /* ignore malformed payload */ }
+        return JSON.stringify({ ok: true });
+      });
+
+      room.localParticipant.registerRpcMethod("open_modal", async (data) => {
+        try {
+          const args = JSON.parse(data.payload) as Record<string, unknown>;
+          onToolCallRef.current?.("open_modal", args);
+        } catch { /* ignore malformed payload */ }
+        return JSON.stringify({ ok: true });
+      });
+
       await room.localParticipant.setMicrophoneEnabled(true);
       setStatus("listening");
     } catch (err) {

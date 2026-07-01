@@ -244,11 +244,24 @@ class JAZSupportGuide(Agent):
             allow_interruptions=True,
         )
 
-    async def _publish_tool_call(self, context: RunContext, name: str, args: dict) -> None:
-        """Sends a {type:"tool_call", name, args} message over the room data channel."""
+    async def _rpc(self, context: RunContext, method: str, args: dict) -> None:
+        """Call an RPC method on the board-user participant."""
         room = context.session.room_io.room
-        payload = json.dumps({"type": "tool_call", "name": name, "args": args})
-        room.local_participant.publish_data(payload, reliable=True, topic="tool_call")
+        payload = json.dumps(args)
+        target = next(
+            (p.identity for p in room.remote_participants.values()
+             if p.identity.startswith("board-user")),
+            "board-user",
+        )
+        try:
+            await room.local_participant.perform_rpc(
+                destination_identity=target,
+                method=method,
+                payload=payload,
+                response_timeout=5.0,
+            )
+        except Exception as e:
+            logger.warning("RPC %s failed: %s", method, e)
 
     # ── Navigation tools ──────────────────────────────────────────────────────
 
@@ -263,7 +276,7 @@ class JAZSupportGuide(Agent):
             path: The relative dashboard path to navigate to, e.g. "/agents",
                 "/issues", "/company/settings", or "/dashboard".
         """
-        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        await self._rpc(context, "navigate_to", {"path": path})
         return f"Navigated to {path}."
 
     @function_tool()
@@ -281,7 +294,7 @@ class JAZSupportGuide(Agent):
                 meetings, costs, approvals, analytics, etc. Defaults to dashboard.
         """
         path = f"/{company_prefix.upper()}/{section}"
-        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        await self._rpc(context, "navigate_to", {"path": path})
         return f"Navigated to {company_prefix} {section}."
 
     @function_tool()
@@ -295,7 +308,7 @@ class JAZSupportGuide(Agent):
             tab: Optional tab to open — "runs", "issues", "skills", "config".
         """
         path = f"/agents/{agent_id}" + (f"/{tab}" if tab else "")
-        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        await self._rpc(context, "navigate_to", {"path": path})
         return f"Navigated to agent {agent_id}."
 
     @function_tool()
@@ -305,7 +318,7 @@ class JAZSupportGuide(Agent):
         Args:
             issue_id: The issue UUID or short key (e.g. AMXA-42).
         """
-        await self._publish_tool_call(context, "navigate_to", {"path": f"/issues/{issue_id}"})
+        await self._rpc(context, "navigate_to", {"path": f"/issues/{issue_id}"})
         return f"Navigated to issue {issue_id}."
 
     @function_tool()
@@ -315,7 +328,7 @@ class JAZSupportGuide(Agent):
         Args:
             project_id: The project UUID.
         """
-        await self._publish_tool_call(context, "navigate_to", {"path": f"/projects/{project_id}"})
+        await self._rpc(context, "navigate_to", {"path": f"/projects/{project_id}"})
         return f"Navigated to project {project_id}."
 
     @function_tool()
@@ -329,7 +342,7 @@ class JAZSupportGuide(Agent):
                 pending approvals list.
         """
         path = f"/approvals/{approval_id}" if approval_id else "/approvals/pending"
-        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        await self._rpc(context, "navigate_to", {"path": path})
         return "Navigated to approvals."
 
     @function_tool()
@@ -340,13 +353,13 @@ class JAZSupportGuide(Agent):
             query: Optional search terms to pre-fill in the search box.
         """
         path = "/inbox/mine" + (f"?q={query}" if query else "")
-        await self._publish_tool_call(context, "navigate_to", {"path": path})
+        await self._rpc(context, "navigate_to", {"path": path})
         return f"Opened search{f' for {query}' if query else ''}."
 
     @function_tool()
     async def open_new_meeting(self, context: RunContext) -> str:
         """Open the Meetings hub so the user can start a new live meeting."""
-        await self._publish_tool_call(context, "navigate_to", {"path": "/meetings"})
+        await self._rpc(context, "navigate_to", {"path": "/meetings"})
         return "Opened the meetings hub."
 
     # ── Creation tools (open pre-filled forms, human confirms) ───────────────
@@ -367,7 +380,7 @@ class JAZSupportGuide(Agent):
             priority: Optional priority — one of "low", "medium", "high", or
                 "urgent". Leave empty if the user didn't specify one.
         """
-        await self._publish_tool_call(
+        await self._rpc(
             context,
             "open_modal",
             {"modal": "new_issue", "title": title, "description": description, "priority": priority},
@@ -382,7 +395,7 @@ class JAZSupportGuide(Agent):
         form for a human to fill in details and confirm. Use this when the
         user asks to add, hire, or create a new AI agent.
         """
-        await self._publish_tool_call(context, "open_modal", {"modal": "new_agent"})
+        await self._rpc(context, "open_modal", {"modal": "new_agent"})
         return "Opened the new agent form for you to fill in and submit."
 
     @function_tool()
@@ -391,7 +404,7 @@ class JAZSupportGuide(Agent):
 
         Use this when the user asks to start, add, or create a new project.
         """
-        await self._publish_tool_call(context, "open_modal", {"modal": "new_project"})
+        await self._rpc(context, "open_modal", {"modal": "new_project"})
         return "Opened the new project form for you to fill in and submit."
 
     # ── Vision tool ───────────────────────────────────────────────────────────
@@ -625,19 +638,8 @@ async def entrypoint(ctx: JobContext):
                 return
 
             if msg.get("type") == "page_state" and isinstance(msg.get("path"), str):
-                path = msg["path"]
-                logger.info("user page: %s", path)
-                asyncio.ensure_future(
-                    session.generate_reply(
-                        instructions=(
-                            f"The user is now viewing the page: {path}. "
-                            "Briefly acknowledge only if it's directly relevant to what you're helping with. "
-                            "Otherwise stay silent."
-                        ),
-                        allow_interruptions=True,
-                    )
-                )
-                return
+                logger.info("user page: %s", msg["path"])
+                return  # no generate_reply — triggered by JAZ's own nav, not a user request
 
         except Exception as e:
             logger.debug("data parse error: %s", e)
