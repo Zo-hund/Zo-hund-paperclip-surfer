@@ -147,33 +147,56 @@ def build_company_nav_block(companies: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# Module-level store: populated by `track_subscribed` events in entrypoint().
+# Keyed by participant identity, value is the ready RemoteVideoTrack.
+_live_video_tracks: dict = {}
+
+
 async def _capture_frame(room) -> bytes | None:
     """Grab one JPEG frame from the first screen-share or camera video track in the room."""
     from livekit import rtc as _rtc
 
+    # Primary: use tracks we know are fully subscribed (populated by track_subscribed event).
     target_track = None
-    for participant in room.remote_participants.values():
-        for pub in participant.track_publications.values():
-            if pub.kind != _rtc.TrackKind.KIND_VIDEO:
-                continue
-            # Lazily subscribe if not yet subscribed, then wait briefly for track object.
-            if not pub.subscribed:
-                try:
-                    pub.set_subscribed(True)  # sync in livekit-rtc 1.x
-                except Exception:
-                    pass
-            # Poll up to 5 s for the track to become available after subscription.
-            for _ in range(50):
-                if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
-                    break
-                await asyncio.sleep(0.1)
-            if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
-                target_track = pub.track
+    if _live_video_tracks:
+        for identity, track in list(_live_video_tracks.items()):
+            if isinstance(track, _rtc.RemoteVideoTrack):
+                logger.info("_capture_frame: using subscribed track from %s", identity)
+                target_track = track
                 break
-        if target_track:
-            break
+
+    # Fallback: scan publications and lazily subscribe (handles edge cases).
+    if not target_track:
+        participants = list(room.remote_participants.values())
+        logger.info("_capture_frame: no cached track; scanning %d participants", len(participants))
+        for participant in participants:
+            video_pubs = [
+                p for p in participant.track_publications.values()
+                if p.kind == _rtc.TrackKind.KIND_VIDEO
+            ]
+            logger.info("  %s: %d video pub(s)", participant.identity, len(video_pubs))
+            for pub in video_pubs:
+                logger.info("  track sid=%s subscribed=%s track=%s", pub.sid, pub.subscribed, pub.track)
+                if not pub.subscribed:
+                    try:
+                        pub.set_subscribed(True)
+                        logger.info("  -> set_subscribed(True) called")
+                    except Exception as e:
+                        logger.warning("  -> set_subscribed failed: %s", e)
+                # Poll up to 5 s for track object.
+                for i in range(50):
+                    if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+                        logger.info("  -> track ready after %d polls", i)
+                        break
+                    await asyncio.sleep(0.1)
+                if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+                    target_track = pub.track
+                    break
+            if target_track:
+                break
 
     if not target_track:
+        logger.info("_capture_frame: no video track available")
         return None
 
     stream = _rtc.VideoStream(track=target_track, format=_rtc.VideoBufferType.RGBA)
@@ -495,15 +518,40 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.warning("Runway avatar start failed: %s", e)
 
-    # Register video track subscription BEFORE session.start() so tracks published
-    # during session startup are captured. Callback must be sync (livekit SDK rule).
+    # Reset per-job video track store.
+    global _live_video_tracks
+    _live_video_tracks = {}
+
+    # Register video track handlers BEFORE session.start().
+    # track_published: request subscription (sync callback required by livekit SDK).
+    # track_subscribed: fires when track is fully ready — store it for _capture_frame.
     @ctx.room.on("track_published")
     def on_track_published(
         pub: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant
     ):
         if pub.kind == rtc.TrackKind.KIND_VIDEO and not pub.subscribed:
             pub.set_subscribed(True)  # sync in livekit-rtc 1.x
-            logger.debug("subscribed to video track from %s", participant.identity)
+            logger.info("video track published by %s — subscription requested", participant.identity)
+
+    @ctx.room.on("track_subscribed")
+    def on_track_subscribed(
+        track: rtc.RemoteTrack,
+        pub: rtc.RemoteTrackPublication,
+        participant: rtc.RemoteParticipant,
+    ):
+        if isinstance(track, rtc.RemoteVideoTrack):
+            _live_video_tracks[participant.identity] = track
+            logger.info("video track READY from %s (sid=%s)", participant.identity, track.sid)
+
+    @ctx.room.on("track_unsubscribed")
+    def on_track_unsubscribed(
+        track: rtc.RemoteTrack,
+        pub: rtc.RemoteTrackPublication,
+        participant: rtc.RemoteParticipant,
+    ):
+        if isinstance(track, rtc.RemoteVideoTrack):
+            _live_video_tracks.pop(participant.identity, None)
+            logger.info("video track removed from %s", participant.identity)
 
     await session.start(
         agent=agent,
@@ -517,7 +565,7 @@ async def entrypoint(ctx: JobContext):
         for _pub in _participant.track_publications.values():
             if _pub.kind == rtc.TrackKind.KIND_VIDEO and not _pub.subscribed:
                 _pub.set_subscribed(True)  # sync in livekit-rtc 1.x
-                logger.debug("subscribed to pre-existing video track from %s", _participant.identity)
+                logger.info("pre-existing video track from %s — subscription requested", _participant.identity)
 
     @session.on("error")
     def on_error(ev):
