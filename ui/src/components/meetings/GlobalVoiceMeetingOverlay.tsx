@@ -123,9 +123,15 @@ export function GlobalVoiceMeetingOverlay() {
     );
   }
 
+  // liveKitSessionId is the room name (e.g. "meeting-<uuid>").
+  // VoiceMeetingRoom.meetingId must be the raw DB UUID only.
+  const actualMeetingId = liveKitSessionId.startsWith("meeting-")
+    ? liveKitSessionId.slice("meeting-".length)
+    : liveKitSessionId;
+
   return (
     <VoiceMeetingRoom
-      meetingId={liveKitSessionId}
+      meetingId={actualMeetingId}
       onClose={handleEnd}
       onMinimize={minimize}
       cameraEnabled={liveKit.cameraEnabled}
