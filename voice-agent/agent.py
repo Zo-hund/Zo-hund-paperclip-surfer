@@ -154,7 +154,16 @@ async def _capture_frame(room) -> bytes | None:
     target_track = None
     for participant in room.remote_participants.values():
         for pub in participant.track_publications.values():
-            if pub.subscribed and pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+            if pub.kind != _rtc.TrackKind.KIND_VIDEO:
+                continue
+            # Lazily subscribe if not yet subscribed, then wait briefly for track object.
+            if not pub.subscribed:
+                try:
+                    await pub.set_subscribed(True)
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+            if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
                 target_track = pub.track
                 break
         if target_track:
@@ -496,6 +505,13 @@ async def entrypoint(ctx: JobContext):
         if pub.kind == rtc.TrackKind.KIND_VIDEO and not pub.subscribed:
             await pub.set_subscribed(True)
             logger.debug("subscribed to video track from %s", participant.identity)
+
+    # Subscribe to tracks that were already published before the agent joined.
+    for _participant in ctx.room.remote_participants.values():
+        for _pub in _participant.track_publications.values():
+            if _pub.kind == rtc.TrackKind.KIND_VIDEO and not _pub.subscribed:
+                await _pub.set_subscribed(True)
+                logger.debug("subscribed to pre-existing video track from %s", _participant.identity)
 
     @session.on("error")
     def on_error(ev):
