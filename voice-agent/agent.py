@@ -160,9 +160,14 @@ async def _capture_frame(room) -> bytes | None:
             if not pub.subscribed:
                 try:
                     await pub.set_subscribed(True)
-                    await asyncio.sleep(0.5)
                 except Exception:
                     pass
+            # Poll up to 5 s for the track object to become available after subscription.
+            if pub.subscribed:
+                for _ in range(50):
+                    if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+                        break
+                    await asyncio.sleep(0.1)
             if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
                 target_track = pub.track
                 break
@@ -491,13 +496,8 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.warning("Runway avatar start failed: %s", e)
 
-    await session.start(
-        agent=agent,
-        room=ctx.room,
-    )
-
-    # Auto-subscribe to remote video tracks so analyze_screen can capture them.
-    # livekit-agents voice sessions don't auto-subscribe to video; we must opt in.
+    # Register video track subscription BEFORE session.start() so tracks published
+    # during session startup are captured. Callback must be sync (livekit SDK rule).
     @ctx.room.on("track_published")
     def on_track_published(
         pub: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant
@@ -506,11 +506,18 @@ async def entrypoint(ctx: JobContext):
             asyncio.create_task(pub.set_subscribed(True))
             logger.debug("subscribed to video track from %s", participant.identity)
 
+    await session.start(
+        agent=agent,
+        room=ctx.room,
+    )
+
     # Subscribe to tracks that were already published before the agent joined.
+    # Brief sleep lets the room's remote_participants list populate after connect.
+    await asyncio.sleep(1.0)
     for _participant in ctx.room.remote_participants.values():
         for _pub in _participant.track_publications.values():
             if _pub.kind == rtc.TrackKind.KIND_VIDEO and not _pub.subscribed:
-                await _pub.set_subscribed(True)
+                asyncio.create_task(_pub.set_subscribed(True))
                 logger.debug("subscribed to pre-existing video track from %s", _participant.identity)
 
     @session.on("error")

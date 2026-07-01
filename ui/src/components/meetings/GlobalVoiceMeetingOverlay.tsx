@@ -70,13 +70,14 @@ export function GlobalVoiceMeetingOverlay() {
     expand,
   } = useMeeting();
 
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, selectedCompany } = useCompany();
   const { openNewIssue, openNewAgent, openNewProject } = useDialog();
 
   const liveKit = useLiveKitVoice({
     roomName: liveKitSessionId ?? "amx-command-room",
     identity: "board-user",
     companyId: selectedCompanyId ?? undefined,
+    companyPrefix: selectedCompany?.issuePrefix ?? undefined,
     avatarEnabled: liveKitAvatarEnabled,
     onToolCall: (name, args) => {
       if (name !== "open_modal") return;
