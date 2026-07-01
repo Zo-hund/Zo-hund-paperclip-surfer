@@ -130,10 +130,12 @@ Use navigate_to_page to move the user to a different screen (for example company
 Use navigate_to_company to switch to a different company's board by name.
 Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things.
 
-Vision:
-You can see what is on screen or camera using the analyze_screen tool.
-Use it when the user asks you to look at the screen, describe what you see, read something visible, or analyze any content being shared in the room.
-Describe what you see naturally in a few sentences, as if speaking to someone who cannot see the screen."""
+Vision commands — call the matching tool without asking for confirmation:
+Use analyze_camera when the user says: "can you see my cam", "can you see me", "look at me", "is my camera on", "what do I look like".
+Use analyze_screen_share when the user says: "what's on my screen", "can you see my screen", "look at my screen", "screen share", "what am I showing".
+Use analyze_page when the user says: "look at this page", "what's on the page", "full page", "screenshot the page", "analyze the dashboard", "what does the screen look like".
+Use analyze_screen (legacy fallback) when source is ambiguous or user says "look at the screen" without specifying.
+Describe what you see naturally in 2-3 sentences, as if speaking to someone who cannot see the screen."""
 
 
 def build_company_nav_block(companies: list[dict]) -> str:
@@ -159,59 +161,101 @@ def build_active_company_block(company_prefix: str | None) -> str:
     )
 
 
-# Module-level store: populated by `track_subscribed` events in entrypoint().
+# Module-level stores: populated by `track_subscribed` events in entrypoint().
 # Keyed by participant identity, value is the ready RemoteVideoTrack.
 _live_video_tracks: dict = {}
+_live_camera_tracks: dict = {}   # SOURCE_CAMERA tracks only (source int == 1)
+_live_screen_tracks: dict = {}   # SOURCE_SCREENSHARE tracks only (source int == 3)
+
+# Keyword-based nav intent for typed chat messages.
+# Paths are WITHOUT company prefix — the frontend's resolvePath adds the prefix.
+_NAV_ALIASES: dict[str, str] = {
+    "issues": "/issues",
+    "issue": "/issues",
+    "tickets": "/issues",
+    "agents": "/agents",
+    "agent": "/agents",
+    "dashboard": "/dashboard",
+    "home": "/dashboard",
+    "settings": "/company/settings",
+    "projects": "/projects",
+    "project": "/projects",
+    "meetings": "/meetings",
+    "meeting": "/meetings",
+    "approvals": "/approvals/pending",
+    "approval": "/approvals/pending",
+    "costs": "/costs",
+    "cost": "/costs",
+    "budget": "/costs",
+    "inbox": "/inbox/mine",
+    "analytics": "/analytics",
+    "reports": "/analytics",
+}
+_NAV_VERBS = ("open", "go to", "take me to", "navigate to", "show me", "pull up", "load", "bring me to")
 
 
-async def _capture_frame(room) -> bytes | None:
-    """Grab one JPEG frame from the first screen-share or camera video track in the room."""
+def _extract_nav_path(text: str) -> str | None:
+    """Return a bare path if text is a clear navigation command, else None."""
+    t = text.lower().strip()
+    if not any(v in t for v in _NAV_VERBS):
+        return None
+    for key, path in _NAV_ALIASES.items():
+        if key in t:
+            return path
+    return None
+
+
+async def _capture_frame(room, track=None) -> bytes | None:
+    """Grab one JPEG frame from a video track.
+
+    If track is provided use it directly; otherwise find the best available
+    track from subscribed caches or a room scan.
+    """
     from livekit import rtc as _rtc
 
-    # Primary: use tracks we know are fully subscribed (populated by track_subscribed event).
-    target_track = None
-    if _live_video_tracks:
-        for identity, track in list(_live_video_tracks.items()):
-            if isinstance(track, _rtc.RemoteVideoTrack):
-                logger.info("_capture_frame: using subscribed track from %s", identity)
-                target_track = track
-                break
-
-    # Fallback: scan publications and lazily subscribe (handles edge cases).
-    if not target_track:
-        participants = list(room.remote_participants.values())
-        logger.info("_capture_frame: no cached track; scanning %d participants", len(participants))
-        for participant in participants:
-            video_pubs = [
-                p for p in participant.track_publications.values()
-                if p.kind == _rtc.TrackKind.KIND_VIDEO
-            ]
-            logger.info("  %s: %d video pub(s)", participant.identity, len(video_pubs))
-            for pub in video_pubs:
-                logger.info("  track sid=%s subscribed=%s track=%s", pub.sid, pub.subscribed, pub.track)
-                if not pub.subscribed:
-                    try:
-                        pub.set_subscribed(True)
-                        logger.info("  -> set_subscribed(True) called")
-                    except Exception as e:
-                        logger.warning("  -> set_subscribed failed: %s", e)
-                # Poll up to 5 s for track object.
-                for i in range(50):
-                    if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
-                        logger.info("  -> track ready after %d polls", i)
-                        break
-                    await asyncio.sleep(0.1)
-                if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
-                    target_track = pub.track
+    if track is None:
+        # Primary: use tracks we know are fully subscribed.
+        if _live_video_tracks:
+            for identity, t in list(_live_video_tracks.items()):
+                if isinstance(t, _rtc.RemoteVideoTrack):
+                    logger.info("_capture_frame: using subscribed track from %s", identity)
+                    track = t
                     break
-            if target_track:
-                break
 
-    if not target_track:
+        # Fallback: scan publications and lazily subscribe.
+        if not track:
+            participants = list(room.remote_participants.values())
+            logger.info("_capture_frame: no cached track; scanning %d participants", len(participants))
+            for participant in participants:
+                video_pubs = [
+                    p for p in participant.track_publications.values()
+                    if p.kind == _rtc.TrackKind.KIND_VIDEO
+                ]
+                logger.info("  %s: %d video pub(s)", participant.identity, len(video_pubs))
+                for pub in video_pubs:
+                    logger.info("  track sid=%s subscribed=%s track=%s", pub.sid, pub.subscribed, pub.track)
+                    if not pub.subscribed:
+                        try:
+                            pub.set_subscribed(True)
+                            logger.info("  -> set_subscribed(True) called")
+                        except Exception as e:
+                            logger.warning("  -> set_subscribed failed: %s", e)
+                    for i in range(50):
+                        if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+                            logger.info("  -> track ready after %d polls", i)
+                            break
+                        await asyncio.sleep(0.1)
+                    if pub.track and isinstance(pub.track, _rtc.RemoteVideoTrack):
+                        track = pub.track
+                        break
+                if track:
+                    break
+
+    if not track:
         logger.info("_capture_frame: no video track available")
         return None
 
-    stream = _rtc.VideoStream(track=target_track, format=_rtc.VideoBufferType.RGBA)
+    stream = _rtc.VideoStream(track=track, format=_rtc.VideoBufferType.RGBA)
     try:
         async with asyncio.timeout(5.0):
             async for event in stream:
@@ -227,6 +271,66 @@ async def _capture_frame(room) -> bytes | None:
     finally:
         await stream.aclose()
     return None
+
+
+async def _capture_frame_by_source(room, source: str) -> bytes | None:
+    """Grab a JPEG from a specific track source ('camera' or 'screen').
+
+    Falls back to any subscribed track via _capture_frame if the specific
+    source dict is empty.
+    """
+    from livekit import rtc as _rtc
+
+    track_dict = {
+        "camera": _live_camera_tracks,
+        "screen": _live_screen_tracks,
+    }.get(source, _live_video_tracks)
+
+    target_track = None
+    for identity, t in list(track_dict.items()):
+        if isinstance(t, _rtc.RemoteVideoTrack):
+            logger.info("_capture_frame_by_source(%s): using track from %s", source, identity)
+            target_track = t
+            break
+
+    if target_track is None:
+        logger.info("_capture_frame_by_source(%s): no specific track, falling back to any", source)
+        return await _capture_frame(room)
+
+    return await _capture_frame(room, track=target_track)
+
+
+async def _analyze_image(frame_bytes: bytes) -> str:
+    """Analyze a JPEG image with Gemini (preferred) or Claude Opus (fallback)."""
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if api_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            response = model.generate_content([
+                {"mime_type": "image/jpeg", "data": frame_bytes},
+                "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible.",
+            ])
+            return response.text if response.text else "I could see the screen but couldn't interpret it."
+        except Exception as e:
+            logger.warning("Gemini vision failed, falling back to Claude: %s", e)
+
+    import anthropic
+    client = anthropic.Anthropic()
+    encoded = base64.standard_b64encode(frame_bytes).decode("utf-8")
+    response = client.messages.create(
+        model="claude-opus-4-8",
+        max_tokens=512,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded}},
+                {"type": "text", "text": "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible."},
+            ],
+        }],
+    )
+    return response.content[0].text if response.content else "I could see the screen but couldn't interpret it."
 
 
 class JAZSupportGuide(Agent):
@@ -260,6 +364,7 @@ class JAZSupportGuide(Agent):
                 payload=payload,
                 response_timeout=5.0,
             )
+            logger.info("RPC %s ok (target=%s)", method, target)
         except Exception as e:
             logger.warning("RPC %s failed: %s", method, e)
 
@@ -276,6 +381,7 @@ class JAZSupportGuide(Agent):
             path: The relative dashboard path to navigate to, e.g. "/agents",
                 "/issues", "/company/settings", or "/dashboard".
         """
+        logger.info("navigate_to_page: %s", path)
         await self._rpc(context, "navigate_to", {"path": path})
         return f"Navigated to {path}."
 
@@ -294,6 +400,7 @@ class JAZSupportGuide(Agent):
                 meetings, costs, approvals, analytics, etc. Defaults to dashboard.
         """
         path = f"/{company_prefix.upper()}/{section}"
+        logger.info("navigate_to_company: %s/%s", company_prefix, section)
         await self._rpc(context, "navigate_to", {"path": path})
         return f"Navigated to {company_prefix} {section}."
 
@@ -308,6 +415,7 @@ class JAZSupportGuide(Agent):
             tab: Optional tab to open — "runs", "issues", "skills", "config".
         """
         path = f"/agents/{agent_id}" + (f"/{tab}" if tab else "")
+        logger.info("navigate_to_agent: %s %s", agent_id, tab)
         await self._rpc(context, "navigate_to", {"path": path})
         return f"Navigated to agent {agent_id}."
 
@@ -318,6 +426,7 @@ class JAZSupportGuide(Agent):
         Args:
             issue_id: The issue UUID or short key (e.g. AMXA-42).
         """
+        logger.info("navigate_to_issue: %s", issue_id)
         await self._rpc(context, "navigate_to", {"path": f"/issues/{issue_id}"})
         return f"Navigated to issue {issue_id}."
 
@@ -328,6 +437,7 @@ class JAZSupportGuide(Agent):
         Args:
             project_id: The project UUID.
         """
+        logger.info("navigate_to_project: %s", project_id)
         await self._rpc(context, "navigate_to", {"path": f"/projects/{project_id}"})
         return f"Navigated to project {project_id}."
 
@@ -342,6 +452,7 @@ class JAZSupportGuide(Agent):
                 pending approvals list.
         """
         path = f"/approvals/{approval_id}" if approval_id else "/approvals/pending"
+        logger.info("navigate_to_approval: %s", approval_id)
         await self._rpc(context, "navigate_to", {"path": path})
         return "Navigated to approvals."
 
@@ -353,12 +464,14 @@ class JAZSupportGuide(Agent):
             query: Optional search terms to pre-fill in the search box.
         """
         path = "/inbox/mine" + (f"?q={query}" if query else "")
+        logger.info("open_search: %s", query)
         await self._rpc(context, "navigate_to", {"path": path})
         return f"Opened search{f' for {query}' if query else ''}."
 
     @function_tool()
     async def open_new_meeting(self, context: RunContext) -> str:
         """Open the Meetings hub so the user can start a new live meeting."""
+        logger.info("open_new_meeting")
         await self._rpc(context, "navigate_to", {"path": "/meetings"})
         return "Opened the meetings hub."
 
@@ -380,6 +493,7 @@ class JAZSupportGuide(Agent):
             priority: Optional priority — one of "low", "medium", "high", or
                 "urgent". Leave empty if the user didn't specify one.
         """
+        logger.info("open_new_issue: %s", title)
         await self._rpc(
             context,
             "open_modal",
@@ -395,6 +509,7 @@ class JAZSupportGuide(Agent):
         form for a human to fill in details and confirm. Use this when the
         user asks to add, hire, or create a new AI agent.
         """
+        logger.info("open_new_agent")
         await self._rpc(context, "open_modal", {"modal": "new_agent"})
         return "Opened the new agent form for you to fill in and submit."
 
@@ -404,6 +519,7 @@ class JAZSupportGuide(Agent):
 
         Use this when the user asks to start, add, or create a new project.
         """
+        logger.info("open_new_project")
         await self._rpc(context, "open_modal", {"modal": "new_project"})
         return "Opened the new project form for you to fill in and submit."
 
@@ -413,45 +529,76 @@ class JAZSupportGuide(Agent):
     async def analyze_screen(self, context: RunContext) -> str:
         """Look at what is currently visible on screen or camera and describe it.
 
-        Use this when the user asks you to look at the screen, describe what
-        you see, analyze a document or dashboard, read text that's visible,
-        or identify anything shown in the room.
+        Use this as a fallback when the source is ambiguous or the user says
+        'look at the screen' without specifying camera, screen share, or page.
+        For specific sources prefer analyze_camera, analyze_screen_share, or analyze_page.
         """
         room = context.session.room_io.room
+        logger.info("analyze_screen called")
         frame_bytes = await _capture_frame(room)
         if not frame_bytes:
             return "I don't see any active screen share or camera in this room right now."
+        return await _analyze_image(frame_bytes)
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        if api_key:
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel("gemini-2.0-flash")
-                response = model.generate_content([
-                    {"mime_type": "image/jpeg", "data": frame_bytes},
-                    "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible.",
-                ])
-                return response.text if response.text else "I could see the screen but couldn't interpret it."
-            except Exception as e:
-                logger.warning("Gemini vision failed, falling back to Claude: %s", e)
+    @function_tool()
+    async def analyze_camera(self, context: RunContext) -> str:
+        """Look at the user's camera feed and describe what you see.
 
-        # Fallback to Claude Opus if GOOGLE_API_KEY is absent or Gemini fails
-        import anthropic
-        client = anthropic.Anthropic()
-        encoded = base64.standard_b64encode(frame_bytes).decode("utf-8")
-        response = client.messages.create(
-            model="claude-opus-4-8",
-            max_tokens=512,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded}},
-                    {"type": "text", "text": "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible."},
-                ],
-            }],
+        Use when the user says 'can you see my cam', 'can you see me', 'look at me',
+        'is my camera on', 'what do I look like', or wants camera verification.
+        """
+        room = context.session.room_io.room
+        logger.info("analyze_camera called")
+        frame_bytes = await _capture_frame_by_source(room, "camera")
+        if not frame_bytes:
+            return "I don't see an active camera feed from you right now. Make sure your camera is on and try again."
+        return await _analyze_image(frame_bytes)
+
+    @function_tool()
+    async def analyze_screen_share(self, context: RunContext) -> str:
+        """Look at the user's screen share and describe the content.
+
+        Use when the user says 'what's on my screen', 'can you see my screen',
+        'look at my screen share', 'what am I showing', or references screen share content.
+        """
+        room = context.session.room_io.room
+        logger.info("analyze_screen_share called")
+        frame_bytes = await _capture_frame_by_source(room, "screen")
+        if not frame_bytes:
+            return "I don't see an active screen share from you right now. Start sharing your screen and try again."
+        return await _analyze_image(frame_bytes)
+
+    @function_tool()
+    async def analyze_page(self, context: RunContext) -> str:
+        """Take a full screenshot of the current browser page and analyze it.
+
+        Use when the user says 'look at this page', 'what's on the page',
+        'analyze the dashboard', 'take a screenshot', 'full page view', or
+        'what does the screen look like'. Does not require screen share —
+        captures the browser page directly via RPC.
+        """
+        room = context.session.room_io.room
+        logger.info("analyze_page called")
+        target = next(
+            (p.identity for p in room.remote_participants.values()
+             if p.identity.startswith("board-user")),
+            "board-user",
         )
-        return response.content[0].text if response.content else "I could see the screen but couldn't interpret it."
+        try:
+            result = await room.local_participant.perform_rpc(
+                destination_identity=target,
+                method="capture_page_screenshot",
+                payload="{}",
+                response_timeout=15.0,
+            )
+            data = json.loads(result)
+            if not data.get("screenshot"):
+                return "I wasn't able to capture the page screenshot."
+            frame_bytes = base64.b64decode(data["screenshot"])
+            return await _analyze_image(frame_bytes)
+        except Exception as e:
+            logger.warning("analyze_page RPC failed: %s", e)
+            return "I wasn't able to capture the page screenshot right now."
 
 
 def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | None:
@@ -494,7 +641,7 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         stt=inference.STT(model="deepgram/nova-3", language="en"),
-        llm=inference.LLM(model="openai/gpt-4o-mini"),
+        llm=inference.LLM(model="openai/gpt-4o"),
         tts=inference.TTS(
             model="cartesia/sonic-3",
             voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
@@ -548,9 +695,11 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.warning("Runway avatar start failed: %s", e)
 
-    # Reset per-job video track store.
-    global _live_video_tracks
+    # Reset per-job video track stores.
+    global _live_video_tracks, _live_camera_tracks, _live_screen_tracks
     _live_video_tracks = {}
+    _live_camera_tracks = {}
+    _live_screen_tracks = {}
 
     # Register video track handlers BEFORE session.start().
     # track_published: request subscription (sync callback required by livekit SDK).
@@ -571,7 +720,12 @@ async def entrypoint(ctx: JobContext):
     ):
         if isinstance(track, rtc.RemoteVideoTrack):
             _live_video_tracks[participant.identity] = track
-            logger.info("video track READY from %s (sid=%s)", participant.identity, track.sid)
+            src = int(getattr(pub, "source", 0))
+            if src == 1:   # TrackSource.SOURCE_CAMERA
+                _live_camera_tracks[participant.identity] = track
+            elif src == 3:  # TrackSource.SOURCE_SCREENSHARE
+                _live_screen_tracks[participant.identity] = track
+            logger.info("video track READY from %s (sid=%s, source=%s)", participant.identity, track.sid, src)
 
     @ctx.room.on("track_unsubscribed")
     def on_track_unsubscribed(
@@ -581,6 +735,8 @@ async def entrypoint(ctx: JobContext):
     ):
         if isinstance(track, rtc.RemoteVideoTrack):
             _live_video_tracks.pop(participant.identity, None)
+            _live_camera_tracks.pop(participant.identity, None)
+            _live_screen_tracks.pop(participant.identity, None)
             logger.info("video track removed from %s", participant.identity)
 
     await session.start(
@@ -623,15 +779,43 @@ async def entrypoint(ctx: JobContext):
 
             if msg.get("type") == "text" and isinstance(msg.get("text"), str):
                 text = msg["text"].strip()
-                if text:
-                    logger.info(
-                        "Chat text from %s: %s",
-                        data.participant.identity if data.participant else "user",
-                        text,
-                    )
+                if not text:
+                    return
+                logger.info(
+                    "Chat text from %s: %s",
+                    data.participant.identity if data.participant else "user",
+                    text,
+                )
+
+                nav_path = _extract_nav_path(text)
+                if nav_path:
+                    async def _do_nav(path: str = nav_path) -> None:
+                        target = next(
+                            (p.identity for p in ctx.room.remote_participants.values()
+                             if p.identity.startswith("board-user")),
+                            "board-user",
+                        )
+                        try:
+                            logger.info("typed_navigate_to: %s", path)
+                            await ctx.room.local_participant.perform_rpc(
+                                destination_identity=target,
+                                method="navigate_to",
+                                payload=json.dumps({"path": path}),
+                                response_timeout=5.0,
+                            )
+                            logger.info("typed RPC navigate_to ok (target=%s)", target)
+                        except Exception as rpc_err:
+                            logger.warning("typed RPC navigate_to failed: %s", rpc_err)
+                        label = path.strip("/").split("/")[0] or "dashboard"
+                        await session.generate_reply(
+                            instructions=f"You just opened the {label} page for the user. Confirm in one short sentence.",
+                            allow_interruptions=True,
+                        )
+                    asyncio.ensure_future(_do_nav())
+                else:
                     asyncio.ensure_future(
                         session.generate_reply(
-                            instructions=f"The user typed: {text}\nRespond helpfully via voice.",
+                            user_input=text,
                             allow_interruptions=True,
                         )
                     )
@@ -639,7 +823,7 @@ async def entrypoint(ctx: JobContext):
 
             if msg.get("type") == "page_state" and isinstance(msg.get("path"), str):
                 logger.info("user page: %s", msg["path"])
-                return  # no generate_reply — triggered by JAZ's own nav, not a user request
+                return
 
         except Exception as e:
             logger.debug("data parse error: %s", e)

@@ -324,6 +324,20 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
         }
       });
 
+      room.on(RoomEvent.TrackMuted, (pub, participant) => {
+        if (participant !== room.localParticipant) return;
+        if (pub.source === Track.Source.Camera) setLocalVideoTrack(null);
+        else if (pub.source === Track.Source.ScreenShare) setLocalScreenTrack(null);
+      });
+
+      room.on(RoomEvent.TrackUnmuted, (pub, participant) => {
+        if (participant !== room.localParticipant) return;
+        if (pub.source === Track.Source.Camera && pub.track?.mediaStreamTrack)
+          setLocalVideoTrack(pub.track.mediaStreamTrack as MediaStreamTrack);
+        else if (pub.source === Track.Source.ScreenShare && pub.track?.mediaStreamTrack)
+          setLocalScreenTrack(pub.track.mediaStreamTrack as MediaStreamTrack);
+      });
+
       await room.connect(url, token);
 
       // Register RPC handlers so the voice agent can drive the UI.
@@ -347,6 +361,22 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
           onToolCallRef.current?.("open_modal", args);
         } catch { /* ignore malformed payload */ }
         return JSON.stringify({ ok: true });
+      });
+
+      room.localParticipant.registerRpcMethod("capture_page_screenshot", async () => {
+        try {
+          const { default: html2canvas } = await import("html2canvas");
+          const canvas = await html2canvas(document.body, {
+            allowTaint: true,
+            useCORS: true,
+            scale: 0.5,
+            logging: false,
+          });
+          const screenshot = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+          return JSON.stringify({ screenshot });
+        } catch (err) {
+          return JSON.stringify({ error: String(err) });
+        }
       });
 
       await room.localParticipant.setMicrophoneEnabled(true);

@@ -101,6 +101,7 @@ export function GlobalVoiceMeetingOverlay() {
     companyPrefix: selectedCompany?.issuePrefix ?? undefined,
     companiesPrefixes: companies.map((c) => c.issuePrefix.toUpperCase()),
     avatarEnabled: liveKitAvatarEnabled,
+    onNavigate: minimize,
     onToolCall: (name, args) => {
       if (name !== "open_modal") return;
       const modal = args.modal;

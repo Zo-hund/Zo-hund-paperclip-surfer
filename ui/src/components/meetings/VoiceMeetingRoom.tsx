@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { InviteAgentsDialog } from "./InviteAgentsDialog";
 import { AgentAudioVisualizerAura } from "@/components/agent-audio-visualizer-aura";
 import type { VideoTrackMap, LiveKitVoiceStatus } from "../../hooks/useLiveKitVoice";
+import { useNavigate } from "../../lib/router";
 
 function toAgentState(status: LiveKitVoiceStatus | undefined): AgentState {
   switch (status) {
@@ -67,6 +68,7 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
   useEffect(() => {
     if (ref.current && track) {
       ref.current.srcObject = new MediaStream([track]);
+      ref.current.play().catch(() => {});
     }
     return () => { if (ref.current) ref.current.srcObject = null; };
   }, [track]);
@@ -101,7 +103,21 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
   );
 }
 
+const SLASH_COMMANDS: Record<string, string> = {
+  "/agents": "/agents",    "/agent": "/agents",
+  "/issues": "/issues",    "/issue": "/issues",    "/tickets": "/issues",
+  "/dashboard": "/dashboard", "/home": "/dashboard",
+  "/settings": "/company/settings",
+  "/projects": "/projects", "/project": "/projects",
+  "/meetings": "/meetings", "/meeting": "/meetings",
+  "/approvals": "/approvals/pending",
+  "/inbox": "/inbox/mine",
+  "/costs": "/costs",
+  "/analytics": "/analytics",
+};
+
 export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive }: VoiceMeetingRoomProps) {
+  const navigate = useNavigate();
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
@@ -148,6 +164,17 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
     const text = commandText.trim();
     if (!text) return;
     setCommandText("");
+
+    if (text.startsWith("/")) {
+      const cmd = text.split(" ")[0].toLowerCase();
+      const path = SLASH_COMMANDS[cmd];
+      if (path) {
+        onMinimize?.();
+        navigate(path);
+        return;
+      }
+    }
+
     sendLiveKitText?.(text);
     await meetingsApi.addTranscript(meetingId, {
       actorType: "user",
