@@ -126,9 +126,22 @@ End the call when the user confirms the issue is resolved, says they do not need
 Dashboard tools:
 You can navigate the user's browser to a different page and open pre-filled creation forms for issues, agents, and projects using your tools.
 These tools never create or change anything by themselves — they open a form with the details filled in, and a human still has to review and click Create or Save. Always tell the user you've opened the form for them to confirm, never say the thing has been created.
-Use navigate_to_page to move the user to a different screen (for example company settings, the agents list, or the issues board).
+Use navigate_to_page to move the user to a different screen. This is the primary navigation tool.
 Use navigate_to_company to switch to a different company's board by name.
 Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things.
+
+Navigation routing rules (follow exactly):
+- "go to agents", "show agents", "open agents", "agent list", "agents page" → navigate_to_page('/agents')
+- "go to issues", "show issues", "issues board" → navigate_to_page('/issues')
+- "go to dashboard", "go home", "home page" → navigate_to_page('/dashboard')
+- "go to projects" → navigate_to_page('/projects')
+- "go to meetings" → navigate_to_page('/meetings')
+- "go to settings" → navigate_to_page('/company/settings')
+- "go to approvals" → navigate_to_page('/approvals/pending')
+- "go to costs", "go to budget" → navigate_to_page('/costs')
+- "go to analytics", "go to reports" → navigate_to_page('/analytics')
+- "go to a specific agent {uuid}" → navigate_to_agent(agent_id='{uuid}') — ONLY when user gives the UUID
+NEVER call navigate_to_agent unless the user explicitly says a real agent UUID. Never invent an agent ID.
 
 Vision commands — call the matching tool without asking for confirmation:
 Use analyze_camera when the user says: "can you see my cam", "can you see me", "look at me", "is my camera on", "what do I look like".
@@ -301,7 +314,12 @@ async def _capture_frame_by_source(room, source: str) -> bytes | None:
 
 
 async def _analyze_image(frame_bytes: bytes) -> str:
-    """Analyze a JPEG image with Gemini (preferred) or Claude Opus (fallback)."""
+    """Analyze a JPEG image with Gemini (preferred) or Claude (fallback)."""
+    prompt = (
+        "Describe what you see in this screen capture in 2-3 sentences. "
+        "Be concise and speak naturally, as if describing to a person listening by voice. "
+        "Note any important content, UI elements, or key information visible."
+    )
     api_key = os.environ.get("GOOGLE_API_KEY")
     if api_key:
         try:
@@ -310,27 +328,32 @@ async def _analyze_image(frame_bytes: bytes) -> str:
             model = genai.GenerativeModel("gemini-2.0-flash")
             response = model.generate_content([
                 {"mime_type": "image/jpeg", "data": frame_bytes},
-                "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible.",
+                prompt,
             ])
-            return response.text if response.text else "I could see the screen but couldn't interpret it."
+            if response.text:
+                return response.text
         except Exception as e:
             logger.warning("Gemini vision failed, falling back to Claude: %s", e)
 
-    import anthropic
-    client = anthropic.Anthropic()
-    encoded = base64.standard_b64encode(frame_bytes).decode("utf-8")
-    response = client.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=512,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded}},
-                {"type": "text", "text": "Describe what you see in this screen capture in 2-3 sentences. Be concise and speak naturally, as if describing to a person listening by voice. Note any important content, UI elements, or key information visible."},
-            ],
-        }],
-    )
-    return response.content[0].text if response.content else "I could see the screen but couldn't interpret it."
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+        encoded = base64.standard_b64encode(frame_bytes).decode("utf-8")
+        response = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=512,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": encoded}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+        return response.content[0].text if response.content else "I could see the screen but couldn't read the details."
+    except Exception as e:
+        logger.warning("Claude vision fallback failed: %s", e)
+        return "I captured the image but had trouble analyzing it right now."
 
 
 class JAZSupportGuide(Agent):
@@ -408,11 +431,17 @@ class JAZSupportGuide(Agent):
     async def navigate_to_agent(
         self, context: RunContext, agent_id: str, tab: str = ""
     ) -> str:
-        """Navigate to a specific agent's detail page.
+        """Navigate to a SPECIFIC agent's detail page using its exact UUID.
+
+        IMPORTANT: Only call this when the user explicitly provides a real agent UUID
+        (e.g. "go to agent 8be4df61-93ca-11d2-aa0d-00e098032b8c"). Never guess, invent,
+        or hallucinate an agent ID. If the user just says "go to agents" or "show me
+        agents" without specifying a particular agent, use navigate_to_page('/agents')
+        instead.
 
         Args:
-            agent_id: The agent UUID.
-            tab: Optional tab to open — "runs", "issues", "skills", "config".
+            agent_id: The exact agent UUID explicitly provided by the user. Never fabricate this value.
+            tab: Optional tab — "runs", "issues", "skills", "config".
         """
         path = f"/agents/{agent_id}" + (f"/{tab}" if tab else "")
         logger.info("navigate_to_agent: %s %s", agent_id, tab)
@@ -548,10 +577,14 @@ class JAZSupportGuide(Agent):
         'is my camera on', 'what do I look like', or wants camera verification.
         """
         room = context.session.room_io.room
-        logger.info("analyze_camera called")
+        logger.info("analyze_camera called; camera_tracks=%s video_tracks=%s",
+                    list(_live_camera_tracks.keys()), list(_live_video_tracks.keys()))
         frame_bytes = await _capture_frame_by_source(room, "camera")
         if not frame_bytes:
-            return "I don't see an active camera feed from you right now. Make sure your camera is on and try again."
+            return (
+                "I don't see an active camera feed from you right now. "
+                "Please tap the camera button in the voice room to turn your camera on, then ask again."
+            )
         return await _analyze_image(frame_bytes)
 
     @function_tool()
