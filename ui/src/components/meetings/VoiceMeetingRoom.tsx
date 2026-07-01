@@ -3,9 +3,10 @@ import {
   Bot, Mic, MicOff, PhoneOff, UserPlus, Send,
   CheckCircle2, AlertTriangle, Zap, Maximize, Minimize,
   Video, VideoOff, ScreenShare, ScreenShareOff, Circle,
-  Activity, Cpu, Radar, Crosshair, Network, BarChart2,
+  Activity, Cpu, Radar, Network, BarChart2,
   Hand, Minimize2
 } from "lucide-react";
+import type { AgentState } from "@livekit/components-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 import { meetingsApi } from "../../api/meetings";
 import { Button } from "@/components/ui/button";
@@ -13,12 +14,27 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "../../context/ToastContext";
 import { useQuery } from "@tanstack/react-query";
 import { InviteAgentsDialog } from "./InviteAgentsDialog";
-import type { VideoTrackMap } from "../../hooks/useLiveKitVoice";
+import { AgentAudioVisualizerAura } from "@/components/agent-audio-visualizer-aura";
+import type { VideoTrackMap, LiveKitVoiceStatus } from "../../hooks/useLiveKitVoice";
+
+function toAgentState(status: LiveKitVoiceStatus | undefined): AgentState {
+  switch (status) {
+    case "connecting":   return "connecting";
+    case "connected":    return "listening";
+    case "listening":    return "listening";
+    case "thinking":     return "thinking";
+    case "speaking":     return "speaking";
+    case "error":        return "failed";
+    case "disconnected": return "disconnected";
+    default:             return "idle";
+  }
+}
 
 interface VoiceMeetingRoomProps {
   meetingId: string;
   onClose: () => void;
   onMinimize?: () => void;
+  agentStatus?: LiveKitVoiceStatus;
   cameraEnabled?: boolean;
   toggleCamera?: () => void;
   screenShareEnabled?: boolean;
@@ -84,7 +100,7 @@ function VideoTile({ track, name, status }: { track?: MediaStreamTrack; name: st
   );
 }
 
-export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive }: VoiceMeetingRoomProps) {
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
@@ -206,7 +222,12 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, cameraEnabled
           {/* Live indicator */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {isExpanded && <Radar className="h-4 w-4 text-[#94a3b8] animate-pulse drop-shadow-[0_0_8px_rgba(148,163,184,0.8)] mr-1 hidden sm:block" />}
-            <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-[pulse_1s_infinite] shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            <AgentAudioVisualizerAura
+              size="icon"
+              state={toAgentState(agentStatus)}
+              color="#1FD5F9"
+              themeMode="dark"
+            />
             <span className={`text-[10px] font-black uppercase tracking-widest hidden sm:inline ${isExpanded ? "text-[#94a3b8]" : "text-red-400"}`}>
               {isExpanded ? "A.I. LIVE" : "LIVE"}
             </span>
@@ -421,7 +442,13 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, cameraEnabled
 
                 {transcripts.length === 0 && outcomes.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-center py-10">
-                    <div className="text-4xl mb-5 text-[#94a3b8]/40"><Crosshair className="h-16 w-16" /></div>
+                    <AgentAudioVisualizerAura
+                      size="md"
+                      state={toAgentState(agentStatus)}
+                      color="#1FD5F9"
+                      themeMode="dark"
+                      className="mb-4"
+                    />
                     <p className="text-[11px] text-white/40 font-black uppercase tracking-[0.3em]">Link Established</p>
                     <p className="text-[10px] text-[#94a3b8]/40 mt-3 tracking-widest uppercase">INITIALIZE PROTOCOL: /decide · /task · /risk</p>
                   </div>
