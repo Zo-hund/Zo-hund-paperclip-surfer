@@ -84,6 +84,9 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const location = useLocation();
   const roomRef = useRef<Room | null>(null);
   const audioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Stable ref so the room's DataReceived handler always calls the latest handleData,
+  // even if companyPrefix loads after the room is connected.
+  const handleDataRef = useRef<((payload: Uint8Array, p?: RemoteParticipant | LocalParticipant) => void) | null>(null);
   const [status, setStatus] = useState<LiveKitVoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +155,9 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     [navigate, resolvePath, onNavigate, onToolCall],
   );
 
+  // Keep ref current so the room event handler always uses the latest handleData.
+  handleDataRef.current = handleData;
+
   /** Connect to a LiveKit room. Pass a roomName to override the default
    *  (needed because callers set the meeting id and connect in the same tick). */
   const connect = useCallback(async (roomNameOverride?: string) => {
@@ -190,7 +196,9 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       const room = new Room(roomOptions);
       roomRef.current = room;
 
-      room.on(RoomEvent.DataReceived, handleData);
+      room.on(RoomEvent.DataReceived, (payload, participant) => {
+        handleDataRef.current?.(payload, participant);
+      });
       room.on(RoomEvent.ParticipantConnected, () => {
         setParticipantCount(room.remoteParticipants.size);
         room.remoteParticipants.forEach((p: RemoteParticipant) => {
@@ -310,7 +318,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       setError(msg);
       setStatus("error");
     }
-  }, [roomName, identity, companyId, avatarEnabled, handleData]);
+  }, [roomName, identity, companyId, avatarEnabled]);
 
   /** Disconnect from the room */
   const disconnect = useCallback(() => {
