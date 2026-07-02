@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
 import { stripePrices, amxLedger, amxTransactions, companies } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
-import { provisionMember, cancelMember, TIER_MEMBER_TYPES } from "../services/stripeProvisioningService.js";
+import { provisionMember, cancelMember, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
 import type { Request as ExpressRequest } from "express";
 
 function getStripe(): Stripe {
@@ -305,6 +305,93 @@ export function stripeApiRoutes(db: Db): Router {
         memberTypes: TIER_MEMBER_TYPES[r.tierName] ?? [r.tierName],
       })),
     });
+  });
+
+  /**
+   * POST /companies/:companyId/stripe/checkout
+   * Creates a Stripe Checkout Session and returns { url } to redirect the user.
+   * For free tiers (amount=0), provisions the member directly and returns { url: null, provisioned: true }.
+   *
+   * Body: { tierName, userId, successUrl?, cancelUrl? }
+   */
+  router.post("/companies/:companyId/stripe/checkout", async (req, res) => {
+    const { companyId } = req.params as { companyId: string };
+    const { tierName, userId, successUrl, cancelUrl } = req.body as {
+      tierName: string;
+      userId: string;
+      successUrl?: string;
+      cancelUrl?: string;
+    };
+
+    if (!tierName || !userId) {
+      res.status(400).json({ error: "tierName and userId are required" });
+      return;
+    }
+
+    const priceRow = await getPriceForTier(db, companyId, tierName);
+    if (!priceRow) {
+      res.status(404).json({ error: `No active price for tier "${tierName}". Run seed-catalog first.` });
+      return;
+    }
+
+    // Free tier — provision directly, no payment needed
+    if (priceRow.amount === 0) {
+      await provisionMember(db, {
+        companyId,
+        userId,
+        tierName,
+        stripeCustomerId: "free-direct",
+        stripeSubscriptionId: `free-${userId}-${Date.now()}`,
+        stripePriceId: priceRow.stripePriceId,
+        status: "active",
+      });
+      res.json({ url: null, provisioned: true, tier: tierName });
+      return;
+    }
+
+    let stripe: Stripe;
+    try {
+      stripe = getStripe();
+    } catch {
+      res.status(503).json({ error: "Stripe not configured — set STRIPE_SECRET_KEY" });
+      return;
+    }
+
+    const appUrl = process.env.APP_URL ?? "https://amx-air-hubs.cc";
+    const resolvedSuccessUrl = successUrl ?? `${appUrl}?checkout=success&tier=${encodeURIComponent(tierName)}`;
+    const resolvedCancelUrl = cancelUrl ?? `${appUrl}?checkout=canceled`;
+
+    // Credit packages use one-time payment mode and carry creditAmount in metadata
+    const CREDIT_AMOUNTS: Record<string, number> = {
+      credits_starter: 1000,
+      credits_pro: 5000,
+      credits_enterprise: 25000,
+      credits_scale: 100000,
+    };
+    const isOneTime = priceRow.interval === "one_time";
+    const creditAmount = CREDIT_AMOUNTS[tierName];
+
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      mode: isOneTime ? "payment" : "subscription",
+      line_items: [{ price: priceRow.stripePriceId, quantity: 1 }],
+      metadata: {
+        companyId,
+        userId,
+        tierName,
+        ...(creditAmount != null ? { creditAmount: String(creditAmount), packageTier: tierName } : {}),
+      },
+      client_reference_id: userId,
+      success_url: resolvedSuccessUrl,
+      cancel_url: resolvedCancelUrl,
+    };
+
+    try {
+      const session = await stripe.checkout.sessions.create(sessionParams);
+      res.json({ url: session.url, sessionId: session.id });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Stripe error";
+      res.status(500).json({ error: msg });
+    }
   });
 
   return router;
