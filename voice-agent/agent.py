@@ -324,13 +324,14 @@ async def _analyze_image(frame_bytes: bytes) -> str:
     if api_key:
         try:
             import google.generativeai as genai
+            from PIL import Image
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.0-flash")
-            response = model.generate_content([
-                {"mime_type": "image/jpeg", "data": frame_bytes},
-                prompt,
-            ])
+            # Pass a PIL Image directly — works across all google-generativeai 0.7+/0.8+ versions.
+            pil_image = Image.open(io.BytesIO(frame_bytes))
+            response = model.generate_content([pil_image, prompt])
             if response.text:
+                logger.info("Gemini vision success (%d bytes)", len(frame_bytes))
                 return response.text
         except Exception as e:
             logger.warning("Gemini vision failed, falling back to Claude: %s", e)
