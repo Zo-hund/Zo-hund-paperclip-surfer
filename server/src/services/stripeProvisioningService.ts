@@ -4,28 +4,48 @@ import { eq, and } from "drizzle-orm";
 
 // Maps each tier name to the memberTypes[] it grants (additive — each tier includes lower tiers)
 export const TIER_MEMBER_TYPES: Record<string, string[]> = {
-  learner:    ["learner"],
-  builder:    ["builder", "learner"],
-  ambassador: ["ambassador", "builder", "learner"],
-  earner:     ["earner", "ambassador", "builder", "learner"],
-  parent:     ["parent"],
-  community:  ["community"],
-  volunteer:  ["volunteer"],
-  sponsor:    ["sponsor"],
-  donor:      ["donor"],
+  learner:            ["learner"],
+  builder:            ["builder", "learner"],
+  ambassador:         ["ambassador", "builder", "learner"],
+  earner:             ["earner", "ambassador", "builder", "learner"],
+  parent:             ["parent"],
+  community:          ["community"],
+  volunteer:          ["volunteer"],
+  sponsor:            ["sponsor"],
+  donor:              ["donor"],
+  // Weekly + drop-in
+  dropin_pass:        ["learner"],
+  member_weekly:      ["learner"],
+  access_hub:         ["builder", "learner"],
+  // Partner
+  partner_free:       ["partner"],
+  partner_pro:        ["partner"],
+  // Org
+  nonprofit_baseline: ["learner", "community"],
+  business_micro:     ["learner"],
 };
 
 // Credits and tokens granted when a subscription becomes active
 export const TIER_CREDIT_AWARD: Record<string, { credits: number; tokens: number }> = {
-  learner:    { credits: 200,  tokens: 0 },
-  builder:    { credits: 500,  tokens: 50 },
-  ambassador: { credits: 1000, tokens: 150 },
-  earner:     { credits: 2000, tokens: 500 },
-  parent:     { credits: 100,  tokens: 0 },
-  community:  { credits: 50,   tokens: 0 },
-  volunteer:  { credits: 0,    tokens: 0 },
-  sponsor:    { credits: 5000, tokens: 0 },
-  donor:      { credits: 2500, tokens: 0 },
+  learner:            { credits: 200,  tokens: 0 },
+  builder:            { credits: 500,  tokens: 50 },
+  ambassador:         { credits: 1000, tokens: 150 },
+  earner:             { credits: 2000, tokens: 500 },
+  parent:             { credits: 100,  tokens: 0 },
+  community:          { credits: 50,   tokens: 0 },
+  volunteer:          { credits: 0,    tokens: 0 },
+  sponsor:            { credits: 5000, tokens: 0 },
+  donor:              { credits: 2500, tokens: 0 },
+  // Weekly + drop-in
+  dropin_pass:        { credits: 50,   tokens: 0 },
+  member_weekly:      { credits: 100,  tokens: 0 },
+  access_hub:         { credits: 300,  tokens: 25 },
+  // Partner
+  partner_free:       { credits: 0,    tokens: 0 },
+  partner_pro:        { credits: 500,  tokens: 50 },
+  // Org
+  nonprofit_baseline: { credits: 100,  tokens: 0 },
+  business_micro:     { credits: 300,  tokens: 0 },
 };
 
 // Maps tier name to the minimum progressionStage it unlocks
@@ -154,10 +174,30 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
 }
 
 export async function cancelMember(db: Db, stripeSubscriptionId: string): Promise<void> {
+  // Resolve the subscription record so we can cascade to the member profile
+  const [sub] = await db
+    .select({ companyId: stripeSubscriptions.companyId, userId: stripeSubscriptions.userId })
+    .from(stripeSubscriptions)
+    .where(eq(stripeSubscriptions.stripeSubscriptionId, stripeSubscriptionId))
+    .limit(1);
+
   await db
     .update(stripeSubscriptions)
     .set({ status: "canceled", updatedAt: new Date() })
     .where(eq(stripeSubscriptions.stripeSubscriptionId, stripeSubscriptionId));
+
+  if (sub) {
+    // Revoke all granted member types and reset progression stage to explorer
+    await db
+      .update(lmsMemberProfiles)
+      .set({ memberTypes: [], progressionStage: "explorer", updatedAt: new Date() })
+      .where(
+        and(
+          eq(lmsMemberProfiles.companyId, sub.companyId),
+          eq(lmsMemberProfiles.userId, sub.userId),
+        ),
+      );
+  }
 }
 
 export async function getPriceForTier(db: Db, companyId: string, tierName: string) {

@@ -12,17 +12,28 @@ function getStripe(): Stripe {
   return new Stripe(key, { apiVersion: "2026-05-27.dahlia" });
 }
 
-// 9 TECH AT NITE tiers — (name, amount in cents, interval)
-const CATALOG_TIERS: Array<{ name: string; amount: number; interval: "month" | "year"; description: string }> = [
-  { name: "learner",    amount: 1900,  interval: "month", description: "Access core workshops and learning modules" },
-  { name: "builder",    amount: 3900,  interval: "month", description: "Builder track: all learner perks plus project labs" },
-  { name: "ambassador", amount: 6900,  interval: "month", description: "Ambassador track: community leadership tools" },
-  { name: "earner",     amount: 9900,  interval: "month", description: "Earner track: marketplace access and gig tools" },
-  { name: "parent",     amount: 1500,  interval: "month", description: "Parent portal: monitor linked learner progress" },
-  { name: "community",  amount: 500,   interval: "month", description: "Community member access" },
-  { name: "volunteer",  amount: 0,     interval: "month", description: "Volunteer access (complimentary)" },
-  { name: "sponsor",    amount: 50000, interval: "year",  description: "Annual sponsorship tier" },
-  { name: "donor",      amount: 25000, interval: "year",  description: "Annual donor membership" },
+// 16 TECH AT NITE tiers — (name, amount in cents, interval)
+const CATALOG_TIERS: Array<{ name: string; amount: number; interval: "month" | "year" | "week" | "one_time"; description: string }> = [
+  // Core progression tiers
+  { name: "learner",           amount: 1900,  interval: "month",    description: "Access core workshops and learning modules" },
+  { name: "builder",           amount: 3900,  interval: "month",    description: "Builder track: all learner perks plus project labs" },
+  { name: "ambassador",        amount: 6900,  interval: "month",    description: "Ambassador track: community leadership tools" },
+  { name: "earner",            amount: 9900,  interval: "month",    description: "Earner track: marketplace access and gig tools" },
+  { name: "parent",            amount: 1500,  interval: "month",    description: "Parent portal: monitor linked learner progress" },
+  { name: "community",         amount: 500,   interval: "month",    description: "Community member access" },
+  { name: "volunteer",         amount: 0,     interval: "month",    description: "Volunteer access (complimentary)" },
+  { name: "sponsor",           amount: 50000, interval: "year",     description: "Annual sponsorship tier" },
+  { name: "donor",             amount: 25000, interval: "year",     description: "Annual donor membership" },
+  // New weekly + drop-in tiers
+  { name: "dropin_pass",       amount: 2500,  interval: "one_time", description: "Single-session drop-in access pass" },
+  { name: "member_weekly",     amount: 2500,  interval: "week",     description: "Week-to-week member access" },
+  { name: "access_hub",        amount: 10000, interval: "week",     description: "Access Hub — premium weekly, all sessions + agent copilot" },
+  // Partner tiers
+  { name: "partner_free",      amount: 0,     interval: "month",    description: "Skill Provider free entry — marketplace listing + revenue share" },
+  { name: "partner_pro",       amount: 4900,  interval: "month",    description: "Skill Provider Pro — featured listing + full analytics" },
+  // Org tiers
+  { name: "nonprofit_baseline",amount: 900,   interval: "month",    description: "Non-profit baseline — LMS + grant reporting" },
+  { name: "business_micro",    amount: 2900,  interval: "month",    description: "Micro-business professional development" },
 ];
 
 /**
@@ -112,8 +123,8 @@ export function stripeApiRoutes(db: Db): Router {
         currency: "usd",
         unit_amount: tier.amount,
         metadata: { tierName: tier.name, companyId },
-        ...(tier.amount > 0
-          ? { recurring: { interval: tier.interval } }
+        ...(tier.amount > 0 && tier.interval !== "one_time"
+          ? { recurring: { interval: tier.interval as "month" | "year" | "week" } }
           : {}),
       };
 
@@ -262,7 +273,7 @@ export function stripeApiRoutes(db: Db): Router {
             currency: "usd",
             unit_amount: tier.amount,
             metadata: { tierName: tier.name, companyId: created.id },
-            ...(tier.amount > 0 ? { recurring: { interval: tier.interval } } : {}),
+            ...(tier.amount > 0 && tier.interval !== "one_time" ? { recurring: { interval: tier.interval as "month" | "year" | "week" } } : {}),
           });
           await db.insert(stripePrices).values({
             companyId: created.id,

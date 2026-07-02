@@ -73,6 +73,17 @@ import { ServiceRequest } from "./pages/ServiceRequest";
 import { ClientPortal } from "./pages/ClientPortal";
 import { VerifyPassPage } from "./pages/VerifyPass";
 import { MemberProfile } from "./pages/MemberProfile";
+import { LmsWorkshops } from "./pages/LmsWorkshops";
+import { LmsWorkshopDetail } from "./pages/LmsWorkshopDetail";
+import { LmsSessions } from "./pages/LmsSessions";
+import { LmsEnrollments } from "./pages/LmsEnrollments";
+import { LmsProgress } from "./pages/LmsProgress";
+import { OpprcDashboard } from "./pages/OpprcDashboard";
+import { OpprcRecord } from "./pages/OpprcRecord";
+import { Reports } from "./pages/Reports";
+import { Certificates } from "./pages/Certificates";
+import { Billing } from "./pages/Billing";
+import { TanPricingPage } from "./pages/TanPricingPage";
 import { queryKeys } from "./lib/queryKeys";
 import { useCompany } from "./context/CompanyContext";
 import { useDialog } from "./context/DialogContext";
@@ -217,6 +228,17 @@ function boardRoutes() {
       <Route path="lms/dashboard" element={<LmsDashboard />} />
       <Route path="lms/command-center" element={<LmsCommandCenter />} />
       <Route path="lms/brand" element={<TechAtNiteBrand />} />
+      <Route path="lms/workshops" element={<LmsWorkshops />} />
+      <Route path="lms/workshops/:workshopId" element={<LmsWorkshopDetail />} />
+      <Route path="lms/sessions" element={<LmsSessions />} />
+      <Route path="lms/enrollments" element={<LmsEnrollments />} />
+      <Route path="lms/progress/:userId" element={<LmsProgress />} />
+      <Route path="opprrc" element={<OpprcDashboard />} />
+      <Route path="opprrc/:recordId" element={<OpprcRecord />} />
+      <Route path="reports" element={<Reports />} />
+      <Route path="certificates" element={<Certificates />} />
+      <Route path="billing" element={<Billing />} />
+      <Route path="pricing" element={<TanPricingPage />} />
       <Route path="amx/chain" element={<AmxChain />} />
       <Route path="amx/remote-work" element={<AmxDispatchConsole />} />
       <Route path="amx/dispatch" element={<AmxDispatchConsole />} />
@@ -333,6 +355,25 @@ function UnprefixedBoardRedirect() {
   );
 }
 
+function CompanyPrefixGate() {
+  const { companyPrefix } = useParams<{ companyPrefix: string }>();
+  const { companies, loading } = useCompany();
+
+  if (loading) {
+    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>;
+  }
+
+  const isValidCompany = companyPrefix
+    ? companies.some((c) => c.issuePrefix.toUpperCase() === companyPrefix.toUpperCase())
+    : false;
+
+  if (!isValidCompany) {
+    return <Navigate to="/profile" replace />;
+  }
+
+  return <Outlet />;
+}
+
 function NoCompaniesStartPage() {
   const { openOnboarding } = useDialog();
 
@@ -432,8 +473,10 @@ export function App() {
             <Route path="briefcase" element={<BoardDeliverables global />} />
           </Route>
 
-          <Route path=":companyPrefix" element={<Layout />}>
-            {boardRoutes()}
+          <Route path=":companyPrefix" element={<CompanyPrefixGate />}>
+            <Route element={<Layout />}>
+              {boardRoutes()}
+            </Route>
           </Route>
           <Route path="*" element={<NotFoundPage scope="global" />} />
         </Route>

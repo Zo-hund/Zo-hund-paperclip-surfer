@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Zap } from "lucide-react";
+import { Plus, Zap, LayoutGrid } from "lucide-react";
+import { Link } from "@/lib/router";
 import { useQueries } from "@tanstack/react-query";
 import {
   DndContext,
@@ -268,10 +269,29 @@ export function CompanyRail() {
 
   return (
     <div className="flex flex-col items-center w-[72px] shrink-0 h-full bg-background border-r border-border">
-      {/* Paperclip icon - aligned with top sections (implied line, no visible border) */}
+      {/* Zap brand mark */}
       <div className="flex items-center justify-center h-12 w-full shrink-0">
         <Zap className="h-5 w-5 text-primary fill-primary/20" />
       </div>
+
+      {/* Back to Lobby */}
+      <div className="flex items-center justify-center pb-2 shrink-0">
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Link
+              to="/profile"
+              className="flex items-center justify-center w-11 h-11 rounded-[22px] hover:rounded-[14px] text-muted-foreground hover:text-foreground hover:bg-accent transition-[background-color,color,border-radius] duration-150"
+              aria-label="Back to Lobby"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            <p>Back to Lobby</p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+      <div className="w-8 h-px bg-border mx-auto shrink-0 mb-1" />
 
       {/* Company list */}
       <div className="flex-1 flex flex-col items-center gap-2 py-3 w-full overflow-y-auto overflow-x-hidden scrollbar-none">
@@ -310,9 +330,6 @@ export function CompanyRail() {
           </SortableContext>
         </DndContext>
       </div>
-
-      {/* Separator before add button */}
-      <div className="w-8 h-px bg-border mx-auto shrink-0" />
 
       {/* Add company button */}
       <div className="flex items-center justify-center py-2 shrink-0">

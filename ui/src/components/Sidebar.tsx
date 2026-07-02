@@ -30,6 +30,12 @@ import {
   UserPlus,
   Building2,
   CalendarDays,
+  BookOpen,
+  Users,
+  Award,
+  FileText,
+  CreditCard,
+  Tag,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -159,6 +165,17 @@ export function Sidebar() {
           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
           <SidebarNavItem to="/tests/ux/runs" label="UX Trace Lab" icon={Activity} textBadge="Lab" />
           <SidebarNavItem to="/briefcase" label="Master Briefcase" icon={Briefcase} textBadge="Board" textBadgeTone="amber" />
+        </SidebarSection>
+
+        <SidebarSection label="TAN Workspace">
+          <SidebarNavItem to="/lms/workshops" label="Workshops" icon={BookOpen} />
+          <SidebarNavItem to="/lms/sessions" label="Sessions" icon={CalendarDays} />
+          <SidebarNavItem to="/lms/enrollments" label="Enrollments" icon={Users} />
+          <SidebarNavItem to="/opprrc" label="OPPRRC Vault" icon={Award} />
+          <SidebarNavItem to="/reports" label="Reports" icon={FileText} />
+          <SidebarNavItem to="/certificates" label="Certificates" icon={Tag} />
+          <SidebarNavItem to="/billing" label="Billing" icon={CreditCard} />
+          <SidebarNavItem to="/pricing" label="TAN Pricing" icon={DollarSign} textBadge="Plans" />
         </SidebarSection>
 
         <PluginSlotOutlet

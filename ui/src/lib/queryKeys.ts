@@ -167,4 +167,21 @@ export const queryKeys = {
     dashboard: (pluginId: string) => ["plugins", pluginId, "dashboard"] as const,
     logs: (pluginId: string) => ["plugins", pluginId, "logs"] as const,
   },
+  lms: {
+    dashboard: (companyId: string) => ["lms", "dashboard", companyId] as const,
+    courses: (companyId: string) => ["lms", "courses", companyId] as const,
+    sessions: (companyId: string) => ["lms", "sessions", companyId] as const,
+    members: (companyId: string) => ["lms", "members", companyId] as const,
+    memberDetail: (companyId: string, userId: string) => ["lms", "members", companyId, userId] as const,
+    modules: (companyId: string, workshopId: string) => ["lms", "modules", companyId, workshopId] as const,
+    badges: (companyId: string) => ["lms", "badges", companyId] as const,
+    leaderboard: (companyId: string) => ["lms", "leaderboard", companyId] as const,
+    overview: (companyId: string) => ["lms", "overview", companyId] as const,
+  },
+  stripe: {
+    prices: (companyId: string) => ["stripe", "prices", companyId] as const,
+  },
+  certificates: {
+    list: (companyId: string) => ["certificates", companyId] as const,
+  },
 };
