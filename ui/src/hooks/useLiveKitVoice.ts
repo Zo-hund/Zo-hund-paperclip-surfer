@@ -11,6 +11,7 @@
  *   { type: "transcript", role: "user" | "model", text: "..." }
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ModuleData } from "../components/meetings/ModulePanel";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Room,
@@ -105,6 +106,8 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const [videoTracks, setVideoTracks] = useState<VideoTrackMap>(new Map());
   const [localVideoTrack, setLocalVideoTrack] = useState<MediaStreamTrack | null>(null);
   const [localScreenTrack, setLocalScreenTrack] = useState<MediaStreamTrack | null>(null);
+  const [activeModule, setActiveModule] = useState<ModuleData | null>(null);
+  const clearModule = useCallback(() => setActiveModule(null), []);
 
   /** Resolve a relative path to include company prefix */
   const resolvePath = useCallback(
@@ -379,6 +382,14 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
         }
       });
 
+      room.localParticipant.registerRpcMethod("show_module", async (data) => {
+        try {
+          const args = JSON.parse(data.payload) as ModuleData;
+          setActiveModule(args);
+        } catch { /* ignore malformed payload */ }
+        return JSON.stringify({ ok: true });
+      });
+
       await room.localParticipant.setMicrophoneEnabled(true);
       setStatus("listening");
     } catch (err) {
@@ -482,5 +493,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     localScreenTrack,
     setPTTActive,
     room: roomRef.current,
+    activeModule,
+    clearModule,
   };
 }

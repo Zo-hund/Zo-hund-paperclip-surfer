@@ -17,6 +17,8 @@ import { InviteAgentsDialog } from "./InviteAgentsDialog";
 import { AgentAudioVisualizerAura } from "@/components/agent-audio-visualizer-aura";
 import type { VideoTrackMap, LiveKitVoiceStatus } from "../../hooks/useLiveKitVoice";
 import { useNavigate } from "../../lib/router";
+import { ModulePanel } from "./ModulePanel";
+import type { ModuleData } from "./ModulePanel";
 
 function toAgentState(status: LiveKitVoiceStatus | undefined): AgentState {
   switch (status) {
@@ -46,6 +48,8 @@ interface VoiceMeetingRoomProps {
   localScreenTrack?: MediaStreamTrack | null;
   sendText?: (text: string) => void;
   setPTTActive?: (active: boolean) => void;
+  activeModule?: ModuleData | null;
+  clearModule?: () => void;
 }
 
 const SPEAKER_COLORS = [
@@ -116,7 +120,7 @@ const SLASH_COMMANDS: Record<string, string> = {
   "/analytics": "/analytics",
 };
 
-export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
   const navigate = useNavigate();
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
@@ -252,6 +256,15 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
       >
         {isExpanded && (
           <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at center, transparent 0%, rgba(148,163,184,0.03) 100%)" }} />
+        )}
+
+        {/* ── Web Module Panel overlay ─────────────────────── */}
+        {activeModule && clearModule && (
+          <div className="absolute inset-x-4 top-14 bottom-14 sm:bottom-0 z-20 flex items-center justify-center p-4 pointer-events-none">
+            <div className="pointer-events-auto w-full max-w-2xl h-full">
+              <ModulePanel module={activeModule} onClose={clearModule} />
+            </div>
+          </div>
         )}
 
         {/* ── Header ─────────────────────────────────────────── */}

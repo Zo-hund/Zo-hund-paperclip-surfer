@@ -28,6 +28,7 @@ from livekit.agents import (
     stt,
     tts,
 )
+from livekit.plugins import google as lk_google
 
 logger = logging.getLogger("agent-JAZ")
 
@@ -148,7 +149,12 @@ Use analyze_camera when the user says: "can you see my cam", "can you see me", "
 Use analyze_screen_share when the user says: "what's on my screen", "can you see my screen", "look at my screen", "screen share", "what am I showing".
 Use analyze_page when the user says: "look at this page", "what's on the page", "full page", "screenshot the page", "analyze the dashboard", "what does the screen look like".
 Use analyze_screen (legacy fallback) when source is ambiguous or user says "look at the screen" without specifying.
-Describe what you see naturally in 2-3 sentences, as if speaking to someone who cannot see the screen."""
+Describe what you see naturally in 2-3 sentences, as if speaking to someone who cannot see the screen.
+
+Web and time tools:
+Use get_current_datetime when the user asks what time or date it is, or says "what's today", "what time is it", "current date".
+Use search_web for any question needing current or real-world info: news, weather, prices, sports, events, definitions, or facts you are not certain about. After searching, speak a 2-3 sentence summary and mention the source is shown in the room.
+Use show_web_page when the user says "open [URL]", "pull up [website]", "show me [site]", or wants to see a specific page in the room."""
 
 
 def build_company_nav_block(companies: list[dict]) -> str:
@@ -311,6 +317,32 @@ async def _capture_frame_by_source(room, source: str) -> bytes | None:
         return await _capture_frame(room)
 
     return await _capture_frame(room, track=target_track)
+
+
+async def _gemini_search(query: str) -> tuple[str, list[dict]]:
+    """Run a Google Search via Gemini grounding. Returns (summary_text, [{title, url}])."""
+    import google.generativeai as genai
+    genai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
+    try:
+        model = genai.GenerativeModel(
+            "gemini-2.0-flash-exp",
+            tools=[{"google_search": {}}],
+        )
+    except Exception:
+        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+    response = model.generate_content(f"Search the web and answer concisely: {query}")
+    text = response.text or "No results found."
+    results: list[dict] = []
+    try:
+        for chunk in response.candidates[0].grounding_metadata.grounding_chunks:
+            if hasattr(chunk, "web"):
+                results.append({
+                    "title": getattr(chunk.web, "title", ""),
+                    "url": getattr(chunk.web, "uri", ""),
+                })
+    except Exception:
+        pass
+    return text, results
 
 
 async def _analyze_image(frame_bytes: bytes) -> str:
@@ -634,6 +666,71 @@ class JAZSupportGuide(Agent):
             logger.warning("analyze_page RPC failed: %s", e)
             return "I wasn't able to capture the page screenshot right now."
 
+    # ── Web / time tools ──────────────────────────────────────────────────────
+
+    @function_tool()
+    async def get_current_datetime(self, context: RunContext) -> str:
+        """Return the current date and time in UTC.
+
+        Call when the user asks what time or date it is, or uses phrases like
+        'what's today', 'what time is it', 'current date', or 'right now'.
+        """
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        return f"Current date and time: {now.strftime('%A, %B %d, %Y at %H:%M UTC')}"
+
+    @function_tool()
+    async def search_web(self, context: RunContext, query: str) -> str:
+        """Search the web for current information using Google Search.
+
+        Use for news, weather, prices, sports scores, events, factual questions,
+        or anything needing up-to-date real-world data. After getting results,
+        speak a brief 2-3 sentence summary and tell the user you've shown the
+        top result in their room.
+
+        Args:
+            query: A specific, well-formed search query.
+        """
+        logger.info("search_web: %s", query)
+        try:
+            summary, results = await _gemini_search(query)
+            if results:
+                top = results[0]
+                await self._rpc(context, "show_module", {
+                    "type": "web_preview",
+                    "url": top["url"],
+                    "title": top.get("title", "Web Result"),
+                    "summary": summary[:300],
+                })
+            return summary
+        except Exception as e:
+            logger.warning("search_web failed: %s", e)
+            return "I wasn't able to search the web right now. Try again in a moment."
+
+    @function_tool()
+    async def show_web_page(
+        self, context: RunContext, url: str, title: str = ""
+    ) -> str:
+        """Display a specific web page as an embedded preview in the user's voice room.
+
+        Use when the user says 'open [URL]', 'pull up [website]', 'show me [site]',
+        or explicitly asks to see a specific page in the room.
+
+        Args:
+            url: Full HTTPS URL to display.
+            title: Optional panel title shown in the header bar.
+        """
+        if not url.startswith("https://"):
+            return "I can only display secure https pages."
+        logger.info("show_web_page: %s", url)
+        await self._rpc(context, "show_module", {
+            "type": "web_preview",
+            "url": url,
+            "title": title or url,
+            "summary": "",
+        })
+        return f"Opening {title or url} in your room now."
+
 
 def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | None:
     """Builds a per-room persona override from LiveKit dispatch metadata.
@@ -675,7 +772,7 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         stt=inference.STT(model="deepgram/nova-3", language="en"),
-        llm=inference.LLM(model="openai/gpt-4o"),
+        llm=lk_google.LLM(model="gemini-2.0-flash-exp"),
         tts=inference.TTS(
             model="cartesia/sonic-3",
             voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",

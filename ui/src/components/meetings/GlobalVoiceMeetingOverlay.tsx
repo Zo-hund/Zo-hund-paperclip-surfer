@@ -169,6 +169,8 @@ export function GlobalVoiceMeetingOverlay() {
       localScreenTrack={liveKit.localScreenTrack}
       sendText={liveKit.sendText}
       setPTTActive={liveKit.setPTTActive}
+      activeModule={liveKit.activeModule}
+      clearModule={liveKit.clearModule}
     />
   );
 }
