@@ -26,6 +26,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env.vps
+    group_add:
+      - "988"
     environment:
       HOST: 0.0.0.0
       PORT: "3100"
@@ -45,6 +47,14 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       PAPERCLIP_EMAIL_FROM: ${PAPERCLIP_EMAIL_FROM:-}
       PAPERCLIP_EMAIL_REPLY_TO: ${PAPERCLIP_EMAIL_REPLY_TO:-}
+      VPS_COMPOSE_FILE: /deploy/docker-compose.vps.yml
+      VPS_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-amx-air-hubs}
+      GIT_AUTHOR_NAME: ${GIT_AGENT_NAME:-AMX Agent}
+      GIT_AUTHOR_EMAIL: ${GIT_AGENT_EMAIL:-agents@amx-air-hubs.cc}
+      GIT_COMMITTER_NAME: ${GIT_AGENT_NAME:-AMX Agent}
+      GIT_COMMITTER_EMAIL: ${GIT_AGENT_EMAIL:-agents@amx-air-hubs.cc}
+    ports:
+      - "127.0.0.1:3100:3100"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3100/ >/dev/null"]
       interval: 15s
@@ -53,6 +63,10 @@ services:
       start_period: 20s
     volumes:
       - ${PAPERCLIP_DATA_PATH:-./paperclip-data}:/paperclip
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - /usr/bin/git:/usr/bin/git:ro
+      - /root/paperclip/deploy/vps:/deploy:ro
     labels:
       - traefik.enable=true
       - traefik.http.routers.amx.rule=Host(`${TRAEFIK_DOMAIN}`)

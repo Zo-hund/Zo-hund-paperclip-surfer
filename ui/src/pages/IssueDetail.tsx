@@ -3,6 +3,7 @@ import { pickTextColorForPillBg } from "@/lib/color-contrast";
 import { Link, useLocation, useNavigate, useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { issuesApi } from "../api/issues";
+import { api } from "../api/client";
 import { activityApi } from "../api/activity";
 import { heartbeatsApi } from "../api/heartbeats";
 import { agentsApi } from "../api/agents";
@@ -28,6 +29,7 @@ import { ScrollToBottom } from "../components/ScrollToBottom";
 import { StatusIcon } from "../components/StatusIcon";
 import { PriorityIcon } from "../components/PriorityIcon";
 import { StatusBadge } from "../components/StatusBadge";
+import { OpprrcStoragePanel } from "../components/OpprrcStoragePanel";
 import { Identity } from "../components/Identity";
 import { PluginSlotMount, PluginSlotOutlet, usePluginSlots } from "@/plugins/slots";
 import { PluginLauncherOutlet } from "@/plugins/launchers";
@@ -44,6 +46,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Download,
   EyeOff,
   Hexagon,
   ListTree,
@@ -253,6 +256,13 @@ export function IssueDetail() {
     queryKey: queryKeys.issues.attachments(issueId!),
     queryFn: () => issuesApi.listAttachments(issueId!),
     enabled: !!issueId,
+  });
+
+  const { data: opprrcDeliveries } = useQuery<{ id: string }[]>({
+    queryKey: ["opprrc", "deliveries", selectedCompanyId, issue?.id],
+    queryFn: () => api.get(`/companies/${selectedCompanyId}/opprrc/deliveries?issueId=${issue!.id}`),
+    enabled: !!issue?.id && !!selectedCompanyId,
+    staleTime: 60_000,
   });
 
   const { data: liveRuns } = useQuery({
@@ -654,6 +664,8 @@ export function IssueDetail() {
   };
 
   const isImageAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("image/");
+  const isVideoAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("video/");
+  const isAudioAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("audio/");
   const attachmentList = attachments ?? [];
   const hasAttachments = attachmentList.length > 0;
   const attachmentUploadButton = (
@@ -985,15 +997,25 @@ export function IssueDetail() {
                 >
                   {attachment.originalFilename ?? attachment.id}
                 </a>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => deleteAttachment.mutate(attachment.id)}
-                  disabled={deleteAttachment.isPending}
-                  title="Delete attachment"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <a
+                    href={`${attachment.contentPath}?download=1`}
+                    download={attachment.originalFilename ?? attachment.id}
+                    className="text-muted-foreground hover:text-foreground"
+                    title="Download attachment"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </a>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteAttachment.mutate(attachment.id)}
+                    disabled={deleteAttachment.isPending}
+                    title="Delete attachment"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
@@ -1008,11 +1030,38 @@ export function IssueDetail() {
                   />
                 </a>
               )}
+              {isVideoAttachment(attachment) && (
+                <video
+                  src={attachment.contentPath}
+                  controls
+                  preload="metadata"
+                  className="mt-2 max-h-56 w-full rounded border border-border bg-black object-contain"
+                />
+              )}
+              {isAudioAttachment(attachment) && (
+                <audio
+                  src={attachment.contentPath}
+                  controls
+                  preload="metadata"
+                  className="mt-2 w-full"
+                />
+              )}
             </div>
           ))}
         </div>
         </div>
       ) : null}
+
+      {opprrcDeliveries && opprrcDeliveries.length > 0 && (
+        <div className="px-4 pb-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+            OPPRRC Deliverables
+          </p>
+          {opprrcDeliveries.map((d) => (
+            <OpprrcStoragePanel key={d.id} deliveryId={d.id} issueId={issueId!} />
+          ))}
+        </div>
+      )}
 
       <IssueWorkspaceCard
         issue={issue}

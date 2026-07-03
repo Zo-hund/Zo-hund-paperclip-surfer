@@ -33,6 +33,8 @@
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
+    "dev:full": "cross-env PAPERCLIP_UI_DEV_MIDDLEWARE=true PAPERCLIP_MIGRATION_AUTO_APPLY=true tsx src/index.ts",
+    "dev:full:embedded": "cross-env DATABASE_URL= PAPERCLIP_DEPLOYMENT_MODE=local_trusted PAPERCLIP_UI_DEV_MIDDLEWARE=true PAPERCLIP_MIGRATION_AUTO_APPLY=true tsx src/index.ts",
     "dev:watch": "cross-env PAPERCLIP_MIGRATION_PROMPT=never PAPERCLIP_MIGRATION_AUTO_APPLY=true tsx ./scripts/dev-watch.ts",
     "prepare:ui-dist": "node ../scripts/prepare-server-ui-dist.mjs",
     "build": "pnpm --filter @paperclipai/plugin-sdk build && tsc && node -e \"const fs=require('fs'); fs.mkdirSync('dist/onboarding-assets',{recursive:true}); fs.cpSync('src/onboarding-assets','dist/onboarding-assets',{recursive:true});\"",

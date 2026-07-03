@@ -328,7 +328,9 @@ export function assetRoutes(db: Db, storage: StorageService) {
       res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
     }
     const filename = asset.originalFilename ?? "asset";
-    res.setHeader("Content-Disposition", `inline; filename=\"${filename.replaceAll("\"", "")}\"`);
+    const forceDownload = req.query.download === "1" || req.query.download === "true";
+    const disposition = forceDownload ? "attachment" : "inline";
+    res.setHeader("Content-Disposition", `${disposition}; filename="${filename.replaceAll('"', '')}"`);
 
     object.stream.on("error", (err) => {
       next(err);

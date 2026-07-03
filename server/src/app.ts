@@ -50,6 +50,8 @@ import { livekitRoutes } from "./routes/livekit.js";
 import { meRoutes } from "./routes/me.js";
 import { verifyRoutes } from "./routes/verify.js";
 import { stripeWebhookRoutes, stripeApiRoutes } from "./routes/stripe.js";
+import { opprrcRoutes } from "./routes/opprrc.js";
+import { startOpprrcBackupWorker } from "./services/opprrc-backup-worker.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -277,6 +279,7 @@ export async function createApp(
   api.use(agentKpiRoutes(db));
   api.use(agentExperimentRoutes(db));
   api.use(amxRoutes(db));
+  api.use(opprrcRoutes(db));
   api.use(lmsRoutes(db));
   api.use(stripeApiRoutes(db));
   api.use(auditRoutes(db));
@@ -477,6 +480,7 @@ export async function createApp(
 
   jobCoordinator.start();
   scheduler.start();
+  const stopOpprrcBackupWorker = startOpprrcBackupWorker(db);
   void toolDispatcher.initialize().catch((err) => {
     logger.error({ err }, "Failed to initialize plugin tool dispatcher");
   });
@@ -498,6 +502,7 @@ export async function createApp(
   });
   process.once("exit", () => {
     devWatcher?.close();
+    stopOpprrcBackupWorker();
     hostServiceCleanup.disposeAll();
     hostServiceCleanup.teardown();
   });

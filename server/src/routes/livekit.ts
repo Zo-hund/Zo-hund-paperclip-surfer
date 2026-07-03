@@ -4,7 +4,11 @@ import type { Db } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 import { agentService, companyService } from "../services/index.js";
 
-const LIVEKIT_VOICE_AGENT_NAME = "amx-voice-agent";
+// Agent name the server dispatches to (and matches personas against). Overridable
+// via LIVEKIT_AGENT_NAME so a local dev stack can register an isolated worker
+// (e.g. "amx-voice-agent-dev") on the shared LiveKit Cloud project without
+// intercepting production meeting dispatches.
+const LIVEKIT_VOICE_AGENT_NAME = process.env.LIVEKIT_AGENT_NAME ?? "amx-voice-agent";
 
 /**
  * Looks up the company's designated LiveKit voice persona (an agent row

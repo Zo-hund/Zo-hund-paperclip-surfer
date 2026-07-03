@@ -44,15 +44,28 @@ RUN cd server && node_modules/.bin/tsc; mkdir -p dist/onboarding-assets && cp -R
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
 FROM node:lts-trixie-slim AS production
-# Production stage uses a fresh slim base — no build tools, no git
+# Production stage: slim base + agent CLI runtimes
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && apt-get install -y --no-install-recommends \
+       ca-certificates curl git \
+       python3 python3-pip \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 COPY --chown=node:node --from=build /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai \
+# Install adapter CLIs:
+#   claude_local  → @anthropic-ai/claude-code
+#   codex_local   → @openai/codex
+#   opencode_local→ opencode-ai
+#   pi_local      → @earendil-works/pi-coding-agent
+#   hermes_local  → hermes-agent (pip)
+RUN npm install --global --ignore-scripts \
+      @anthropic-ai/claude-code@latest \
+      @openai/codex@latest \
+      opencode-ai \
+      @earendil-works/pi-coding-agent \
+  && pip3 install --break-system-packages hermes-agent \
   && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /paperclip \

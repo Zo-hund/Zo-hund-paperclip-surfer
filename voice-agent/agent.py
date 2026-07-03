@@ -765,7 +765,7 @@ def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | Non
 server = AgentServer()
 
 
-@server.rtc_session(agent_name="amx-voice-agent")
+@server.rtc_session(agent_name=os.environ.get("LIVEKIT_AGENT_NAME", "amx-voice-agent"))
 async def entrypoint(ctx: JobContext):
     import json
     from livekit import rtc
