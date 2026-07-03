@@ -66,8 +66,7 @@ RUN npm install --global --ignore-scripts \
       @openai/codex@latest \
       opencode-ai \
       @earendil-works/pi-coding-agent \
-  && pip3 install --break-system-packages --upgrade setuptools packaging \
-  && pip3 install --break-system-packages hermes-agent runwayml \
+  && pip3 install --break-system-packages --ignore-installed hermes-agent runwayml \
   && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /paperclip \
