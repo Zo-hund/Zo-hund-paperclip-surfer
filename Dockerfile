@@ -49,6 +49,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ca-certificates curl git \
        python3 python3-pip \
+       ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
@@ -65,7 +66,7 @@ RUN npm install --global --ignore-scripts \
       @openai/codex@latest \
       opencode-ai \
       @earendil-works/pi-coding-agent \
-  && pip3 install --break-system-packages hermes-agent \
+  && pip3 install --break-system-packages hermes-agent runwayml \
   && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /paperclip \
