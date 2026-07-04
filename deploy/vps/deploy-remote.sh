@@ -34,6 +34,11 @@ GHCR_PULL_USERNAME_VALUE="$(read_env GHCR_PULL_USERNAME)"
 GHCR_PULL_TOKEN_VALUE="$(read_env GHCR_PULL_TOKEN)"
 APP_SERVICE_NAME_VALUE="$(read_env APP_SERVICE_NAME)"
 DEPLOY_LAYOUT_VALUE="$(read_env DEPLOY_LAYOUT)"
+# Optional space-separated list of services to deploy. When set, pull/up are
+# scoped to these services only — useful when the compose file declares
+# services (e.g. traefik) that are intentionally not run on this host and
+# would otherwise fail `up` and abort the deploy.
+DEPLOY_SERVICES_VALUE="$(read_env DEPLOY_SERVICES)"
 AMX_IMAGE_VALUE="$(read_env AMX_IMAGE)"
 POSTGRES_USER_VALUE="$(read_env POSTGRES_USER)"
 POSTGRES_PASSWORD_VALUE="$(read_env POSTGRES_PASSWORD)"
@@ -141,8 +146,14 @@ if [[ -n "${GHCR_PULL_USERNAME_VALUE}" && -n "${GHCR_PULL_TOKEN_VALUE}" ]]; then
   echo "${GHCR_PULL_TOKEN_VALUE}" | docker login ghcr.io -u "${GHCR_PULL_USERNAME_VALUE}" --password-stdin
 fi
 
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --remove-orphans
+if [[ -n "${DEPLOY_SERVICES_VALUE}" ]]; then
+  # shellcheck disable=SC2086 — intentional word splitting of service list
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull ${DEPLOY_SERVICES_VALUE}
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --no-deps ${DEPLOY_SERVICES_VALUE}
+else
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --remove-orphans
+fi
 
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" ps
 

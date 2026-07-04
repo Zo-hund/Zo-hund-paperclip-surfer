@@ -27,7 +27,11 @@ env:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # Runs on the VPS itself: GitHub-hosted runners cannot reach the VPS over
+    # SSH (Hostinger firewall / rotating Azure IPs), so deploys execute from a
+    # self-hosted runner registered on the target host. SSH steps below then
+    # connect to localhost-equivalent (the host's own address).
+    runs-on: [self-hosted, vps]
     environment: ${{ inputs.target_name }}
     permissions:
       contents: read
@@ -51,6 +55,15 @@ jobs:
           DEPLOY_LAYOUT="${{ vars.VPS_LAYOUT }}"
           if [ -z "${DEPLOY_LAYOUT}" ]; then
             DEPLOY_LAYOUT="generic"
+          fi
+
+          # When VPS_PRESERVE_ENV=true the remote env file is treated as the
+          # source of truth (hand-managed secrets like RUNWAYML_API_SECRET
+          # live only on the host). The deploy then only rewrites AMX_IMAGE
+          # instead of regenerating the whole env file from GitHub secrets.
+          PRESERVE_ENV="${{ vars.VPS_PRESERVE_ENV }}"
+          if [ -z "${PRESERVE_ENV}" ]; then
+            PRESERVE_ENV="false"
           fi
 
           STACK_NAME="${{ inputs.stack_name }}"
@@ -94,6 +107,7 @@ jobs:
           IMAGE_REF="${IMAGE_REPOSITORY}:${{ inputs.image_tag }}"
 
           echo "deploy_layout=${DEPLOY_LAYOUT}" >> "$GITHUB_OUTPUT"
+          echo "preserve_env=${PRESERVE_ENV}" >> "$GITHUB_OUTPUT"
           echo "stack_name=${STACK_NAME}" >> "$GITHUB_OUTPUT"
           echo "domain=${DOMAIN}" >> "$GITHUB_OUTPUT"
           echo "deploy_dir=${DEPLOY_DIR}" >> "$GITHUB_OUTPUT"
@@ -142,6 +156,7 @@ jobs:
           ssh-keyscan -p "${{ secrets.VPS_SSH_PORT || 22 }}" -H "${{ secrets.VPS_HOST }}" >> "${HOME}/.ssh/known_hosts" || echo "Warning: ssh-keyscan failed"
 
       - name: Render VPS env file
+        if: steps.vars.outputs.preserve_env != 'true'
         shell: bash
         env:
           DEPLOY_LAYOUT: ${{ steps.vars.outputs.deploy_layout }}
@@ -157,6 +172,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RUNWAYML_API_SECRET: ${{ secrets.RUNWAYML_API_SECRET }}
           GHCR_PULL_USERNAME: ${{ secrets.REGISTRY_USERNAME || secrets.GHCR_PULL_USERNAME || github.repository_owner }}
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PAT || secrets.REGISTRY_TOKEN || secrets.GHCR_PULL_TOKEN }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
@@ -183,6 +199,7 @@ jobs:
           ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
           GOOGLE_API_KEY=${GOOGLE_API_KEY}
           OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+          RUNWAYML_API_SECRET=${RUNWAYML_API_SECRET}
           GHCR_PULL_USERNAME=${GHCR_PULL_USERNAME}
           GHCR_PULL_TOKEN=${GHCR_PULL_TOKEN}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -241,10 +258,18 @@ jobs:
             done
             return 1
           }
+          UPLOAD_FILES=(
+            "${{ steps.vars.outputs.compose_template }}"
+            "deploy/vps/deploy-remote.sh"
+          )
+          # In preserve-env mode the remote env file is authoritative and is
+          # never overwritten from CI; only AMX_IMAGE is rewritten in place
+          # by the following step.
+          if [ "${{ steps.vars.outputs.preserve_env }}" != "true" ]; then
+            UPLOAD_FILES+=("${RUNNER_TEMP}/${{ steps.vars.outputs.remote_env_file }}")
+          fi
           scp_retry -P "${{ secrets.VPS_SSH_PORT || 22 }}" \
-            "${{ steps.vars.outputs.compose_template }}" \
-            "deploy/vps/deploy-remote.sh" \
-            "${RUNNER_TEMP}/${{ steps.vars.outputs.remote_env_file }}" \
+            "${UPLOAD_FILES[@]}" \
             "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}:${{ steps.vars.outputs.deploy_dir }}/"
           # The hostinger-shared-traefik compose template builds a voice-agent
           # image locally on the VPS (no published image for it), so its build
@@ -254,6 +279,33 @@ jobs:
               "voice-agent" \
               "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}:${{ steps.vars.outputs.deploy_dir }}/"
           fi
+
+      - name: Update image reference in remote env file (preserve-env mode)
+        if: steps.vars.outputs.preserve_env == 'true'
+        shell: bash
+        run: |
+          ssh_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if ssh -o ConnectTimeout=15 -o ConnectionAttempts=3 "$@"; then
+                return 0
+              fi
+              echo "ssh attempt ${attempt}/5 failed, retrying in 10s..." >&2
+              sleep 10
+            done
+            return 1
+          }
+          # --follow-symlinks: .env.vps may be a symlink to the hand-managed
+          # .env; sed -i must edit the target, not replace the link.
+          ssh_retry -p "${{ secrets.VPS_SSH_PORT || 22 }}" "${{ secrets.VPS_SSH_USER }}@${{ secrets.VPS_HOST }}" "\
+            cd '${{ steps.vars.outputs.deploy_dir }}' && \
+            test -f '${{ steps.vars.outputs.remote_env_file }}' && \
+            if grep -q '^AMX_IMAGE=' '${{ steps.vars.outputs.remote_env_file }}'; then \
+              sed -i --follow-symlinks 's|^AMX_IMAGE=.*|AMX_IMAGE=${{ steps.vars.outputs.image_ref }}|' '${{ steps.vars.outputs.remote_env_file }}'; \
+            else \
+              echo 'AMX_IMAGE=${{ steps.vars.outputs.image_ref }}' >> '${{ steps.vars.outputs.remote_env_file }}'; \
+            fi && \
+            grep '^AMX_IMAGE=' '${{ steps.vars.outputs.remote_env_file }}'"
 
       - name: Rename uploaded deployment files on remote host
         shell: bash
