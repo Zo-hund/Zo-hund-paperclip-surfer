@@ -45,6 +45,9 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       RUNWAYML_API_SECRET: ${RUNWAYML_API_SECRET:-}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       PAPERCLIP_EMAIL_FROM: ${PAPERCLIP_EMAIL_FROM:-}
       PAPERCLIP_EMAIL_REPLY_TO: ${PAPERCLIP_EMAIL_REPLY_TO:-}
@@ -75,6 +78,19 @@ services:
       - traefik.http.routers.amx.tls=true
       - traefik.http.routers.amx.tls.certresolver=letsencrypt
       - traefik.http.services.amx.loadbalancer.server.port=3100
+    networks:
+      - amx
+
+  voice-agent:
+    build:
+      context: ../../voice-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     networks:
       - amx
 
