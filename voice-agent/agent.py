@@ -325,11 +325,11 @@ async def _gemini_search(query: str) -> tuple[str, list[dict]]:
     genai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
     try:
         model = genai.GenerativeModel(
-            "gemini-2.0-flash-exp",
+            "gemini-2.5-flash",
             tools=[{"google_search": {}}],
         )
     except Exception:
-        model = genai.GenerativeModel("gemini-2.0-flash-exp")
+        model = genai.GenerativeModel("gemini-2.5-flash")
     response = model.generate_content(f"Search the web and answer concisely: {query}")
     text = response.text or "No results found."
     results: list[dict] = []
@@ -772,7 +772,7 @@ async def entrypoint(ctx: JobContext):
 
     session = AgentSession(
         stt=inference.STT(model="deepgram/nova-3", language="en"),
-        llm=lk_google.LLM(model="gemini-2.0-flash-exp"),
+        llm=lk_google.LLM(model="gemini-2.5-flash"),
         tts=inference.TTS(
             model="cartesia/sonic-3",
             voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
