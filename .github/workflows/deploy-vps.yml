@@ -185,6 +185,9 @@ jobs:
           LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
         run: |
           cat > "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF
           COMPOSE_PROJECT_NAME=${STACK_NAME}
@@ -212,6 +215,9 @@ jobs:
           LIVEKIT_URL=${LIVEKIT_URL}
           LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
           LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+          VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+          VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+          VAPID_SUBJECT=${VAPID_SUBJECT}
           EOF
           if [ "${DEPLOY_LAYOUT}" = "generic" ]; then
             cat >> "${RUNNER_TEMP}/${REMOTE_ENV_FILE}" <<EOF

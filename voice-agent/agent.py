@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import aiohttp
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -389,6 +390,50 @@ async def _analyze_image(frame_bytes: bytes) -> str:
         return "I captured the image but had trouble analyzing it right now."
 
 
+def _meeting_id_from_room(room) -> str | None:
+    """Meeting rooms are named "meeting-<uuid>" (see GlobalVoiceMeetingOverlay.tsx
+    on the client and server/src/routes/livekit.ts room-action handling on the
+    server). Returns None for the global cross-company orb room, which has no
+    associated meeting to post actions against.
+    """
+    name = getattr(room, "name", "") or ""
+    if name.startswith("meeting-"):
+        return name[len("meeting-"):]
+    return None
+
+
+async def _post_meeting_action(room, action: str, params: dict) -> dict:
+    """POST a CRUD action to server/src/routes/meetings.ts's
+    POST /:id/actions endpoint, authenticated as this voice agent's own
+    Paperclip agent identity (PAPERCLIP_VOICE_AGENT_API_KEY).
+
+    Raises RuntimeError with a user-speakable message on any failure — the
+    calling @function_tool() should catch and return it directly.
+    """
+    meeting_id = _meeting_id_from_room(room)
+    if not meeting_id:
+        raise RuntimeError("This isn't a company meeting room, so I can't file that here.")
+
+    api_key = os.environ.get("PAPERCLIP_VOICE_AGENT_API_KEY")
+    if not api_key:
+        raise RuntimeError("I'm not configured to take actions in Paperclip yet — the board needs to add my API key.")
+
+    base_url = os.environ.get("PAPERCLIP_API_BASE_URL", "http://amx:3100")
+    url = f"{base_url}/api/meetings/{meeting_id}/actions"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            url,
+            json={"action": action, "params": params},
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as resp:
+            body = await resp.json()
+            if resp.status >= 400:
+                raise RuntimeError(body.get("error") or f"Action failed ({resp.status}).")
+            return body
+
+
 class JAZSupportGuide(Agent):
     def __init__(self, instructions: str | None = None, greeting: str | None = None) -> None:
         super().__init__(instructions=instructions or JAZ_INSTRUCTIONS)
@@ -665,6 +710,52 @@ class JAZSupportGuide(Agent):
         except Exception as e:
             logger.warning("analyze_page RPC failed: %s", e)
             return "I wasn't able to capture the page screenshot right now."
+
+    # ── Meeting CRUD actions ───────────────────────────────────────────────────
+    # Calls POST /api/meetings/:id/actions (server/src/routes/meetings.ts),
+    # which reuses the same issueService methods (and activity logging) as
+    # the standard REST routes — not a parallel implementation.
+
+    @function_tool()
+    async def create_issue(self, context: RunContext, title: str, description: str = "") -> str:
+        """Create a new issue/task in this meeting's company.
+
+        Use when the user says things like 'create an issue for X', 'file a
+        ticket about Y', 'add a task to do Z', or 'let's track this as a task'.
+        """
+        room = context.session.room_io.room
+        try:
+            body = await _post_meeting_action(
+                room, "create_issue", {"title": title, "description": description or None},
+            )
+            issue = body.get("result", {})
+            return f"Created issue {issue.get('identifier', '')}: {issue.get('title', title)}."
+        except RuntimeError as e:
+            return str(e)
+        except Exception as e:
+            logger.warning("create_issue failed: %s", e)
+            return "I ran into a problem creating that issue."
+
+    @function_tool()
+    async def update_issue_status(self, context: RunContext, issue_id: str, status: str) -> str:
+        """Update an existing issue's status.
+
+        `status` must be one of: backlog, todo, in_progress, in_review, done,
+        cancelled. Use when the user says 'mark issue X as done', 'move this
+        to in progress', or similar status-change requests. You need the
+        issue's id — ask for it or look it up via search_web/context if unknown.
+        """
+        room = context.session.room_io.room
+        try:
+            await _post_meeting_action(
+                room, "update_issue_status", {"issueId": issue_id, "status": status},
+            )
+            return f"Updated the issue's status to {status}."
+        except RuntimeError as e:
+            return str(e)
+        except Exception as e:
+            logger.warning("update_issue_status failed: %s", e)
+            return "I ran into a problem updating that issue's status."
 
     # ── Web / time tools ──────────────────────────────────────────────────────
 

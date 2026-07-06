@@ -4,10 +4,11 @@ import {
   CheckCircle2, AlertTriangle, Zap, Maximize, Minimize,
   Video, VideoOff, ScreenShare, ScreenShareOff, Circle,
   Activity, Cpu, Radar, Network, BarChart2,
-  Hand, Minimize2
+  Hand, Minimize2, PenTool
 } from "lucide-react";
 import type { AgentState } from "@livekit/components-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
+import { useCompanyRole } from "../../hooks/useCompanyRole";
 import { meetingsApi } from "../../api/meetings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +16,11 @@ import { useToast } from "../../context/ToastContext";
 import { useQuery } from "@tanstack/react-query";
 import { InviteAgentsDialog } from "./InviteAgentsDialog";
 import { AgentAudioVisualizerAura } from "@/components/agent-audio-visualizer-aura";
-import type { VideoTrackMap, LiveKitVoiceStatus } from "../../hooks/useLiveKitVoice";
+import type { VideoTrackMap, LiveKitVoiceStatus, CanvasEvent } from "../../hooks/useLiveKitVoice";
 import { useNavigate } from "../../lib/router";
 import { ModulePanel } from "./ModulePanel";
 import type { ModuleData } from "./ModulePanel";
+import { MeetingCanvas } from "./MeetingCanvas";
 
 function toAgentState(status: LiveKitVoiceStatus | undefined): AgentState {
   switch (status) {
@@ -47,6 +49,9 @@ interface VoiceMeetingRoomProps {
   localVideoTrack?: MediaStreamTrack | null;
   localScreenTrack?: MediaStreamTrack | null;
   sendText?: (text: string) => void;
+  sendCanvasStroke?: (stroke: { points: { x: number; y: number }[]; color: string; width: number }) => void;
+  sendCanvasClear?: () => void;
+  canvasEvent?: CanvasEvent | null;
   setPTTActive?: (active: boolean) => void;
   activeModule?: ModuleData | null;
   clearModule?: () => void;
@@ -120,13 +125,13 @@ const SLASH_COMMANDS: Record<string, string> = {
   "/analytics": "/analytics",
 };
 
-export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, sendCanvasStroke, sendCanvasClear, canvasEvent, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
   const navigate = useNavigate();
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [mode, setMode] = useState<"chat" | "cockpit" | "video">("cockpit");
+  const [mode, setMode] = useState<"chat" | "cockpit" | "video" | "canvas">("cockpit");
   const [recording, setRecording] = useState(false);
   const [isPTTMode, setIsPTTMode] = useState(false);
 
@@ -139,6 +144,11 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
     queryFn: () => meetingsApi.getDetail(meetingId),
     refetchInterval: 2500,
   });
+
+  // Gates invite/camera/screen-share controls below `member` tier — mirrors
+  // the server-side assertCompanyRole("member") checks on these actions.
+  const { hasRoleAtLeast } = useCompanyRole(meeting?.companyId);
+  const canModerate = hasRoleAtLeast("member");
 
   useEffect(() => {
     if (threadRef.current) {
@@ -219,7 +229,8 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
 
   const isCockpit = mode === "cockpit";
   const isVideo = mode === "video";
-  const isExpanded = isCockpit || isVideo;
+  const isCanvas = mode === "canvas";
+  const isExpanded = isCockpit || isVideo || isCanvas;
 
   // Shared mobile bottom-bar button style
   const mobileBarBtn = (active: boolean, color = "#94a3b8") =>
@@ -317,12 +328,17 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
               onClick={() => setMode("video")}>
               <Video className="h-3 w-3 mr-1.5" /> Vid Pod
             </Button>
+            <Button size="sm" variant="ghost"
+              className={`h-8 px-3 text-[9px] font-black uppercase tracking-[0.2em] transition-all ${mode === "canvas" ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/40 hover:text-[#94a3b8]"}`}
+              onClick={() => setMode("canvas")}>
+              <PenTool className="h-3 w-3 mr-1.5" /> Canvas
+            </Button>
           </div>
 
           {/* Desktop: media controls */}
           <div className="hidden sm:flex items-center gap-1 ml-1">
             <div className="w-[1px] h-6 bg-white/10 mr-1" />
-            {toggleCamera && (
+            {canModerate && toggleCamera && (
               <Button size="sm" variant="ghost"
                 onClick={() => { toggleCamera(); if (!cameraEnabled) setMode("video"); }}
                 className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${cameraEnabled ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/30 hover:text-white/60"}`}>
@@ -330,7 +346,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                 Cam
               </Button>
             )}
-            {toggleScreenShare && (
+            {canModerate && toggleScreenShare && (
               <Button size="sm" variant="ghost"
                 onClick={handleScreenShare}
                 className={`h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : !screenShareSupported ? "text-white/20 cursor-not-allowed" : "text-white/30 hover:text-white/60"}`}>
@@ -344,11 +360,13 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
               <Circle className={`h-3.5 w-3.5 ${recording ? "fill-red-500" : ""}`} />
               {recording ? "Stop" : "Rec"}
             </Button>
-            <Button size="sm" variant="ghost"
-              className="h-8 px-2 text-[9px] font-black uppercase tracking-widest text-[#94a3b8]/50 hover:text-[#94a3b8] hover:bg-[#94a3b8]/10 gap-1"
-              onClick={() => setInviteOpen(true)}>
-              <UserPlus className="h-3.5 w-3.5" /> Add Entity
-            </Button>
+            {canModerate && (
+              <Button size="sm" variant="ghost"
+                className="h-8 px-2 text-[9px] font-black uppercase tracking-widest text-[#94a3b8]/50 hover:text-[#94a3b8] hover:bg-[#94a3b8]/10 gap-1"
+                onClick={() => setInviteOpen(true)}>
+                <UserPlus className="h-3.5 w-3.5" /> Add Entity
+              </Button>
+            )}
             {setPTTActive && (
               <Button size="sm" variant="ghost"
                 title={isPTTMode ? "Switch to Open Mic" : "Switch to Push-to-Talk"}
@@ -457,8 +475,19 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             </div>
           )}
 
+          {/* CANVAS — ephemeral shared draw surface, synced via LiveKit data channel */}
+          {isCanvas && (
+            <div className="flex-1 flex p-3 sm:p-4 overflow-hidden">
+              <MeetingCanvas
+                sendCanvasStroke={sendCanvasStroke}
+                sendCanvasClear={sendCanvasClear}
+                remoteEvent={canvasEvent}
+              />
+            </div>
+          )}
+
           {/* CHAT STRIP — participant avatars (chat mode only, mobile-friendly scrollable row) */}
-          {!isCockpit && !isVideo && participants.length > 0 && (
+          {!isCockpit && !isVideo && !isCanvas && participants.length > 0 && (
             <div className="flex items-center gap-4 px-4 py-2.5 border-b border-white/[0.04] bg-[#0a0a15] overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: "none" }}>
               {participants.map((p) => {
                 const color = colorMap.get(p.agentId) ?? "#94a3b8";
@@ -480,7 +509,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
           )}
 
           {/* CENTER PANE: Chat thread + input */}
-          {(!isVideo || true) && (
+          {!isCanvas && (
             <div className={`flex flex-col min-w-0 bg-black/20 backdrop-blur-sm rounded-xl border border-white/5 relative overflow-hidden transition-all duration-500
               ${isVideo ? "hidden md:flex md:w-80 flex-shrink-0" : "flex-1"}`}>
 
@@ -652,8 +681,15 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             <Video className="h-5 w-5" />
             <span className="text-[8px] font-black uppercase tracking-wide">Vid Pod</span>
           </button>
+          {/* Mode: Canvas */}
+          <button
+            onClick={() => setMode("canvas")}
+            className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${mode === "canvas" ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/40"}`}>
+            <PenTool className="h-5 w-5" />
+            <span className="text-[8px] font-black uppercase tracking-wide">Canvas</span>
+          </button>
           {/* Camera */}
-          {toggleCamera && (
+          {canModerate && toggleCamera && (
             <button
               onClick={() => { toggleCamera(); if (!cameraEnabled) setMode("video"); }}
               className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${cameraEnabled ? "bg-[#94a3b8]/20 text-[#94a3b8]" : "text-white/40"}`}>
@@ -662,7 +698,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             </button>
           )}
           {/* Screen share */}
-          {toggleScreenShare && (
+          {canModerate && toggleScreenShare && (
             <button
               onClick={handleScreenShare}
               className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${screenShareEnabled ? "bg-blue-500/20 text-blue-400" : !screenShareSupported ? "text-white/20" : "text-white/40"}`}>

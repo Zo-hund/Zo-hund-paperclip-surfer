@@ -18,6 +18,7 @@ import {
   ToggleField,
   HintIcon
 } from "../components/agent-config-primitives";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 
 type AgentSnippetInput = {
   onboardingTextUrl: string;
@@ -34,6 +35,7 @@ export function CompanySettings() {
   } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
+  const pushNotifications = usePushNotifications(selectedCompanyId ?? undefined);
   const queryClient = useQueryClient();
   // General settings local state
   const [companyName, setCompanyName] = useState("");
@@ -452,6 +454,32 @@ export function CompanySettings() {
           />
         </div>
       </div>
+
+      {/* Notifications */}
+      {pushNotifications.isSupported && (
+        <div className="space-y-4">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Notifications
+          </div>
+          <div className="rounded-md border border-border px-4 py-3">
+            <ToggleField
+              label="Push notifications on this device"
+              hint="Get notified here (even when the app is closed) when a meeting starts for this company."
+              checked={pushNotifications.isSubscribed}
+              onChange={(v) => {
+                const action = v ? pushNotifications.subscribe() : pushNotifications.unsubscribe();
+                action.catch((err) =>
+                  pushToast({
+                    title: "Notifications",
+                    body: err instanceof Error ? err.message : "Something went wrong",
+                    tone: "error",
+                  }),
+                );
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <CompanyContentSettings companyId={selectedCompany.id} issuePrefix={selectedCompany.issuePrefix} />
 

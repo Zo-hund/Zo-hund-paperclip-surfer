@@ -46,6 +46,15 @@ export interface TranscriptEntry {
 export type VideoTrackEntry = { video?: MediaStreamTrack; screen?: MediaStreamTrack };
 export type VideoTrackMap = Map<string, VideoTrackEntry>;
 
+export type CanvasStrokeEvent = {
+  type: "canvas_stroke";
+  points: { x: number; y: number }[];
+  color: string;
+  width: number;
+};
+export type CanvasClearEvent = { type: "canvas_clear" };
+export type CanvasEvent = CanvasStrokeEvent | CanvasClearEvent;
+
 export interface UseLiveKitVoiceOptions {
   /** LiveKit room name. Defaults to "amx-command-room" (the global orb room). */
   roomName?: string;
@@ -57,6 +66,8 @@ export interface UseLiveKitVoiceOptions {
   onNavigate?: (path: string) => void;
   /** Called when the agent issues any tool_call. */
   onToolCall?: (name: string, args: Record<string, unknown>) => void;
+  /** Called when a canvas draw/clear event arrives from a remote participant. */
+  onCanvasEvent?: (event: CanvasEvent) => void;
   /** Company prefix for the active company (e.g. "AMXA"). Used to resolve bare paths. */
   companyPrefix?: string;
   /** All known company prefixes — prevents double-prefixing cross-company paths. */
@@ -78,6 +89,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     autoConnect = false,
     onNavigate,
     onToolCall,
+    onCanvasEvent,
     companyPrefix,
     companiesPrefixes,
     companyId,
@@ -96,6 +108,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const navigateRef = useRef(navigate);
   const onNavigateRef = useRef(onNavigate);
   const onToolCallRef = useRef(onToolCall);
+  const onCanvasEventRef = useRef(onCanvasEvent);
   const [status, setStatus] = useState<LiveKitVoiceStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +155,11 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
           return;
         }
 
+        if (msg.type === "canvas_stroke" || msg.type === "canvas_clear") {
+          onCanvasEventRef.current?.(msg as unknown as CanvasEvent);
+          return;
+        }
+
         if (msg.type === "tool_call" && typeof msg.name === "string") {
           const args = (msg.args ?? {}) as Record<string, unknown>;
           onToolCall?.(msg.name, args);
@@ -174,6 +192,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   navigateRef.current = navigate;
   onNavigateRef.current = onNavigate;
   onToolCallRef.current = onToolCall;
+  onCanvasEventRef.current = onCanvasEvent;
 
   /** Connect to a LiveKit room. Pass a roomName to override the default
    *  (needed because callers set the meeting id and connect in the same tick). */
@@ -449,6 +468,24 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     room.localParticipant.publishData(data, { reliable: true });
   }, []);
 
+  /** Broadcast a canvas stroke to all participants via data channel */
+  const sendCanvasStroke = useCallback((stroke: Omit<CanvasStrokeEvent, "type">) => {
+    const room = roomRef.current;
+    if (!room || room.state !== ConnectionState.Connected) return;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify({ type: "canvas_stroke", ...stroke }));
+    room.localParticipant.publishData(data, { reliable: true });
+  }, []);
+
+  /** Broadcast a canvas clear to all participants via data channel */
+  const sendCanvasClear = useCallback(() => {
+    const room = roomRef.current;
+    if (!room || room.state !== ConnectionState.Connected) return;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(JSON.stringify({ type: "canvas_clear" }));
+    room.localParticipant.publishData(data, { reliable: true });
+  }, []);
+
   /** PTT mode: call with true to unmute (hold), false to mute (release) */
   const setPTTActive = useCallback((active: boolean) => {
     roomRef.current?.localParticipant.setMicrophoneEnabled(active);
@@ -482,6 +519,8 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     disconnect,
     setMuted,
     sendText,
+    sendCanvasStroke,
+    sendCanvasClear,
     isConnected: status !== "idle" && status !== "error" && status !== "disconnected",
     cameraEnabled,
     toggleCamera,

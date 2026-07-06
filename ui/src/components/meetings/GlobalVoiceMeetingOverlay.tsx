@@ -9,13 +9,13 @@
  * Mounted once in App.tsx next to <OnboardingWizard /> so it is always present
  * regardless of which route is active.
  */
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { PhoneOff, Maximize2, Radio } from "lucide-react";
 import type { AgentState } from "@livekit/components-react";
 import { useMeeting } from "../../context/MeetingContext";
 import { useCompany } from "../../context/CompanyContext";
 import { useDialog } from "../../context/DialogContext";
-import { useLiveKitVoice, type LiveKitVoiceStatus } from "../../hooks/useLiveKitVoice";
+import { useLiveKitVoice, type LiveKitVoiceStatus, type CanvasEvent } from "../../hooks/useLiveKitVoice";
 import { AgentAudioVisualizerAura } from "../agent-audio-visualizer-aura";
 import { VoiceMeetingRoom } from "./VoiceMeetingRoom";
 
@@ -93,6 +93,7 @@ export function GlobalVoiceMeetingOverlay() {
 
   const { selectedCompanyId, selectedCompany, companies } = useCompany();
   const { openNewIssue, openNewAgent, openNewProject } = useDialog();
+  const [lastCanvasEvent, setLastCanvasEvent] = useState<CanvasEvent | null>(null);
 
   const liveKit = useLiveKitVoice({
     roomName: liveKitSessionId ?? "amx-command-room",
@@ -102,6 +103,7 @@ export function GlobalVoiceMeetingOverlay() {
     companiesPrefixes: companies.map((c) => c.issuePrefix.toUpperCase()),
     avatarEnabled: liveKitAvatarEnabled,
     onNavigate: minimize,
+    onCanvasEvent: setLastCanvasEvent,
     onToolCall: (name, args) => {
       if (name !== "open_modal") return;
       const modal = args.modal;
@@ -168,6 +170,9 @@ export function GlobalVoiceMeetingOverlay() {
       localVideoTrack={liveKit.localVideoTrack}
       localScreenTrack={liveKit.localScreenTrack}
       sendText={liveKit.sendText}
+      sendCanvasStroke={liveKit.sendCanvasStroke}
+      sendCanvasClear={liveKit.sendCanvasClear}
+      canvasEvent={lastCanvasEvent}
       setPTTActive={liveKit.setPTTActive}
       activeModule={liveKit.activeModule}
       clearModule={liveKit.clearModule}

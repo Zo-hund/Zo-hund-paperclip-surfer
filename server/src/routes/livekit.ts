@@ -1,8 +1,12 @@
 import { Router } from "express";
+import { eq } from "drizzle-orm";
 import { AccessToken, AgentDispatchClient, RoomServiceClient, DataPacket_Kind } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
+import { meetings } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 import { agentService, companyService } from "../services/index.js";
+import { assertBoard, assertCompanyAccess, assertCompanyRole } from "./authz.js";
+import { HttpError } from "../errors.js";
 
 // Agent name the server dispatches to (and matches personas against). Overridable
 // via LIVEKIT_AGENT_NAME so a local dev stack can register an isolated worker
@@ -58,6 +62,15 @@ export function livekitRoutes(db: Db) {
       }
       if (!identity || identity.length > 100) {
         return res.status(400).json({ error: "Invalid identity" });
+      }
+
+      // Company-scoped rooms require membership; the global cross-company
+      // orb room ("amx-command-room", no companyId) only requires board auth.
+      if (companyId) {
+        assertCompanyAccess(req, companyId);
+        assertCompanyRole(req, companyId, "member");
+      } else {
+        assertBoard(req);
       }
 
       const at = new AccessToken(apiKey, apiSecret, {
@@ -131,6 +144,9 @@ export function livekitRoutes(db: Db) {
 
       return res.json({ token, url: livekitUrl, roomName, identity });
     } catch (err) {
+      if (err instanceof HttpError) {
+        return res.status(err.status).json({ error: err.message });
+      }
       logger.error({ err }, "Failed to generate LiveKit token");
       return res.status(500).json({ error: "Failed to generate token" });
     }
@@ -151,6 +167,21 @@ export function livekitRoutes(db: Db) {
         return res.status(400).json({ error: "roomName and action required" });
       }
 
+      // Meeting rooms are named "meeting-<uuid>" (see GlobalVoiceMeetingOverlay.tsx);
+      // resolve the meeting's company for scoping. The global cross-company orb
+      // room ("amx-command-room") only requires board auth.
+      if (roomName.startsWith("meeting-")) {
+        const meetingId = roomName.slice("meeting-".length);
+        const [mtg] = await db.select({ companyId: meetings.companyId }).from(meetings).where(eq(meetings.id, meetingId)).limit(1);
+        if (!mtg) {
+          return res.status(404).json({ error: "Meeting not found for room" });
+        }
+        assertCompanyAccess(req, mtg.companyId);
+        assertCompanyRole(req, mtg.companyId, "member");
+      } else {
+        assertBoard(req);
+      }
+
       const apiKey = process.env.LIVEKIT_API_KEY;
       const apiSecret = process.env.LIVEKIT_API_SECRET;
       const livekitUrl = process.env.LIVEKIT_URL;
@@ -166,6 +197,9 @@ export function livekitRoutes(db: Db) {
       logger.info({ roomName, action }, "room-action dispatched");
       return res.json({ ok: true });
     } catch (err) {
+      if (err instanceof HttpError) {
+        return res.status(err.status).json({ error: err.message });
+      }
       logger.error({ err }, "room-action failed");
       return res.status(500).json({ error: "Failed to send room action" });
     }

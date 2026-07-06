@@ -1,5 +1,6 @@
 import type {
   Company,
+  CompanyMembershipRole,
   CompanyPortabilityExportRequest,
   CompanyPortabilityExportPreviewResult,
   CompanyPortabilityExportResult,
@@ -17,6 +18,8 @@ export const companiesApi = {
   list: () => api.get<Company[]>("/companies"),
   get: (companyId: string) => api.get<Company>(`/companies/${companyId}`),
   stats: () => api.get<CompanyStats>("/companies/stats"),
+  myRole: (companyId: string) =>
+    api.get<{ role: CompanyMembershipRole | null; isInstanceAdmin: boolean }>(`/companies/${companyId}/my-role`),
   create: (data: {
     name: string;
     description?: string | null;

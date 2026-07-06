@@ -47,6 +47,7 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { mcpEndpointRoutes } from "./routes/mcp-endpoint.js";
 import { openApiRoutes } from "./routes/openapi.js";
 import { livekitRoutes } from "./routes/livekit.js";
+import { pushRoutes } from "./routes/push.js";
 import { meRoutes } from "./routes/me.js";
 import { verifyRoutes } from "./routes/verify.js";
 import { stripeWebhookRoutes, stripeApiRoutes } from "./routes/stripe.js";
@@ -288,6 +289,7 @@ export async function createApp(
   api.use(mcpEndpointRoutes(db));
   api.use(openApiRoutes());
   api.use(livekitRoutes(db));
+  api.use(pushRoutes(db));
   api.use(meRoutes(db));
   api.use(verifyRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();

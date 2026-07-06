@@ -855,6 +855,28 @@ function copyToClipboard(btn) {
     res.json(company);
   });
 
+  /**
+   * GET /api/companies/:companyId/my-role
+   * Returns the current actor's effective role for this company, so the UI
+   * can gate mutation controls (invite, camera/screen toggle, etc.) without
+   * fetching the full membership list. Mirrors the same bypass rules as
+   * assertCompanyRole (instance admin / local_trusted / agent).
+   */
+  router.get("/:companyId/my-role", (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    if (req.actor.type === "agent") {
+      res.json({ role: "member" as const, isInstanceAdmin: false });
+      return;
+    }
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
+      res.json({ role: "owner" as const, isInstanceAdmin: true });
+      return;
+    }
+    res.json({ role: req.actor.companyRoles?.[companyId] ?? null, isInstanceAdmin: false });
+  });
+
   router.post("/:companyId/export", validate(companyPortabilityExportSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
