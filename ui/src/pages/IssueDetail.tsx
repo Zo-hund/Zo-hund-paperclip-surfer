@@ -9,7 +9,9 @@ import { heartbeatsApi } from "../api/heartbeats";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
 import { projectsApi } from "../api/projects";
+import { meetingsApi } from "../api/meetings";
 import { useCompany } from "../context/CompanyContext";
+import { useMeeting } from "../context/MeetingContext";
 import { usePanel } from "../context/PanelContext";
 import { useToast } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -57,6 +59,7 @@ import {
   SlidersHorizontal,
   Trash2,
   Globe,
+  Radio,
 } from "lucide-react";
 import type { ActivityEvent } from "@paperclipai/shared";
 import type { Agent, IssueAttachment } from "@paperclipai/shared";
@@ -202,6 +205,7 @@ function ActorIdentity({ evt, agentMap }: { evt: ActivityEvent; agentMap: Map<st
 export function IssueDetail() {
   const { issueId } = useParams<{ issueId: string }>();
   const { selectedCompanyId } = useCompany();
+  const { requestLiveKit } = useMeeting();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -226,6 +230,17 @@ export function IssueDetail() {
     enabled: !!issueId,
   });
   const resolvedCompanyId = issue?.companyId ?? selectedCompanyId;
+
+  const startMeetingFromIssue = useMutation({
+    mutationFn: () =>
+      meetingsApi.start({
+        companyId: resolvedCompanyId!,
+        title: `${issue!.identifier ?? issue!.title}`,
+        type: "standup",
+        issueId: issue!.id,
+      }),
+    onSuccess: (meeting) => requestLiveKit(`meeting-${meeting.id}`),
+  });
 
   const { data: comments } = useQuery({
     queryKey: queryKeys.issues.comments(issueId!),
@@ -740,6 +755,17 @@ export function IssueDetail() {
             onChange={(priority) => updateIssue.mutate({ priority })}
           />
           <span className="text-sm font-mono text-muted-foreground shrink-0">{issue.identifier ?? issue.id.slice(0, 8)}</span>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-[10px] uppercase font-bold shrink-0"
+            disabled={startMeetingFromIssue.isPending}
+            onClick={() => startMeetingFromIssue.mutate()}
+          >
+            <Radio className="h-3 w-3 mr-1.5" />
+            {startMeetingFromIssue.isPending ? "Starting..." : "Start Meeting"}
+          </Button>
 
           {hasLiveRuns && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400 shrink-0">

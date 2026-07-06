@@ -1,13 +1,42 @@
 import { Router } from "express";
 import { eq, desc, count, and } from "drizzle-orm";
+import { RoomServiceClient } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
 import { meetings, meetingTranscripts, meetingOutcomes } from "@paperclipai/db";
 import { ISSUE_STATUSES } from "@paperclipai/shared";
 import { forbidden, notFound, unprocessable } from "../errors.js";
-import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService } from "../services/index.js";
+import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService } from "../services/index.js";
 import { publishLiveEvent } from "../services/live-events.js";
 import { logger } from "../middleware/logger.js";
 import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
+
+/** Real, live participant counts for active meetings — one batched LiveKit
+ * call, not N+1. Returns a map of meetingId -> occupancy count. Silently
+ * returns an empty map if LiveKit isn't configured or the call fails (this
+ * is a nice-to-have indicator, not something that should break the list). */
+async function fetchOccupancy(activeMeetingIds: string[]): Promise<Map<string, number>> {
+  const occupancy = new Map<string, number>();
+  if (activeMeetingIds.length === 0) return occupancy;
+
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const livekitUrl = process.env.LIVEKIT_URL;
+  if (!apiKey || !apiSecret || !livekitUrl) return occupancy;
+
+  try {
+    const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
+    const roomService = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+    const roomNames = activeMeetingIds.map((id) => `meeting-${id}`);
+    const rooms = await roomService.listRooms(roomNames);
+    for (const room of rooms) {
+      const meetingId = room.name.startsWith("meeting-") ? room.name.slice("meeting-".length) : null;
+      if (meetingId) occupancy.set(meetingId, room.numParticipants);
+    }
+  } catch (err) {
+    logger.warn({ err }, "failed to fetch live meeting occupancy (non-blocking)");
+  }
+  return occupancy;
+}
 
 /**
  * AMX LABS Meetings API factory
@@ -19,6 +48,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
   const meetingAgentSvc = createMeetingAgentService(db, heartbeat);
   const issueSvc = issueService(db);
   const pushSvc = pushNotificationService(db);
+  const accessSvc = accessService(db);
 
   router.get("/", async (req, res) => {
     const companyId = req.query.companyId as string;
@@ -30,6 +60,10 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
       .from(meetings)
       .where(eq(meetings.companyId, companyId))
       .orderBy(desc(meetings.createdAt));
+
+    // Real occupancy for active meetings only — one batched LiveKit call.
+    const activeMeetingIds = results.filter((m) => m.status === "active").map((m) => m.id);
+    const occupancy = await fetchOccupancy(activeMeetingIds);
 
     // Enrich each meeting with outcome + transcript counts
     const enriched = await Promise.all(results.map(async (meeting) => {
@@ -53,6 +87,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
         insightsCount: transcriptRow?.total ?? 0,
         approvedCount: decisionsRow?.total ?? 0,
         risksCount: risksRow?.total ?? 0,
+        occupancy: meeting.status === "active" ? { count: occupancy.get(meeting.id) ?? 0 } : null,
       };
     }));
 
@@ -60,10 +95,17 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
   });
 
   router.post("/", async (req, res) => {
-    const { companyId, title, type } = req.body;
+    const { companyId, title, type, issueId } = req.body;
     if (!companyId || !title) throw forbidden("Missing required fields");
     assertCompanyAccess(req, companyId);
     assertCompanyRole(req, companyId, "member");
+
+    if (issueId) {
+      const issue = await issueSvc.getById(issueId);
+      if (!issue || issue.companyId !== companyId) {
+        throw notFound("Issue not found");
+      }
+    }
 
     const [meeting] = await db
       .insert(meetings)
@@ -72,6 +114,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
         title,
         type: type ?? "standup",
         status: "active",
+        issueId: issueId ?? null,
       })
       .returning();
 
@@ -138,10 +181,23 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
     assertCompanyAccess(req, mtg.companyId);
     assertCompanyRole(req, mtg.companyId, "member");
 
-    const { agentId } = req.body;
-    const participant = await meetingAgentSvc.inviteAgent(req.params.id, agentId);
+    const { agentId, userId } = req.body as { agentId?: string; userId?: string };
+    if (!agentId && !userId) throw unprocessable("agentId or userId is required");
+    if (agentId && userId) throw unprocessable("Provide only one of agentId or userId");
 
-    publishLiveEvent({ companyId: mtg.companyId, type: "meeting.participant.joined", payload: { meetingId: req.params.id, agentId } });
+    let participant;
+    if (userId) {
+      // Only active company members can be invited as staff participants.
+      const membership = await accessSvc.getMembership(mtg.companyId, "user", userId);
+      if (!membership || membership.status !== "active") {
+        throw forbidden("User is not an active member of this company");
+      }
+      participant = await meetingAgentSvc.inviteStaff(req.params.id, userId);
+    } else {
+      participant = await meetingAgentSvc.inviteAgent(req.params.id, agentId as string);
+    }
+
+    publishLiveEvent({ companyId: mtg.companyId, type: "meeting.participant.joined", payload: { meetingId: req.params.id, agentId, userId } });
 
     res.json(participant);
   });
@@ -222,7 +278,11 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
    * the same activity-log + validation behavior) as the standard REST routes
    * — this is not a parallel implementation.
    *
-   * Body: { action: "create_issue" | "update_issue_status", params: {...} }
+   * Body: { action: "create_issue" | "update_issue_status" | "get_issue_context", params: {...} }
+   *
+   * get_issue_context is a read-only lookup (no mutation, no transcript
+   * entry) so the voice agent can speak an issue's current state before
+   * changing it — used by update_issue_status in voice-agent/agent.py.
    *
    * Note: issue creation/status-update in this codebase does not currently
    * gate on a separate approval step (approvals are linked to existing
@@ -233,7 +293,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
    * surface here automatically since the same service call is reused.
    */
   router.post("/:id/actions", async (req, res) => {
-    const [mtg] = await db.select({ companyId: meetings.companyId }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
+    const [mtg] = await db.select({ companyId: meetings.companyId, issueId: meetings.issueId }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
     if (!mtg) throw notFound("Meeting not found");
     assertCompanyAccess(req, mtg.companyId);
     assertCompanyRole(req, mtg.companyId, "member");
@@ -241,6 +301,19 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
     const { action, params } = req.body as { action?: string; params?: Record<string, unknown> };
     const actor = getActorInfo(req);
     const p = params ?? {};
+
+    // Read-only — return immediately, no transcript entry or activity log.
+    if (action === "get_issue_context") {
+      const issueId = typeof p.issueId === "string" ? p.issueId : mtg.issueId;
+      if (!issueId) {
+        res.json({ result: null, summary: "This meeting isn't linked to an issue." });
+        return;
+      }
+      const issue = await issueSvc.getById(issueId);
+      if (!issue || issue.companyId !== mtg.companyId) throw notFound("Issue not found");
+      res.json({ result: issue, summary: `${issue.identifier}: ${issue.title} — status ${issue.status}` });
+      return;
+    }
 
     let result: unknown;
     let summary: string;
@@ -269,7 +342,9 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
       result = issue;
       summary = `Created issue ${issue.identifier}: ${issue.title}`;
     } else if (action === "update_issue_status") {
-      const issueId = typeof p.issueId === "string" ? p.issueId : "";
+      // Falls back to the meeting's own linked issue (if any) so the agent
+      // doesn't need to restate the id when it's already the meeting's topic.
+      const issueId = typeof p.issueId === "string" ? p.issueId : (mtg.issueId ?? "");
       const status = typeof p.status === "string" ? p.status : "";
       if (!issueId) throw unprocessable("issueId is required");
       if (!ISSUE_STATUSES.includes(status as (typeof ISSUE_STATUSES)[number])) {

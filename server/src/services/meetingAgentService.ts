@@ -1,6 +1,6 @@
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, isNotNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { meetingParticipants, meetingOutcomes, meetingTranscripts, agents, meetings, agentMemories } from "@paperclipai/db";
+import { meetingParticipants, meetingOutcomes, meetingTranscripts, agents, meetings, agentMemories, authUsers } from "@paperclipai/db";
 import { publishLiveEvent } from "./live-events.js";
 
 type HeartbeatService = { wakeup: (agentId: string, opts?: Record<string, unknown>) => Promise<void> };
@@ -12,22 +12,40 @@ type HeartbeatService = { wakeup: (agentId: string, opts?: Record<string, unknow
 export function meetingAgentService(db: Db, heartbeat?: HeartbeatService) {
   return {
     /**
-     * List all agents participating in a meeting
+     * List all participants (agents and staff) in a meeting. Each row has
+     * either agentId or userId set — left joins so both kinds are returned
+     * uniformly with a `participantType` discriminator.
      */
     async getParticipants(meetingId: string) {
-      return db.select({
+      const rows = await db.select({
         id: meetingParticipants.id,
         agentId: meetingParticipants.agentId,
+        userId: meetingParticipants.userId,
         status: meetingParticipants.status,
         lastAction: meetingParticipants.lastAction,
-        name: agents.name,
-        role: agents.role,
-        title: agents.title,
-        icon: agents.icon,
+        agentName: agents.name,
+        agentRole: agents.role,
+        agentTitle: agents.title,
+        agentIcon: agents.icon,
+        userName: authUsers.name,
       })
       .from(meetingParticipants)
-      .innerJoin(agents, eq(meetingParticipants.agentId, agents.id))
+      .leftJoin(agents, eq(meetingParticipants.agentId, agents.id))
+      .leftJoin(authUsers, eq(meetingParticipants.userId, authUsers.id))
       .where(eq(meetingParticipants.meetingId, meetingId));
+
+      return rows.map((r) => ({
+        id: r.id,
+        agentId: r.agentId,
+        userId: r.userId,
+        status: r.status,
+        lastAction: r.lastAction,
+        participantType: r.agentId ? ("agent" as const) : ("staff" as const),
+        name: r.agentId ? r.agentName : r.userName,
+        role: r.agentRole ?? null,
+        title: r.agentTitle ?? null,
+        icon: r.agentIcon ?? null,
+      }));
     },
 
     /**
@@ -55,6 +73,29 @@ export function meetingAgentService(db: Db, heartbeat?: HeartbeatService) {
       const [participant] = await db.insert(meetingParticipants).values({
         meetingId,
         agentId,
+        status: "active",
+        lastAction: "Joined session",
+      }).returning();
+
+      return participant;
+    },
+
+    /**
+     * Invite a staff member (human board user) to a session — mirrors
+     * inviteAgent but keyed on userId instead of agentId.
+     */
+    async inviteStaff(meetingId: string, userId: string) {
+      const existing = await db.select()
+        .from(meetingParticipants)
+        .where(and(eq(meetingParticipants.meetingId, meetingId), eq(meetingParticipants.userId, userId)))
+        .limit(1)
+        .then(rows => rows[0]);
+
+      if (existing) return existing;
+
+      const [participant] = await db.insert(meetingParticipants).values({
+        meetingId,
+        userId,
         status: "active",
         lastAction: "Joined session",
       }).returning();
@@ -173,9 +214,11 @@ export function meetingAgentService(db: Db, heartbeat?: HeartbeatService) {
       const outcomes = await db.select().from(meetingOutcomes).where(eq(meetingOutcomes.meetingId, meetingId));
       if (outcomes.length === 0) return;
 
+      // Only agent participants get memories written — staff (human)
+      // participants have no memory scope to write to.
       const participants = await db.select({ agentId: meetingParticipants.agentId })
         .from(meetingParticipants)
-        .where(eq(meetingParticipants.meetingId, meetingId));
+        .where(and(eq(meetingParticipants.meetingId, meetingId), isNotNull(meetingParticipants.agentId)));
 
       type MemoryCategory = "pattern" | "preference" | "decision" | "learning" | "feedback";
       const CATEGORY_MAP: Record<string, MemoryCategory> = {
@@ -188,7 +231,7 @@ export function meetingAgentService(db: Db, heartbeat?: HeartbeatService) {
       for (const outcome of outcomes) {
         const targetAgentIds = outcome.agentId
           ? [outcome.agentId]
-          : participants.map((p) => p.agentId);
+          : participants.map((p) => p.agentId).filter((id): id is string => id !== null);
 
         const category: MemoryCategory = CATEGORY_MAP[outcome.type] ?? "learning";
 

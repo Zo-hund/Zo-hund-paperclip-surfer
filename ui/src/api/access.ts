@@ -176,6 +176,9 @@ export const accessApi = {
   listMembers: (companyId: string) =>
     api.get<CompanyMembership[]>(`/companies/${companyId}/members`),
 
+  listMemberDirectory: (companyId: string) =>
+    api.get<{ userId: string; name: string }[]>(`/companies/${companyId}/members/directory`),
+
   addMember: (companyId: string, userId: string, role: CompanyMembershipRole = "member") =>
     api.post<CompanyMembership>(`/companies/${companyId}/members`, { userId, role }),
 

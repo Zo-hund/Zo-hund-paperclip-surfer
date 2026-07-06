@@ -161,6 +161,7 @@ export function GlobalVoiceMeetingOverlay() {
       onClose={handleEnd}
       onMinimize={minimize}
       agentStatus={liveKit.status}
+      participantCount={liveKit.participantCount}
       cameraEnabled={liveKit.cameraEnabled}
       toggleCamera={liveKit.toggleCamera}
       screenShareEnabled={liveKit.screenShareEnabled}

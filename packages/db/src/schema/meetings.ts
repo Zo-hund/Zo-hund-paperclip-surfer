@@ -1,6 +1,8 @@
 import { pgTable, uuid, text, timestamp, integer } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
+import { authUsers } from "./auth.js";
+import { issues } from "./issues.js";
 
 /**
  * AMX LABS Meetings
@@ -16,6 +18,9 @@ export const meetings = pgTable(
     status: text("status").notNull().default("active"), // active, completed
     recordingPath: text("recording_path"),
     durationSeconds: integer("duration_seconds"),
+    // Optional: this meeting is "about" a specific issue/workorder — its
+    // details auto-populate as a ModulePanel card on room entry.
+    issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   }
@@ -40,14 +45,18 @@ export const meetingTranscripts = pgTable(
 
 /**
  * AMX LABS Meeting Participants
- * Tracks which agents are active in a session
+ * Tracks which agents OR staff (human board users) are active in a session.
+ * Exactly one of agentId/userId is set per row (app-level invariant, enforced
+ * in meetingAgentService — not a DB constraint, to keep the migration additive
+ * and low-risk against existing agent-only data).
  */
 export const meetingParticipants = pgTable(
   "meeting_participants",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     meetingId: uuid("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
-    agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+    agentId: uuid("agent_id").references(() => agents.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => authUsers.id, { onDelete: "cascade" }),
     status: text("status").notNull().default("invited"), // invited, active, thinking, responding
     lastAction: text("last_action"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

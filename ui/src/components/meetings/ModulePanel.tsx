@@ -1,14 +1,74 @@
 import { useRef, useState } from "react";
-import { X, ExternalLink, Globe } from "lucide-react";
+import { X, ExternalLink, Globe, FileText } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Issue } from "@paperclipai/shared";
+import { issuesApi } from "../../api/issues";
+import { StatusIcon } from "../StatusIcon";
 
-export interface ModuleData {
-  type: "web_preview";
-  url: string;
-  title: string;
-  summary: string;
-}
+export type ModuleData =
+  | { type: "web_preview"; url: string; title: string; summary: string }
+  | { type: "issue"; issue: Issue };
 
 export function ModulePanel({ module, onClose }: { module: ModuleData; onClose: () => void }) {
+  if (module.type === "issue") {
+    return <IssueModule issue={module.issue} onClose={onClose} />;
+  }
+  return <WebPreviewModule module={module} onClose={onClose} />;
+}
+
+/** Shows a meeting's linked issue/workorder live — status is clickable and
+ * changes are saved immediately, same as the issue detail page. */
+function IssueModule({ issue, onClose }: { issue: Issue; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const updateStatus = useMutation({
+    mutationFn: (status: string) => issuesApi.update(issue.id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", issue.id] });
+    },
+  });
+
+  return (
+    <div className="flex flex-col h-full w-full rounded-xl overflow-hidden border border-[#94a3b8]/20 shadow-2xl"
+      style={{ background: "linear-gradient(135deg, rgba(8,8,16,0.97) 0%, rgba(12,12,24,0.97) 100%)" }}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#94a3b8]/15 bg-black/40 flex-shrink-0">
+        <FileText className="h-3.5 w-3.5 text-[#94a3b8]/60 flex-shrink-0" />
+        <span className="flex-1 text-[11px] font-bold text-white/70 truncate">
+          {issue.identifier} — {issue.title}
+        </span>
+        <button onClick={onClose}
+          className="p-1 rounded text-white/30 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+          title="Close">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <StatusIcon
+            status={issue.status}
+            onChange={(status) => updateStatus.mutate(status)}
+            showLabel
+          />
+          {issue.priority && (
+            <span className="text-[9px] font-black uppercase tracking-widest text-[#94a3b8]/60 px-2 py-0.5 rounded bg-[#94a3b8]/10">
+              {issue.priority}
+            </span>
+          )}
+        </div>
+
+        {issue.description && (
+          <p className="text-[12px] text-white/70 leading-relaxed whitespace-pre-wrap">{issue.description}</p>
+        )}
+
+        <div className="text-[10px] text-white/30 uppercase tracking-widest">
+          {issue.assigneeAgentId || issue.assigneeUserId ? "Assigned" : "Unassigned"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WebPreviewModule({ module, onClose }: { module: Extract<ModuleData, { type: "web_preview" }>; onClose: () => void }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [loaded, setLoaded] = useState(false);
 

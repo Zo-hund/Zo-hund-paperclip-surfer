@@ -737,19 +737,31 @@ class JAZSupportGuide(Agent):
             return "I ran into a problem creating that issue."
 
     @function_tool()
-    async def update_issue_status(self, context: RunContext, issue_id: str, status: str) -> str:
-        """Update an existing issue's status.
+    async def update_issue_status(self, context: RunContext, status: str, issue_id: str = "") -> str:
+        """Update an issue's status — yours or the one this meeting is about.
 
         `status` must be one of: backlog, todo, in_progress, in_review, done,
-        cancelled. Use when the user says 'mark issue X as done', 'move this
-        to in progress', or similar status-change requests. You need the
-        issue's id — ask for it or look it up via search_web/context if unknown.
+        cancelled. Use when the user says 'mark this as done', 'move it to
+        in progress', or similar status-change requests. Leave issue_id blank
+        to act on the meeting's linked issue (most common case); only pass
+        issue_id when the user names a different, specific issue.
+
+        Fetches the issue's current state first so you can mention what it
+        was before changing it (e.g. "it was in_progress, now marking done").
         """
         room = context.session.room_io.room
         try:
-            await _post_meeting_action(
-                room, "update_issue_status", {"issueId": issue_id, "status": status},
+            context_body = await _post_meeting_action(
+                room, "get_issue_context", {"issueId": issue_id} if issue_id else {},
             )
+            prior = context_body.get("result")
+            prior_status = prior.get("status") if prior else None
+
+            await _post_meeting_action(
+                room, "update_issue_status", {"issueId": issue_id, "status": status} if issue_id else {"status": status},
+            )
+            if prior_status:
+                return f"It was {prior_status} — updated to {status}."
             return f"Updated the issue's status to {status}."
         except RuntimeError as e:
             return str(e)

@@ -12,11 +12,14 @@ export interface Meeting {
   status: string;
   recordingPath: string | null;
   durationSeconds: number | null;
+  issueId: string | null;
   createdAt: string;
   updatedAt: string;
   insightsCount?: number;
   approvedCount?: number;
   risksCount?: number;
+  /** Real live participant count for active meetings, null once completed. */
+  occupancy?: { count: number } | null;
 }
 
 export interface MeetingTranscript {
@@ -31,11 +34,13 @@ export interface MeetingTranscript {
 
 export interface MeetingParticipant {
   id: string;
-  agentId: string;
+  agentId: string | null;
+  userId: string | null;
   status: string;
   lastAction: string | null;
-  name: string;
-  role: string;
+  participantType: "agent" | "staff";
+  name: string | null;
+  role: string | null;
   title: string | null;
   icon: string | null;
 }
@@ -60,7 +65,7 @@ export const meetingsApi = {
   list: (companyId: string): Promise<Meeting[]> =>
     api.get<Meeting[]>(`/meetings?companyId=${encodeURIComponent(companyId)}`),
 
-  start: (data: { companyId: string; title: string; type?: string }): Promise<Meeting> =>
+  start: (data: { companyId: string; title: string; type?: string; issueId?: string }): Promise<Meeting> =>
     api.post<Meeting>(`/meetings`, data),
 
   getDetail: (id: string): Promise<MeetingDetail> =>
@@ -74,6 +79,9 @@ export const meetingsApi = {
 
   inviteAgent: (id: string, agentId: string): Promise<MeetingParticipant> =>
     api.post<MeetingParticipant>(`/meetings/${id}/invite`, { agentId }),
+
+  inviteStaff: (id: string, userId: string): Promise<MeetingParticipant> =>
+    api.post<MeetingParticipant>(`/meetings/${id}/invite`, { userId }),
 
   getParticipants: (id: string): Promise<MeetingParticipant[]> =>
     api.get<MeetingParticipant[]>(`/meetings/${id}/participants`),

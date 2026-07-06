@@ -3065,6 +3065,30 @@ export function accessRoutes(
     res.json(members);
   });
 
+  /**
+   * GET /companies/:companyId/members/directory
+   * Lightweight roster of active human staff for this company (name + id
+   * only) — any company member can see who's available to invite into a
+   * meeting. Deliberately gated at plain company access, not the
+   * users:manage_permissions admin permission the full /members list uses.
+   */
+  router.get("/companies/:companyId/members/directory", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const rows = await db
+      .select({ userId: companyMemberships.principalId, name: authUsers.name })
+      .from(companyMemberships)
+      .innerJoin(authUsers, eq(companyMemberships.principalId, authUsers.id))
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.status, "active"),
+        ),
+      );
+    res.json(rows);
+  });
+
   router.patch(
     "/companies/:companyId/members/:memberId/permissions",
     validate(updateMemberPermissionsSchema),

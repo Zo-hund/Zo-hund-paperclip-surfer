@@ -4,7 +4,7 @@ import {
   CheckCircle2, AlertTriangle, Zap, Maximize, Minimize,
   Video, VideoOff, ScreenShare, ScreenShareOff, Circle,
   Activity, Cpu, Radar, Network, BarChart2,
-  Hand, Minimize2, PenTool
+  Hand, Minimize2, PenTool, User
 } from "lucide-react";
 import type { AgentState } from "@livekit/components-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
@@ -40,6 +40,8 @@ interface VoiceMeetingRoomProps {
   onClose: () => void;
   onMinimize?: () => void;
   agentStatus?: LiveKitVoiceStatus;
+  /** Real live LiveKit room occupancy (remote participants only) — drives the room light. */
+  participantCount?: number;
   cameraEnabled?: boolean;
   toggleCamera?: () => void;
   screenShareEnabled?: boolean;
@@ -125,7 +127,7 @@ const SLASH_COMMANDS: Record<string, string> = {
   "/analytics": "/analytics",
 };
 
-export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, sendCanvasStroke, sendCanvasClear, canvasEvent, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, participantCount, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, sendCanvasStroke, sendCanvasClear, canvasEvent, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
   const navigate = useNavigate();
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
@@ -156,9 +158,11 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
     }
   }, [meeting?.transcripts?.length, meeting?.outcomes?.length, mode]);
 
+  // Keyed by participant row id — works for both agents and staff (agentId
+  // is null for staff rows).
   const colorMap = new Map<string, string>();
   (meeting?.participants ?? []).forEach((p, i) => {
-    colorMap.set(p.agentId, SPEAKER_COLORS[i % SPEAKER_COLORS.length]);
+    colorMap.set(p.id, SPEAKER_COLORS[i % SPEAKER_COLORS.length]);
   });
 
   const lastSpeakerId = meeting?.transcripts?.slice(-1)[0]?.actorId ?? null;
@@ -301,6 +305,17 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                 <span className="hidden sm:inline">On Air</span>
               </span>
             )}
+            {typeof participantCount === "number" && (
+              <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wide ml-1" title="Real-time room occupancy">
+                <span className="relative flex h-2 w-2">
+                  {participantCount > 0 && (
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                  )}
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${participantCount > 0 ? "bg-green-500" : "bg-white/20"}`} />
+                </span>
+                <span className={participantCount > 0 ? "text-green-400" : "text-white/30"}>{participantCount}</span>
+              </span>
+            )}
           </div>
 
           {/* Title */}
@@ -432,18 +447,18 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                 </h3>
                 <div className="space-y-2">
                   {participants.map((p) => {
-                    const color = colorMap.get(p.agentId) ?? "#94a3b8";
-                    const isSpeaking = lastSpeakerId === p.agentId || p.status === "thinking" || p.status === "responding";
+                    const color = colorMap.get(p.id) ?? "#94a3b8";
+                    const isSpeaking = lastSpeakerId === p.agentId || lastSpeakerId === p.userId || p.status === "thinking" || p.status === "responding";
                     return (
                       <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg border border-white/5 bg-white/[0.02]">
                         <div className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-black relative"
                           style={{ background: `${color}15`, border: `1.5px solid ${isSpeaking ? color : `${color}28`}`, boxShadow: isSpeaking ? `0 0 10px ${color}55` : "none" }}>
-                          {p.icon ? <span style={{ fontSize: "0.9rem" }}>{p.icon}</span> : <Bot className="h-4 w-4" style={{ color }} />}
+                          {p.icon ? <span style={{ fontSize: "0.9rem" }}>{p.icon}</span> : p.participantType === "staff" ? <User className="h-4 w-4" style={{ color }} /> : <Bot className="h-4 w-4" style={{ color }} />}
                           <span className="absolute -bottom-0 -right-0 h-2 w-2 rounded-full border border-black"
                             style={{ background: p.status === "thinking" ? "#fbbf24" : p.status === "responding" ? color : p.status === "active" ? "#34d399" : "#ffffff20" }} />
                         </div>
                         <div className="flex flex-col flex-1 min-w-0">
-                          <span className="text-[10px] font-black uppercase tracking-widest truncate" style={{ color }}>{p.name}</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest truncate" style={{ color }}>{p.name ?? "Unknown"}</span>
                           <span className="text-[8px] uppercase tracking-[0.2em] text-white/30 flex items-center gap-1">
                             {p.status === "thinking" ? <><Cpu className="h-2 w-2 text-amber-400 animate-spin" /> Processing</> : p.status}
                           </span>
@@ -461,8 +476,9 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             <div className="flex-1 rounded-xl p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
               <VideoTile track={localVideoTrack ?? undefined} name="You" status={micActive ? "speaking" : "muted"} />
               {participants.map((p) => {
-                const remoteTracks = videoTracks?.get(p.name);
-                return <VideoTile key={p.id} track={remoteTracks?.video} name={p.name} status={p.status} />;
+                const name = p.name ?? "Unknown";
+                const remoteTracks = videoTracks?.get(name);
+                return <VideoTile key={p.id} track={remoteTracks?.video} name={name} status={p.status} />;
               })}
               {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
                 tracks.screen ? (
@@ -490,17 +506,17 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
           {!isCockpit && !isVideo && !isCanvas && participants.length > 0 && (
             <div className="flex items-center gap-4 px-4 py-2.5 border-b border-white/[0.04] bg-[#0a0a15] overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: "none" }}>
               {participants.map((p) => {
-                const color = colorMap.get(p.agentId) ?? "#94a3b8";
-                const isSpeaking = lastSpeakerId === p.agentId || p.status === "thinking" || p.status === "responding";
+                const color = colorMap.get(p.id) ?? "#94a3b8";
+                const isSpeaking = lastSpeakerId === p.agentId || lastSpeakerId === p.userId || p.status === "thinking" || p.status === "responding";
                 return (
                   <div key={p.id} className="flex flex-col items-center gap-1 flex-shrink-0">
                     <div className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-black relative select-none"
                       style={{ background: `${color}15`, border: `2px solid ${isSpeaking ? color : `${color}28`}`, boxShadow: isSpeaking ? `0 0 14px ${color}55` : "none", transition: "box-shadow 0.4s ease" }}>
-                      {p.icon ? <span style={{ fontSize: "1rem" }}>{p.icon}</span> : <Bot className="h-4 w-4" style={{ color }} />}
+                      {p.icon ? <span style={{ fontSize: "1rem" }}>{p.icon}</span> : p.participantType === "staff" ? <User className="h-4 w-4" style={{ color }} /> : <Bot className="h-4 w-4" style={{ color }} />}
                       <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0a0a15]"
                         style={{ background: p.status === "thinking" ? "#fbbf24" : p.status === "responding" ? color : p.status === "active" ? "#34d399" : "#ffffff20" }} />
                     </div>
-                    <span className="text-[8px] font-black uppercase tracking-tight" style={{ color: `${color}80` }}>{p.name.split(" ")[0]}</span>
+                    <span className="text-[8px] font-black uppercase tracking-tight" style={{ color: `${color}80` }}>{(p.name ?? "?").split(" ")[0]}</span>
                     {p.status === "thinking" && <span className="text-[7px] text-amber-400 font-bold animate-pulse">···</span>}
                   </div>
                 );
@@ -538,8 +554,8 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
 
                 {transcripts.map((t, i) => {
                   const isUser = t.actorType === "user";
-                  const participant = participants.find(p => p.agentId === t.actorId);
-                  const color = participant ? (colorMap.get(participant.agentId) ?? "#94a3b8") : "#e2e8f0";
+                  const participant = participants.find(p => p.agentId === t.actorId || p.userId === t.actorId);
+                  const color = participant ? (colorMap.get(participant.id) ?? "#94a3b8") : "#e2e8f0";
                   const isCommand = t.text.startsWith("/");
                   const isMention = !isCommand && t.text.includes("@");
                   const prev = transcripts[i - 1];

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Bot, History, Radio, Users, Search,
+  Bot, History, Radio, Search,
   Shield, Target, AlertTriangle,
   CheckCircle2, MessageSquare, Zap,
   Eye, PlayCircle, BarChart3, TrendingUp, Sparkles
@@ -39,6 +39,50 @@ export default function Meetings() {
     queryFn: () => meetingsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+
+  // Live occupancy refresh — meetings.ts publishes meeting.started/ended/
+  // participant.joined over this same WS already; subscribe and invalidate
+  // the list so the room light updates within a couple seconds, no polling.
+  useEffect(() => {
+    if (!selectedCompanyId) return;
+    let closed = false;
+    let reconnectTimer: number | null = null;
+    let socket: WebSocket | null = null;
+
+    const connect = () => {
+      if (closed) return;
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const url = `${protocol}://${window.location.host}/api/companies/${encodeURIComponent(selectedCompanyId)}/events/ws`;
+      socket = new WebSocket(url);
+      socket.onmessage = (message) => {
+        const raw = typeof message.data === "string" ? message.data : "";
+        if (!raw) return;
+        try {
+          const event = JSON.parse(raw) as { companyId: string; type: string };
+          if (event.companyId !== selectedCompanyId) return;
+          if (
+            event.type === "meeting.started" ||
+            event.type === "meeting.ended" ||
+            event.type === "meeting.participant.joined"
+          ) {
+            queryClient.invalidateQueries({ queryKey: ["meetings", selectedCompanyId] });
+          }
+        } catch {
+          // ignore malformed frames
+        }
+      };
+      socket.onclose = () => {
+        if (!closed) reconnectTimer = window.setTimeout(connect, 1500);
+      };
+    };
+    connect();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [selectedCompanyId, queryClient]);
 
   const { data: agents } = useQuery({
     queryKey: ["agents", selectedCompanyId],
@@ -147,13 +191,15 @@ export default function Meetings() {
               <CardHeader className="pb-4 border-b border-primary/5">
                 <CardTitle className="text-sm font-black flex items-center justify-between uppercase tracking-widest text-primary/80">
                   Live Channels
-                  <div className="flex items-center gap-2">
-                     <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                     </span>
-                     <span className="text-[10px] text-red-500/80 font-bold">STREAMING</span>
-                  </div>
+                  {(meetings ?? []).some(m => m.status === "active" && (m.occupancy?.count ?? 0) > 0) && (
+                    <div className="flex items-center gap-2">
+                       <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                       </span>
+                       <span className="text-[10px] text-red-500/80 font-bold">STREAMING</span>
+                    </div>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6">
@@ -163,30 +209,35 @@ export default function Meetings() {
                   </div>
                 ) : (
                   <ul className="space-y-4">
-                    {meetings?.filter(m => m.status === 'active' && m.title.toLowerCase().includes(searchQuery.toLowerCase())).map(m => (
+                    {meetings?.filter(m => m.status === 'active' && m.title.toLowerCase().includes(searchQuery.toLowerCase())).map(m => {
+                      const occupancyCount = m.occupancy?.count ?? 0;
+                      const isLive = occupancyCount > 0;
+                      return (
                       <li key={m.id} className="relative flex flex-col p-4 rounded-2xl bg-primary/[0.04] border border-primary/10 hover:bg-primary/[0.07] transition-all cursor-default">
                         <div className="flex items-center justify-between mb-4">
                           <span className="font-extrabold text-sm truncate uppercase tracking-tight">{m.title}</span>
                           <Badge className="bg-primary/20 text-primary border-none text-[8px] font-black px-2">BOARD-SECURE</Badge>
                         </div>
                         <div className="flex items-center justify-between">
-                           <div className="flex -space-x-2">
-                              <div className="h-8 w-8 rounded-full bg-background border-2 border-primary/10 flex items-center justify-center p-1.5 shadow-sm">
-                                 <Bot className="h-full w-full text-primary/70" />
-                              </div>
-                              <div className="h-8 w-8 rounded-full bg-background border-2 border-primary/10 flex items-center justify-center p-1.5 shadow-sm">
-                                 <Users className="h-full w-full text-primary/40" />
-                              </div>
-                              <div className="h-8 w-8 rounded-full bg-primary/20 border-2 border-primary/10 flex items-center justify-center text-[8px] font-black italic">
-                                 +2
-                              </div>
+                           {/* Room light — real occupancy, not decoration */}
+                           <div className="flex items-center gap-2">
+                              <span className="relative flex h-2.5 w-2.5">
+                                 {isLive && (
+                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                 )}
+                                 <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isLive ? "bg-green-500" : "bg-muted-foreground/30"}`}></span>
+                              </span>
+                              <span className={`text-[10px] font-black uppercase tracking-wide ${isLive ? "text-green-500" : "text-muted-foreground/50"}`}>
+                                 {isLive ? `${occupancyCount} live` : "empty"}
+                              </span>
                            </div>
                            <Button size="sm" className="h-8 rounded-lg px-5 bg-foreground text-background hover:bg-foreground/80 text-[10px] font-black uppercase tracking-widest shadow-lg" onClick={() => requestLiveKit(`meeting-${m.id}`)}>
                              Rejoin
                            </Button>
                         </div>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 )}
               </CardContent>
