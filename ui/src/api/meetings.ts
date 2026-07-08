@@ -88,4 +88,8 @@ export const meetingsApi = {
 
   getOutcomes: (id: string): Promise<MeetingOutcome[]> =>
     api.get<MeetingOutcome[]>(`/meetings/${id}/outcomes`),
+
+  /** Run a governed in-meeting action (same endpoint the voice agent uses). */
+  action: (id: string, action: string, params: Record<string, unknown> = {}): Promise<{ result: unknown; summary: string }> =>
+    api.post<{ result: unknown; summary: string }>(`/meetings/${id}/actions`, { action, params }),
 };

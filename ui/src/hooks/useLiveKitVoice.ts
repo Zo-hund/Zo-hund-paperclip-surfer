@@ -54,6 +54,8 @@ export type CanvasStrokeEvent = {
 };
 export type CanvasClearEvent = { type: "canvas_clear" };
 export type CanvasEvent = CanvasStrokeEvent | CanvasClearEvent;
+export type CanvasCursorEvent = { identity: string; x: number; y: number; ts: number };
+export type ReactionEvent = { emoji: string; identity: string; ts: number };
 
 export interface UseLiveKitVoiceOptions {
   /** LiveKit room name. Defaults to "amx-command-room" (the global orb room). */
@@ -67,7 +69,11 @@ export interface UseLiveKitVoiceOptions {
   /** Called when the agent issues any tool_call. */
   onToolCall?: (name: string, args: Record<string, unknown>) => void;
   /** Called when a canvas draw/clear event arrives from a remote participant. */
-  onCanvasEvent?: (event: CanvasEvent) => void;
+  onCanvasEvent?: (event: CanvasEvent, identity?: string) => void;
+  /** Called when a remote participant's canvas cursor position arrives (lossy). */
+  onCanvasCursor?: (cursor: CanvasCursorEvent) => void;
+  /** Called when an emoji reaction arrives (also fired locally on sendReaction). */
+  onReaction?: (reaction: ReactionEvent) => void;
   /** Company prefix for the active company (e.g. "AMXA"). Used to resolve bare paths. */
   companyPrefix?: string;
   /** All known company prefixes — prevents double-prefixing cross-company paths. */
@@ -90,6 +96,8 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     onNavigate,
     onToolCall,
     onCanvasEvent,
+    onCanvasCursor,
+    onReaction,
     companyPrefix,
     companiesPrefixes,
     companyId,
@@ -109,7 +117,11 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const onNavigateRef = useRef(onNavigate);
   const onToolCallRef = useRef(onToolCall);
   const onCanvasEventRef = useRef(onCanvasEvent);
+  const onCanvasCursorRef = useRef(onCanvasCursor);
+  const onReactionRef = useRef(onReaction);
   const [status, setStatus] = useState<LiveKitVoiceStatus>("idle");
+  const [activeSpeakers, setActiveSpeakers] = useState<string[]>([]);
+  const [muted, setMutedState] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [participantCount, setParticipantCount] = useState(0);
@@ -137,7 +149,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
 
   /** Handle incoming data channel messages from the AMX Voice Agent */
   const handleData = useCallback(
-    (payload: Uint8Array, _participant?: RemoteParticipant | LocalParticipant) => {
+    (payload: Uint8Array, participant?: RemoteParticipant | LocalParticipant) => {
       try {
         const text = decoder.decode(payload);
         const msg = JSON.parse(text) as Record<string, unknown>;
@@ -156,7 +168,19 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
         }
 
         if (msg.type === "canvas_stroke" || msg.type === "canvas_clear") {
-          onCanvasEventRef.current?.(msg as unknown as CanvasEvent);
+          onCanvasEventRef.current?.(msg as unknown as CanvasEvent, participant?.identity);
+          return;
+        }
+
+        if (msg.type === "canvas_cursor" && typeof msg.x === "number" && typeof msg.y === "number") {
+          if (participant?.identity) {
+            onCanvasCursorRef.current?.({ identity: participant.identity, x: msg.x, y: msg.y, ts: Date.now() });
+          }
+          return;
+        }
+
+        if (msg.type === "reaction" && typeof msg.emoji === "string") {
+          onReactionRef.current?.({ emoji: msg.emoji, identity: participant?.identity ?? "unknown", ts: Date.now() });
           return;
         }
 
@@ -193,6 +217,8 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   onNavigateRef.current = onNavigate;
   onToolCallRef.current = onToolCall;
   onCanvasEventRef.current = onCanvasEvent;
+  onCanvasCursorRef.current = onCanvasCursor;
+  onReactionRef.current = onReaction;
 
   /** Connect to a LiveKit room. Pass a roomName to override the default
    *  (needed because callers set the meeting id and connect in the same tick). */
@@ -254,6 +280,9 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       room.on(RoomEvent.Connected, () => {
         setStatus("connected");
         setParticipantCount(room.remoteParticipants.size);
+      });
+      room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+        setActiveSpeakers(speakers.map((s) => s.identity));
       });
 
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
@@ -410,6 +439,7 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
       });
 
       await room.localParticipant.setMicrophoneEnabled(true);
+      setMutedState(false);
       setStatus("listening");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -431,6 +461,8 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     setVideoTracks(new Map());
     setLocalVideoTrack(null);
     setLocalScreenTrack(null);
+    setActiveSpeakers([]);
+    setMutedState(false);
   }, []);
 
   /** Toggle local camera */
@@ -454,9 +486,10 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     }
   }, [screenShareEnabled]);
 
-  /** Mute/unmute local mic */
-  const setMuted = useCallback((muted: boolean) => {
-    roomRef.current?.localParticipant.setMicrophoneEnabled(!muted);
+  /** Mute/unmute local mic (tracked — read back via `muted`) */
+  const setMuted = useCallback((next: boolean) => {
+    roomRef.current?.localParticipant.setMicrophoneEnabled(!next);
+    setMutedState(next);
   }, []);
 
   /** Send a text message to the agent via data channel */
@@ -484,6 +517,23 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     const encoder = new TextEncoder();
     const data = encoder.encode(JSON.stringify({ type: "canvas_clear" }));
     room.localParticipant.publishData(data, { reliable: true });
+  }, []);
+
+  /** Broadcast the local canvas cursor position (lossy — fine to drop frames) */
+  const sendCanvasCursor = useCallback((pos: { x: number; y: number }) => {
+    const room = roomRef.current;
+    if (!room || room.state !== ConnectionState.Connected) return;
+    const data = new TextEncoder().encode(JSON.stringify({ type: "canvas_cursor", ...pos }));
+    room.localParticipant.publishData(data, { reliable: false });
+  }, []);
+
+  /** Broadcast an emoji reaction (lossy) — also echoes locally so the sender sees it */
+  const sendReaction = useCallback((emoji: string) => {
+    const room = roomRef.current;
+    if (!room || room.state !== ConnectionState.Connected) return;
+    const data = new TextEncoder().encode(JSON.stringify({ type: "reaction", emoji }));
+    room.localParticipant.publishData(data, { reliable: false });
+    onReactionRef.current?.({ emoji, identity: room.localParticipant.identity, ts: Date.now() });
   }, []);
 
   /** PTT mode: call with true to unmute (hold), false to mute (release) */
@@ -515,12 +565,16 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     error,
     participantCount,
     agentJoined,
+    activeSpeakers,
+    muted,
     connect,
     disconnect,
     setMuted,
     sendText,
     sendCanvasStroke,
     sendCanvasClear,
+    sendCanvasCursor,
+    sendReaction,
     isConnected: status !== "idle" && status !== "error" && status !== "disconnected",
     cameraEnabled,
     toggleCamera,

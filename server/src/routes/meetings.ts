@@ -372,6 +372,67 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
 
       result = issue;
       summary = `Updated ${existing.identifier} status to ${status}`;
+    } else if (action === "add_outcome") {
+      // Attach a generic outcome to the meeting — used by the canvas
+      // "Save snapshot" flow (type "artifact", content = JSON metadata).
+      const type = typeof p.type === "string" && p.type.trim() ? p.type.trim() : "";
+      const content = typeof p.content === "string" && p.content.trim() ? p.content : "";
+      if (!type) throw unprocessable("type is required");
+      if (!content) throw unprocessable("content is required");
+
+      const outcome = await meetingAgentSvc.addOutcome(req.params.id, type, content, actor.actorId);
+      publishLiveEvent({
+        companyId: mtg.companyId,
+        type: "meeting.outcome.added",
+        payload: { meetingId: req.params.id, outcomeId: outcome?.id, type },
+      });
+
+      await logActivity(db, {
+        companyId: mtg.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "meeting.outcome_added",
+        entityType: "meeting",
+        entityId: req.params.id,
+        details: { type, source: "meeting" },
+      });
+
+      result = outcome;
+      summary = type === "artifact" ? "Saved a canvas snapshot to the meeting" : `Recorded ${type.replace("_", " ")}`;
+    } else if (action === "add_issue_comment") {
+      // Attach a comment to an issue from inside the meeting — used by the
+      // voice agent to persist vision-analysis findings into issue history.
+      const issueId = typeof p.issueId === "string" && p.issueId ? p.issueId : (mtg.issueId ?? "");
+      const body = typeof p.body === "string" ? p.body.trim() : "";
+      if (!issueId) throw unprocessable("issueId is required (meeting has no linked issue)");
+      if (!body) throw unprocessable("body is required");
+
+      const existing = await issueSvc.getById(issueId);
+      if (!existing || existing.companyId !== mtg.companyId) {
+        throw notFound("Issue not found");
+      }
+
+      const comment = await issueSvc.addComment(issueId, body, {
+        agentId: actor.agentId ?? undefined,
+        userId: actor.actorType === "user" ? actor.actorId : undefined,
+      });
+
+      await logActivity(db, {
+        companyId: mtg.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "issue.comment_added",
+        entityType: "issue",
+        entityId: issueId,
+        details: { source: "meeting" },
+      });
+
+      result = comment;
+      summary = `Added a comment to ${existing.identifier}`;
     } else {
       throw unprocessable(`Unknown action: ${action}`);
     }

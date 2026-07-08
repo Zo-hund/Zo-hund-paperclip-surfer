@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { AccessToken, AgentDispatchClient, RoomServiceClient, DataPacket_Kind } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
-import { meetings } from "@paperclipai/db";
+import { meetings, meetingParticipants } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 import { agentService, companyService } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, assertCompanyRole } from "./authz.js";
@@ -66,9 +66,29 @@ export function livekitRoutes(db: Db) {
 
       // Company-scoped rooms require membership; the global cross-company
       // orb room ("amx-command-room", no companyId) only requires board auth.
+      // Exception: a user explicitly invited to a meeting (meeting_participants
+      // row) may join that one room even below the `member` role tier — the
+      // invite route accepts viewer/client members, so the token route must too.
       if (companyId) {
         assertCompanyAccess(req, companyId);
-        assertCompanyRole(req, companyId, "member");
+        const meetingId = roomName.startsWith("meeting-") ? roomName.slice("meeting-".length) : null;
+        let isInvitedParticipant = false;
+        if (meetingId && req.actor.type === "board" && req.actor.userId) {
+          const [row] = await db
+            .select({ id: meetingParticipants.id })
+            .from(meetingParticipants)
+            .innerJoin(meetings, eq(meetingParticipants.meetingId, meetings.id))
+            .where(and(
+              eq(meetingParticipants.meetingId, meetingId),
+              eq(meetingParticipants.userId, req.actor.userId),
+              eq(meetings.companyId, companyId),
+            ))
+            .limit(1);
+          isInvitedParticipant = !!row;
+        }
+        if (!isInvitedParticipant) {
+          assertCompanyRole(req, companyId, "member");
+        }
       } else {
         assertBoard(req);
       }

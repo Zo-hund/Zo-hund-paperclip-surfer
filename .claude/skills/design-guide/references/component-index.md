@@ -321,3 +321,13 @@ import { cn } from "@/lib/utils";
 
 **File:** `ui/src/lib/groupBy.ts`
 **Usage:** Generic array grouping utility.
+
+### MeetingHubCockpit
+
+**File:** `ui/src/components/meetings/MeetingHubCockpit.tsx`
+**Usage:** Floating, draggable mini-meeting control shown while the full VoiceMeetingRoom is minimized. Two sizes (pill / mini-cockpit panel) with live roster + speaking indicators, mic mute, mode quick-switch (chat/cockpit/video/canvas), and a video/screenshare peek. Position + size persist in localStorage (`paperclip.meetingCockpit`). Rendered exclusively by GlobalVoiceMeetingOverlay; demoable on /design-guide.
+
+### useMeetingCanvasBuffer
+
+**File:** `ui/src/hooks/useMeetingCanvasBuffer.ts`
+**Usage:** Session-long stroke buffer for the meeting canvas — replays history after mode switches, powers the cockpit canvas peek, and renders PNG snapshots for artifact persistence.

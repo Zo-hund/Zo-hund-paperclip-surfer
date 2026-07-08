@@ -151,6 +151,7 @@ Use analyze_screen_share when the user says: "what's on my screen", "can you see
 Use analyze_page when the user says: "look at this page", "what's on the page", "full page", "screenshot the page", "analyze the dashboard", "what does the screen look like".
 Use analyze_screen (legacy fallback) when source is ambiguous or user says "look at the screen" without specifying.
 Describe what you see naturally in 2-3 sentences, as if speaking to someone who cannot see the screen.
+After any analyze_* call in a meeting linked to an issue, briefly offer to attach your finding to the issue; if the user agrees ("attach that", "save that finding", "note it on the ticket"), call add_issue_comment with a concise written version of the analysis.
 
 Web and time tools:
 Use get_current_datetime when the user asks what time or date it is, or says "what's today", "what time is it", "current date".
@@ -768,6 +769,31 @@ class JAZSupportGuide(Agent):
         except Exception as e:
             logger.warning("update_issue_status failed: %s", e)
             return "I ran into a problem updating that issue's status."
+
+    @function_tool()
+    async def add_issue_comment(self, context: RunContext, body: str, issue_id: str = "") -> str:
+        """Attach a comment to an issue — yours or the one this meeting is about.
+
+        Use this to persist findings into the issue's history: after analyzing
+        a screen share or camera (analyze_screen_share / analyze_camera), offer
+        to attach the analysis, and call this when the user agrees ("attach
+        that to the issue", "save that finding", "note that on the ticket").
+        Also use for any explicit "add a comment to the issue saying X".
+        Leave issue_id blank to act on the meeting's linked issue (most common
+        case); only pass issue_id when the user names a different issue.
+        """
+        room = context.session.room_io.room
+        try:
+            params: dict = {"body": body}
+            if issue_id:
+                params["issueId"] = issue_id
+            resp = await _post_meeting_action(room, "add_issue_comment", params)
+            return resp.get("summary") or "Comment added to the issue."
+        except RuntimeError as e:
+            return str(e)
+        except Exception as e:
+            logger.warning("add_issue_comment failed: %s", e)
+            return "I ran into a problem adding that comment."
 
     # ── Web / time tools ──────────────────────────────────────────────────────
 

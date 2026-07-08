@@ -4,7 +4,7 @@ import {
   CheckCircle2, AlertTriangle, Zap, Maximize, Minimize,
   Video, VideoOff, ScreenShare, ScreenShareOff, Circle,
   Activity, Cpu, Radar, Network, BarChart2,
-  Hand, Minimize2, PenTool, User
+  Hand, Minimize2, PenTool, User, Eye, SmilePlus, ImageIcon
 } from "lucide-react";
 import type { AgentState } from "@livekit/components-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
@@ -12,11 +12,13 @@ import { useCompanyRole } from "../../hooks/useCompanyRole";
 import { meetingsApi } from "../../api/meetings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "../../context/ToastContext";
 import { useQuery } from "@tanstack/react-query";
 import { InviteAgentsDialog } from "./InviteAgentsDialog";
 import { AgentAudioVisualizerAura } from "@/components/agent-audio-visualizer-aura";
-import type { VideoTrackMap, LiveKitVoiceStatus, CanvasEvent } from "../../hooks/useLiveKitVoice";
+import type { VideoTrackMap, LiveKitVoiceStatus, CanvasEvent, CanvasCursorEvent, ReactionEvent } from "../../hooks/useLiveKitVoice";
+import type { BufferedStroke } from "../../hooks/useMeetingCanvasBuffer";
 import { useNavigate } from "../../lib/router";
 import { ModulePanel } from "./ModulePanel";
 import type { ModuleData } from "./ModulePanel";
@@ -35,6 +37,8 @@ function toAgentState(status: LiveKitVoiceStatus | undefined): AgentState {
   }
 }
 
+export type RoomMode = "chat" | "cockpit" | "video" | "canvas";
+
 interface VoiceMeetingRoomProps {
   meetingId: string;
   onClose: () => void;
@@ -42,6 +46,9 @@ interface VoiceMeetingRoomProps {
   agentStatus?: LiveKitVoiceStatus;
   /** Real live LiveKit room occupancy (remote participants only) — drives the room light. */
   participantCount?: number;
+  /** Controlled room mode (lifted to the overlay so the cockpit can jump straight to a mode). */
+  mode?: RoomMode;
+  onModeChange?: (mode: RoomMode) => void;
   cameraEnabled?: boolean;
   toggleCamera?: () => void;
   screenShareEnabled?: boolean;
@@ -54,9 +61,32 @@ interface VoiceMeetingRoomProps {
   sendCanvasStroke?: (stroke: { points: { x: number; y: number }[]; color: string; width: number }) => void;
   sendCanvasClear?: () => void;
   canvasEvent?: CanvasEvent | null;
+  /** Live remote cursors on the shared canvas, keyed by LiveKit identity. */
+  canvasCursors?: CanvasCursorEvent[];
+  sendCanvasCursor?: (pos: { x: number; y: number }) => void;
+  /** Full stroke history for replay after mode switches + snapshot rendering. */
+  bufferedStrokes?: BufferedStroke[];
+  bufferVersion?: number;
+  /** Persist the canvas as a PNG artifact outcome on the meeting. */
+  onSaveSnapshot?: () => Promise<void>;
+  sendReaction?: (emoji: string) => void;
+  /** Recent reactions to float over the room (parent prunes them). */
+  reactions?: ReactionEvent[];
   setPTTActive?: (active: boolean) => void;
   activeModule?: ModuleData | null;
   clearModule?: () => void;
+}
+
+const REACTION_EMOJIS = ["👍", "🔥", "🎉", "❤️", "😂", "👀"];
+
+/** Artifact outcomes store JSON {label, assetId, contentPath} in `content`. */
+function parseArtifactContent(content: string): { label?: string; contentPath?: string } | null {
+  try {
+    const v = JSON.parse(content) as { label?: string; contentPath?: string };
+    return v && typeof v === "object" && typeof v.contentPath === "string" ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 const SPEAKER_COLORS = [
@@ -127,15 +157,18 @@ const SLASH_COMMANDS: Record<string, string> = {
   "/analytics": "/analytics",
 };
 
-export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, participantCount, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, sendCanvasStroke, sendCanvasClear, canvasEvent, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, participantCount, mode: controlledMode, onModeChange, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, sendCanvasStroke, sendCanvasClear, canvasEvent, canvasCursors, sendCanvasCursor, bufferedStrokes, bufferVersion, onSaveSnapshot, sendReaction, reactions, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
   const navigate = useNavigate();
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [mode, setMode] = useState<"chat" | "cockpit" | "video" | "canvas">("cockpit");
+  const [internalMode, setInternalMode] = useState<RoomMode>("cockpit");
+  const mode = controlledMode ?? internalMode;
+  const setMode = onModeChange ?? setInternalMode;
   const [recording, setRecording] = useState(false);
   const [isPTTMode, setIsPTTMode] = useState(false);
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
 
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -273,6 +306,20 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
           <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse at center, transparent 0%, rgba(148,163,184,0.03) 100%)" }} />
         )}
 
+        {/* ── Floating emoji reactions ──────────────────────── */}
+        {reactions && reactions.length > 0 && (
+          <div className="absolute top-16 right-6 z-30 pointer-events-none flex flex-col items-end gap-1">
+            {reactions.map((r) => (
+              <div key={`${r.identity}-${r.ts}`} className="flex items-center gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <span className="text-2xl animate-bounce">{r.emoji}</span>
+                <span className="text-[9px] uppercase tracking-wide text-white/40">
+                  {r.identity === "local" ? "you" : r.identity.replace(/^board-user-/, "").slice(0, 8)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ── Web Module Panel overlay ─────────────────────── */}
         {activeModule && clearModule && (
           <div className="absolute inset-x-4 top-14 bottom-14 sm:bottom-0 z-20 flex items-center justify-center p-4 pointer-events-none">
@@ -391,6 +438,39 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                 {isPTTMode ? "PTT" : "Open"}
               </Button>
             )}
+            {sendReaction && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="ghost"
+                    title="Send a reaction"
+                    className="h-8 px-2 rounded-lg text-white/30 hover:text-white/60">
+                    <SmilePlus className="h-3.5 w-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-1.5 flex gap-1">
+                  {REACTION_EMOJIS.map((emoji) => (
+                    <button key={emoji} onClick={() => sendReaction(emoji)}
+                      className="h-8 w-8 rounded-lg text-lg hover:bg-accent/50 transition-colors">
+                      {emoji}
+                    </button>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            )}
+            {(screenShareEnabled || cameraEnabled) && sendLiveKitText && (
+              <Button size="sm" variant="ghost"
+                title={screenShareEnabled ? "Ask JAZ to analyze your screen share" : "Ask JAZ to analyze your camera"}
+                className="h-8 px-2 rounded-lg gap-1 text-[9px] font-black uppercase tracking-wide text-cyan-300/60 hover:text-cyan-300 hover:bg-cyan-500/10"
+                onClick={() => {
+                  sendLiveKitText(screenShareEnabled
+                    ? "Please analyze my screen share and tell me what you see."
+                    : "Please analyze my camera and tell me what you see.");
+                  setMode("video");
+                }}>
+                <Eye className="h-3.5 w-3.5" />
+                Ask JAZ
+              </Button>
+            )}
           </div>
 
           {/* Minimize + End call — always visible */}
@@ -472,32 +552,65 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
           )}
 
           {/* VIDEO GRID */}
-          {isVideo && (
-            <div className="flex-1 rounded-xl p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-              <VideoTile track={localVideoTrack ?? undefined} name="You" status={micActive ? "speaking" : "muted"} />
-              {participants.map((p) => {
-                const name = p.name ?? "Unknown";
-                const remoteTracks = videoTracks?.get(name);
-                return <VideoTile key={p.id} track={remoteTracks?.video} name={name} status={p.status} />;
-              })}
-              {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
-                tracks.screen ? (
-                  <div key={`screen-${identity}`} className="col-span-full relative rounded-xl overflow-hidden border border-blue-500/40 aspect-video">
-                    <VideoTile track={tracks.screen} name={identity === "local" ? "Your Screen" : `${identity} — Screen`} />
-                    <span className="absolute top-2 left-2 text-[10px] font-black uppercase tracking-wide bg-blue-500/80 text-white px-2 py-0.5 rounded">Screen Share</span>
-                  </div>
-                ) : null
-              )}
-            </div>
-          )}
+          {isVideo && (() => {
+            // Remote camera tracks are keyed by LiveKit identity: staff publish as
+            // board-user-<userId>; agents (avatar) publish under their agent identity.
+            const identityFor = (p: (typeof participants)[number]) =>
+              p.userId ? `board-user-${p.userId}` : (p.name ?? "");
+            const consumed = new Set<string>(["local"]);
+            return (
+              <div className="flex-1 rounded-xl p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+                <VideoTile track={localVideoTrack ?? undefined} name="You" status={micActive ? "speaking" : "muted"} />
+                {participants.map((p) => {
+                  const name = p.name ?? "Unknown";
+                  const identity = identityFor(p);
+                  consumed.add(identity);
+                  const remoteTracks = videoTracks?.get(identity);
+                  return <VideoTile key={p.id} track={remoteTracks?.video} name={name} status={p.status} />;
+                })}
+                {/* Cameras from identities without a participant row (e.g. avatar workers) */}
+                {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
+                  !consumed.has(identity) && tracks.video ? (
+                    <VideoTile key={`extra-${identity}`} track={tracks.video} name={identity.replace(/^board-user-/, "")} />
+                  ) : null
+                )}
+                {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
+                  tracks.screen ? (
+                    <div key={`screen-${identity}`} className="col-span-full relative rounded-xl overflow-hidden border border-blue-500/40 aspect-video">
+                      <VideoTile track={tracks.screen} name={identity === "local" ? "Your Screen" : `${identity.replace(/^board-user-/, "")} — Screen`} />
+                      <span className="absolute top-2 left-2 text-[10px] font-black uppercase tracking-wide bg-blue-500/80 text-white px-2 py-0.5 rounded">Screen Share</span>
+                    </div>
+                  ) : null
+                )}
+              </div>
+            );
+          })()}
 
-          {/* CANVAS — ephemeral shared draw surface, synced via LiveKit data channel */}
+          {/* CANVAS — shared draw surface, synced via LiveKit data channel,
+              buffered at the overlay level for replay + snapshot persistence */}
           {isCanvas && (
             <div className="flex-1 flex p-3 sm:p-4 overflow-hidden">
               <MeetingCanvas
                 sendCanvasStroke={sendCanvasStroke}
                 sendCanvasClear={sendCanvasClear}
                 remoteEvent={canvasEvent}
+                sendCanvasCursor={sendCanvasCursor}
+                cursors={canvasCursors}
+                bufferedStrokes={bufferedStrokes}
+                bufferVersion={bufferVersion}
+                onSaveSnapshot={onSaveSnapshot ? async () => {
+                  setSavingSnapshot(true);
+                  try {
+                    await onSaveSnapshot();
+                    pushToast({ title: "Canvas Saved", body: "Snapshot attached to the meeting as an artifact.", tone: "success" });
+                    await refetchMeeting();
+                  } catch (err) {
+                    pushToast({ title: "Snapshot Failed", body: err instanceof Error ? err.message : "Could not save canvas.", tone: "error" });
+                  } finally {
+                    setSavingSnapshot(false);
+                  }
+                } : undefined}
+                savingSnapshot={savingSnapshot}
               />
             </div>
           )}
@@ -590,7 +703,8 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                   );
                 })}
 
-                {!isCockpit && outcomes.map((o) => (
+                {/* Artifact outcomes render as thumbnails in the telemetry pane only */}
+                {!isCockpit && outcomes.filter((o) => o.type !== "artifact").map((o) => (
                   <div key={o.id} className="flex items-start gap-2.5 mt-5 mx-2 px-3 py-2.5 rounded-xl border"
                     style={o.type === "decision" ? { background: "rgba(52,211,153,0.06)", borderColor: "rgba(52,211,153,0.2)" } : o.type === "risk" ? { background: "rgba(251,191,36,0.06)", borderColor: "rgba(251,191,36,0.2)" } : { background: "rgba(148,163,184,0.06)", borderColor: "rgba(148,163,184,0.2)" }}>
                     {o.type === "decision" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />}
@@ -652,7 +766,24 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                     <div className="h-full flex items-center justify-center text-center">
                       <p className="text-[9px] text-[#94a3b8]/30 uppercase tracking-[0.2em] border border-dashed border-[#94a3b8]/10 p-4 rounded-xl">No telemetry detected.<br />Issuing commands will<br />populate intelligence vectors.</p>
                     </div>
-                  ) : outcomes.map((o) => (
+                  ) : outcomes.map((o) => {
+                    const artifact = o.type === "artifact" ? parseArtifactContent(o.content) : null;
+                    if (artifact) {
+                      return (
+                        <a key={o.id} href={artifact.contentPath} target="_blank" rel="noopener noreferrer"
+                          className="block relative rounded-xl border overflow-hidden bg-black/60 shadow-[0_4px_20px_rgba(0,0,0,0.5)] hover:border-[#94a3b8]/60 transition-colors"
+                          style={{ borderColor: "rgba(148,163,184,0.3)" }}>
+                          <img src={artifact.contentPath} alt={artifact.label ?? "Canvas snapshot"} className="w-full aspect-video object-cover" />
+                          <div className="flex items-center gap-2 px-3 py-2">
+                            <ImageIcon className="h-4 w-4 text-[#94a3b8] flex-shrink-0" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#94a3b8] truncate">
+                              {artifact.label ?? "Canvas snapshot"}
+                            </span>
+                          </div>
+                        </a>
+                      );
+                    }
+                    return (
                     <div key={o.id} className="relative p-3 rounded-xl border bg-black/60 shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
                       style={o.type === "decision" ? { borderColor: "rgba(52,211,153,0.3)" } : o.type === "risk" ? { borderColor: "rgba(251,191,36,0.3)" } : { borderColor: "rgba(148,163,184,0.3)" }}>
                       <div className="flex items-start gap-2">
@@ -667,7 +798,8 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -729,6 +861,39 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             <Circle className={`h-5 w-5 ${recording ? "fill-red-500" : ""}`} />
             <span className="text-[8px] font-black uppercase tracking-wide">{recording ? "Stop" : "Rec"}</span>
           </button>
+          {/* Reaction */}
+          {sendReaction && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 text-white/40 transition-all">
+                  <SmilePlus className="h-5 w-5" />
+                  <span className="text-[8px] font-black uppercase tracking-wide">React</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="top" className="w-auto p-1.5 flex gap-1">
+                {REACTION_EMOJIS.map((emoji) => (
+                  <button key={emoji} onClick={() => sendReaction(emoji)}
+                    className="h-9 w-9 rounded-lg text-xl hover:bg-accent/50 transition-colors">
+                    {emoji}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          )}
+          {/* Ask JAZ to look */}
+          {(screenShareEnabled || cameraEnabled) && sendLiveKitText && (
+            <button
+              onClick={() => {
+                sendLiveKitText(screenShareEnabled
+                  ? "Please analyze my screen share and tell me what you see."
+                  : "Please analyze my camera and tell me what you see.");
+                setMode("video");
+              }}
+              className="flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 text-cyan-300/60 transition-all">
+              <Eye className="h-5 w-5" />
+              <span className="text-[8px] font-black uppercase tracking-wide">Ask JAZ</span>
+            </button>
+          )}
         </div>
       </div>
 

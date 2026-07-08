@@ -123,6 +123,7 @@ import { FilterBar, type FilterValue } from "@/components/FilterBar";
 import { InlineEditor } from "@/components/InlineEditor";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { Identity } from "@/components/Identity";
+import { MeetingHubCockpit } from "@/components/meetings/MeetingHubCockpit";
 
 /* ------------------------------------------------------------------ */
 /*  Section wrapper                                                    */
@@ -145,6 +146,33 @@ function SubSection({ title, children }: { title: string; children: React.ReactN
     <div className="space-y-3">
       <h4 className="text-sm font-medium">{title}</h4>
       {children}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Meeting Hub Cockpit demo (fixed-position, so mounted on demand)    */
+/* ------------------------------------------------------------------ */
+
+function CockpitDemo() {
+  const [show, setShow] = useState(false);
+  const [muted, setMuted] = useState(false);
+  return (
+    <div>
+      <Button variant="outline" size="sm" onClick={() => setShow((v) => !v)}>
+        {show ? "Hide floating cockpit" : "Show floating cockpit"}
+      </Button>
+      {show && (
+        <MeetingHubCockpit
+          meetingId=""
+          status="listening"
+          muted={muted}
+          onToggleMute={() => setMuted((m) => !m)}
+          onExpand={() => setShow(false)}
+          onEnd={() => setShow(false)}
+          activeSpeakers={[]}
+        />
+      )}
     </div>
   );
 }
@@ -1301,6 +1329,23 @@ export function DesignGuide() {
             );
           })}
         </div>
+      </Section>
+
+      {/* ============================================================ */}
+      {/*  MEETING HUB COCKPIT                                          */}
+      {/* ============================================================ */}
+      <Section title="Meeting Hub Cockpit">
+        <SubSection title="Floating cockpit (live demo)">
+          <p className="text-sm text-muted-foreground">
+            The draggable mini-meeting control rendered while a meeting is minimized.
+            Two sizes: a compact pill and a mini-cockpit panel with roster, mute, and
+            mode quick-switch. Position and size persist in localStorage
+            (<code className="font-mono text-xs">paperclip.meetingCockpit</code>).
+            Toggle the demo to mount it bottom-right — drag it, switch sizes, then
+            dismiss with the end-call button.
+          </p>
+          <CockpitDemo />
+        </SubSection>
       </Section>
 
       {/* ============================================================ */}
