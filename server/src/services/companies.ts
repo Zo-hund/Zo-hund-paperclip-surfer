@@ -26,7 +26,10 @@ import {
   principalPermissionGrants,
   companyMemberships,
 } from "@paperclipai/db";
+import { RESERVED_COMPANY_PREFIX_ROOTS } from "@paperclipai/shared";
 import { notFound, unprocessable } from "../errors.js";
+
+const RESERVED_COMPANY_PREFIX_SET: ReadonlySet<string> = new Set(RESERVED_COMPANY_PREFIX_ROOTS);
 
 export function companyService(db: Db) {
   const ISSUE_PREFIX_FALLBACK = "CMP";
@@ -133,6 +136,10 @@ export function companyService(db: Db) {
     let suffix = 1;
     while (suffix < 10000) {
       const candidate = `${base}${suffixForAttempt(suffix)}`;
+      if (RESERVED_COMPANY_PREFIX_SET.has(candidate.toLowerCase())) {
+        suffix += 1;
+        continue;
+      }
       try {
         const rows = await db
           .insert(companies)

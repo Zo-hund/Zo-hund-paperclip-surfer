@@ -4,7 +4,9 @@ import crypto from "node:crypto";
 import { eq, and, count } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { opprrcDeliveries, opprrcBackupJobs } from "@paperclipai/db";
+import { OPPRRC_CATEGORY_SLUGS, OPPRRC_AUDIENCES, type OpprcCategorySlug, type OpprcAudience } from "@paperclipai/shared";
 import { loadConfig } from "../config.js";
+import { conflict, unprocessable } from "../errors.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -32,8 +34,8 @@ export interface DeliverInput {
   companyId: string;
   issueId: string;
   assetId?: string;
-  category: string;
-  audience?: string;
+  category: OpprcCategorySlug;
+  audience?: OpprcAudience;
   locationSlug?: string;
   filename: string;
   fileContent: Buffer;
@@ -54,9 +56,45 @@ function getOpprrcRoot(): string {
   return process.env.PAPERCLIP_OPPRRC_ROOT ?? "/paperclip/opprrc";
 }
 
+/**
+ * Guards the OPPRRC delivery route: an asset can only be delivered into the
+ * OPPRRC system once its issue has actually reached the "opprrc" lifecycle
+ * stage (see ISSUE_LIFECYCLE_STAGES). Reuses the same forward-only lifecycle
+ * concept as `assertLifecycleTransition` in services/issues.ts.
+ */
+export function assertIssueReadyForOpprcDelivery(issue: { lifecycleStage: string | null }): void {
+  if (issue.lifecycleStage !== "opprrc") {
+    throw conflict(
+      `Issue must be in the "opprrc" lifecycle stage to receive a delivery (currently: ${issue.lifecycleStage ?? "none"})`,
+    );
+  }
+}
+
+let opprrcRootStructureEnsured = false;
+
+/**
+ * Proactively creates the full category x audience directory grid under the
+ * OPPRRC root so deliveries only ever land in one of the known folders. Safe
+ * to call repeatedly (idempotent, tolerant of an unmounted/missing root).
+ */
+export async function ensureOpprcRootStructure(): Promise<void> {
+  if (opprrcRootStructureEnsured) return;
+  const root = getOpprrcRoot();
+  try {
+    for (const category of OPPRRC_CATEGORY_SLUGS) {
+      for (const audience of OPPRRC_AUDIENCES) {
+        await fs.mkdir(path.join(root, category, audience), { recursive: true });
+      }
+    }
+    opprrcRootStructureEnsured = true;
+  } catch {
+    // Tolerate a not-yet-mounted disk; deliver() will retry mkdir per-call.
+  }
+}
+
 function buildVpsPath(
-  category: string,
-  audience: string,
+  category: OpprcCategorySlug,
+  audience: OpprcAudience,
   locationSlug: string | undefined,
   filename: string,
 ): string {
@@ -95,7 +133,7 @@ export function opprrcStorageService(db: Db) {
   async function checkRunGuardrail(): Promise<void> {
     const ctrl = await readRunControl();
     if (ctrl.totalRuns >= ctrl.hardStopAt) {
-      throw new Error(
+      throw conflict(
         `OPPRRC hard stop: ${ctrl.totalRuns}/${ctrl.hardStopAt} runs completed. ` +
           `Manual review and reset required before continuing.`,
       );
@@ -118,7 +156,7 @@ export function opprrcStorageService(db: Db) {
     const sha256 = crypto.createHash("sha256").update(input.fileContent).digest("hex");
     const existingPath = await checkDedupGuardrail(sha256);
     if (existingPath) {
-      throw new Error(
+      throw unprocessable(
         `OPPRRC dedup: asset already delivered at ${existingPath} (sha256=${sha256}). Skipping.`,
       );
     }

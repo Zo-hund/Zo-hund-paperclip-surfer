@@ -122,7 +122,7 @@ export function MeetingBubble() {
       "/projects": "Projects", "/analytics": "Analytics",
       "/inbox": "Inbox", "/inbox/mine": "Inbox",
       "/briefcase": "Briefcase", "/settings": "Settings",
-      "/members": "Team", "/amx/chain": "Chain of Command",
+      "/members": "Team", "/dispatch/chain": "Chain of Command",
       "/amx/cockpit": "Cockpit",
     };
     let label = map[seg];

@@ -1,17 +1,40 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { Db } from "@paperclipai/db";
+import { OPPRRC_CATEGORY_SLUGS, OPPRRC_AUDIENCES } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
-import { opprrcStorageService } from "../services/opprrc-storage.js";
+import { opprrcStorageService, assertIssueReadyForOpprcDelivery } from "../services/opprrc-storage.js";
+import { issueService, assetService, logActivity } from "../services/index.js";
+import type { StorageService } from "../storage/types.js";
+import { notFound, unprocessable } from "../errors.js";
 
 const resetSchema = z.object({
   reason: z.string().min(1),
 });
 
-export function opprrcRoutes(db: Db): Router {
+const deliverSchema = z.object({
+  issueId: z.string().uuid(),
+  assetId: z.string().uuid(),
+  category: z.enum(OPPRRC_CATEGORY_SLUGS),
+  audience: z.enum(OPPRRC_AUDIENCES).optional(),
+  locationSlug: z.string().optional(),
+  costEstimateTokens: z.number().nonnegative().optional(),
+});
+
+async function bufferStream(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+export function opprrcRoutes(db: Db, storage: StorageService): Router {
   const router = Router();
   const svc = opprrcStorageService(db);
+  const issuesSvc = issueService(db);
+  const assetsSvc = assetService(db);
 
   // List deliveries for a company (optionally filtered by issueId)
   router.get("/companies/:companyId/opprrc/deliveries", async (req, res, next) => {
@@ -23,6 +46,74 @@ export function opprrcRoutes(db: Db): Router {
       next(err);
     }
   });
+
+  // Deliver an already-uploaded asset into the OPPRRC system
+  router.post(
+    "/companies/:companyId/opprrc/deliveries",
+    validate(deliverSchema),
+    async (req, res, next) => {
+      try {
+        const companyId = req.params.companyId as string;
+        assertCompanyAccess(req, companyId);
+        const actor = getActorInfo(req);
+
+        const issue = await issuesSvc.getById(req.body.issueId);
+        if (!issue) {
+          throw notFound("Issue not found");
+        }
+        if (issue.companyId !== companyId) {
+          throw unprocessable("Issue does not belong to company");
+        }
+        assertIssueReadyForOpprcDelivery(issue);
+
+        const asset = await assetsSvc.getById(req.body.assetId);
+        if (!asset) {
+          throw notFound("Asset not found");
+        }
+        if (asset.companyId !== companyId) {
+          throw unprocessable("Asset does not belong to company");
+        }
+
+        const object = await storage.getObject(companyId, asset.objectKey);
+        const fileContent = await bufferStream(object.stream);
+
+        const result = await svc.deliver({
+          companyId,
+          issueId: req.body.issueId,
+          assetId: req.body.assetId,
+          category: req.body.category,
+          audience: req.body.audience,
+          locationSlug: req.body.locationSlug,
+          filename: asset.originalFilename ?? req.body.assetId,
+          fileContent,
+          costEstimateTokens: req.body.costEstimateTokens,
+          agentId: actor.agentId ?? undefined,
+        });
+
+        await logActivity(db, {
+          companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          agentId: actor.agentId,
+          runId: actor.runId,
+          action: "opprrc.delivered",
+          entityType: "opprrc_delivery",
+          entityId: result.deliveryId,
+          details: {
+            issueId: req.body.issueId,
+            assetId: req.body.assetId,
+            category: req.body.category,
+            audience: req.body.audience ?? "CLIENTS-EXTERNAL",
+            runNumber: result.runNumber,
+          },
+        });
+
+        res.status(201).json(result);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   // Get storage details for a single delivery
   router.get("/companies/:companyId/opprrc/deliveries/:deliveryId/storage", async (req, res, next) => {

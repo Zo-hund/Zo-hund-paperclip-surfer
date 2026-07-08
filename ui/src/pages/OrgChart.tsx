@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { AgentIcon } from "../components/AgentIconPicker";
+import { AdapterLocalityBadge } from "../components/AdapterLocalityBadge";
 import { Download, Network, Upload, Zap, UserCheck, Maximize2, Minimize2 } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
 import { extractModelName } from "../lib/model-utils";
@@ -616,8 +617,11 @@ export function OrgChart() {
                     {agent?.title ?? roleLabel(node.role)}
                   </span>
                   {agent && (
-                    <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
-                      {adapterLabels[agent.adapterType] ?? agent.adapterType}
+                    <span className="flex items-center gap-1 mt-1">
+                      <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight">
+                        {adapterLabels[agent.adapterType] ?? agent.adapterType}
+                      </span>
+                      <AdapterLocalityBadge adapterType={agent.adapterType} />
                     </span>
                   )}
                   {agent && typeof agent.adapterConfig.model === "string" && agent.adapterConfig.model && (

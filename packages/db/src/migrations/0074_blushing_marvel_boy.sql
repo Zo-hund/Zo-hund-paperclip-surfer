@@ -1,0 +1,2 @@
+ALTER TABLE "opprrc_deliveries" ADD CONSTRAINT "opprrc_deliveries_category_check" CHECK ("opprrc_deliveries"."category" IN ('01_organizations', '02_programs', '03_projects', '04_resources', '05_reports', '06_certificates'));--> statement-breakpoint
+ALTER TABLE "opprrc_deliveries" ADD CONSTRAINT "opprrc_deliveries_audience_check" CHECK ("opprrc_deliveries"."audience" IN ('BOARD-INTERNAL', 'CLIENTS-EXTERNAL'));

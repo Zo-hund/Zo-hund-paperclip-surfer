@@ -53,6 +53,7 @@ import { verifyRoutes } from "./routes/verify.js";
 import { stripeWebhookRoutes, stripeApiRoutes } from "./routes/stripe.js";
 import { opprrcRoutes } from "./routes/opprrc.js";
 import { startOpprrcBackupWorker } from "./services/opprrc-backup-worker.js";
+import { ensureOpprcRootStructure } from "./services/opprrc-storage.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -107,7 +108,7 @@ function isMobileUserAgent(userAgent: string | undefined): boolean {
 }
 
 function buildAmxRemoteWorkMobileHtml(origin: string): string {
-  const fullConsoleUrl = `${origin}/amx/remote-work?full=1`;
+  const fullConsoleUrl = `${origin}/dispatch/remote-work?full=1`;
   const apiBaseUrl = `${origin}/api`;
   return `<!doctype html>
 <html lang="en">
@@ -280,7 +281,7 @@ export async function createApp(
   api.use(agentKpiRoutes(db));
   api.use(agentExperimentRoutes(db));
   api.use(amxRoutes(db));
-  api.use(opprrcRoutes(db));
+  api.use(opprrcRoutes(db, opts.storageService));
   api.use(lmsRoutes(db));
   api.use(stripeApiRoutes(db));
   api.use(auditRoutes(db));
@@ -371,7 +372,7 @@ export async function createApp(
     localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR,
   }));
 
-  app.get(["/amx/remote-work", "/amx/dispatch"], (req, res, next) => {
+  app.get(["/dispatch/remote-work", "/dispatch/console"], (req, res, next) => {
     if (req.query.full === "1" || (req.query.lite !== "1" && !isMobileUserAgent(req.get("user-agent")))) {
       next();
       return;
@@ -482,6 +483,7 @@ export async function createApp(
 
   jobCoordinator.start();
   scheduler.start();
+  void ensureOpprcRootStructure();
   const stopOpprrcBackupWorker = startOpprrcBackupWorker(db);
   void toolDispatcher.initialize().catch((err) => {
     logger.error({ err }, "Failed to initialize plugin tool dispatcher");

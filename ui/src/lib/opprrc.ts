@@ -2,6 +2,7 @@ import {
   FileText, Code2, Image, Music, Film, Palette, Zap,
   GitPullRequest, GitBranch, GitCommit, Globe, PackageOpen, Briefcase,
 } from "lucide-react";
+import { OPPRRC_CATEGORY_SLUGS, type OpprcCategorySlug } from "@paperclipai/shared";
 
 export const TYPE_CONFIG: Record<string, { icon: React.ElementType; label: string; color: string; bg: string }> = {
   document:        { icon: FileText,       label: "Document",  color: "text-blue-400",    bg: "bg-blue-400/10" },
@@ -27,17 +28,21 @@ export function typeConfig(type: string) {
   };
 }
 
-export const OPPRRC_FOLDERS = [
-  { folder: "",                  label: "All",               types: [] as string[],                  icon: "📦", color: "text-foreground" },
-  { folder: "01_organizations",  label: "01 · ORGANIZATIONS", types: [] as string[],                  icon: "🏢", color: "text-cyan-400" },
-  { folder: "02_programs",       label: "02 · PROGRAMS",      types: ["image", "artifact", "visual", "video", "audio", "preview_url"], icon: "📢", color: "text-violet-400" },
-  { folder: "03_projects",       label: "03 · PROJECTS",      types: ["code", "pull_request", "branch", "commit"], icon: "🛠️", color: "text-emerald-400" },
-  { folder: "04_resources",      label: "04 · RESOURCES",     types: ["runtime_service"],             icon: "💾", color: "text-amber-400" },
-  { folder: "05_reports",        label: "05 · REPORTS",       types: ["document", "text"],             icon: "📊", color: "text-blue-400" },
-  { folder: "06_certificates",   label: "06 · CERTIFICATES",  types: ["audit", "certificate"],         icon: "📜", color: "text-pink-400" },
-] as const;
+const OPPRRC_FOLDER_META: Record<OpprcCategorySlug, { label: string; types: string[]; icon: string; color: string }> = {
+  "01_organizations": { label: "01 · ORGANIZATIONS", types: [],                                                                icon: "🏢", color: "text-cyan-400" },
+  "02_programs":      { label: "02 · PROGRAMS",      types: ["image", "artifact", "visual", "video", "audio", "preview_url"], icon: "📢", color: "text-violet-400" },
+  "03_projects":      { label: "03 · PROJECTS",      types: ["code", "pull_request", "branch", "commit"],                     icon: "🛠️", color: "text-emerald-400" },
+  "04_resources":     { label: "04 · RESOURCES",     types: ["runtime_service"],                                              icon: "💾", color: "text-amber-400" },
+  "05_reports":       { label: "05 · REPORTS",       types: ["document", "text"],                                             icon: "📊", color: "text-blue-400" },
+  "06_certificates":  { label: "06 · CERTIFICATES",  types: ["audit", "certificate"],                                         icon: "📜", color: "text-pink-400" },
+};
 
-export type OpprcFolder = (typeof OPPRRC_FOLDERS)[number]["folder"];
+export const OPPRRC_FOLDERS = [
+  { folder: "" as const, label: "All", types: [] as string[], icon: "📦", color: "text-foreground" },
+  ...OPPRRC_CATEGORY_SLUGS.map((folder) => ({ folder, ...OPPRRC_FOLDER_META[folder] })),
+];
+
+export type OpprcFolder = "" | OpprcCategorySlug;
 
 export function folderForType(type: string): OpprcFolder {
   const t = (type ?? "").toLowerCase();

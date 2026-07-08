@@ -239,9 +239,9 @@ function boardRoutes() {
       <Route path="certificates" element={<Certificates />} />
       <Route path="billing" element={<Billing />} />
       <Route path="pricing" element={<TanPricingPage />} />
-      <Route path="amx/chain" element={<AmxChain />} />
-      <Route path="amx/remote-work" element={<AmxDispatchConsole />} />
-      <Route path="amx/dispatch" element={<AmxDispatchConsole />} />
+      <Route path="dispatch/chain" element={<AmxChain />} />
+      <Route path="dispatch/remote-work" element={<AmxDispatchConsole />} />
+      <Route path="dispatch/console" element={<AmxDispatchConsole />} />
       <Route path="audit/team" element={<AuditTeam />} />
       <Route path="briefcase" element={<BoardDeliverables />} />
       <Route path="marketplace" element={<AgentMarketplace />} />
@@ -452,9 +452,9 @@ export function App() {
           <Route path="rq/portal" element={<UnprefixedBoardRedirect />} />
           <Route path="lms/dashboard" element={<UnprefixedBoardRedirect />} />
           <Route path="lms/brand" element={<UnprefixedBoardRedirect />} />
-          <Route path="amx/chain" element={<UnprefixedBoardRedirect />} />
-          <Route path="amx/remote-work" element={<UnprefixedBoardRedirect />} />
-          <Route path="amx/dispatch" element={<UnprefixedBoardRedirect />} />
+          <Route path="dispatch/chain" element={<UnprefixedBoardRedirect />} />
+          <Route path="dispatch/remote-work" element={<UnprefixedBoardRedirect />} />
+          <Route path="dispatch/console" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path="mcp-servers" element={<UnprefixedBoardRedirect />} />
           <Route path="analytics" element={<UnprefixedBoardRedirect />} />

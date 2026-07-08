@@ -1,6 +1,51 @@
 export const COMPANY_STATUSES = ["active", "paused", "archived"] as const;
 export type CompanyStatus = (typeof COMPANY_STATUSES)[number];
 
+/**
+ * Lowercase path-segment/word roots reserved by the frontend router (ui/src/lib/company-routes.ts's
+ * BOARD_ROUTE_ROOTS + GLOBAL_ROUTE_ROOTS) that a company's auto-derived issue prefix must never
+ * collide with — a collision breaks company-prefixed URL routing (see the "amx" incident: AMX Labs'
+ * auto-derived prefix "AMX" collided with a reserved route root of the same name). Consumed by
+ * `createCompanyWithUniquePrefix` (server/src/services/companies.ts) to skip colliding candidates.
+ */
+export const RESERVED_COMPANY_PREFIX_ROOTS = [
+  "dashboard",
+  "companies",
+  "company",
+  "skills",
+  "org",
+  "agents",
+  "projects",
+  "issues",
+  "routines",
+  "goals",
+  "approvals",
+  "costs",
+  "usage",
+  "activity",
+  "inbox",
+  "design-guide",
+  "meetings",
+  "calendar",
+  "tests",
+  "analytics",
+  "mcp-servers",
+  "xp",
+  "rq",
+  "lms",
+  "dispatch",
+  "marketplace",
+  "audit",
+  "briefcase",
+  "auth",
+  "invite",
+  "board-claim",
+  "cli-auth",
+  "docs",
+  "instance",
+  "board",
+] as const;
+
 export const DEPLOYMENT_MODES = ["local_trusted", "authenticated"] as const;
 export type DeploymentMode = (typeof DEPLOYMENT_MODES)[number];
 
@@ -36,6 +81,28 @@ export const AGENT_ADAPTER_TYPES = [
   "openrouter",
 ] as const;
 export type AgentAdapterType = (typeof AGENT_ADAPTER_TYPES)[number];
+
+/**
+ * Purely descriptive locality classification for UI indicators (Local vs Cloud badges).
+ * Unrelated to `supportsLocalAgentJwt` on the server adapter registry, which governs
+ * JWT issuance capability, not where the adapter actually executes — e.g. `openrouter`
+ * sets that flag `true` despite being a cloud-hosted adapter.
+ */
+export const ADAPTER_LOCALITY: Record<AgentAdapterType, "local" | "cloud" | "custom"> = {
+  claude_local: "local",
+  codex_local: "local",
+  gemini_local: "local",
+  opencode_local: "local",
+  pi_local: "local",
+  hermes_local: "local",
+  cursor: "local",
+  openrouter: "cloud",
+  hermes_advanced: "cloud",
+  openclaw_gateway: "cloud",
+  process: "custom",
+  http: "custom",
+};
+export type AdapterLocality = (typeof ADAPTER_LOCALITY)[AgentAdapterType];
 
 export const AGENT_ROLES = [
   "ceo",
@@ -147,6 +214,26 @@ export const ISSUE_LIFECYCLE_STAGES = [
   "learning",
 ] as const;
 export type IssueLifecycleStage = (typeof ISSUE_LIFECYCLE_STAGES)[number];
+
+/**
+ * The 6 OPPRRC folder categories a delivered asset must land under (matches the
+ * real-world Drive/VPS folder rails convention: 01_organizations .. 06_certificates).
+ * Single source of truth shared by the server delivery route, the DB check
+ * constraint, and the UI's folder display metadata (`ui/src/lib/opprrc.ts`).
+ */
+export const OPPRRC_CATEGORY_SLUGS = [
+  "01_organizations",
+  "02_programs",
+  "03_projects",
+  "04_resources",
+  "05_reports",
+  "06_certificates",
+] as const;
+export type OpprcCategorySlug = (typeof OPPRRC_CATEGORY_SLUGS)[number];
+
+/** The only two valid delivery audiences in the OPPRRC folder rails convention. */
+export const OPPRRC_AUDIENCES = ["BOARD-INTERNAL", "CLIENTS-EXTERNAL"] as const;
+export type OpprcAudience = (typeof OPPRRC_AUDIENCES)[number];
 
 export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];

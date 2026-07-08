@@ -159,8 +159,8 @@ export function Sidebar() {
           <SidebarNavItem to="/lms/dashboard" label="TECH AT NITE" icon={GraduationCap} />
           <SidebarNavItem to="/lms/brand" label="TAN Brand Portal" icon={Building2} />
           <SidebarNavItem to="/lms/command-center" label="CRM Command" icon={BarChart3} />
-          <SidebarNavItem to="/amx/remote-work" label="Local + Cloud" icon={Route} textBadge="Work" textBadgeTone="amber" />
-          <SidebarNavItem to="/amx/chain" label="AMX Chain" icon={ShieldCheck} />
+          <SidebarNavItem to="/dispatch/remote-work" label="Local + Cloud" icon={Route} textBadge="Work" textBadgeTone="amber" />
+          <SidebarNavItem to="/dispatch/chain" label="AMX Chain" icon={ShieldCheck} />
           <SidebarNavItem to="/audit/team" label="Audit Team" icon={ClipboardCheck} textBadge="V3" textBadgeTone="amber" />
           <SidebarNavItem to="/xp/wallet" label="Wallet" icon={Wallet} />
           <SidebarNavItem to="/tests/ux/runs" label="UX Trace Lab" icon={Activity} textBadge="Lab" />

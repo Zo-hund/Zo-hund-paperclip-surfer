@@ -107,3 +107,20 @@ export const priorityColor: Record<string, string> = {
 };
 
 export const priorityColorDefault = "text-yellow-600 dark:text-yellow-400";
+
+// ---------------------------------------------------------------------------
+// Adapter locality badge — distinguishes local (process-spawning) vs cloud
+// (hosted API) agent adapters. See ADAPTER_LOCALITY in @paperclipai/shared.
+// ---------------------------------------------------------------------------
+
+export const adapterLocalityBadge: Record<string, string> = {
+  local: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+  cloud: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
+};
+
+export const adapterLocalityBadgeDefault = "bg-muted text-muted-foreground";
+
+export const adapterLocalityLabel: Record<string, string> = {
+  local: "Local",
+  cloud: "Cloud",
+};

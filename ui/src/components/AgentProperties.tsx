@@ -5,6 +5,7 @@ import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { StatusBadge } from "./StatusBadge";
+import { AdapterLocalityBadge } from "./AdapterLocalityBadge";
 import { Identity } from "./Identity";
 import { formatDate, agentUrl } from "../lib/utils";
 import { Separator } from "@/components/ui/separator";
@@ -64,6 +65,7 @@ export function AgentProperties({ agent, runtimeState }: AgentPropertiesProps) {
         )}
         <PropertyRow label="Adapter">
           <span className="text-sm font-mono">{adapterLabels[agent.adapterType] ?? agent.adapterType}</span>
+          <AdapterLocalityBadge adapterType={agent.adapterType} />
         </PropertyRow>
       </div>
 
