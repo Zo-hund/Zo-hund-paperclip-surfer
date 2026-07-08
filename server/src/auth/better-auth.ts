@@ -163,7 +163,10 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
     delete (authConfig as { baseURL?: string }).baseURL;
   }
 
-  return betterAuth(authConfig);
+  // better-auth >=1.6 infers a concrete Auth<{...}> generic from the literal
+  // config that is no longer assignable to the unparameterized instance type;
+  // downstream consumers only touch handler/api surfaces, so widen explicitly.
+  return betterAuth(authConfig) as unknown as BetterAuthInstance;
 }
 
 export function createBetterAuthHandler(auth: BetterAuthInstance): RequestHandler {
