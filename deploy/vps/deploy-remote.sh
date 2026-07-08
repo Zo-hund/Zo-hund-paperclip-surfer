@@ -5,6 +5,12 @@ DEPLOY_DIR="${1:-$(pwd)}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.vps.yml}"
 ENV_FILE="${ENV_FILE:-.env.vps}"
 HEALTH_URL="${HEALTH_URL:-}"
+# Direct check against the host-published app port (127.0.0.1:3100 in the vps
+# layout, 3100:3100 in hostinger). HEALTH_URL goes through Cloudflare and the
+# shared traefik, which can keep serving 502 for minutes after the container
+# is recreated while traefik refreshes its upstream — so the deploy gate must
+# use the direct URL and treat the through-proxy check as advisory only.
+LOCAL_HEALTH_URL="${LOCAL_HEALTH_URL:-http://127.0.0.1:3100}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-30}"
 BACKUP_ROOT="${BACKUP_ROOT:-${DEPLOY_DIR}/.deploy-backups}"
 
@@ -157,48 +163,53 @@ fi
 
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" ps
 
+healthy=""
 for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
   status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${COMPOSE_PROJECT_NAME_VALUE}-${APP_SERVICE_NAME_VALUE}-1" 2>/dev/null || true)"
   echo "Checking deployment health... Attempt ${attempt}/${MAX_ATTEMPTS} (Container state: ${status:-unknown})"
   if [[ "${status}" == "healthy" || "${status}" == "running" ]]; then
-    if [[ -n "${HEALTH_URL}" ]]; then
-      code="$(curl -sS -o /dev/null -w '%{http_code}' "${HEALTH_URL}" || true)"
-      echo "  Curl check at ${HEALTH_URL} returned status code: ${code:-failed}"
-      if [[ "${code}" =~ ^[0-9]+$ ]] && [[ "${code}" -ge 200 && "${code}" -lt 400 ]]; then
-        cat > ".last-successful-release" <<EOF
-timestamp=${TIMESTAMP}
-deploy_dir=${DEPLOY_DIR}
-compose_file=${COMPOSE_FILE}
-env_file=${ENV_FILE}
-deploy_layout=${DEPLOY_LAYOUT_VALUE}
-compose_project_name=${COMPOSE_PROJECT_NAME_VALUE}
-app_service_name=${APP_SERVICE_NAME_VALUE}
-health_url=${HEALTH_URL}
-image=${AMX_IMAGE_VALUE}
-backup_dir=${RELEASE_BACKUP_DIR}
-EOF
-        echo "Deployment healthy at ${HEALTH_URL}"
-        exit 0
-      fi
-    else
-      cat > ".last-successful-release" <<EOF
-timestamp=${TIMESTAMP}
-deploy_dir=${DEPLOY_DIR}
-compose_file=${COMPOSE_FILE}
-env_file=${ENV_FILE}
-deploy_layout=${DEPLOY_LAYOUT_VALUE}
-compose_project_name=${COMPOSE_PROJECT_NAME_VALUE}
-app_service_name=${APP_SERVICE_NAME_VALUE}
-image=${AMX_IMAGE_VALUE}
-backup_dir=${RELEASE_BACKUP_DIR}
-EOF
-      echo "Deployment healthy"
-      exit 0
+    code="$(curl -sS -o /dev/null -w '%{http_code}' "${LOCAL_HEALTH_URL}" || true)"
+    echo "  Direct curl at ${LOCAL_HEALTH_URL} returned status code: ${code:-failed}"
+    if [[ "${code}" =~ ^[0-9]+$ ]] && [[ "${code}" -ge 200 && "${code}" -lt 400 ]]; then
+      healthy=1
+      break
     fi
   fi
   sleep 10
 done
 
-docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" logs --tail 200
-echo "Deployment failed health checks" >&2
-exit 1
+if [[ -z "${healthy}" ]]; then
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" logs --tail 200
+  echo "Deployment failed health checks" >&2
+  exit 1
+fi
+
+cat > ".last-successful-release" <<EOF
+timestamp=${TIMESTAMP}
+deploy_dir=${DEPLOY_DIR}
+compose_file=${COMPOSE_FILE}
+env_file=${ENV_FILE}
+deploy_layout=${DEPLOY_LAYOUT_VALUE}
+compose_project_name=${COMPOSE_PROJECT_NAME_VALUE}
+app_service_name=${APP_SERVICE_NAME_VALUE}
+local_health_url=${LOCAL_HEALTH_URL}
+health_url=${HEALTH_URL}
+image=${AMX_IMAGE_VALUE}
+backup_dir=${RELEASE_BACKUP_DIR}
+EOF
+
+echo "Deployment healthy (direct check at ${LOCAL_HEALTH_URL})"
+
+# Advisory only: traefik may serve stale 502s from its old upstream for a few
+# minutes after the container is recreated, so a proxy failure here must not
+# fail the deploy.
+if [[ -n "${HEALTH_URL}" ]]; then
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "${HEALTH_URL}" || true)"
+  if [[ "${code}" =~ ^[0-9]+$ ]] && [[ "${code}" -ge 200 && "${code}" -lt 400 ]]; then
+    echo "Through-proxy check at ${HEALTH_URL} returned ${code}"
+  else
+    echo "WARNING: through-proxy check at ${HEALTH_URL} returned ${code:-failed}; traefik/Cloudflare may still be refreshing the upstream. Not failing the deploy." >&2
+  fi
+fi
+
+exit 0

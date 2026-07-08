@@ -386,13 +386,17 @@ jobs:
         shell: bash
         run: |
           URL="https://${{ steps.vars.outputs.domain }}"
-          for attempt in $(seq 1 20); do
+          # The app is already verified healthy via the direct loopback check in
+          # deploy-remote.sh; this only validates the Cloudflare/traefik path,
+          # and traefik can serve stale 502s for several minutes after the
+          # container is recreated — hence the long retry window.
+          for attempt in $(seq 1 40); do
             status="$(curl -sS -o /dev/null -w '%{http_code}' "${URL}" || true)"
             if [[ "${status}" =~ ^[0-9]+$ ]] && [ "${status}" -ge 200 ] && [ "${status}" -lt 400 ]; then
               echo "Smoke test passed for ${URL} with status ${status}"
               exit 0
             fi
-            echo "Waiting for ${URL} to become ready (attempt ${attempt}/20, status=${status:-none})"
+            echo "Waiting for ${URL} to become ready (attempt ${attempt}/40, status=${status:-none})"
             sleep 15
           done
           echo "Smoke test failed for ${URL}" >&2
