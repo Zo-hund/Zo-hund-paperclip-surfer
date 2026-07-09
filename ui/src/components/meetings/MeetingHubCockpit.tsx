@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bot, ChevronDown, ChevronUp, Maximize2, Mic, MicOff,
+  Bot, ChevronDown, ChevronUp, Contact, Maximize2, Mic, MicOff,
   PenTool, PhoneOff, Radio, User, Video, MessageSquare, LayoutDashboard,
 } from "lucide-react";
 import type { AgentState } from "@livekit/components-react";
@@ -269,7 +269,9 @@ export function MeetingHubCockpit({
                   </span>
                   {p.participantType === "staff"
                     ? <User className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                    : <Bot className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                    : p.participantType === "guest"
+                      ? <Contact className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      : <Bot className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
                   <span className="text-xs text-foreground/80 truncate">{p.name ?? "Unknown"}</span>
                   {speaking && <span className="ml-auto text-[10px] text-emerald-400 uppercase tracking-wide">speaking</span>}
                 </div>

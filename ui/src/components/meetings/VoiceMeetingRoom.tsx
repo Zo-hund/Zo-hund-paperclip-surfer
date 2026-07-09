@@ -4,7 +4,7 @@ import {
   CheckCircle2, AlertTriangle, Zap, Maximize, Minimize,
   Video, VideoOff, ScreenShare, ScreenShareOff, Circle,
   Activity, Cpu, Radar, Network, BarChart2,
-  Hand, Minimize2, PenTool, User, Eye, SmilePlus, ImageIcon
+  Hand, Minimize2, PenTool, User, Eye, SmilePlus, ImageIcon, Contact
 } from "lucide-react";
 import type { AgentState } from "@livekit/components-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "../../context/ToastContext";
 import { useQuery } from "@tanstack/react-query";
 import { InviteAgentsDialog } from "./InviteAgentsDialog";
+import { InviteGuestDialog } from "./InviteGuestDialog";
 import { AgentAudioVisualizerAura } from "@/components/agent-audio-visualizer-aura";
 import type { VideoTrackMap, LiveKitVoiceStatus, CanvasEvent, CanvasCursorEvent, ReactionEvent } from "../../hooks/useLiveKitVoice";
 import type { BufferedStroke } from "../../hooks/useMeetingCanvasBuffer";
@@ -163,6 +164,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
   const [micActive, setMicActive] = useState(false);
   const [commandText, setCommandText] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [guestInviteOpen, setGuestInviteOpen] = useState(false);
   const [internalMode, setInternalMode] = useState<RoomMode>("cockpit");
   const mode = controlledMode ?? internalMode;
   const setMode = onModeChange ?? setInternalMode;
@@ -429,6 +431,13 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                 <UserPlus className="h-3.5 w-3.5" /> Add Entity
               </Button>
             )}
+            {canModerate && (
+              <Button size="sm" variant="ghost"
+                className="h-8 px-2 text-[9px] font-black uppercase tracking-widest text-[#94a3b8]/50 hover:text-[#94a3b8] hover:bg-[#94a3b8]/10 gap-1"
+                onClick={() => setGuestInviteOpen(true)}>
+                <UserPlus className="h-3.5 w-3.5" /> Invite Guest
+              </Button>
+            )}
             {setPTTActive && (
               <Button size="sm" variant="ghost"
                 title={isPTTMode ? "Switch to Open Mic" : "Switch to Push-to-Talk"}
@@ -533,7 +542,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                       <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg border border-white/5 bg-white/[0.02]">
                         <div className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-black relative"
                           style={{ background: `${color}15`, border: `1.5px solid ${isSpeaking ? color : `${color}28`}`, boxShadow: isSpeaking ? `0 0 10px ${color}55` : "none" }}>
-                          {p.icon ? <span style={{ fontSize: "0.9rem" }}>{p.icon}</span> : p.participantType === "staff" ? <User className="h-4 w-4" style={{ color }} /> : <Bot className="h-4 w-4" style={{ color }} />}
+                          {p.icon ? <span style={{ fontSize: "0.9rem" }}>{p.icon}</span> : p.participantType === "staff" ? <User className="h-4 w-4" style={{ color }} /> : p.participantType === "guest" ? <Contact className="h-4 w-4" style={{ color }} /> : <Bot className="h-4 w-4" style={{ color }} />}
                           <span className="absolute -bottom-0 -right-0 h-2 w-2 rounded-full border border-black"
                             style={{ background: p.status === "thinking" ? "#fbbf24" : p.status === "responding" ? color : p.status === "active" ? "#34d399" : "#ffffff20" }} />
                         </div>
@@ -555,6 +564,10 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
           {isVideo && (() => {
             // Remote camera tracks are keyed by LiveKit identity: staff publish as
             // board-user-<userId>; agents (avatar) publish under their agent identity.
+            // Guests publish under a per-join random identity (guest-<hex>) that
+            // isn't persisted on the participant row, so their track can't be
+            // matched here — it renders instead via the "extra" identities block
+            // below, labeled by that raw identity rather than their guestName.
             const identityFor = (p: (typeof participants)[number]) =>
               p.userId ? `board-user-${p.userId}` : (p.name ?? "");
             const consumed = new Set<string>(["local"]);
@@ -625,7 +638,7 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
                   <div key={p.id} className="flex flex-col items-center gap-1 flex-shrink-0">
                     <div className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-black relative select-none"
                       style={{ background: `${color}15`, border: `2px solid ${isSpeaking ? color : `${color}28`}`, boxShadow: isSpeaking ? `0 0 14px ${color}55` : "none", transition: "box-shadow 0.4s ease" }}>
-                      {p.icon ? <span style={{ fontSize: "1rem" }}>{p.icon}</span> : p.participantType === "staff" ? <User className="h-4 w-4" style={{ color }} /> : <Bot className="h-4 w-4" style={{ color }} />}
+                      {p.icon ? <span style={{ fontSize: "1rem" }}>{p.icon}</span> : p.participantType === "staff" ? <User className="h-4 w-4" style={{ color }} /> : p.participantType === "guest" ? <Contact className="h-4 w-4" style={{ color }} /> : <Bot className="h-4 w-4" style={{ color }} />}
                       <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0a0a15]"
                         style={{ background: p.status === "thinking" ? "#fbbf24" : p.status === "responding" ? color : p.status === "active" ? "#34d399" : "#ffffff20" }} />
                     </div>
@@ -903,6 +916,11 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
         onClose={() => setInviteOpen(false)}
         participants={participants}
         onInvited={() => refetchMeeting()}
+      />
+      <InviteGuestDialog
+        meetingId={meetingId}
+        open={guestInviteOpen}
+        onClose={() => setGuestInviteOpen(false)}
       />
     </div>
   );

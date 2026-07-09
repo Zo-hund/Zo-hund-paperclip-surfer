@@ -34,6 +34,7 @@ vi.mock("../services/index.js", () => ({
   }),
   pushNotificationService: () => ({}),
   accessService: () => ({}),
+  meetingGuestService: () => ({ createInvite: vi.fn(), listInvites: vi.fn(), revokeInvite: vi.fn() }),
   logActivity: logActivityMock,
 }));
 

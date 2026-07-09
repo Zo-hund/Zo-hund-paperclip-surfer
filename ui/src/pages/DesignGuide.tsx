@@ -124,6 +124,8 @@ import { InlineEditor } from "@/components/InlineEditor";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { Identity } from "@/components/Identity";
 import { MeetingHubCockpit } from "@/components/meetings/MeetingHubCockpit";
+import { InviteGuestDialog } from "@/components/meetings/InviteGuestDialog";
+import { GuestMeetingRoom } from "@/components/meetings/GuestMeetingRoom";
 
 /* ------------------------------------------------------------------ */
 /*  Section wrapper                                                    */
@@ -171,6 +173,44 @@ function CockpitDemo() {
           onExpand={() => setShow(false)}
           onEnd={() => setShow(false)}
           activeSpeakers={[]}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Invite Guest Dialog demo                                          */
+/* ------------------------------------------------------------------ */
+
+function InviteGuestDialogDemo() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        Open Invite Guest dialog
+      </Button>
+      <InviteGuestDialog meetingId="demo" open={open} onClose={() => setOpen(false)} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Guest Meeting Room demo (fixed-position, so mounted on demand)     */
+/* ------------------------------------------------------------------ */
+
+function GuestMeetingRoomDemo() {
+  const [show, setShow] = useState(false);
+  return (
+    <div>
+      <Button variant="outline" size="sm" onClick={() => setShow(true)}>
+        Show guest meeting room
+      </Button>
+      {show && (
+        <GuestMeetingRoom
+          connection={{ token: "demo-token", url: "wss://demo.invalid", identity: "guest-demo" }}
+          meetingTitle="Design Guide Demo Meeting"
+          onLeave={() => setShow(false)}
         />
       )}
     </div>
@@ -1345,6 +1385,31 @@ export function DesignGuide() {
             dismiss with the end-call button.
           </p>
           <CockpitDemo />
+        </SubSection>
+      </Section>
+
+      {/* ============================================================ */}
+      {/*  MEETING GUEST ACCESS                                         */}
+      {/* ============================================================ */}
+      <Section title="Meeting Guest Access">
+        <SubSection title="Invite Guest dialog (live demo)">
+          <p className="text-sm text-muted-foreground">
+            Generates a reusable, time-limited magic link so an external client or
+            collaborator with no Paperclip account can join a meeting — full
+            audio/video/screenshare/canvas, but no visibility into internal company
+            data. Rendered from VoiceMeetingRoom's toolbar, gated behind the
+            moderator role check.
+          </p>
+          <InviteGuestDialogDemo />
+        </SubSection>
+        <SubSection title="Guest meeting room (live demo)">
+          <p className="text-sm text-muted-foreground">
+            The standalone view a guest sees after joining via the magic link — not
+            a variant of VoiceMeetingRoom, since that component is tightly coupled
+            to internal-only data. Reuses MeetingCanvas for the shared whiteboard;
+            "Leave" only disconnects the guest's own session.
+          </p>
+          <GuestMeetingRoomDemo />
         </SubSection>
       </Section>
 

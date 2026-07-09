@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { authUsers } from "./auth.js";
@@ -44,11 +44,40 @@ export const meetingTranscripts = pgTable(
 );
 
 /**
+ * AMX LABS Meeting Guest Invites
+ * A reusable, time-limited magic link scoped to one meeting, letting an
+ * external human with no Paperclip account join via LiveKit. Only the sha256
+ * hash of the token is ever stored (never the raw token) — same convention as
+ * the `invites` table. Revocation only blocks future joins; it does not tear
+ * down an already-connected guest's LiveKit session.
+ */
+export const meetingGuestInvites = pgTable(
+  "meeting_guest_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    meetingId: uuid("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    // Admin-facing label for the link itself, e.g. "Client link for Acme Corp"
+    // — distinct from the joining guest's entered display name (see below).
+    guestLabel: text("guest_label"),
+    createdByUserId: text("created_by_user_id").references(() => authUsers.id),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    tokenHashUniqueIdx: uniqueIndex("meeting_guest_invites_token_hash_unique_idx").on(table.tokenHash),
+    meetingIdIdx: index("meeting_guest_invites_meeting_id_idx").on(table.meetingId),
+  }),
+);
+
+/**
  * AMX LABS Meeting Participants
- * Tracks which agents OR staff (human board users) are active in a session.
- * Exactly one of agentId/userId is set per row (app-level invariant, enforced
- * in meetingAgentService — not a DB constraint, to keep the migration additive
- * and low-risk against existing agent-only data).
+ * Tracks which agents, staff (human board users), OR external guests are
+ * active in a session. Exactly one of agentId/userId/guestInviteId is set per
+ * row (app-level invariant, enforced in meetingAgentService — not a DB
+ * constraint, to keep the migration additive and low-risk against existing
+ * agent-only data).
  */
 export const meetingParticipants = pgTable(
   "meeting_participants",
@@ -57,6 +86,9 @@ export const meetingParticipants = pgTable(
     meetingId: uuid("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
     agentId: uuid("agent_id").references(() => agents.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => authUsers.id, { onDelete: "cascade" }),
+    guestInviteId: uuid("guest_invite_id").references(() => meetingGuestInvites.id, { onDelete: "cascade" }),
+    // The joining guest's entered display name — only set on guest rows.
+    guestName: text("guest_name"),
     status: text("status").notNull().default("invited"), // invited, active, thinking, responding
     lastAction: text("last_action"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

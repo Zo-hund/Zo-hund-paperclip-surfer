@@ -58,6 +58,7 @@ import { XpWallet } from "./pages/XpWallet";
 import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
+import { GuestMeetingJoin } from "./pages/GuestMeetingJoin";
 import { NotFoundPage } from "./pages/NotFound";
 import { AgentMarketplace } from "./pages/AgentMarketplace";
 import { TechAtNiteBrand } from "./pages/TechAtNiteBrand";
@@ -413,6 +414,7 @@ export function App() {
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
         <Route path="invite/:token" element={<InviteLandingPage />} />
+        <Route path="guest/meeting/:token" element={<GuestMeetingJoin />} />
         <Route path="verify/pass/:passId" element={<VerifyPassPage />} />
 
         <Route element={<CloudAccessGate />}>

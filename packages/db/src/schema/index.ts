@@ -62,7 +62,7 @@ export { agentMemories } from "./agent_memories.js";
 export { companyMcpServers, agentMcpExclusions } from "./company_mcp_servers.js";
 export { skillChangeLog } from "./skill_change_log.js";
 export { agentKpis, agentKpiDefinitions, agentExperiments, agentKpiObservations } from "./agent_kpis.js";
-export { meetings, meetingTranscripts, meetingParticipants, meetingOutcomes } from "./meetings.js";
+export { meetings, meetingTranscripts, meetingParticipants, meetingOutcomes, meetingGuestInvites } from "./meetings.js";
 export { amxLedger, amxTransactions } from "./amx_ledger.js";
 export { amxChainEvents, amxCertificates } from "./amx_chain.js";
 export { amxNodes, amxDispatchLeases, amxDispatchEvidence } from "./amx_nodes.js";

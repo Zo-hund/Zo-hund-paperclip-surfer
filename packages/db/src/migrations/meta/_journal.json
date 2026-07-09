@@ -526,6 +526,13 @@
       "when": 1783423196304,
       "tag": "0074_blushing_marvel_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1783556278686,
+      "tag": "0075_yielding_hiroim",
+      "breakpoints": true
     }
   ]
 }

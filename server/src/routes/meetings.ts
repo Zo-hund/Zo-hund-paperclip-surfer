@@ -5,7 +5,7 @@ import type { Db } from "@paperclipai/db";
 import { meetings, meetingTranscripts, meetingOutcomes } from "@paperclipai/db";
 import { ISSUE_STATUSES } from "@paperclipai/shared";
 import { forbidden, notFound, unprocessable } from "../errors.js";
-import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService } from "../services/index.js";
+import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService, meetingGuestService } from "../services/index.js";
 import { publishLiveEvent } from "../services/live-events.js";
 import { logger } from "../middleware/logger.js";
 import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
@@ -49,6 +49,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
   const issueSvc = issueService(db);
   const pushSvc = pushNotificationService(db);
   const accessSvc = accessService(db);
+  const guestSvc = meetingGuestService(db);
 
   router.get("/", async (req, res) => {
     const companyId = req.query.companyId as string;
@@ -200,6 +201,81 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
     publishLiveEvent({ companyId: mtg.companyId, type: "meeting.participant.joined", payload: { meetingId: req.params.id, agentId, userId } });
 
     res.json(participant);
+  });
+
+  /**
+   * POST /:id/guest-invites
+   * Generate a reusable, time-limited magic link letting an external human
+   * with no Paperclip account join this meeting's LiveKit room (see
+   * server/src/routes/meeting-guests.ts for the public resolve/join
+   * endpoints the link actually points to). The raw token is returned once,
+   * here — only its sha256 hash is ever persisted.
+   */
+  router.post("/:id/guest-invites", async (req, res) => {
+    const [mtg] = await db.select({ companyId: meetings.companyId }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
+    if (!mtg) throw notFound("Meeting not found");
+    assertCompanyAccess(req, mtg.companyId);
+    assertCompanyRole(req, mtg.companyId, "member");
+
+    const { guestLabel, ttlHours } = req.body as { guestLabel?: string; ttlHours?: number };
+    const actor = getActorInfo(req);
+
+    const { invite, token } = await guestSvc.createInvite(req.params.id, {
+      guestLabel: typeof guestLabel === "string" && guestLabel.trim() ? guestLabel.trim() : undefined,
+      createdByUserId: actor.actorType === "user" ? actor.actorId : undefined,
+      ttlHours: typeof ttlHours === "number" ? ttlHours : undefined,
+    });
+
+    await logActivity(db, {
+      companyId: mtg.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "meeting.guest_invite_created",
+      entityType: "meeting",
+      entityId: req.params.id,
+      details: { guestLabel: invite.guestLabel, expiresAt: invite.expiresAt },
+    });
+
+    const { tokenHash: _tokenHash, ...inviteDto } = invite;
+    res.json({ ...inviteDto, token });
+  });
+
+  router.get("/:id/guest-invites", async (req, res) => {
+    const [mtg] = await db.select({ companyId: meetings.companyId }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
+    if (!mtg) throw notFound("Meeting not found");
+    assertCompanyAccess(req, mtg.companyId);
+    assertCompanyRole(req, mtg.companyId, "member");
+
+    const invites = await guestSvc.listInvites(req.params.id);
+    res.json(invites);
+  });
+
+  router.delete("/:id/guest-invites/:inviteId", async (req, res) => {
+    const [mtg] = await db.select({ companyId: meetings.companyId }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
+    if (!mtg) throw notFound("Meeting not found");
+    assertCompanyAccess(req, mtg.companyId);
+    assertCompanyRole(req, mtg.companyId, "member");
+
+    const revoked = await guestSvc.revokeInvite(req.params.id, req.params.inviteId);
+    if (!revoked) throw notFound("Guest invite not found");
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: mtg.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "meeting.guest_invite_revoked",
+      entityType: "meeting",
+      entityId: req.params.id,
+      details: { inviteId: req.params.inviteId },
+    });
+
+    const { tokenHash: _tokenHash, ...revokedDto } = revoked;
+    res.json(revokedDto);
   });
 
   router.get("/:id/participants", async (req, res) => {

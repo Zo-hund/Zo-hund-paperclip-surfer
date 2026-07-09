@@ -331,3 +331,13 @@ import { cn } from "@/lib/utils";
 
 **File:** `ui/src/hooks/useMeetingCanvasBuffer.ts`
 **Usage:** Session-long stroke buffer for the meeting canvas — replays history after mode switches, powers the cockpit canvas peek, and renders PNG snapshots for artifact persistence.
+
+### InviteGuestDialog
+
+**File:** `ui/src/components/meetings/InviteGuestDialog.tsx`
+**Usage:** Dialog for generating, listing, copying, and revoking reusable guest magic links for a meeting — lets an external client/collaborator with no Paperclip account join via LiveKit. Rendered from VoiceMeetingRoom's toolbar, gated behind `canModerate`. Demoable on /design-guide.
+
+### GuestMeetingRoom
+
+**File:** `ui/src/components/meetings/GuestMeetingRoom.tsx`
+**Usage:** Standalone, session-independent meeting view rendered for an external guest after joining via a magic link (route `guest/meeting/:token`). Deliberately not a variant of VoiceMeetingRoom — no issue linkage, outcomes/telemetry, or slash commands; "Leave" only disconnects the guest's own LiveKit session. Reuses MeetingCanvas for the shared whiteboard and a lean local video tile. Demoable on /design-guide.

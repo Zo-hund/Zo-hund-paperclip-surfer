@@ -38,11 +38,22 @@ export interface MeetingParticipant {
   userId: string | null;
   status: string;
   lastAction: string | null;
-  participantType: "agent" | "staff";
+  participantType: "agent" | "staff" | "guest";
   name: string | null;
+  guestName: string | null;
   role: string | null;
   title: string | null;
   icon: string | null;
+}
+
+export interface MeetingGuestInvite {
+  id: string;
+  meetingId: string;
+  guestLabel: string | null;
+  createdByUserId: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+  createdAt: string;
 }
 
 export interface MeetingOutcome {
@@ -92,4 +103,14 @@ export const meetingsApi = {
   /** Run a governed in-meeting action (same endpoint the voice agent uses). */
   action: (id: string, action: string, params: Record<string, unknown> = {}): Promise<{ result: unknown; summary: string }> =>
     api.post<{ result: unknown; summary: string }>(`/meetings/${id}/actions`, { action, params }),
+
+  /** Generate a reusable, time-limited guest magic link. Returns the raw token once — never retrievable again. */
+  createGuestInvite: (id: string, data: { guestLabel?: string; ttlHours?: number } = {}): Promise<MeetingGuestInvite & { token: string }> =>
+    api.post<MeetingGuestInvite & { token: string }>(`/meetings/${id}/guest-invites`, data),
+
+  listGuestInvites: (id: string): Promise<MeetingGuestInvite[]> =>
+    api.get<MeetingGuestInvite[]>(`/meetings/${id}/guest-invites`),
+
+  revokeGuestInvite: (id: string, inviteId: string): Promise<MeetingGuestInvite> =>
+    api.delete<MeetingGuestInvite>(`/meetings/${id}/guest-invites/${inviteId}`),
 };
