@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useGuestLiveKitVoice, type GuestConnectionParams } from "../../hooks/useGuestLiveKitVoice";
 import type { CanvasEvent, CanvasCursorEvent, ReactionEvent } from "../../hooks/useLiveKitVoice";
 import { MeetingCanvas } from "./MeetingCanvas";
+import { MeetingTimer } from "./MeetingTimer";
 
 const REACTION_EMOJIS = ["👍", "🔥", "🎉", "❤️", "😂", "👀"];
 const CURSOR_TTL_MS = 2500;
@@ -72,6 +73,9 @@ export function GuestMeetingRoom({ connection, meetingTitle, onLeave }: GuestMee
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [lastCanvasEvent, setLastCanvasEvent] = useState<CanvasEvent | null>(null);
+  // Guests have no access to the meeting's true createdAt (no getDetail call
+  // for them) — this shows "time since I joined," not the meeting's global elapsed time.
+  const joinedAtRef = useRef(new Date().toISOString());
 
   const handleCanvasEvent = useCallback((event: CanvasEvent) => setLastCanvasEvent(event), []);
   const handleCanvasCursor = useCallback((cursor: CanvasCursorEvent) => {
@@ -147,6 +151,7 @@ export function GuestMeetingRoom({ connection, meetingTitle, onLeave }: GuestMee
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a14] text-white">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
         <span className="text-sm font-semibold truncate min-w-0">{meetingTitle}</span>
+        <MeetingTimer startedAt={joinedAtRef.current} className="text-xs text-white/40 tabular-nums flex-shrink-0" />
         <span className="hidden sm:inline text-xs text-white/40 flex-shrink-0">{voice.status}</span>
         <div className="flex-1" />
         {/* Full toolbelt — enough room on tablet/desktop widths */}

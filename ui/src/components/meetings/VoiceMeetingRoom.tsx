@@ -10,6 +10,7 @@ import type { AgentState } from "@livekit/components-react";
 import { useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 import { useCompanyRole } from "../../hooks/useCompanyRole";
 import { meetingsApi } from "../../api/meetings";
+import { issuesApi } from "../../api/issues";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,6 +25,7 @@ import { useNavigate } from "../../lib/router";
 import { ModulePanel } from "./ModulePanel";
 import type { ModuleData } from "./ModulePanel";
 import { MeetingCanvas } from "./MeetingCanvas";
+import { MeetingTimer } from "./MeetingTimer";
 
 function toAgentState(status: LiveKitVoiceStatus | undefined): AgentState {
   switch (status) {
@@ -76,6 +78,7 @@ interface VoiceMeetingRoomProps {
   setPTTActive?: (active: boolean) => void;
   activeModule?: ModuleData | null;
   clearModule?: () => void;
+  openModule?: (module: ModuleData) => void;
 }
 
 const REACTION_EMOJIS = ["👍", "🔥", "🎉", "❤️", "😂", "👀"];
@@ -158,7 +161,7 @@ const SLASH_COMMANDS: Record<string, string> = {
   "/analytics": "/analytics",
 };
 
-export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, participantCount, mode: controlledMode, onModeChange, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, sendCanvasStroke, sendCanvasClear, canvasEvent, canvasCursors, sendCanvasCursor, bufferedStrokes, bufferVersion, onSaveSnapshot, sendReaction, reactions, setPTTActive, activeModule, clearModule }: VoiceMeetingRoomProps) {
+export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, participantCount, mode: controlledMode, onModeChange, cameraEnabled, toggleCamera, screenShareEnabled, toggleScreenShare, screenShareSupported = true, videoTracks, localVideoTrack, localScreenTrack, sendText: sendLiveKitText, sendCanvasStroke, sendCanvasClear, canvasEvent, canvasCursors, sendCanvasCursor, bufferedStrokes, bufferVersion, onSaveSnapshot, sendReaction, reactions, setPTTActive, activeModule, clearModule, openModule }: VoiceMeetingRoomProps) {
   const navigate = useNavigate();
   const { startRecording, stopRecording } = useVoiceRecorder();
   const [micActive, setMicActive] = useState(false);
@@ -186,6 +189,28 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
   // the server-side assertCompanyRole("member") checks on these actions.
   const { hasRoleAtLeast } = useCompanyRole(meeting?.companyId);
   const canModerate = hasRoleAtLeast("member");
+
+  // Auto-restore a recurring meeting's last active issue context on room
+  // entry (once per meeting) — the counterpart persist effect is below.
+  const restoredContextForMeetingRef = useRef<string | null>(null);
+  useEffect(() => {
+    const restoreIssueId = meeting?.lastActiveContext?.issueId;
+    if (!meeting?.id || !restoreIssueId || !openModule) return;
+    if (restoredContextForMeetingRef.current === meeting.id) return;
+    if (activeModule) return;
+    restoredContextForMeetingRef.current = meeting.id;
+    void issuesApi.get(restoreIssueId).then((issue) => openModule({ type: "issue", issue })).catch(() => {});
+  }, [meeting?.id, meeting?.lastActiveContext?.issueId, activeModule, openModule]);
+
+  // Persist whichever issue is active in the ModulePanel back onto the
+  // meeting, so a future meeting sharing the same podKey can restore it.
+  const persistedContextIssueIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeModule?.type !== "issue" || !meetingId) return;
+    if (persistedContextIssueIdRef.current === activeModule.issue.id) return;
+    persistedContextIssueIdRef.current = activeModule.issue.id;
+    void meetingsApi.action(meetingId, "set_active_context", { issueId: activeModule.issue.id }).catch(() => {});
+  }, [activeModule, meetingId]);
 
   useEffect(() => {
     if (threadRef.current) {
@@ -372,6 +397,9 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             {meeting?.title ?? "Strategic Session"}
             {isExpanded && (
               <span className="ml-3 text-[9px] sm:text-[10px] text-white/30 tracking-[0.3em] hidden sm:inline">// UPLINK ACTIVE</span>
+            )}
+            {meeting?.createdAt && (
+              <MeetingTimer startedAt={meeting.createdAt} className="ml-3 text-[9px] sm:text-[10px] text-white/40 tabular-nums" />
             )}
           </h2>
 

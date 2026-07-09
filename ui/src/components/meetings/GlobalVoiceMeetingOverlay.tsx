@@ -245,6 +245,7 @@ export function GlobalVoiceMeetingOverlay() {
       setPTTActive={liveKit.setPTTActive}
       activeModule={liveKit.activeModule}
       clearModule={liveKit.clearModule}
+      openModule={liveKit.openModule}
     />
   );
 }

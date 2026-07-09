@@ -5,7 +5,7 @@ import type { Db } from "@paperclipai/db";
 import { meetings, meetingTranscripts, meetingOutcomes } from "@paperclipai/db";
 import { ISSUE_STATUSES } from "@paperclipai/shared";
 import { forbidden, notFound, unprocessable } from "../errors.js";
-import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService, meetingGuestService } from "../services/index.js";
+import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService, meetingGuestService, googleCalendarService } from "../services/index.js";
 import { publishLiveEvent } from "../services/live-events.js";
 import { logger } from "../middleware/logger.js";
 import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
@@ -50,6 +50,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
   const pushSvc = pushNotificationService(db);
   const accessSvc = accessService(db);
   const guestSvc = meetingGuestService(db);
+  const googleCalendarSvc = googleCalendarService(db);
 
   router.get("/", async (req, res) => {
     const companyId = req.query.companyId as string;
@@ -96,7 +97,9 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
   });
 
   router.post("/", async (req, res) => {
-    const { companyId, title, type, issueId } = req.body;
+    const { companyId, title, type, issueId, podKey } = req.body as {
+      companyId?: string; title?: string; type?: string; issueId?: string; podKey?: string;
+    };
     if (!companyId || !title) throw forbidden("Missing required fields");
     assertCompanyAccess(req, companyId);
     assertCompanyRole(req, companyId, "member");
@@ -108,6 +111,20 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
       }
     }
 
+    // A meeting sharing a podKey with a prior one carries forward that
+    // meeting's lastActiveContext, so reopening a recurring meeting picks
+    // back up the same project/issue instead of starting blank.
+    let lastActiveContext: { issueId: string } | null = null;
+    if (podKey) {
+      const [priorPodMeeting] = await db
+        .select({ lastActiveContext: meetings.lastActiveContext })
+        .from(meetings)
+        .where(and(eq(meetings.companyId, companyId), eq(meetings.podKey, podKey)))
+        .orderBy(desc(meetings.createdAt))
+        .limit(1);
+      lastActiveContext = priorPodMeeting?.lastActiveContext ?? null;
+    }
+
     const [meeting] = await db
       .insert(meetings)
       .values({
@@ -116,6 +133,8 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
         type: type ?? "standup",
         status: "active",
         issueId: issueId ?? null,
+        podKey: podKey ?? null,
+        lastActiveContext,
       })
       .returning();
 
@@ -130,7 +149,31 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
       url: `/meetings/${meeting.id}`,
     }).catch((err) => logger.warn({ err, meetingId: meeting.id }, "meeting-started push notification failed"));
 
-    res.json(meeting);
+    // Best-effort real-calendar sync — silently skipped if the company
+    // hasn't linked Google Workspace (expected, not a failure). If they
+    // *are* linked but the API call itself fails, that's surfaced back to
+    // the person who just started the meeting via calendarSyncWarning,
+    // since they have no other way to notice their calendar didn't update.
+    let calendarSyncWarning: string | undefined;
+    try {
+      if (await googleCalendarSvc.isLinked(companyId)) {
+        const calendarEventId = await googleCalendarSvc.createEventForMeeting(companyId, meeting);
+        if (calendarEventId) {
+          await db.update(meetings)
+            .set({ calendarProvider: "google", calendarEventId })
+            .where(eq(meetings.id, meeting.id));
+          meeting.calendarProvider = "google";
+          meeting.calendarEventId = calendarEventId;
+        } else {
+          calendarSyncWarning = "Meeting started, but couldn't sync to your linked Google Calendar.";
+        }
+      }
+    } catch (err) {
+      logger.warn({ err, meetingId: meeting.id }, "Failed to create calendar event for meeting");
+      calendarSyncWarning = "Meeting started, but couldn't sync to your linked Google Calendar.";
+    }
+
+    res.json({ ...meeting, calendarSyncWarning });
   });
 
   router.get("/:id", async (req, res) => {
@@ -308,11 +351,16 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
     assertCompanyAccess(req, meeting.companyId);
     assertCompanyRole(req, meeting.companyId, "member");
 
+    const endedAt = new Date();
+    const durationSeconds = Math.round((endedAt.getTime() - meeting.createdAt.getTime()) / 1000);
+
     await db
       .update(meetings)
       .set({
         status: "completed",
-        updatedAt: new Date(),
+        endedAt,
+        durationSeconds,
+        updatedAt: endedAt,
       })
       .where(eq(meetings.id, meetingId));
 
@@ -321,6 +369,15 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
       await meetingAgentSvc.logOutcomesToMemory(meetingId, meeting.companyId);
     } catch (err) {
       logger.warn({ err, meetingId }, "Failed to log meeting outcomes to agent memories");
+    }
+
+    // Best-effort: close out the real calendar event, if this meeting has one.
+    if (meeting.calendarEventId) {
+      try {
+        await googleCalendarSvc.completeEventForMeeting(meeting.companyId, meeting.calendarEventId, endedAt);
+      } catch (err) {
+        logger.warn({ err, meetingId }, "Failed to update calendar event on meeting end");
+      }
     }
 
     publishLiveEvent({ companyId: meeting.companyId, type: "meeting.ended", payload: { meetingId } });
@@ -509,6 +566,35 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
 
       result = comment;
       summary = `Added a comment to ${existing.identifier}`;
+    } else if (action === "set_active_context") {
+      // Persists which issue is "active" in this meeting's ModulePanel, so a
+      // future meeting sharing the same podKey can auto-restore it on entry.
+      const issueId = typeof p.issueId === "string" ? p.issueId.trim() : "";
+      if (!issueId) throw unprocessable("issueId is required");
+
+      const existing = await issueSvc.getById(issueId);
+      if (!existing || existing.companyId !== mtg.companyId) {
+        throw notFound("Issue not found");
+      }
+
+      await db.update(meetings)
+        .set({ lastActiveContext: { issueId }, updatedAt: new Date() })
+        .where(eq(meetings.id, req.params.id));
+
+      await logActivity(db, {
+        companyId: mtg.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "meeting.context_updated",
+        entityType: "meeting",
+        entityId: req.params.id,
+        details: { issueId, source: "meeting" },
+      });
+
+      result = { issueId };
+      summary = `Set active context to ${existing.identifier}`;
     } else {
       throw unprocessable(`Unknown action: ${action}`);
     }

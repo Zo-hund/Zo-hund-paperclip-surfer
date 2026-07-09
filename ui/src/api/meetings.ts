@@ -12,7 +12,15 @@ export interface Meeting {
   status: string;
   recordingPath: string | null;
   durationSeconds: number | null;
+  endedAt: string | null;
   issueId: string | null;
+  /** Set once a real Google Calendar event has been created for this meeting. */
+  calendarProvider: string | null;
+  calendarEventId: string | null;
+  /** Free-text label marking this meeting as part of a recurring series. */
+  podKey: string | null;
+  /** Restored on room entry for the next meeting sharing the same podKey. */
+  lastActiveContext: { issueId: string } | null;
   createdAt: string;
   updatedAt: string;
   insightsCount?: number;
@@ -76,8 +84,8 @@ export const meetingsApi = {
   list: (companyId: string): Promise<Meeting[]> =>
     api.get<Meeting[]>(`/meetings?companyId=${encodeURIComponent(companyId)}`),
 
-  start: (data: { companyId: string; title: string; type?: string; issueId?: string }): Promise<Meeting> =>
-    api.post<Meeting>(`/meetings`, data),
+  start: (data: { companyId: string; title: string; type?: string; issueId?: string; podKey?: string }): Promise<Meeting & { calendarSyncWarning?: string }> =>
+    api.post<Meeting & { calendarSyncWarning?: string }>(`/meetings`, data),
 
   getDetail: (id: string): Promise<MeetingDetail> =>
     api.get<MeetingDetail>(`/meetings/${id}`),

@@ -133,6 +133,10 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
   const [localScreenTrack, setLocalScreenTrack] = useState<MediaStreamTrack | null>(null);
   const [activeModule, setActiveModule] = useState<ModuleData | null>(null);
   const clearModule = useCallback(() => setActiveModule(null), []);
+  // Lets callers seed the ModulePanel from outside (e.g. auto-restoring a
+  // meeting's lastActiveContext on room entry) — today setActiveModule is
+  // otherwise only reachable via the internal show_module RPC handler below.
+  const openModule = useCallback((module: ModuleData) => setActiveModule(module), []);
 
   /** Resolve a relative path to include company prefix */
   const resolvePath = useCallback(
@@ -592,5 +596,6 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
     room: roomRef.current,
     activeModule,
     clearModule,
+    openModule,
   };
 }

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { authUsers } from "./auth.js";
@@ -18,12 +18,31 @@ export const meetings = pgTable(
     status: text("status").notNull().default("active"), // active, completed
     recordingPath: text("recording_path"),
     durationSeconds: integer("duration_seconds"),
+    // Set alongside durationSeconds when the meeting is finalized (createdAt
+    // doubles as the start time — no separate startedAt column needed).
+    endedAt: timestamp("ended_at", { withTimezone: true }),
     // Optional: this meeting is "about" a specific issue/workorder — its
     // details auto-populate as a ModulePanel card on room entry.
     issueId: uuid("issue_id").references(() => issues.id, { onDelete: "set null" }),
+    // Best-effort external calendar sync (write-only, Google Calendar today).
+    // Null when the company hasn't linked Google Workspace or the sync failed.
+    calendarProvider: text("calendar_provider"),
+    calendarEventId: text("calendar_event_id"),
+    // Free-text label a board member sets when starting a meeting to mark it
+    // as part of a recurring series (e.g. "weekly-standup"). A new meeting
+    // sharing a podKey with a prior one carries forward that meeting's
+    // lastActiveContext, so reopening a recurring meeting picks back up.
+    podKey: text("pod_key"),
+    // Narrow, service-typed as `{ issueId: string } | null` — deliberately
+    // not an arbitrary blob; only the issue-context ModulePanel variant is
+    // meant to survive across a pod's sessions.
+    lastActiveContext: jsonb("last_active_context").$type<{ issueId: string } | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  }
+  },
+  (table) => ({
+    companyPodKeyIdx: index("meetings_company_pod_key_idx").on(table.companyId, table.podKey),
+  }),
 );
 
 /**

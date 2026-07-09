@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { InviteAgentsDialog } from "../components/meetings/InviteAgentsDialog";
+import { StartMeetingDialog } from "../components/meetings/StartMeetingDialog";
 import { useMeeting } from "../context/MeetingContext";
 
 /**
@@ -27,6 +28,7 @@ export default function Meetings() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
   const [avatarEnabled, setAvatarEnabled] = useState(false);
   const { requestLiveKit } = useMeeting();
 
@@ -90,19 +92,6 @@ export default function Meetings() {
     enabled: !!selectedCompanyId,
   });
 
-  const startMeeting = useMutation({
-    mutationFn: (title: string) =>
-      meetingsApi.start({
-        companyId: selectedCompanyId!,
-        title,
-        type: "board_meet"
-      }),
-    onSuccess: (meeting) => {
-      queryClient.invalidateQueries({ queryKey: ["meetings", selectedCompanyId] });
-      requestLiveKit(`meeting-${meeting.id}`, avatarEnabled);
-    }
-  });
-
   return (
     <div className="space-y-8 sm:space-y-10 max-w-7xl mx-auto py-6 sm:py-10 px-4 sm:px-6">
       {/* Cockpit Header */}
@@ -149,7 +138,7 @@ export default function Meetings() {
           <Button
             size="lg"
             className="w-full sm:w-auto rounded-full px-8 bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xl shadow-primary/20 transition-all hover:scale-105 gap-2 h-12 font-black uppercase tracking-widest text-[11px]"
-            onClick={() => startMeeting.mutate(`Strategic Session - ${new Date().toLocaleDateString()}`)}
+            onClick={() => setStartOpen(true)}
           >
             <Radio className="h-4 w-4 animate-pulse" />
             Start Live Meeting
@@ -354,6 +343,13 @@ export default function Meetings() {
         meetingId={meetings?.find(m => m.status === "active")?.id ?? ""}
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
+      />
+      <StartMeetingDialog
+        companyId={selectedCompanyId ?? ""}
+        open={startOpen}
+        onClose={() => setStartOpen(false)}
+        existingMeetings={meetings}
+        onStarted={(meeting) => requestLiveKit(`meeting-${meeting.id}`, avatarEnabled)}
       />
     </div>
   );
