@@ -128,46 +128,53 @@ export function GuestMeetingRoom({ connection, meetingTitle, onLeave }: GuestMee
 
   const remoteEntries = Array.from(voice.videoTracks.entries());
 
+  const reactionPopover = (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button size="icon-sm" variant="ghost" title="React"><SmilePlus className="h-4 w-4" /></Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-2 flex gap-1.5">
+        {REACTION_EMOJIS.map((emoji) => (
+          <button key={emoji} onClick={() => voice.sendReaction(emoji)} className="text-lg hover:scale-125 transition-transform">
+            {emoji}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0a14] text-white">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10">
-        <span className="text-sm font-semibold truncate">{meetingTitle}</span>
-        <span className="text-xs text-white/40">{voice.status}</span>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
+        <span className="text-sm font-semibold truncate min-w-0">{meetingTitle}</span>
+        <span className="hidden sm:inline text-xs text-white/40 flex-shrink-0">{voice.status}</span>
         <div className="flex-1" />
-        <Button size="icon-sm" variant="ghost" onClick={() => setView(view === "video" ? "canvas" : "video")} title="Toggle canvas">
-          <PenTool className="h-4 w-4" />
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => voice.setMuted(!voice.muted)}
-          className={voice.muted ? "text-destructive" : ""}
-          title={voice.muted ? "Unmute" : "Mute"}
-        >
-          {voice.muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-        </Button>
-        <Button size="icon-sm" variant="ghost" onClick={() => void voice.toggleCamera()} title="Toggle camera">
-          {voice.cameraEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-        </Button>
-        {voice.screenShareSupported && (
-          <Button size="icon-sm" variant="ghost" onClick={() => void voice.toggleScreenShare()} title="Toggle screen share">
-            {voice.screenShareEnabled ? <ScreenShare className="h-4 w-4" /> : <ScreenShareOff className="h-4 w-4" />}
+        {/* Full toolbelt — enough room on tablet/desktop widths */}
+        <div className="hidden sm:flex items-center gap-1">
+          <Button size="icon-sm" variant="ghost" onClick={() => setView(view === "video" ? "canvas" : "video")} title="Toggle canvas">
+            <PenTool className="h-4 w-4" />
           </Button>
-        )}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button size="icon-sm" variant="ghost" title="React"><SmilePlus className="h-4 w-4" /></Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-2 flex gap-1.5">
-            {REACTION_EMOJIS.map((emoji) => (
-              <button key={emoji} onClick={() => voice.sendReaction(emoji)} className="text-lg hover:scale-125 transition-transform">
-                {emoji}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
-        <Button size="sm" variant="destructive" onClick={handleLeave} className="gap-1.5">
-          <PhoneOff className="h-4 w-4" /> Leave
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => voice.setMuted(!voice.muted)}
+            className={voice.muted ? "text-destructive" : ""}
+            title={voice.muted ? "Unmute" : "Mute"}
+          >
+            {voice.muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </Button>
+          <Button size="icon-sm" variant="ghost" onClick={() => void voice.toggleCamera()} title="Toggle camera">
+            {voice.cameraEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+          </Button>
+          {voice.screenShareSupported && (
+            <Button size="icon-sm" variant="ghost" onClick={() => void voice.toggleScreenShare()} title="Toggle screen share">
+              {voice.screenShareEnabled ? <ScreenShare className="h-4 w-4" /> : <ScreenShareOff className="h-4 w-4" />}
+            </Button>
+          )}
+          {reactionPopover}
+        </div>
+        <Button size="sm" variant="destructive" onClick={handleLeave} className="gap-1.5 flex-shrink-0">
+          <PhoneOff className="h-4 w-4" /> <span className="hidden sm:inline">Leave</span>
         </Button>
       </div>
 
@@ -177,7 +184,7 @@ export function GuestMeetingRoom({ connection, meetingTitle, onLeave }: GuestMee
             <div className="flex-1 grid grid-cols-2 md:grid-cols-3 gap-3 p-4 overflow-y-auto content-start">
               <GuestVideoTile track={voice.localVideoTrack ?? undefined} name="You" />
               {remoteEntries.map(([identity, entry]) => (
-                <GuestVideoTile key={identity} track={entry.video ?? entry.screen} name={identity.replace(/^board-user-/, "").slice(0, 12)} />
+                <GuestVideoTile key={identity} track={entry.video ?? entry.screen} name={entry.name || identity.replace(/^board-user-/, "").slice(0, 12)} />
               ))}
             </div>
           ) : (
@@ -222,6 +229,52 @@ export function GuestMeetingRoom({ connection, meetingTitle, onLeave }: GuestMee
             <Button size="icon-sm" variant="ghost" onClick={handleSendChat}><Send className="h-4 w-4" /></Button>
           </div>
         </div>
+      </div>
+
+      {/* Mobile bottom action bar — the top bar only shows title/leave below
+          sm, since a full icon row there overflows on phone-width screens. */}
+      <div className="flex sm:hidden items-center justify-around px-1 py-1.5 bg-black/70 border-t border-white/10 flex-shrink-0">
+        <button
+          onClick={() => setView(view === "video" ? "canvas" : "video")}
+          className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${view === "canvas" ? "bg-white/20 text-white" : "text-white/40"}`}>
+          <PenTool className="h-5 w-5" />
+          <span className="text-[8px] font-black uppercase tracking-wide">Canvas</span>
+        </button>
+        <button
+          onClick={() => voice.setMuted(!voice.muted)}
+          className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${voice.muted ? "text-destructive" : "text-white/40"}`}>
+          {voice.muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          <span className="text-[8px] font-black uppercase tracking-wide">{voice.muted ? "Muted" : "Mic"}</span>
+        </button>
+        <button
+          onClick={() => void voice.toggleCamera()}
+          className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${voice.cameraEnabled ? "bg-white/20 text-white" : "text-white/40"}`}>
+          {voice.cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+          <span className="text-[8px] font-black uppercase tracking-wide">Cam</span>
+        </button>
+        {voice.screenShareSupported && (
+          <button
+            onClick={() => void voice.toggleScreenShare()}
+            className={`flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 transition-all ${voice.screenShareEnabled ? "bg-white/20 text-white" : "text-white/40"}`}>
+            {voice.screenShareEnabled ? <ScreenShare className="h-5 w-5" /> : <ScreenShareOff className="h-5 w-5" />}
+            <span className="text-[8px] font-black uppercase tracking-wide">Share</span>
+          </button>
+        )}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="flex flex-col items-center justify-center gap-0.5 min-w-[52px] min-h-[52px] rounded-xl px-1 text-white/40">
+              <SmilePlus className="h-5 w-5" />
+              <span className="text-[8px] font-black uppercase tracking-wide">React</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-2 flex gap-1.5">
+            {REACTION_EMOJIS.map((emoji) => (
+              <button key={emoji} onClick={() => voice.sendReaction(emoji)} className="text-lg hover:scale-125 transition-transform">
+                {emoji}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   );

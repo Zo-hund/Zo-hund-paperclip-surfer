@@ -124,12 +124,17 @@ export function MeetingCanvas({ sendCanvasStroke, sendCanvasClear, remoteEvent, 
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // preventDefault is required on touch devices (esp. iOS Safari) — without it,
+    // touch-action:none alone doesn't reliably stop the browser from treating a
+    // slow drag as a scroll/long-press-select gesture, which aborts the stroke.
+    e.preventDefault();
     drawingRef.current = true;
     lastPointRef.current = getRelativePoint(e);
     (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
     const point = getRelativePoint(e);
     const now = Date.now();
     if (sendCanvasCursor && now - lastCursorSentRef.current >= CURSOR_THROTTLE_MS) {

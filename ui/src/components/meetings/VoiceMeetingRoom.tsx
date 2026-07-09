@@ -566,31 +566,33 @@ export function VoiceMeetingRoom({ meetingId, onClose, onMinimize, agentStatus, 
             // board-user-<userId>; agents (avatar) publish under their agent identity.
             // Guests publish under a per-join random identity (guest-<hex>) that
             // isn't persisted on the participant row, so their track can't be
-            // matched here — it renders instead via the "extra" identities block
-            // below, labeled by that raw identity rather than their guestName.
+            // matched by participant row — render them only via the "extra"
+            // identities block below (labeled from the LiveKit `name` claim,
+            // which the guest join route sets to their entered display name).
             const identityFor = (p: (typeof participants)[number]) =>
               p.userId ? `board-user-${p.userId}` : (p.name ?? "");
             const consumed = new Set<string>(["local"]);
             return (
               <div className="flex-1 rounded-xl p-3 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
                 <VideoTile track={localVideoTrack ?? undefined} name="You" status={micActive ? "speaking" : "muted"} />
-                {participants.map((p) => {
+                {participants.filter((p) => p.participantType !== "guest").map((p) => {
                   const name = p.name ?? "Unknown";
                   const identity = identityFor(p);
                   consumed.add(identity);
                   const remoteTracks = videoTracks?.get(identity);
                   return <VideoTile key={p.id} track={remoteTracks?.video} name={name} status={p.status} />;
                 })}
-                {/* Cameras from identities without a participant row (e.g. avatar workers) */}
+                {/* Cameras from identities without a matchable participant row
+                    (avatar workers, and guests — see note above) */}
                 {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
                   !consumed.has(identity) && tracks.video ? (
-                    <VideoTile key={`extra-${identity}`} track={tracks.video} name={identity.replace(/^board-user-/, "")} />
+                    <VideoTile key={`extra-${identity}`} track={tracks.video} name={tracks.name || identity.replace(/^board-user-/, "")} />
                   ) : null
                 )}
                 {videoTracks && Array.from(videoTracks.entries()).map(([identity, tracks]) =>
                   tracks.screen ? (
                     <div key={`screen-${identity}`} className="col-span-full relative rounded-xl overflow-hidden border border-blue-500/40 aspect-video">
-                      <VideoTile track={tracks.screen} name={identity === "local" ? "Your Screen" : `${identity.replace(/^board-user-/, "")} — Screen`} />
+                      <VideoTile track={tracks.screen} name={identity === "local" ? "Your Screen" : `${tracks.name || identity.replace(/^board-user-/, "")} — Screen`} />
                       <span className="absolute top-2 left-2 text-[10px] font-black uppercase tracking-wide bg-blue-500/80 text-white px-2 py-0.5 rounded">Screen Share</span>
                     </div>
                   ) : null

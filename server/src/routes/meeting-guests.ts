@@ -96,6 +96,10 @@ export function meetingGuestRoutes(db: Db) {
 
     const at = new AccessToken(apiKey, apiSecret, {
       identity,
+      // The guest's random identity can't be resolved back to a display name
+      // by other participants — LiveKit's `name` claim carries it instead, so
+      // remote clients can label the video tile correctly (see RemoteParticipant.name).
+      name: guestName,
       ttl: Math.max(60, Math.floor(ttlMs / 1000)),
     });
     at.addGrant({

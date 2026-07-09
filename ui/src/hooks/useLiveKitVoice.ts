@@ -43,7 +43,7 @@ export interface TranscriptEntry {
   ts: number;
 }
 
-export type VideoTrackEntry = { video?: MediaStreamTrack; screen?: MediaStreamTrack };
+export type VideoTrackEntry = { video?: MediaStreamTrack; screen?: MediaStreamTrack; name?: string };
 export type VideoTrackMap = Map<string, VideoTrackEntry>;
 
 export type CanvasStrokeEvent = {
@@ -308,6 +308,10 @@ export function useLiveKitVoice(options: UseLiveKitVoiceOptions = {}) {
             } else {
               existing.video = track.mediaStreamTrack;
             }
+            // Guests carry their entered display name on the LiveKit `name`
+            // claim (their identity is a random per-join value with no way
+            // to resolve back to a name via meetingParticipants).
+            if (participant.name) existing.name = participant.name;
             next.set(participant.identity, existing);
             return next;
           });

@@ -153,6 +153,7 @@ export function useGuestLiveKitVoice(options: UseGuestLiveKitVoiceOptions = {}) 
             const existing = next.get(participant.identity) ?? {};
             if (pub.source === Track.Source.ScreenShare) existing.screen = track.mediaStreamTrack;
             else existing.video = track.mediaStreamTrack;
+            if (participant.name) existing.name = participant.name;
             next.set(participant.identity, existing);
             return next;
           });
