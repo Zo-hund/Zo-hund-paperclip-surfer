@@ -360,7 +360,9 @@ async def _analyze_image(frame_bytes: bytes) -> str:
             import google.generativeai as genai
             from PIL import Image
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            # gemini-2.0-flash was retired upstream (404s in prod); keep this
+            # overridable so the next retirement is an env change, not a rebuild.
+            model = genai.GenerativeModel(os.environ.get("GEMINI_VISION_MODEL") or "gemini-2.5-flash")
             # Pass a PIL Image directly — works across all google-generativeai 0.7+/0.8+ versions.
             pil_image = Image.open(io.BytesIO(frame_bytes))
             response = model.generate_content([pil_image, prompt])

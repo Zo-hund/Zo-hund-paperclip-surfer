@@ -152,13 +152,27 @@ if [[ -n "${GHCR_PULL_USERNAME_VALUE}" && -n "${GHCR_PULL_TOKEN_VALUE}" ]]; then
   echo "${GHCR_PULL_TOKEN_VALUE}" | docker login ghcr.io -u "${GHCR_PULL_USERNAME_VALUE}" --password-stdin
 fi
 
+# --build: services with a local build context (voice-agent) are otherwise
+# never rebuilt after the workflow uploads new source — image-based services
+# (amx) are unaffected by the flag.
 if [[ -n "${DEPLOY_SERVICES_VALUE}" ]]; then
   # shellcheck disable=SC2086 — intentional word splitting of service list
-  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull ${DEPLOY_SERVICES_VALUE}
-  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --no-deps ${DEPLOY_SERVICES_VALUE}
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull --ignore-buildable ${DEPLOY_SERVICES_VALUE}
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --no-deps --build ${DEPLOY_SERVICES_VALUE}
 else
-  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull
-  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --remove-orphans
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull --ignore-buildable
+  docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --remove-orphans --build
+fi
+
+# voice-agent is built from source the deploy workflow uploads to the host,
+# and DEPLOY_SERVICES typically scopes the rollout to the image-based app —
+# so rebuild it explicitly here or agent.py changes never reach prod.
+# Non-fatal: a voice-agent build failure must not fail the app deploy.
+if [[ -n "${DEPLOY_SERVICES_VALUE}" && " ${DEPLOY_SERVICES_VALUE} " != *" voice-agent "* ]]; then
+  if docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --services 2>/dev/null | grep -qx "voice-agent"; then
+    docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --no-deps --build voice-agent \
+      || echo "WARNING: voice-agent rebuild failed (non-fatal); previous container keeps running" >&2
+  fi
 fi
 
 docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" ps
