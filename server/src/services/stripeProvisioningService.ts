@@ -70,12 +70,18 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
   const memberTypes = TIER_MEMBER_TYPES[input.tierName] ?? [input.tierName];
   const progressionStage = TIER_PROGRESSION_STAGE[input.tierName];
 
-  // Upsert stripe subscription record
+  // Upsert stripe subscription record. Capture the PRIOR status so credits are
+  // awarded only on the transition INTO an active state — not on every
+  // subscription.updated (renewals, plan/payment edits) or webhook redelivery,
+  // which would otherwise re-grant the full tier award each time.
   const existing = await db
-    .select({ id: stripeSubscriptions.id })
+    .select({ id: stripeSubscriptions.id, status: stripeSubscriptions.status })
     .from(stripeSubscriptions)
     .where(eq(stripeSubscriptions.stripeSubscriptionId, input.stripeSubscriptionId))
     .limit(1);
+
+  const priorStatus = existing[0]?.status ?? null;
+  const wasActive = priorStatus === "active" || priorStatus === "trialing";
 
   if (existing.length > 0) {
     await db
@@ -133,9 +139,11 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
       .where(eq(lmsMemberProfiles.id, profile.id));
   }
 
-  // Award credits/tokens for the active subscription tier
+  // Award credits/tokens for the active subscription tier — ONCE, on the
+  // transition into active. If the subscription was already active/trialing,
+  // this is a renewal/update/redelivery and must not re-grant.
   const award = TIER_CREDIT_AWARD[input.tierName];
-  if (award && (award.credits > 0 || award.tokens > 0)) {
+  if (!wasActive && award && (award.credits > 0 || award.tokens > 0)) {
     await db.insert(amxTransactions).values({
       fromCompanyId: input.companyId,
       toCompanyId: input.companyId,

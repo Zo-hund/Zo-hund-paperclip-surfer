@@ -72,7 +72,7 @@ export { lmsWorkshops, lmsEnrollments, lmsSimulations } from "./lms_training.js"
 export { lmsMemberProfiles, lmsSessions, lmsSessionAttendance, lmsAiAgentRoles } from "./lms_operations.js";
 export { lmsModules, lmsModuleProgress } from "./lms_modules.js";
 export { lmsBadgeDefinitions, lmsLearnerBadges, lmsXrSessions, lmsCommunityActivity, lmsWorkforceProfiles, lmsInterventions, lmsMarketplaceListings, lmsMarketplaceBookings } from "./lms_analytics.js";
-export { stripeSubscriptions, stripePrices } from "./stripe.js";
+export { stripeSubscriptions, stripePrices, stripeProcessedEvents } from "./stripe.js";
 export { auditVerifications } from "./audit_verifications.js";
 export { agentChatMessages } from "./agent_chat_messages.js";
 export { companyWebhooks, companyWebhookDeliveries } from "./company_webhooks.js";

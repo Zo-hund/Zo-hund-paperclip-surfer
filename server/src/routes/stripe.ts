@@ -1,10 +1,10 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
-import { stripePrices, amxLedger, amxTransactions, companies } from "@paperclipai/db";
+import { stripePrices, amxLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
 import { provisionMember, cancelMember, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
-import type { Request as ExpressRequest } from "express";
+import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin } from "./authz.js";
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -83,11 +83,16 @@ export function stripeApiRoutes(db: Db): Router {
 
   /**
    * POST /companies/:companyId/stripe/seed-catalog
-   * Creates all 9 Stripe Products+Prices and stores price IDs in stripePrices table.
-   * Safe to re-run — existing active prices are skipped.
+   * Creates a Stripe Product+Price for each of the CATALOG_TIERS (16 tiers)
+   * and stores the price IDs in the stripePrices table. Safe to re-run —
+   * existing active prices for a tier are skipped.
    */
   router.post("/companies/:companyId/stripe/seed-catalog", async (req, res) => {
     const { companyId } = req.params as { companyId: string };
+    // Creating a company's Stripe product catalog is an admin-level action,
+    // scoped to that company — never allow it against an arbitrary companyId.
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
 
     let stripe: Stripe;
     try {
@@ -161,6 +166,8 @@ export function stripeApiRoutes(db: Db): Router {
 
   router.post("/companies/:companyId/stripe/seed-credit-packages", async (req, res) => {
     const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
 
     let stripe: Stripe;
     try {
@@ -218,6 +225,9 @@ export function stripeApiRoutes(db: Db): Router {
    * Body: { name, issuePrefix, description?, seedStripe? }
    */
   router.post("/stripe/provision-tenant", async (req, res) => {
+    // Minting a brand-new tenant company is an instance-level action — not
+    // something any company-scoped board user may do.
+    assertInstanceAdmin(req);
     const { name, issuePrefix, description, seedStripe } = req.body as {
       name: string;
       issuePrefix: string;
@@ -302,6 +312,7 @@ export function stripeApiRoutes(db: Db): Router {
    */
   router.get("/companies/:companyId/stripe/prices", async (req, res) => {
     const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(req, companyId);
     const rows = await db
       .select()
       .from(stripePrices)
@@ -327,6 +338,11 @@ export function stripeApiRoutes(db: Db): Router {
    */
   router.post("/companies/:companyId/stripe/checkout", async (req, res) => {
     const { companyId } = req.params as { companyId: string };
+    // Checkout provisions membership within this company (including the free
+    // path, which writes directly) — require company access + member role so
+    // it can't be driven against another tenant's companyId.
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "member");
     const { tierName, userId, successUrl, cancelUrl } = req.body as {
       tierName: string;
       userId: string;
@@ -408,7 +424,30 @@ export function stripeApiRoutes(db: Db): Router {
   return router;
 }
 
+/** Reads current_period_end across Stripe API versions: on 2026-05-27+ it
+ * lives on the subscription item, not the subscription object. Returns null
+ * when absent so we never persist an Invalid Date. */
+function subscriptionPeriodEnd(sub: Stripe.Subscription): Date | null {
+  const itemEnd = (sub.items?.data?.[0] as unknown as { current_period_end?: number } | undefined)?.current_period_end;
+  const topEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
+  const epoch = itemEnd ?? topEnd;
+  return typeof epoch === "number" && Number.isFinite(epoch) ? new Date(epoch * 1000) : null;
+}
+
 async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
+  // Idempotency: Stripe delivers events at-least-once. Record the event id
+  // first; if it's already present, this is a redelivery — skip it so credit
+  // awards and ledger writes never double-apply.
+  const inserted = await db
+    .insert(stripeProcessedEvents)
+    .values({ eventId: event.id, eventType: event.type })
+    .onConflictDoNothing()
+    .returning({ eventId: stripeProcessedEvents.eventId });
+  if (inserted.length === 0) {
+    console.warn("[stripe] duplicate event ignored", event.id, event.type);
+    return;
+  }
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -473,7 +512,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
         stripeSubscriptionId: subscriptionId,
         stripePriceId: priceId,
         status: sub.status,
-        currentPeriodEnd: new Date((sub as unknown as { current_period_end: number }).current_period_end * 1000),
+        currentPeriodEnd: subscriptionPeriodEnd(sub) ?? undefined,
       });
       break;
     }
@@ -493,7 +532,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
         stripeSubscriptionId: sub.id,
         stripePriceId: priceId,
         status: sub.status,
-        currentPeriodEnd: new Date((sub as unknown as { current_period_end: number }).current_period_end * 1000),
+        currentPeriodEnd: subscriptionPeriodEnd(sub) ?? undefined,
       });
       break;
     }

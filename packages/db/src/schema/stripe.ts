@@ -25,6 +25,21 @@ export const stripeSubscriptions = pgTable(
   }),
 );
 
+/**
+ * Idempotency ledger for Stripe webhook events. Stripe delivers each event
+ * at-least-once (retries + manual redelivery), so the webhook handler records
+ * every processed event id here and skips any it has already seen — otherwise
+ * credit awards and ledger writes would double-apply on redelivery.
+ */
+export const stripeProcessedEvents = pgTable(
+  "stripe_processed_events",
+  {
+    eventId: text("event_id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
 export const stripePrices = pgTable(
   "stripe_prices",
   {
