@@ -167,11 +167,19 @@ fi
 # voice-agent is built from source the deploy workflow uploads to the host,
 # and DEPLOY_SERVICES typically scopes the rollout to the image-based app —
 # so rebuild it explicitly here or agent.py changes never reach prod.
+# Build and recreate as two explicit steps with --force-recreate: a plain
+# `up --build` was observed to leave the old container running when compose
+# decided nothing changed, so agent.py edits silently never went live.
 # Non-fatal: a voice-agent build failure must not fail the app deploy.
 if [[ -n "${DEPLOY_SERVICES_VALUE}" && " ${DEPLOY_SERVICES_VALUE} " != *" voice-agent "* ]]; then
   if docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --services 2>/dev/null | grep -qx "voice-agent"; then
-    docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --no-deps --build voice-agent \
-      || echo "WARNING: voice-agent rebuild failed (non-fatal); previous container keeps running" >&2
+    echo "Rebuilding voice-agent from uploaded source (outside DEPLOY_SERVICES=${DEPLOY_SERVICES_VALUE})..."
+    if docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" build voice-agent \
+       && docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d --no-deps --force-recreate voice-agent; then
+      echo "voice-agent rebuilt and recreated."
+    else
+      echo "WARNING: voice-agent rebuild failed (non-fatal); previous container keeps running" >&2
+    fi
   fi
 fi
 

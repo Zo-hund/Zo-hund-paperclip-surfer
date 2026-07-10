@@ -14,12 +14,16 @@ const {
   getIssueByIdMock,
   addCommentMock,
   logActivityMock,
+  getAgentByIdMock,
+  updateCompanyMock,
 } = vi.hoisted(() => ({
   addOutcomeMock: vi.fn(),
   processInteractionMock: vi.fn(),
   getIssueByIdMock: vi.fn(),
   addCommentMock: vi.fn(),
   logActivityMock: vi.fn(),
+  getAgentByIdMock: vi.fn(),
+  updateCompanyMock: vi.fn(),
 }));
 
 vi.mock("../services/index.js", () => ({
@@ -36,6 +40,8 @@ vi.mock("../services/index.js", () => ({
   accessService: () => ({}),
   meetingGuestService: () => ({ createInvite: vi.fn(), listInvites: vi.fn(), revokeInvite: vi.fn() }),
   googleCalendarService: () => ({ isLinked: vi.fn(), createEventForMeeting: vi.fn(), completeEventForMeeting: vi.fn() }),
+  agentService: () => ({ getById: getAgentByIdMock }),
+  companyService: () => ({ update: updateCompanyMock }),
   logActivity: logActivityMock,
 }));
 
@@ -55,15 +61,23 @@ function createFakeDb() {
   return chain as never;
 }
 
-function createApp() {
+const BOARD_ACTOR = { type: "board", userId: "local-board", source: "local_implicit" };
+// A company-scoped agent actor. assertCompanyAccess keys off `companyId`
+// (singular) for agents, and assertCompanyRole bypasses agents entirely — so
+// this actor clears the endpoint's top-level gate, and the CEO restriction is
+// enforced only by the update_company_branding branch itself.
+const AGENT_ACTOR = {
+  type: "agent",
+  agentId: "agent-1",
+  source: "api_key",
+  companyId: COMPANY_ID,
+};
+
+function createApp(actor: Record<string, unknown> = BOARD_ACTOR) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as never as { actor: unknown }).actor = {
-      type: "board",
-      userId: "local-board",
-      source: "local_implicit",
-    };
+    (req as never as { actor: unknown }).actor = actor;
     next();
   });
   app.use("/api/meetings", meetingsRouter(createFakeDb()));
@@ -78,6 +92,8 @@ describe("POST /api/meetings/:id/actions — add_outcome & add_issue_comment", (
     getIssueByIdMock.mockReset();
     addCommentMock.mockReset();
     logActivityMock.mockReset();
+    getAgentByIdMock.mockReset();
+    updateCompanyMock.mockReset();
   });
 
   it("add_outcome attaches an artifact outcome and logs activity", async () => {
@@ -144,5 +160,84 @@ describe("POST /api/meetings/:id/actions — add_outcome & add_issue_comment", (
 
     expect(res.status).toBe(422);
     expect(addCommentMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/meetings/:id/actions — update_company_branding", () => {
+  afterEach(() => {
+    processInteractionMock.mockReset();
+    logActivityMock.mockReset();
+    getAgentByIdMock.mockReset();
+    updateCompanyMock.mockReset();
+  });
+
+  it("a board actor updates branding, logs company.branding_updated, and summarizes the change", async () => {
+    updateCompanyMock.mockResolvedValue({ id: COMPANY_ID, name: "AMX Air Hubs", brandColor: "#1f3a5f" });
+    processInteractionMock.mockResolvedValue({ id: "t-3" });
+
+    const res = await request(createApp())
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "update_company_branding", params: { brandColor: "#1F3A5F" } });
+
+    expect(res.status).toBe(200);
+    expect(updateCompanyMock).toHaveBeenCalledWith(COMPANY_ID, { brandColor: "#1F3A5F" });
+    expect(res.body.summary).toContain("brand color");
+    expect(logActivityMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "company.branding_updated", entityId: COMPANY_ID }),
+    );
+  });
+
+  it("rejects a non-CEO agent with 403 without touching the company", async () => {
+    getAgentByIdMock.mockResolvedValue({ id: "agent-1", role: "worker", companyId: COMPANY_ID });
+
+    const res = await request(createApp(AGENT_ACTOR))
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "update_company_branding", params: { name: "Renamed Co" } });
+
+    expect(res.status).toBe(403);
+    expect(updateCompanyMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a CEO agent of the same company", async () => {
+    getAgentByIdMock.mockResolvedValue({ id: "agent-1", role: "ceo", companyId: COMPANY_ID });
+    updateCompanyMock.mockResolvedValue({ id: COMPANY_ID, name: "Renamed Co" });
+    processInteractionMock.mockResolvedValue({ id: "t-4" });
+
+    const res = await request(createApp(AGENT_ACTOR))
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "update_company_branding", params: { name: "Renamed Co" } });
+
+    expect(res.status).toBe(200);
+    expect(updateCompanyMock).toHaveBeenCalledWith(COMPANY_ID, { name: "Renamed Co" });
+  });
+
+  it("rejects a CEO agent of a DIFFERENT company with 403", async () => {
+    getAgentByIdMock.mockResolvedValue({ id: "agent-1", role: "ceo", companyId: "other-co" });
+
+    const res = await request(createApp(AGENT_ACTOR))
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "update_company_branding", params: { name: "Renamed Co" } });
+
+    expect(res.status).toBe(403);
+    expect(updateCompanyMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid brand color (non-hex) with 422", async () => {
+    const res = await request(createApp())
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "update_company_branding", params: { brandColor: "navy blue" } });
+
+    expect(res.status).toBe(422);
+    expect(updateCompanyMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty params payload with 422", async () => {
+    const res = await request(createApp())
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "update_company_branding", params: {} });
+
+    expect(res.status).toBe(422);
+    expect(updateCompanyMock).not.toHaveBeenCalled();
   });
 });

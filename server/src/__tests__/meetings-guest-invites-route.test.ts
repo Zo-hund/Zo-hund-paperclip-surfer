@@ -34,6 +34,8 @@ vi.mock("../services/index.js", () => ({
     revokeInvite: revokeInviteMock,
   }),
   googleCalendarService: () => ({ isLinked: vi.fn(), createEventForMeeting: vi.fn(), completeEventForMeeting: vi.fn() }),
+  agentService: () => ({ getById: vi.fn() }),
+  companyService: () => ({ update: vi.fn() }),
   logActivity: logActivityMock,
 }));
 

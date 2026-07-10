@@ -133,6 +133,7 @@ Use navigate_to_page to move the user to a different screen. This is the primary
 Use navigate_to_company to switch to a different company's board by name.
 Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things.
 Use invite_guest when the user asks to invite an external person or client to the current meeting. If they give an email address, repeat it back spelled out and get a yes before calling the tool. If no email is given, the tool posts a shareable link into the meeting transcript panel — tell the user to copy it from there; never read the raw link characters aloud.
+Use update_company_details when the user asks to change this company's name, description, or brand color. This changes real, customer-facing settings, so ALWAYS read the exact change back and get a clear spoken "yes" before calling the tool — for example, "Set the brand color to navy blue, that's hex 1F3A5F — should I apply that?". Brand color must be a six-digit hex code; translate spoken color names to hex yourself (navy blue is 1F3A5F, forest green is 228B22, and so on) and say both the name and the hex when confirming. Only a board member or the company's CEO agent is allowed to make this change; if the tool says you're not authorized, tell the user plainly and don't retry.
 
 Navigation routing rules (follow exactly):
 - "go to agents", "show agents", "open agents", "agent list", "agents page" → navigate_to_page('/agents')
@@ -830,6 +831,44 @@ class JAZSupportGuide(Agent):
         except Exception as e:
             logger.warning("invite_guest failed: %s", e)
             return "I ran into a problem creating that guest invite."
+
+    @function_tool()
+    async def update_company_details(
+        self, context: RunContext, name: str = "", description: str = "", brand_color: str = ""
+    ) -> str:
+        """Update THIS meeting's company public details: name, description, or
+        brand color. Governed — only a board member or the company's CEO agent
+        may do this, and the change is customer-facing, so you MUST read the
+        exact change back and get a spoken "yes" before calling this.
+
+        Args:
+            name: New company display name. Leave empty to keep it.
+            description: New company description. Leave empty to keep it.
+            brand_color: New brand color as a six-digit hex code (e.g.
+                "#1F3A5F"). Translate spoken color names to hex yourself.
+                Leave empty to keep it.
+        """
+        room = context.session.room_io.room
+        params: dict = {}
+        if name.strip():
+            params["name"] = name.strip()
+        if description.strip():
+            params["description"] = description.strip()
+        if brand_color.strip():
+            hex_value = brand_color.strip()
+            if not hex_value.startswith("#"):
+                hex_value = f"#{hex_value}"
+            params["brandColor"] = hex_value
+        if not params:
+            return "Tell me what to change — the company name, description, or brand color."
+        try:
+            body = await _post_meeting_action(room, "update_company_branding", params)
+            return body.get("summary") or "Company details updated."
+        except RuntimeError as e:
+            return str(e)
+        except Exception as e:
+            logger.warning("update_company_details failed: %s", e)
+            return "I ran into a problem updating the company details."
 
     # ── Web / time tools ──────────────────────────────────────────────────────
 

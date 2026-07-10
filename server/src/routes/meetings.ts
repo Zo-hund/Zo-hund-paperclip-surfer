@@ -4,9 +4,9 @@ import { eq, desc, count, and } from "drizzle-orm";
 import { RoomServiceClient } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
 import { meetings, meetingTranscripts, meetingOutcomes, companies } from "@paperclipai/db";
-import { ISSUE_STATUSES } from "@paperclipai/shared";
+import { ISSUE_STATUSES, updateCompanyBrandingSchema } from "@paperclipai/shared";
 import { forbidden, notFound, unprocessable } from "../errors.js";
-import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService, meetingGuestService, googleCalendarService } from "../services/index.js";
+import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService, meetingGuestService, googleCalendarService, agentService, companyService } from "../services/index.js";
 import { publishLiveEvent } from "../services/live-events.js";
 import { sendEmail } from "../auth/email-service.js";
 import { logger } from "../middleware/logger.js";
@@ -104,6 +104,8 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
   const accessSvc = accessService(db);
   const guestSvc = meetingGuestService(db);
   const googleCalendarSvc = googleCalendarService(db);
+  const agentSvc = agentService(db);
+  const companySvc = companyService(db);
 
   router.get("/", async (req, res) => {
     const companyId = req.query.companyId as string;
@@ -487,7 +489,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
    *
    * Body: { action: "create_issue" | "update_issue_status" | "get_issue_context"
    *                | "add_outcome" | "add_issue_comment" | "create_guest_invite"
-   *                | "set_active_context", params: {...} }
+   *                | "update_company_branding" | "set_active_context", params: {...} }
    *
    * get_issue_context is a read-only lookup (no mutation, no transcript
    * entry) so the voice agent can speak an issue's current state before
@@ -693,6 +695,56 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
         : guestEmail
           ? `Created a guest invite for ${guestEmail}, but email delivery isn't configured — link: ${guestLink}`
           : `Created a guest invite link${guestLabel ? ` for ${guestLabel}` : ""}: ${guestLink}`;
+    } else if (action === "update_company_branding") {
+      // Governed company-detail update (name/description/brandColor). The
+      // meeting-scoped "member" check above is NOT sufficient for company
+      // settings — mirror PATCH /companies/:id/branding exactly: allow a
+      // board user, or an agent that is the CEO of THIS company. This keeps
+      // the voice path from becoming a member-level bypass of that gate.
+      if (actor.actorType !== "user") {
+        const actorAgent = actor.agentId ? await agentSvc.getById(actor.agentId) : null;
+        if (!actorAgent || actorAgent.role !== "ceo" || actorAgent.companyId !== mtg.companyId) {
+          throw forbidden("Only a board member or this company's CEO agent can change company details.");
+        }
+      }
+
+      // Only accept the branding-detail fields, and validate them the same
+      // way the REST route's schema does — but surface bad input as 422 (this
+      // endpoint's convention) rather than letting Zod throw a raw 400.
+      const patch: Record<string, unknown> = {};
+      if (typeof p.name === "string" && p.name.trim()) patch.name = p.name.trim();
+      if (typeof p.description === "string") patch.description = p.description;
+      if (typeof p.brandColor === "string" && p.brandColor.trim()) {
+        const color = p.brandColor.trim();
+        if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+          throw unprocessable("brandColor must be a hex code like #1a2b3c");
+        }
+        patch.brandColor = color;
+      }
+      if (Object.keys(patch).length === 0) {
+        throw unprocessable("Provide at least one of: name, description, brandColor");
+      }
+      // Final shape guard — matches the REST route exactly.
+      const parsed = updateCompanyBrandingSchema.parse(patch);
+
+      const updated = await companySvc.update(mtg.companyId, parsed);
+      if (!updated) throw notFound("Company not found");
+
+      await logActivity(db, {
+        companyId: mtg.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "company.branding_updated",
+        entityType: "company",
+        entityId: mtg.companyId,
+        details: { ...parsed, source: "meeting" },
+      });
+
+      const changed = Object.keys(parsed).map((k) => (k === "brandColor" ? "brand color" : k)).join(", ");
+      result = updated;
+      summary = `Updated company ${changed}`;
     } else if (action === "set_active_context") {
       // Persists which issue is "active" in this meeting's ModulePanel, so a
       // future meeting sharing the same podKey can auto-restore it on entry.
