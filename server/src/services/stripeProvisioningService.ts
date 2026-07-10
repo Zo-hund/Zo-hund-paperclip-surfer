@@ -1,6 +1,6 @@
 import type { Db } from "@paperclipai/db";
 import { stripeSubscriptions, lmsMemberProfiles, stripePrices, amxLedger, amxTransactions } from "@paperclipai/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 
 // Maps each tier name to the memberTypes[] it grants (additive — each tier includes lower tiers)
 export const TIER_MEMBER_TYPES: Record<string, string[]> = {
@@ -54,6 +54,8 @@ export const TIER_PROGRESSION_STAGE: Record<string, string> = {
   ambassador: "ambassador",
   earner:     "earner",
 };
+
+const PROGRESSION_STAGE_ORDER = ["explorer", "builder", "ambassador", "earner", "leader"];
 
 export interface ProvisionInput {
   companyId: string;
@@ -128,9 +130,8 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
     const existingTypes = (profile.memberTypes as string[]) ?? [];
     const mergedTypes = Array.from(new Set([...existingTypes, ...memberTypes]));
 
-    const stageOrder = ["explorer", "builder", "ambassador", "earner", "leader"];
-    const currentIdx = stageOrder.indexOf(profile.progressionStage);
-    const newIdx = progressionStage ? stageOrder.indexOf(progressionStage) : -1;
+    const currentIdx = PROGRESSION_STAGE_ORDER.indexOf(profile.progressionStage);
+    const newIdx = progressionStage ? PROGRESSION_STAGE_ORDER.indexOf(progressionStage) : -1;
     const advancedStage = newIdx > currentIdx ? progressionStage : profile.progressionStage;
 
     await db
@@ -194,18 +195,41 @@ export async function cancelMember(db: Db, stripeSubscriptionId: string): Promis
     .set({ status: "canceled", updatedAt: new Date() })
     .where(eq(stripeSubscriptions.stripeSubscriptionId, stripeSubscriptionId));
 
-  if (sub) {
-    // Revoke all granted member types and reset progression stage to explorer
-    await db
-      .update(lmsMemberProfiles)
-      .set({ memberTypes: [], progressionStage: "explorer", updatedAt: new Date() })
-      .where(
-        and(
-          eq(lmsMemberProfiles.companyId, sub.companyId),
-          eq(lmsMemberProfiles.userId, sub.userId),
-        ),
-      );
-  }
+  if (!sub) return;
+
+  // Tiers are additive and a member can hold several subscriptions at once
+  // (e.g. builder + parent), so canceling one plan must not revoke what the
+  // others still grant. Recompute entitlements from the REMAINING
+  // active/trialing subscriptions rather than wiping the profile.
+  const remaining = await db
+    .select({ tierName: stripeSubscriptions.tierName })
+    .from(stripeSubscriptions)
+    .where(
+      and(
+        eq(stripeSubscriptions.companyId, sub.companyId),
+        eq(stripeSubscriptions.userId, sub.userId),
+        inArray(stripeSubscriptions.status, ["active", "trialing"]),
+      ),
+    );
+
+  const memberTypes = Array.from(
+    new Set(remaining.flatMap((r) => TIER_MEMBER_TYPES[r.tierName] ?? [r.tierName])),
+  );
+  const progressionStage = remaining.reduce((best, r) => {
+    const stage = TIER_PROGRESSION_STAGE[r.tierName];
+    if (!stage) return best;
+    return PROGRESSION_STAGE_ORDER.indexOf(stage) > PROGRESSION_STAGE_ORDER.indexOf(best) ? stage : best;
+  }, "explorer");
+
+  await db
+    .update(lmsMemberProfiles)
+    .set({ memberTypes, progressionStage, updatedAt: new Date() })
+    .where(
+      and(
+        eq(lmsMemberProfiles.companyId, sub.companyId),
+        eq(lmsMemberProfiles.userId, sub.userId),
+      ),
+    );
 }
 
 export async function getPriceForTier(db: Db, companyId: string, tierName: string) {

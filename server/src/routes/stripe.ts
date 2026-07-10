@@ -361,14 +361,17 @@ export function stripeApiRoutes(db: Db): Router {
       return;
     }
 
-    // Free tier — provision directly, no payment needed
+    // Free tier — provision directly, no payment needed. The synthetic
+    // subscription id is deterministic (no timestamp) so repeat checkouts
+    // hit provisionMember's upsert-by-subscription-id path instead of
+    // inserting a duplicate row and re-awarding tier credits each click.
     if (priceRow.amount === 0) {
       await provisionMember(db, {
         companyId,
         userId,
         tierName,
         stripeCustomerId: "free-direct",
-        stripeSubscriptionId: `free-${userId}-${Date.now()}`,
+        stripeSubscriptionId: `free-${companyId}-${userId}-${tierName}`,
         stripePriceId: priceRow.stripePriceId,
         status: "active",
       });

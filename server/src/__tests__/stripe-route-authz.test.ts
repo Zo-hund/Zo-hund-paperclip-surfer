@@ -2,6 +2,7 @@ import express from "express";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stripeApiRoutes } from "../routes/stripe.js";
+import { provisionMember, getPriceForTier } from "../services/stripeProvisioningService.js";
 import { errorHandler } from "../middleware/index.js";
 
 const COMPANY_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -111,5 +112,37 @@ describe("Stripe tenant routes — company-scoped authorization", () => {
     // Passes authz; may then 201 (created) or 500 depending on the fake db —
     // the point is it is NOT blocked at the authorization gate.
     expect(res.status).not.toBe(403);
+  });
+});
+
+describe("free-tier checkout — idempotent provisioning", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("uses a deterministic synthetic subscription id (repeat checkouts upsert, not duplicate)", async () => {
+    vi.mocked(getPriceForTier).mockResolvedValue({
+      id: "row-1",
+      companyId: COMPANY_A,
+      tierName: "volunteer",
+      stripeProductId: "prod_x",
+      stripePriceId: "price_x",
+      currency: "usd",
+      amount: 0,
+      interval: "month",
+      isActive: 1,
+      createdAt: new Date(),
+    });
+
+    const res = await request(createApp(memberOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/checkout`)
+      .send({ tierName: "volunteer", userId: "u2" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.provisioned).toBe(true);
+    expect(provisionMember).toHaveBeenCalledTimes(1);
+    const input = vi.mocked(provisionMember).mock.calls[0][1];
+    // No timestamp component — the same user re-checking-out the same free
+    // tier must produce the SAME id so provisionMember upserts instead of
+    // inserting a new row and re-awarding credits.
+    expect(input.stripeSubscriptionId).toBe(`free-${COMPANY_A}-u2-volunteer`);
   });
 });

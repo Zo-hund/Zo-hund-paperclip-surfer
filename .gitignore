@@ -36,6 +36,13 @@ server/src/**/*.js
 server/src/**/*.js.map
 server/src/**/*.d.ts
 server/src/**/*.d.ts.map
+# packages/db compiles to dist/ — stray compiled output committed into src/
+# shadows the .ts sources under vitest/tsx (NodeNext "./x.js" imports resolve
+# to the literal stale .js), silently pinning tests to an old schema.
+packages/**/src/**/*.js
+packages/**/src/**/*.js.map
+packages/**/src/**/*.d.ts
+packages/**/src/**/*.d.ts.map
 tmp/
 
 # Editor / tool temp files
