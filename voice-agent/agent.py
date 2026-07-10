@@ -920,7 +920,9 @@ async def entrypoint(ctx: JobContext):
     else:
         session = AgentSession(
             stt=inference.STT(model="deepgram/nova-3", language="en"),
-            llm=lk_google.LLM(model="gemini-2.5-flash"),
+            # Gemini 3.5 Flash is GA and tuned for agentic/tool-calling work;
+            # per its docs we pass no temperature/top_p/top_k overrides.
+            llm=lk_google.LLM(model=os.environ.get("VOICE_LLM_MODEL") or "gemini-3.5-flash"),
             tts=inference.TTS(
                 model="cartesia/sonic-3",
                 voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
