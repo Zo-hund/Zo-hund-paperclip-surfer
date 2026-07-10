@@ -13,16 +13,18 @@ const {
   listInvitesMock,
   revokeInviteMock,
   logActivityMock,
+  sendEmailMock,
 } = vi.hoisted(() => ({
   createInviteMock: vi.fn(),
   listInvitesMock: vi.fn(),
   revokeInviteMock: vi.fn(),
   logActivityMock: vi.fn(),
+  sendEmailMock: vi.fn(),
 }));
 
 vi.mock("../services/index.js", () => ({
   recordingService: () => ({}),
-  meetingAgentService: () => ({ getParticipants: vi.fn(), getOutcomes: vi.fn() }),
+  meetingAgentService: () => ({ getParticipants: vi.fn(), getOutcomes: vi.fn(), processInteraction: vi.fn() }),
   issueService: () => ({}),
   pushNotificationService: () => ({}),
   accessService: () => ({}),
@@ -39,9 +41,13 @@ vi.mock("../services/live-events.js", () => ({
   publishLiveEvent: vi.fn(),
 }));
 
+vi.mock("../auth/email-service.js", () => ({
+  sendEmail: sendEmailMock,
+}));
+
 /** Minimal chainable drizzle-ish db: every select resolves to the meeting row. */
 function createFakeDb() {
-  const meetingRow = { companyId: COMPANY_ID, issueId: null };
+  const meetingRow = { companyId: COMPANY_ID, issueId: null, title: "Client Kickoff" };
   const chain = {
     select: () => chain,
     from: () => chain,
@@ -85,6 +91,7 @@ describe("meeting guest-invite CRUD routes", () => {
     listInvitesMock.mockReset();
     revokeInviteMock.mockReset();
     logActivityMock.mockReset();
+    sendEmailMock.mockReset();
   });
 
   it("POST /:id/guest-invites creates an invite and returns the raw token once", async () => {
@@ -119,6 +126,123 @@ describe("meeting guest-invite CRUD routes", () => {
 
     expect(res.status).toBe(403);
     expect(createInviteMock).not.toHaveBeenCalled();
+  });
+
+  it("POST /:id/guest-invites with guestEmail emails the link and reports emailSent", async () => {
+    createInviteMock.mockResolvedValue({
+      invite: {
+        id: INVITE_ID,
+        meetingId: MEETING_ID,
+        tokenHash: "never-returned",
+        guestLabel: "jane@acme.com",
+        createdByUserId: "u1",
+        expiresAt: new Date(),
+        revokedAt: null,
+        createdAt: new Date(),
+      },
+      token: "raw-token-value",
+    });
+    sendEmailMock.mockResolvedValue(true);
+
+    const res = await request(createApp(memberActor))
+      .post(`/api/meetings/${MEETING_ID}/guest-invites`)
+      .send({ guestEmail: "jane@acme.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.emailSent).toBe(true);
+    expect(res.body.token).toBe("raw-token-value");
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const emailArg = sendEmailMock.mock.calls[0][0];
+    expect(emailArg.to).toBe("jane@acme.com");
+    expect(emailArg.text).toContain("/guest/meeting/raw-token-value");
+    // The email address doubles as the link's label when none was given.
+    expect(createInviteMock).toHaveBeenCalledWith(MEETING_ID, expect.objectContaining({ guestLabel: "jane@acme.com" }));
+  });
+
+  it("POST /:id/guest-invites rejects a malformed guestEmail with 422", async () => {
+    const res = await request(createApp(memberActor))
+      .post(`/api/meetings/${MEETING_ID}/guest-invites`)
+      .send({ guestEmail: "not-an-email" });
+
+    expect(res.status).toBe(422);
+    expect(createInviteMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("POST /:id/guest-invites still returns the link when email delivery fails", async () => {
+    createInviteMock.mockResolvedValue({
+      invite: {
+        id: INVITE_ID,
+        meetingId: MEETING_ID,
+        tokenHash: "never-returned",
+        guestLabel: "jane@acme.com",
+        createdByUserId: "u1",
+        expiresAt: new Date(),
+        revokedAt: null,
+        createdAt: new Date(),
+      },
+      token: "raw-token-value",
+    });
+    sendEmailMock.mockRejectedValue(new Error("resend down"));
+
+    const res = await request(createApp(memberActor))
+      .post(`/api/meetings/${MEETING_ID}/guest-invites`)
+      .send({ guestEmail: "jane@acme.com" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.emailSent).toBe(false);
+    expect(res.body.token).toBe("raw-token-value");
+  });
+
+  it("POST /:id/actions create_guest_invite creates and emails an invite for the voice agent", async () => {
+    createInviteMock.mockResolvedValue({
+      invite: {
+        id: INVITE_ID,
+        meetingId: MEETING_ID,
+        tokenHash: "never-returned",
+        guestLabel: "bob@client.com",
+        createdByUserId: null,
+        expiresAt: new Date(),
+        revokedAt: null,
+        createdAt: new Date(),
+      },
+      token: "raw-token-value",
+    });
+    sendEmailMock.mockResolvedValue(true);
+
+    const res = await request(createApp(memberActor))
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "create_guest_invite", params: { guestEmail: "bob@client.com" } });
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toContain("bob@client.com");
+    expect((res.body.result as { emailSent: boolean }).emailSent).toBe(true);
+    expect((res.body.result as { url: string }).url).toContain("/guest/meeting/raw-token-value");
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /:id/actions create_guest_invite without email returns the link in the summary", async () => {
+    createInviteMock.mockResolvedValue({
+      invite: {
+        id: INVITE_ID,
+        meetingId: MEETING_ID,
+        tokenHash: "never-returned",
+        guestLabel: null,
+        createdByUserId: null,
+        expiresAt: new Date(),
+        revokedAt: null,
+        createdAt: new Date(),
+      },
+      token: "raw-token-value",
+    });
+
+    const res = await request(createApp(memberActor))
+      .post(`/api/meetings/${MEETING_ID}/actions`)
+      .send({ action: "create_guest_invite", params: {} });
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toContain("/guest/meeting/raw-token-value");
+    expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
   it("GET /:id/guest-invites lists invites without tokenHash", async () => {

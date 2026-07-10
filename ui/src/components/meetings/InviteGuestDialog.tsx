@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy, Loader2, QrCode, Trash2, UserPlus2 } from "lucide-react";
+import { Check, Copy, Loader2, Mail, QrCode, Trash2, UserPlus2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { meetingsApi } from "../../api/meetings";
 import {
@@ -26,9 +26,13 @@ function guestLinkUrl(token: string) {
 export function InviteGuestDialog({ meetingId, open, onClose }: InviteGuestDialogProps) {
   const queryClient = useQueryClient();
   const [guestLabel, setGuestLabel] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
   const [newLink, setNewLink] = useState<string | null>(null);
+  const [emailedTo, setEmailedTo] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
+
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim());
 
   const invitesQuery = useQuery({
     queryKey: ["meeting-guest-invites", meetingId],
@@ -37,11 +41,17 @@ export function InviteGuestDialog({ meetingId, open, onClose }: InviteGuestDialo
   });
 
   const createMutation = useMutation({
-    mutationFn: () => meetingsApi.createGuestInvite(meetingId, { guestLabel: guestLabel.trim() || undefined }),
+    mutationFn: () =>
+      meetingsApi.createGuestInvite(meetingId, {
+        guestLabel: guestLabel.trim() || undefined,
+        guestEmail: emailValid ? guestEmail.trim() : undefined,
+      }),
     onSuccess: (result) => {
       setNewLink(guestLinkUrl(result.token));
+      setEmailedTo(result.emailSent ? guestEmail.trim() : null);
       setShowQr(false);
       setGuestLabel("");
+      setGuestEmail("");
       queryClient.invalidateQueries({ queryKey: ["meeting-guest-invites", meetingId] });
     },
   });
@@ -80,18 +90,37 @@ export function InviteGuestDialog({ meetingId, open, onClose }: InviteGuestDialo
             placeholder="Label (optional, e.g. Client — Acme Corp)"
             className="h-9 text-sm"
           />
+          <Input
+            type="email"
+            value={guestEmail}
+            onChange={(e) => setGuestEmail(e.target.value)}
+            placeholder="Email the link to… (optional)"
+            className="h-9 text-sm"
+          />
+          {guestEmail.trim().length > 0 && !emailValid && (
+            <p className="text-xs text-destructive">Enter a valid email address, or clear the field to just get a link.</p>
+          )}
           <Button
             size="sm"
             className="w-full"
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || (guestEmail.trim().length > 0 && !emailValid)}
             onClick={() => createMutation.mutate()}
           >
-            {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Generate Link"}
+            {createMutation.isPending
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : emailValid
+                ? <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Generate &amp; Email Link</span>
+                : "Generate Link"}
           </Button>
         </div>
 
         {newLink && (
           <div className="space-y-2">
+            {emailedTo && (
+              <p className="flex items-center gap-1.5 text-xs text-green-400">
+                <Check className="h-3.5 w-3.5" /> Invite emailed to {emailedTo}
+              </p>
+            )}
             <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/[0.03] p-2">
               <span className="flex-1 truncate text-xs font-mono">{newLink}</span>
               <Button size="icon-sm" variant="ghost" onClick={() => setShowQr((v) => !v)} title="Show QR code">

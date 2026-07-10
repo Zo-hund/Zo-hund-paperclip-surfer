@@ -1,6 +1,6 @@
 import { eq, and, asc, or } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companyStaff, companyEvents } from "@paperclipai/db";
+import { companyStaff, companyEvents, companyLogos } from "@paperclipai/db";
 
 export function companyContentService(db: Db) {
   return {
@@ -75,6 +75,15 @@ export function companyContentService(db: Db) {
     // Used by the scoped public asset route: an asset may only be served
     // unauthenticated if it's referenced by a published staff/event row.
     isAssetPubliclyReferenced: async (assetId: string) => {
+      // Company logos are public branding — the guest meeting lobby (an
+      // unauthenticated page) renders them via the public asset route.
+      const logoMatch = await db
+        .select({ id: companyLogos.id })
+        .from(companyLogos)
+        .where(eq(companyLogos.assetId, assetId))
+        .then((rows) => rows[0] ?? null);
+      if (logoMatch) return true;
+
       const staffMatch = await db
         .select({ id: companyStaff.id })
         .from(companyStaff)

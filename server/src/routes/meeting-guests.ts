@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomBytes } from "node:crypto";
 import { AccessToken } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
-import { companies } from "@paperclipai/db";
+import { companies, companyLogos, authUsers } from "@paperclipai/db";
 import { eq } from "drizzle-orm";
 import { notFound, unprocessable } from "../errors.js";
 import { meetingGuestService, logActivity } from "../services/index.js";
@@ -58,12 +58,38 @@ export function meetingGuestRoutes(db: Db) {
     const row = await guestSvc.resolveInvite(req.params.token);
     if (!row) throw notFound("Guest link not found");
 
-    const [company] = await db.select({ name: companies.name }).from(companies).where(eq(companies.id, row.companyId)).limit(1);
+    // Lobby enrichment — all public-safe branding/context for the pre-join
+    // onboarding screen: company name + brand color + logo (served via the
+    // public asset route), meeting type/pod, and who sent the invite.
+    const [company] = await db
+      .select({ name: companies.name, brandColor: companies.brandColor })
+      .from(companies)
+      .where(eq(companies.id, row.companyId))
+      .limit(1);
+    const [logo] = await db
+      .select({ assetId: companyLogos.assetId })
+      .from(companyLogos)
+      .where(eq(companyLogos.companyId, row.companyId))
+      .limit(1);
+    let hostName: string | null = null;
+    if (row.invite.createdByUserId) {
+      const [host] = await db
+        .select({ name: authUsers.name })
+        .from(authUsers)
+        .where(eq(authUsers.id, row.invite.createdByUserId))
+        .limit(1);
+      hostName = host?.name ?? null;
+    }
 
     res.json({
       meetingId: row.meetingId,
       meetingTitle: row.meetingTitle,
       companyName: company?.name ?? null,
+      companyBrandColor: company?.brandColor ?? null,
+      companyLogoUrl: logo?.assetId ? `/api/public/assets/${logo.assetId}/content` : null,
+      meetingType: row.meetingType,
+      podKey: row.podKey,
+      hostName,
       meetingStatus: row.meetingStatus,
       expiresAt: row.invite.expiresAt,
     });

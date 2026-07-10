@@ -132,6 +132,7 @@ These tools never create or change anything by themselves — they open a form w
 Use navigate_to_page to move the user to a different screen. This is the primary navigation tool.
 Use navigate_to_company to switch to a different company's board by name.
 Use open_new_issue, open_new_agent, or open_new_project when the user asks to file, log, add, hire, or start one of those things.
+Use invite_guest when the user asks to invite an external person or client to the current meeting. If they give an email address, repeat it back spelled out and get a yes before calling the tool. If no email is given, the tool posts a shareable link into the meeting transcript panel — tell the user to copy it from there; never read the raw link characters aloud.
 
 Navigation routing rules (follow exactly):
 - "go to agents", "show agents", "open agents", "agent list", "agents page" → navigate_to_page('/agents')
@@ -797,6 +798,38 @@ class JAZSupportGuide(Agent):
         except Exception as e:
             logger.warning("add_issue_comment failed: %s", e)
             return "I ran into a problem adding that comment."
+
+    @function_tool()
+    async def invite_guest(self, context: RunContext, email: str = "", label: str = "") -> str:
+        """Invite an external guest (client, collaborator) to THIS meeting.
+
+        Creates a secure join link for the current meeting room. If an email
+        address is provided, the link is emailed to them directly — always
+        confirm the spelled-out address with the user before calling. If no
+        email is given, the link is posted into the meeting transcript panel
+        for the host to copy; tell them that's where it is. Never read the
+        raw link aloud.
+
+        Args:
+            email: The guest's email address, exactly as the user confirmed it.
+                Leave empty to just generate a shareable link.
+            label: Optional short label for who this link is for, e.g.
+                "Client — Acme Corp". Used for the host's link management list.
+        """
+        room = context.session.room_io.room
+        try:
+            params: dict = {}
+            if email:
+                params["guestEmail"] = email
+            if label:
+                params["guestLabel"] = label
+            body = await _post_meeting_action(room, "create_guest_invite", params)
+            return body.get("summary") or "Guest invite created."
+        except RuntimeError as e:
+            return str(e)
+        except Exception as e:
+            logger.warning("invite_guest failed: %s", e)
+            return "I ran into a problem creating that guest invite."
 
     # ── Web / time tools ──────────────────────────────────────────────────────
 

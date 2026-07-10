@@ -85,6 +85,8 @@ export function meetingGuestService(db: Db) {
         meetingId: meetings.id,
         meetingTitle: meetings.title,
         meetingStatus: meetings.status,
+        meetingType: meetings.type,
+        podKey: meetings.podKey,
         companyId: meetings.companyId,
       })
         .from(meetingGuestInvites)

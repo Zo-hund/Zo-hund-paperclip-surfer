@@ -69,6 +69,8 @@ const activeInvite = {
   meetingId: MEETING_ID,
   meetingTitle: "Board Sync",
   meetingStatus: "active",
+  meetingType: "board_meet",
+  podKey: "weekly-board",
   companyId: COMPANY_ID,
   invite: {
     id: INVITE_ID,
@@ -96,7 +98,7 @@ describe("GET /api/guest/meetings/:token", () => {
     dispatchVoiceAgentMock.mockClear();
   });
 
-  it("resolves a valid token to a minimal DTO with no internal data", async () => {
+  it("resolves a valid token to a lobby DTO with no internal data", async () => {
     resolveInviteMock.mockResolvedValue(activeInvite);
 
     const res = await request(createApp()).get("/api/guest/meetings/valid-token");
@@ -106,6 +108,13 @@ describe("GET /api/guest/meetings/:token", () => {
       meetingId: MEETING_ID,
       meetingTitle: "Board Sync",
       companyName: "Acme Corp",
+      // Fake db rows carry no brandColor/logo assetId/host name — all
+      // lobby-enrichment fields must degrade to null, never leak junk URLs.
+      companyBrandColor: null,
+      companyLogoUrl: null,
+      hostName: null,
+      meetingType: "board_meet",
+      podKey: "weekly-board",
       meetingStatus: "active",
       expiresAt: activeInvite.invite.expiresAt.toISOString(),
     });

@@ -1,14 +1,67 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { eq, desc, count, and } from "drizzle-orm";
 import { RoomServiceClient } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
-import { meetings, meetingTranscripts, meetingOutcomes } from "@paperclipai/db";
+import { meetings, meetingTranscripts, meetingOutcomes, companies } from "@paperclipai/db";
 import { ISSUE_STATUSES } from "@paperclipai/shared";
 import { forbidden, notFound, unprocessable } from "../errors.js";
 import { recordingService, meetingAgentService as createMeetingAgentService, issueService, logActivity, pushNotificationService, accessService, meetingGuestService, googleCalendarService } from "../services/index.js";
 import { publishLiveEvent } from "../services/live-events.js";
+import { sendEmail } from "../auth/email-service.js";
 import { logger } from "../middleware/logger.js";
 import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
+
+/** Public origin for links that leave the app (guest invite emails). Prefers
+ * the configured PAPERCLIP_PUBLIC_URL; falls back to the request's forwarded
+ * host so dev/local still produces clickable links. */
+function publicBaseUrl(req: Request): string {
+  const configured = process.env.PAPERCLIP_PUBLIC_URL?.replace(/\/$/, "");
+  if (configured) return configured;
+  const proto = req.header("x-forwarded-proto")?.split(",")[0]?.trim() || req.protocol || "https";
+  const host = req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.header("host");
+  return host ? `${proto}://${host}` : "";
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Sends the guest magic link by email. Returns true only when a real
+ * transport delivered it (see sendEmail's dev fallback). */
+async function sendGuestInviteEmail(opts: {
+  to: string;
+  guestLink: string;
+  meetingTitle: string;
+  companyName: string | null;
+  expiresAt: Date;
+}): Promise<boolean> {
+  const host = opts.companyName ?? "AMX Air Hubs";
+  const subject = `You're invited: ${opts.meetingTitle}`;
+  const expires = opts.expiresAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+  const text = [
+    `${host} has invited you to join a live meeting: ${opts.meetingTitle}.`,
+    "",
+    `Join from your browser — no account or download needed:`,
+    opts.guestLink,
+    "",
+    `This link expires ${expires} UTC.`,
+  ].join("\n");
+  const html = `
+  <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:24px;">
+    <h2 style="margin:0 0 4px;">You're invited to a live meeting</h2>
+    <p style="margin:0 0 16px;color:#555;">${escapeHtml(host)} · ${escapeHtml(opts.meetingTitle)}</p>
+    <p style="color:#333;">Join from your browser — no account or download needed.</p>
+    <p style="margin:24px 0;">
+      <a href="${opts.guestLink}" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block;">Join Meeting</a>
+    </p>
+    <p style="font-size:12px;color:#888;">Or paste this link into your browser:<br/>${escapeHtml(opts.guestLink)}</p>
+    <p style="font-size:12px;color:#888;">This link expires ${escapeHtml(expires)} UTC.</p>
+  </div>`;
+  return sendEmail({ to: opts.to, subject, html, text });
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 /** Real, live participant counts for active meetings — one batched LiveKit
  * call, not N+1. Returns a map of meetingId -> occupancy count. Silently
@@ -255,19 +308,40 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
    * here — only its sha256 hash is ever persisted.
    */
   router.post("/:id/guest-invites", async (req, res) => {
-    const [mtg] = await db.select({ companyId: meetings.companyId }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
+    const [mtg] = await db.select({ companyId: meetings.companyId, title: meetings.title }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
     if (!mtg) throw notFound("Meeting not found");
     assertCompanyAccess(req, mtg.companyId);
     assertCompanyRole(req, mtg.companyId, "member");
 
-    const { guestLabel, ttlHours } = req.body as { guestLabel?: string; ttlHours?: number };
+    const { guestLabel, ttlHours, guestEmail } = req.body as { guestLabel?: string; ttlHours?: number; guestEmail?: string };
+    const email = typeof guestEmail === "string" ? guestEmail.trim() : "";
+    if (email && !EMAIL_RE.test(email)) throw unprocessable("guestEmail is not a valid email address");
     const actor = getActorInfo(req);
 
     const { invite, token } = await guestSvc.createInvite(req.params.id, {
-      guestLabel: typeof guestLabel === "string" && guestLabel.trim() ? guestLabel.trim() : undefined,
+      guestLabel: typeof guestLabel === "string" && guestLabel.trim() ? guestLabel.trim() : (email || undefined),
       createdByUserId: actor.actorType === "user" ? actor.actorId : undefined,
       ttlHours: typeof ttlHours === "number" ? ttlHours : undefined,
     });
+
+    // Deliver the link by email when requested. Failure to send never fails
+    // the request — the caller still gets the link to share another way.
+    let emailSent = false;
+    if (email) {
+      const guestLink = `${publicBaseUrl(req)}/guest/meeting/${token}`;
+      const [company] = await db.select({ name: companies.name }).from(companies).where(eq(companies.id, mtg.companyId)).limit(1);
+      try {
+        emailSent = await sendGuestInviteEmail({
+          to: email,
+          guestLink,
+          meetingTitle: mtg.title,
+          companyName: company?.name ?? null,
+          expiresAt: invite.expiresAt,
+        });
+      } catch (err) {
+        logger.warn({ err, meetingId: req.params.id }, "guest invite email failed (link still returned)");
+      }
+    }
 
     await logActivity(db, {
       companyId: mtg.companyId,
@@ -278,11 +352,11 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
       action: "meeting.guest_invite_created",
       entityType: "meeting",
       entityId: req.params.id,
-      details: { guestLabel: invite.guestLabel, expiresAt: invite.expiresAt },
+      details: { guestLabel: invite.guestLabel, expiresAt: invite.expiresAt, ...(email ? { guestEmail: email, emailSent } : {}) },
     });
 
     const { tokenHash: _tokenHash, ...inviteDto } = invite;
-    res.json({ ...inviteDto, token });
+    res.json({ ...inviteDto, token, emailSent });
   });
 
   router.get("/:id/guest-invites", async (req, res) => {
@@ -411,7 +485,9 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
    * the same activity-log + validation behavior) as the standard REST routes
    * — this is not a parallel implementation.
    *
-   * Body: { action: "create_issue" | "update_issue_status" | "get_issue_context", params: {...} }
+   * Body: { action: "create_issue" | "update_issue_status" | "get_issue_context"
+   *                | "add_outcome" | "add_issue_comment" | "create_guest_invite"
+   *                | "set_active_context", params: {...} }
    *
    * get_issue_context is a read-only lookup (no mutation, no transcript
    * entry) so the voice agent can speak an issue's current state before
@@ -426,7 +502,7 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
    * surface here automatically since the same service call is reused.
    */
   router.post("/:id/actions", async (req, res) => {
-    const [mtg] = await db.select({ companyId: meetings.companyId, issueId: meetings.issueId }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
+    const [mtg] = await db.select({ companyId: meetings.companyId, issueId: meetings.issueId, title: meetings.title }).from(meetings).where(eq(meetings.id, req.params.id)).limit(1);
     if (!mtg) throw notFound("Meeting not found");
     assertCompanyAccess(req, mtg.companyId);
     assertCompanyRole(req, mtg.companyId, "member");
@@ -566,6 +642,57 @@ export function meetingsRouter(db: Db, heartbeat?: HeartbeatService) {
 
       result = comment;
       summary = `Added a comment to ${existing.identifier}`;
+    } else if (action === "create_guest_invite") {
+      // Create (and optionally email) a guest magic link from inside the
+      // meeting — the voice agent's invite_guest tool calls this. Reuses the
+      // same guestSvc + email path as POST /:id/guest-invites.
+      const guestEmail = typeof p.guestEmail === "string" ? p.guestEmail.trim() : "";
+      const guestLabel = typeof p.guestLabel === "string" && p.guestLabel.trim() ? p.guestLabel.trim() : "";
+      if (guestEmail && !EMAIL_RE.test(guestEmail)) throw unprocessable("guestEmail is not a valid email address");
+
+      const { invite, token } = await guestSvc.createInvite(req.params.id, {
+        guestLabel: guestLabel || (guestEmail || undefined),
+        createdByUserId: actor.actorType === "user" ? actor.actorId : undefined,
+        ttlHours: typeof p.ttlHours === "number" ? p.ttlHours : undefined,
+      });
+
+      const guestLink = `${publicBaseUrl(req)}/guest/meeting/${token}`;
+      let emailSent = false;
+      if (guestEmail) {
+        const [company] = await db.select({ name: companies.name }).from(companies).where(eq(companies.id, mtg.companyId)).limit(1);
+        try {
+          emailSent = await sendGuestInviteEmail({
+            to: guestEmail,
+            guestLink,
+            meetingTitle: mtg.title,
+            companyName: company?.name ?? null,
+            expiresAt: invite.expiresAt,
+          });
+        } catch (err) {
+          logger.warn({ err, meetingId: req.params.id }, "guest invite email failed (link still returned)");
+        }
+      }
+
+      await logActivity(db, {
+        companyId: mtg.companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "meeting.guest_invite_created",
+        entityType: "meeting",
+        entityId: req.params.id,
+        details: { guestLabel: invite.guestLabel, expiresAt: invite.expiresAt, source: "meeting", ...(guestEmail ? { guestEmail, emailSent } : {}) },
+      });
+
+      result = { inviteId: invite.id, url: guestLink, emailSent, expiresAt: invite.expiresAt };
+      // The summary lands in the live transcript — include the link when it
+      // wasn't emailed so the host can copy it from the transcript panel.
+      summary = emailSent
+        ? `Emailed a guest invite for this meeting to ${guestEmail}`
+        : guestEmail
+          ? `Created a guest invite for ${guestEmail}, but email delivery isn't configured — link: ${guestLink}`
+          : `Created a guest invite link${guestLabel ? ` for ${guestLabel}` : ""}: ${guestLink}`;
     } else if (action === "set_active_context") {
       // Persists which issue is "active" in this meeting's ModulePanel, so a
       // future meeting sharing the same podKey can auto-restore it on entry.

@@ -112,9 +112,10 @@ export const meetingsApi = {
   action: (id: string, action: string, params: Record<string, unknown> = {}): Promise<{ result: unknown; summary: string }> =>
     api.post<{ result: unknown; summary: string }>(`/meetings/${id}/actions`, { action, params }),
 
-  /** Generate a reusable, time-limited guest magic link. Returns the raw token once — never retrievable again. */
-  createGuestInvite: (id: string, data: { guestLabel?: string; ttlHours?: number } = {}): Promise<MeetingGuestInvite & { token: string }> =>
-    api.post<MeetingGuestInvite & { token: string }>(`/meetings/${id}/guest-invites`, data),
+  /** Generate a reusable, time-limited guest magic link. Returns the raw token once — never retrievable again.
+   *  Pass guestEmail to also deliver the link by email (emailSent reports whether a transport actually sent it). */
+  createGuestInvite: (id: string, data: { guestLabel?: string; ttlHours?: number; guestEmail?: string } = {}): Promise<MeetingGuestInvite & { token: string; emailSent: boolean }> =>
+    api.post<MeetingGuestInvite & { token: string; emailSent: boolean }>(`/meetings/${id}/guest-invites`, data),
 
   listGuestInvites: (id: string): Promise<MeetingGuestInvite[]> =>
     api.get<MeetingGuestInvite[]>(`/meetings/${id}/guest-invites`),

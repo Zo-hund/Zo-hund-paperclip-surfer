@@ -11,6 +11,11 @@ export interface GuestMeetingSummary {
   meetingId: string;
   meetingTitle: string;
   companyName: string | null;
+  companyBrandColor: string | null;
+  companyLogoUrl: string | null;
+  meetingType: string;
+  podKey: string | null;
+  hostName: string | null;
   meetingStatus: string;
   expiresAt: string;
 }
