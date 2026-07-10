@@ -20,6 +20,7 @@ from livekit.agents import (
     AgentServer,
     AgentSession,
     JobContext,
+    RoomInputOptions,
     RunContext,
     TurnHandlingOptions,
     cli,
@@ -901,18 +902,34 @@ async def entrypoint(ctx: JobContext):
     import json
     from livekit import rtc
 
-    session = AgentSession(
-        stt=inference.STT(model="deepgram/nova-3", language="en"),
-        llm=lk_google.LLM(model="gemini-2.5-flash"),
-        tts=inference.TTS(
-            model="cartesia/sonic-3",
-            voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
-            language="en",
-        ),
-        turn_handling=TurnHandlingOptions(
-            turn_detection=inference.TurnDetector(),
-        ),
-    )
+    # Realtime mode: a single Gemini Live session natively handles hearing,
+    # reasoning, and speaking, and (via video_enabled below) continuously
+    # watches camera/screen-share instead of single-frame snapshots. Opt in by
+    # setting VOICE_REALTIME_MODEL to a Live API model id (e.g.
+    # "gemini-live-2.5-flash-preview"); unset keeps the classic
+    # Deepgram STT + Gemini LLM + Cartesia TTS pipeline. Note the agent's
+    # voice changes to a Gemini native voice (VOICE_REALTIME_VOICE) in this mode.
+    realtime_model = os.environ.get("VOICE_REALTIME_MODEL")
+    if realtime_model:
+        session = AgentSession(
+            llm=lk_google.beta.realtime.RealtimeModel(
+                model=realtime_model,
+                voice=os.environ.get("VOICE_REALTIME_VOICE") or "Puck",
+            ),
+        )
+    else:
+        session = AgentSession(
+            stt=inference.STT(model="deepgram/nova-3", language="en"),
+            llm=lk_google.LLM(model="gemini-2.5-flash"),
+            tts=inference.TTS(
+                model="cartesia/sonic-3",
+                voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
+                language="en",
+            ),
+            turn_handling=TurnHandlingOptions(
+                turn_detection=inference.TurnDetector(),
+            ),
+        )
 
     # Per-room persona override sent via createDispatch metadata
     persona = None
@@ -1004,6 +1021,10 @@ async def entrypoint(ctx: JobContext):
     await session.start(
         agent=agent,
         room=ctx.room,
+        # In realtime mode, stream participant video straight into the Live
+        # model so it can see camera/screen share continuously; the classic
+        # pipeline keeps snapshot-based vision via the analyze_* tools.
+        room_input_options=RoomInputOptions(video_enabled=bool(realtime_model)),
     )
 
     # Subscribe to tracks that were already published before the agent joined.
