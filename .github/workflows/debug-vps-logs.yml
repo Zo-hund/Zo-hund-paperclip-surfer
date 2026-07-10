@@ -18,13 +18,8 @@ jobs:
   logs:
     runs-on: [self-hosted, vps]
     steps:
-      - name: Dump container logs to job summary
+      - name: Dump container logs
         shell: bash
         run: |
-          {
-            echo "## Logs: \`${{ inputs.container }}\` (last ${{ inputs.tail }} lines)"
-            echo
-            echo '```'
-            docker logs --tail "${{ inputs.tail }}" "${{ inputs.container }}" 2>&1 | tail -n "${{ inputs.tail }}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "=== Logs: ${{ inputs.container }} (last ${{ inputs.tail }} lines) ==="
+          docker logs --tail "${{ inputs.tail }}" "${{ inputs.container }}" 2>&1 | tail -n "${{ inputs.tail }}"
