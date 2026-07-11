@@ -27,6 +27,8 @@ function createFakeDb() {
     limit: async () => [],
     insert: () => chain,
     values: () => chain,
+    update: () => chain,
+    set: () => chain,
     returning: async () => [],
   };
   return chain as never;
@@ -189,6 +191,75 @@ describe("custom-tier — company-scoped authorization and validation", () => {
       .send({ ...validBody, seats: 0 });
     expect(res.status).toBe(422);
   });
+
+  it("rejects a non-https imageUrl (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, imageUrl: "http://insecure.example.com/img.png" });
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects more than 15 marketing features (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, features: Array.from({ length: 16 }, (_, i) => `Feature ${i}`) });
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects a feature over 80 characters (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, features: ["x".repeat(81)] });
+    expect(res.status).toBe(422);
+  });
+
+  it("accepts a valid imageUrl and features past validation (503 without Stripe, not 422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, imageUrl: "https://amx-air-hubs.cc/api/public/assets/x/content", features: ["1 seat", "Full platform access"] });
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("tier deactivate — company-scoped authorization", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("rejects a caller with no access to the target company (403)", async () => {
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_B}/stripe/tiers/solo/deactivate`)
+      .send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a member (non-admin) of the target company (403)", async () => {
+    const res = await request(createApp(memberOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/tiers/solo/deactivate`)
+      .send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("returns a zero count when no active rows match (200)", async () => {
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/tiers/ghost_tier/deactivate`)
+      .send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ tier: "ghost_tier", deactivated: 0 });
+  });
+});
+
+describe("custom-tier — Stripe availability and idempotency", () => {
+  const ORIGINAL_STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+  afterEach(() => {
+    vi.clearAllMocks();
+    if (ORIGINAL_STRIPE_KEY === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = ORIGINAL_STRIPE_KEY;
+  });
+
+  const validBody = { tierName: "solo", name: "AMX Labs - Solo", amount: 10000, interval: "month" };
 
   it("returns 503 when Stripe isn't configured, after passing authz+validation", async () => {
     delete process.env.STRIPE_SECRET_KEY;

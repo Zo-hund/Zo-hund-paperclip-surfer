@@ -167,13 +167,15 @@ export function stripeApiRoutes(db: Db): Router {
     assertCompanyAccess(req, companyId);
     assertCompanyRole(req, companyId, "admin");
 
-    const { tierName, name, description, amount, interval, seats } = req.body as {
+    const { tierName, name, description, amount, interval, seats, imageUrl, features } = req.body as {
       tierName?: string;
       name?: string;
       description?: string;
       amount?: number;
       interval?: "month" | "year" | "week" | "one_time";
       seats?: number;
+      imageUrl?: string;
+      features?: string[];
     };
 
     if (!tierName || !/^[a-z0-9_]+$/.test(tierName)) {
@@ -196,6 +198,21 @@ export function stripeApiRoutes(db: Db): Router {
     if (seats !== undefined && (!Number.isInteger(seats) || seats < 1)) {
       res.status(422).json({ error: "seats must be a positive integer when provided" });
       return;
+    }
+    if (imageUrl !== undefined && !/^https:\/\//.test(imageUrl)) {
+      res.status(422).json({ error: "imageUrl must be an https URL when provided" });
+      return;
+    }
+    // Stripe allows at most 15 marketing features per product, 80 chars each.
+    if (features !== undefined) {
+      const valid =
+        Array.isArray(features) &&
+        features.length <= 15 &&
+        features.every((f) => typeof f === "string" && f.trim().length > 0 && f.length <= 80);
+      if (!valid) {
+        res.status(422).json({ error: "features must be an array of up to 15 non-empty strings (max 80 chars each)" });
+        return;
+      }
     }
 
     let stripe: Stripe;
@@ -220,6 +237,8 @@ export function stripeApiRoutes(db: Db): Router {
     const product = await stripe.products.create({
       name,
       description: description || undefined,
+      ...(imageUrl ? { images: [imageUrl] } : {}),
+      ...(features?.length ? { marketing_features: features.map((f) => ({ name: f.trim() })) } : {}),
       metadata: { tierName, companyId, ...(seats !== undefined ? { seats: String(seats) } : {}) },
     });
 
@@ -257,6 +276,43 @@ export function stripeApiRoutes(db: Db): Router {
     });
 
     res.status(201).json({ tier: tierName, productId: product.id, priceId: price.id, amount, interval, seats: seats ?? null });
+  });
+
+  /**
+   * POST /companies/:companyId/stripe/tiers/:tierName/deactivate
+   * Marks every stripePrices row for (companyId, tierName) inactive. Used when
+   * a tier's prices move to a different Stripe account (the old price IDs
+   * become invalid under the new key) or a tier is retired — clears the way
+   * for custom-tier's idempotency check to create a fresh price. Does NOT
+   * touch Stripe itself: existing subscriptions on the old price keep billing.
+   */
+  router.post("/companies/:companyId/stripe/tiers/:tierName/deactivate", async (req, res) => {
+    const { companyId, tierName } = req.params as { companyId: string; tierName: string };
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
+
+    const deactivated = await db
+      .update(stripePrices)
+      .set({ isActive: 0 })
+      .where(and(eq(stripePrices.companyId, companyId), eq(stripePrices.tierName, tierName), eq(stripePrices.isActive, 1)))
+      .returning({ stripePriceId: stripePrices.stripePriceId });
+
+    if (deactivated.length > 0) {
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action: "company.stripe_tier_deactivated",
+        entityType: "company",
+        entityId: companyId,
+        details: { tierName, priceIds: deactivated.map((r) => r.stripePriceId) },
+      });
+    }
+
+    res.json({ tier: tierName, deactivated: deactivated.length });
   });
 
   /**
