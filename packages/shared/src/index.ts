@@ -620,6 +620,7 @@ export {
   RQ_TIER_ALIASES,
   RQ_ESCROW_PRINCIPAL_ID,
   MICRO_SERVICES,
+  TIER_MONTHLY_ALLOWANCE,
   resolveRqTier,
   type CreditPackageTier,
   type RqTier,

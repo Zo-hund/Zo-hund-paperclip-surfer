@@ -4,7 +4,7 @@ import type { Db } from "@paperclipai/db";
 import { stripePrices, amxGlobalLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
 import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS } from "@paperclipai/shared";
-import { provisionMember, cancelMember, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
+import { provisionMember, cancelMember, awardMonthlyAllowance, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
 import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
 
@@ -717,6 +717,41 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
       await cancelMember(db, sub.id);
+      break;
+    }
+
+    case "invoice.paid": {
+      const invoice = event.data.object as Stripe.Invoice;
+      // Recurring allowance applies to RENEWALS only. Month 1 is covered by
+      // the one-time activation award in provisionMember — acting on
+      // subscription_create here would double-grant the first cycle.
+      if (invoice.billing_reason !== "subscription_cycle") break;
+
+      // Resolve the subscription id defensively across Stripe API versions:
+      // older shapes put it at invoice.subscription (string or expanded
+      // object); 2026+ shapes nest it under parent.subscription_details.
+      const rawSub =
+        (invoice as unknown as { subscription?: string | { id: string } | null }).subscription ??
+        (invoice as unknown as { parent?: { subscription_details?: { subscription?: string | { id: string } | null } } })
+          .parent?.subscription_details?.subscription;
+      const subId = typeof rawSub === "string" ? rawSub : rawSub?.id;
+      if (!subId) break;
+
+      const stripe = getStripe();
+      const sub = await stripe.subscriptions.retrieve(subId);
+      const companyId = sub.metadata?.companyId;
+      const userId = sub.metadata?.userId;
+      const tierName = sub.metadata?.tierName;
+      if (!companyId || !userId || !tierName) {
+        // Metadata is stamped onto the subscription by the checkout handler;
+        // without it we can't attribute the allowance.
+        console.warn("[stripe] invoice.paid missing subscription metadata", subId, invoice.id);
+        break;
+      }
+
+      // No extra idempotency here — the stripeProcessedEvents guard at the
+      // top of handleStripeEvent already covers webhook redelivery.
+      await awardMonthlyAllowance(db, { companyId, userId, tierName, invoiceId: invoice.id ?? "" });
       break;
     }
 

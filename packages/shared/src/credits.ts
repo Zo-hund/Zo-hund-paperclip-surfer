@@ -141,3 +141,25 @@ export const MICRO_SERVICES = {
 >;
 
 export type MicroServiceKey = keyof typeof MICRO_SERVICES;
+
+/**
+ * Credits granted EVERY billing cycle for membership tiers (recurring
+ * allowance, applied on invoice.paid renewals). Distinct from
+ * TIER_CREDIT_AWARD in server stripeProvisioningService.ts, which is the
+ * one-time signup bonus granted only on the transition into active.
+ */
+export const TIER_MONTHLY_ALLOWANCE: Record<string, number> = {
+  // AMX Labs seat tiers
+  solo: 2500,
+  coop_2: 4000,
+  coop_3: 7500,
+  team_15: 30000,
+  // Org tiers
+  nonprofit_baseline: 1000,
+  business_micro: 3000,
+  // TAN progression tiers
+  learner: 200,
+  builder: 500,
+  ambassador: 1000,
+  earner: 2000,
+};
