@@ -119,9 +119,31 @@ export interface LmsData {
   };
 }
 
+export interface RqCatalogTier {
+  key: string;
+  label: string;
+  creditCost: number;
+}
+
+export interface RqCatalogMicroService {
+  key: string;
+  label: string;
+  description: string;
+  creditCost: number;
+  segment: "general" | "nonprofit";
+}
+
+export interface RqCatalog {
+  tiers: RqCatalogTier[];
+  microServices: RqCatalogMicroService[];
+}
+
 export const amxApi = {
   getExchange: (companyId: string) =>
     api.get<ExchangeData>(`/companies/${companyId}/amx/exchange`),
+
+  getRqCatalog: (companyId: string) =>
+    api.get<RqCatalog>(`/companies/${companyId}/amx/rq-catalog`),
 
   getWallet: (companyId: string) =>
     api.get<WalletData>(`/companies/${companyId}/amx/wallet`),
