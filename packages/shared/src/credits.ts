@@ -170,3 +170,22 @@ export const TIER_MONTHLY_ALLOWANCE: Record<string, number> = {
  * nonprofit buying a 1,000-credit pack receives 1,250 credits.
  */
 export const NONPROFIT_PACK_BONUS = 0.25;
+
+/**
+ * Agent Marketplace run-phase billing multipliers, applied to a listing's
+ * hourly rate (hourlyRateSims) when pricing a hire. Simulation and
+ * post-production runs are discounted; live/production bill at full rate.
+ */
+export const MARKETPLACE_PHASE_MULTIPLIERS = {
+  simulation: 0.3,
+  pre_production: 0.6,
+  production: 1.0,
+  live: 1.0,
+  post_production: 0.4,
+} as const;
+
+/**
+ * Platform fee (fraction of the booking total) deducted from the provider
+ * payout on marketplace hires — the buyer pays the full booking amount.
+ */
+export const MARKETPLACE_PLATFORM_FEE = 0.1;

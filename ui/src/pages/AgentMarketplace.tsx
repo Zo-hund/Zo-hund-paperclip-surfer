@@ -5,21 +5,26 @@ import {
   Search, Filter, Star, Zap, Briefcase, Layers, CheckCircle2, Clock,
   ShieldCheck, ChevronRight, UserCheck, Users, Globe, Bot, X, Wallet,
   Play, Cpu, Video, FileCheck, BarChart2, ArrowLeft, BadgeCheck,
-  Sparkles, AlertCircle, ChevronDown
+  Sparkles, AlertCircle, ChevronDown, Loader2
 } from "lucide-react";
+import { MARKETPLACE_PHASE_MULTIPLIERS, MARKETPLACE_PLATFORM_FEE } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCompany } from "@/context/CompanyContext";
-import { useQuery } from "@tanstack/react-query";
-import { amxApi } from "@/api/amx";
+import { useToast } from "@/context/ToastContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { amxApi, type Earner } from "@/api/amx";
+import { lmsApi } from "@/api/lms";
+import { authApi } from "@/api/auth";
+import { queryKeys } from "@/lib/queryKeys";
 
 // ── Run phases ────────────────────────────────────────────────────────────────
 const RUN_PHASES = [
-  { id: "sim",     label: "SIM",         icon: Cpu,       color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/30",    desc: "Training simulation — low-cost risk-free rehearsal", creditMultiplier: 0.3  },
-  { id: "pre",     label: "PRE",          icon: FileCheck, color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/30",  desc: "Pre-production planning, scripting & asset prep",   creditMultiplier: 0.6  },
-  { id: "live",    label: "LIVE",         icon: Play,      color: "text-rose-400",    bg: "bg-rose-500/10",    border: "border-rose-500/30",    desc: "Live real-time performance — full billing rate",     creditMultiplier: 1.0  },
-  { id: "prod",    label: "PRODUCTION",   icon: Video,     color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/30",   desc: "Full production run — deliverables to briefcase",    creditMultiplier: 1.0  },
-  { id: "post",    label: "POST",         icon: BarChart2, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", desc: "Post-run debrief, audit, and deliverable review",   creditMultiplier: 0.4  },
+  { id: "sim",     label: "SIM",         icon: Cpu,       color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/30",    desc: "Training simulation — low-cost risk-free rehearsal", creditMultiplier: MARKETPLACE_PHASE_MULTIPLIERS.simulation      },
+  { id: "pre",     label: "PRE",          icon: FileCheck, color: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/30",  desc: "Pre-production planning, scripting & asset prep",   creditMultiplier: MARKETPLACE_PHASE_MULTIPLIERS.pre_production  },
+  { id: "live",    label: "LIVE",         icon: Play,      color: "text-rose-400",    bg: "bg-rose-500/10",    border: "border-rose-500/30",    desc: "Live real-time performance — full billing rate",     creditMultiplier: MARKETPLACE_PHASE_MULTIPLIERS.live            },
+  { id: "prod",    label: "PRODUCTION",   icon: Video,     color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/30",   desc: "Full production run — deliverables to briefcase",    creditMultiplier: MARKETPLACE_PHASE_MULTIPLIERS.production      },
+  { id: "post",    label: "POST",         icon: BarChart2, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", desc: "Post-run debrief, audit, and deliverable review",   creditMultiplier: MARKETPLACE_PHASE_MULTIPLIERS.post_production },
 ];
 
 // ── Hire modes ────────────────────────────────────────────────────────────────
@@ -31,12 +36,47 @@ const HIRE_MODE_TABS = [
 ];
 
 // ── Talent data ───────────────────────────────────────────────────────────────
-const MOCK_HUMANS = [
-  { id: "h_1", name: "Sarah Chen",    title: "Senior Product Designer",    role: "designer",  rating: 4.9, reviews: 128, hourlyRateTokens: 650, skills: ["Figma", "UI/UX", "Product Strategy", "User Research"],         available: true,  badges: ["Verified Human", "Expert Lead"],        avatarUrl: "https://i.pravatar.cc/150?u=sarah-chen",    description: "8+ years multi-disciplinary designer. Expert at guiding AI agents through complex spatial and visual iterations.", phases: ["sim", "pre", "live", "prod", "post"] },
-  { id: "h_2", name: "Marcus Thorne", title: "Enterprise Solutions Architect", role: "architect",rating: 5.0, reviews: 245, hourlyRateTokens: 950, skills: ["System Design", "Audit", "Compliance", "TeamsFx"],          available: true,  badges: ["Verified Human", "Security Cleared"],   avatarUrl: "https://i.pravatar.cc/150?u=marcus-thorne", description: "Specializes in high-stakes human-agent hybrid architectures, RLS security and corporate compliance.",           phases: ["pre", "live", "prod", "post"] },
-  { id: "h_3", name: "Elena Rodriguez",title: "Content & Cultural Lead",   role: "content",   rating: 4.8, reviews: 92,  hourlyRateTokens: 550, skills: ["Localization", "Branding", "Storytelling", "AR Copy"],         available: false, badges: ["Verified Human", "Multilingual"],        avatarUrl: "https://i.pravatar.cc/150?u=elena-rod",     description: "Expert in cultural nuances and localization. Bridges raw AI output with premium human-centric brand experiences.", phases: ["pre", "prod", "post"] },
-];
+// Marketplace talent shape consumed by TalentCard / EngageModal. Real listings
+// come from GET /amx/exchange; `listingId` is present only for real listings
+// and is required to actually book (POST /lms/marketplace/bookings).
+export interface MarketplaceTalent {
+  id: string;
+  listingId?: string;
+  name: string;
+  title: string;
+  rating: number;
+  reviews: number;
+  hourlyRateTokens: number;
+  skills: string[];
+  available: boolean;
+  badges: string[];
+  avatarUrl: string;
+  description: string;
+  phases: string[];
+}
 
+const ALL_PHASE_IDS = RUN_PHASES.map((p) => p.id);
+
+function earnerToTalent(e: Earner): MarketplaceTalent {
+  return {
+    id: e.id,
+    listingId: e.id,
+    name: e.name,
+    title: e.title,
+    rating: e.rating,
+    reviews: e.reviews,
+    hourlyRateTokens: e.rate,
+    skills: e.skills,
+    available: e.status === "Available Now",
+    badges: ["AMX Verified"],
+    avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(e.id)}`,
+    description: e.bio,
+    phases: ALL_PHASE_IDS,
+  };
+}
+
+// Legacy demo agents — still consumed by MemberProfile.tsx for the public
+// member pass page. Not shown in the marketplace grid (which is API-driven).
 export const MOCK_AGENTS = [
   { id: "ag_dasher", name: "Digital Dasher", title: "High-Speed Task Runner", role: "engineer", rating: 4.9, reviews: 850, hourlyRateTokens: 35,  skills: ["Rapid Prototyping", "Task Automation", "Swift Execution"], available: true,  badges: ["Speedster", "High Volume"], avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=digital-dasher", description: "Specialized for high-cadence, short-burst task runs. The fastest agent in the AMX fleet for repetitive high-volume work.", phases: ["live", "prod"] },
   { id: "ag_hermes", name: "Hermes Advanced", title: "Nous Research Reasoning Elite", role: "engineer", rating: 5.0, reviews: 324, hourlyRateTokens: 80,  skills: ["Nous Backend", "Deep Reasoning", "Complex Tool Use", "Paperclip MCP"], available: true,  badges: ["Top Rated Plus", "Nous Verified"],  avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=hermes-advanced", description: "State-of-the-art Hermes reasoning agent on Nous Research industrial backends. Full Paperclip MCP integration.",    phases: ["sim", "pre", "live", "prod", "post"] },
@@ -45,30 +85,74 @@ export const MOCK_AGENTS = [
   { id: "ag_cipher", name: "Cipher",          title: "Cybersecurity Analyst",         role: "security", rating: 5.0, reviews: 210, hourlyRateTokens: 75,  skills: ["Penetration Testing", "Audit", "Cryptography", "Compliance"],       available: false, badges: ["Top Rated Plus", "Security Cleared"],  avatarUrl: "https://i.pravatar.cc/150?u=a042581f4e29026704d",               description: "Relentless vulnerability identifier. Conducts thorough automated and manual code audits for enterprise security.",    phases: ["pre", "prod", "post"] },
 ];
 
-const MOCK_COOP = [
-  { id: "c_1", name: "Astra + Sarah Chen", title: "Full-Stack + Design Co-op", role: "coop", rating: 4.95, reviews: 67, hourlyRateTokens: 480, skills: ["UI/UX", "React", "Figma", "TypeScript", "User Research"], available: true, badges: ["Co-op Verified", "AMX Certified"], avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=coop-1", description: "Proven AI+Human pair. Astra handles engineering, Sarah drives UX. Seamless iteration on UI-intensive projects.", phases: ["pre", "live", "prod", "post"] },
-  { id: "c_2", name: "Nexus + Marcus Thorne", title: "Data + Architecture Co-op", role: "coop", rating: 4.9, reviews: 38, hourlyRateTokens: 700, skills: ["Data Pipelines", "System Design", "Audit", "SQL", "Compliance"], available: true, badges: ["Co-op Verified", "Security Cleared"], avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=coop-2", description: "High-trust data architecture pair. Nexus models, Marcus audits. Ideal for compliance-heavy production runs.", phases: ["pre", "prod", "post"] },
-];
-
-const MOCK_TEAMS = [
-  { id: "t_1", name: "AMX Alpha Squad", title: "Full-Stack Product Team (5-agent)", role: "team", rating: 4.95, reviews: 24, hourlyRateTokens: 1200, skills: ["PM", "Engineering", "Design", "QA", "DevOps"], available: true, badges: ["Team Certified", "AMX Elite"], avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=team-alpha", description: "A complete 5-agent squad covering PM, full-stack engineering, design, QA, and DevOps. For large-scale production runs with full briefcase integration.", phases: ["sim", "pre", "live", "prod", "post"] },
-  { id: "t_2", name: "AMX Launch Crew", title: "Marketing + Content Team (3-member)", role: "team", rating: 4.8, reviews: 19, hourlyRateTokens: 900, skills: ["Content Strategy", "Branding", "Analytics", "Social Media", "Copywriting"], available: true, badges: ["Team Certified", "Creative Verified"], avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=team-launch", description: "3-member marketing team specializing in launch campaigns. Covers brand, copy, analytics reporting, and deliverable packaging.", phases: ["pre", "live", "prod", "post"] },
-];
-
 // ── Engage (Hire) Modal ───────────────────────────────────────────────────────
 export function EngageModal({ talent, activeTab, balance, currency, onClose, companyPrefix }: {
   talent: any; activeTab: string; balance: number; currency: string; onClose: () => void; companyPrefix?: string;
 }) {
   const navigate = useNavigate();
+  const { selectedCompanyId } = useCompany();
+  const { pushToast } = useToast();
+  const queryClient = useQueryClient();
   const [phase, setPhase] = useState<string | null>(null);
   const [hours, setHours] = useState(4);
   const [step, setStep] = useState<"configure" | "confirm" | "done">("configure");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Real current-user id — the booking's clientMemberId (whose ledger is debited).
+  const { data: session } = useQuery({
+    queryKey: queryKeys.auth.session,
+    queryFn: () => authApi.getSession(),
+  });
+  const currentUserId = session?.user.id;
 
   const selectedPhase = RUN_PHASES.find((p) => p.id === phase);
   const rate = talent.hourlyRateTokens * (selectedPhase?.creditMultiplier ?? 1);
-  const totalCost = Math.round(rate * hours);
+  const totalCost = Math.ceil(rate * hours);
+  const platformFee = Math.ceil(totalCost * MARKETPLACE_PLATFORM_FEE);
   const canAfford = balance >= totalCost;
   const availablePhases = RUN_PHASES.filter((p) => (talent.phases ?? ["sim","pre","live","prod","post"]).includes(p.id));
+
+  const handleConfirm = async () => {
+    if (!selectedPhase || submitting) return;
+    if (!talent.listingId) {
+      pushToast({ tone: "warn", title: "Demo talent", body: "This profile has no live marketplace listing to book." });
+      return;
+    }
+    if (!selectedCompanyId || !currentUserId) {
+      pushToast({ tone: "warn", title: "Not signed in", body: "Sign in and select a company before hiring." });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await lmsApi.createMarketplaceBooking(selectedCompanyId, {
+        listingId: talent.listingId,
+        clientMemberId: currentUserId,
+        projectTitle: `Marketplace hire: ${talent.name} — ${selectedPhase.label}`,
+        description: `${hours}h ${selectedPhase.label} engagement at ${talent.hourlyRateTokens} ${currency}/hr (x${selectedPhase.creditMultiplier} phase multiplier).`,
+        budgetSims: totalCost,
+      });
+      queryClient.invalidateQueries({ queryKey: ["amx", "wallet"] });
+      pushToast({
+        tone: "success",
+        title: "Hire booked!",
+        body: `${talent.name} engaged for ${selectedPhase.label} — ${totalCost.toLocaleString()} ${currency} moved to escrow.`,
+      });
+      setStep("done");
+    } catch (err) {
+      const apiErr = err as { status?: number; message?: string };
+      if (apiErr?.status === 402) {
+        pushToast({
+          tone: "warn",
+          title: "Insufficient tokens",
+          body: apiErr.message ?? "This hire costs more tokens than your balance. Top up your wallet to continue.",
+        });
+      } else {
+        pushToast({ tone: "error", title: "Hire failed", body: "There was an error creating the booking. Please try again." });
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (step === "done") return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
@@ -80,8 +164,8 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
         <p className="text-[13px] text-muted-foreground mb-1">
           <span className="font-black text-foreground">{talent.name}</span> hired for <span className="font-black text-primary">{selectedPhase?.label}</span>
         </p>
-        <p className="text-[11px] text-muted-foreground mb-1">{totalCost.toLocaleString()} {currency} deducted from buyer</p>
-        <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-2">10% Platform Fee deducted from provider payout</p>
+        <p className="text-[11px] text-muted-foreground mb-1">{totalCost.toLocaleString()} {currency} deducted from buyer into marketplace escrow</p>
+        <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-2">{Math.round(MARKETPLACE_PLATFORM_FEE * 100)}% Platform Fee ({platformFee.toLocaleString()} {currency}) deducted from provider payout</p>
         <div className="flex items-center justify-center gap-2 mb-8 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
           <span className="text-[11px] font-bold text-amber-400">💡 They enter In Training — assign to a team and track XP before activating SIM or LIVE.</span>
         </div>
@@ -166,6 +250,9 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Cost Estimate</p>
                 <p className={`text-2xl font-black ${canAfford ? "text-foreground" : "text-rose-400"}`}>{totalCost.toLocaleString()} <span className="text-sm text-muted-foreground">{currency}</span></p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Incl. {Math.round(MARKETPLACE_PLATFORM_FEE * 100)}% platform fee ({platformFee.toLocaleString()} {currency}) deducted from provider payout
+                </p>
               </div>
               {!canAfford && (
                 <div className="flex items-center gap-1.5 text-[11px] font-black text-rose-400">
@@ -186,10 +273,11 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
               </>
             ) : (
               <>
-                <Button onClick={() => setStep("done")} className="flex-1 h-12 font-black uppercase tracking-widest text-[12px] gap-2 shadow-lg shadow-primary/20 bg-emerald-600 hover:bg-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" /> Confirm & Deduct {totalCost.toLocaleString()} {currency}
+                <Button disabled={submitting} onClick={handleConfirm} className="flex-1 h-12 font-black uppercase tracking-widest text-[12px] gap-2 shadow-lg shadow-primary/20 bg-emerald-600 hover:bg-emerald-700">
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  {submitting ? "Booking..." : `Confirm & Deduct ${totalCost.toLocaleString()} ${currency}`}
                 </Button>
-                <Button variant="ghost" onClick={() => setStep("configure")} className="h-12 px-5 font-black text-[11px]">← Back</Button>
+                <Button variant="ghost" disabled={submitting} onClick={() => setStep("configure")} className="h-12 px-5 font-black text-[11px]">← Back</Button>
               </>
             )}
           </div>
@@ -308,25 +396,33 @@ export function AgentMarketplace() {
   const [activeTab, setActiveTab] = useState<string>(defaultMode);
   const [phaseFilter, setPhaseFilter] = useState<string | null>(null);
 
-  // Wallet balance
+  // Wallet balance — marketplace bookings debit tokenBalance (SIMS), so that
+  // is the affordability number for the hire flow.
   const { data: walletData } = useQuery({
     queryKey: ["amx", "wallet", selectedCompanyId],
     queryFn: () => amxApi.getWallet(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
-  const balance  = walletData?.creditBalance ?? 0;
+  const balance  = walletData?.tokenBalance ?? 0;
   const currency = "SIMS";
 
+  // Real marketplace listings from the AMX exchange.
+  const { data: exchangeData, isLoading: listingsLoading } = useQuery({
+    queryKey: ["amx", "exchange", selectedCompanyId],
+    queryFn: () => amxApi.getExchange(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const listings = useMemo(() => (exchangeData?.earners ?? []).map(earnerToTalent), [exchangeData]);
+
   const currentPool = useMemo(() => {
-    const pool = activeTab === "agents" ? MOCK_AGENTS : activeTab === "humans" ? MOCK_HUMANS : activeTab === "coop" ? MOCK_COOP : MOCK_TEAMS;
-    let filtered = pool.filter((t) =>
+    let filtered = listings.filter((t) =>
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.skills.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
       t.title.toLowerCase().includes(searchQuery.toLowerCase())
     );
     if (phaseFilter) filtered = filtered.filter((t) => (t.phases ?? []).includes(phaseFilter));
     return filtered;
-  }, [activeTab, searchQuery, phaseFilter]);
+  }, [listings, searchQuery, phaseFilter]);
 
   return (
     <div className="flex flex-col min-h-screen bg-background animate-in fade-in duration-500">
@@ -427,9 +523,22 @@ export function AgentMarketplace() {
 
           {currentPool.length === 0 && (
             <div className="py-20 flex flex-col items-center text-center gap-4 opacity-60">
-              <div className="p-4 rounded-full bg-accent/10"><Search className="h-8 w-8 text-muted-foreground" /></div>
-              <h3 className="text-lg font-black text-foreground">No matches</h3>
-              <p className="text-muted-foreground max-w-sm text-sm">Try adjusting your search or phase filter.</p>
+              <div className="p-4 rounded-full bg-accent/10">
+                {listingsLoading ? <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" /> : <Search className="h-8 w-8 text-muted-foreground" />}
+              </div>
+              {listingsLoading ? (
+                <h3 className="text-lg font-black text-foreground">Loading marketplace…</h3>
+              ) : listings.length === 0 ? (
+                <>
+                  <h3 className="text-lg font-black text-foreground">No listings yet</h3>
+                  <p className="text-muted-foreground max-w-sm text-sm">No talent has been listed on this company's marketplace yet. Check back soon.</p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-black text-foreground">No matches</h3>
+                  <p className="text-muted-foreground max-w-sm text-sm">Try adjusting your search or phase filter.</p>
+                </>
+              )}
             </div>
           )}
         </div>
