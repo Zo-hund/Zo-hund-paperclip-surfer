@@ -131,6 +131,13 @@ export function RqPortal() {
     enabled: !!selectedCompanyId,
   });
 
+  const catalogQuery = useQuery({
+    queryKey: ["amx-rq-catalog", selectedCompanyId],
+    queryFn: () => amxApi.getRqCatalog(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+  const microServices = catalogQuery.data?.microServices ?? [];
+
   const scrollToTiers = () => document.getElementById("tiers")?.scrollIntoView({ behavior: "smooth" });
 
   const handleBuyCredits = async () => {
@@ -153,7 +160,8 @@ export function RqPortal() {
     setSubmitting(true);
     try {
       await amxApi.submitRq(selectedCompanyId, {
-        tier: activeTier.slug,
+        // Micro-services submit by serviceKey; big tiers submit by tier slug.
+        ...(activeTier.isMicroService ? { serviceKey: activeTier.serviceKey } : { tier: activeTier.slug }),
         contextData: contextFormData,
         isSimulation,
         deploymentMode: activeTier.deployment.toLowerCase().includes("physical") ? "hybrid" : "cloud"
@@ -340,6 +348,65 @@ export function RqPortal() {
             ))}
           </div>
  
+          {/* On-Demand Micro Services */}
+          <div className="mt-20 border-t border-border/40 pt-20">
+            <div className="flex flex-col items-center text-center mb-10 md:mb-16">
+              <h2 className="text-[13px] font-black tracking-[0.3em] uppercase text-primary mb-3">On-Demand Micro Services</h2>
+              <h3 className="text-3xl md:text-4xl font-black text-foreground">Single Deliverables, Priced in Credits</h3>
+              <p className="text-base md:text-lg text-muted-foreground font-medium max-w-2xl leading-relaxed mt-4">
+                Competitive one-off services for nonprofits, businesses, and personal brands — no full tier required.
+              </p>
+              <div className="w-12 h-1 bg-primary rounded-full mt-6" />
+            </div>
+
+            {catalogQuery.isLoading && (
+              <div className="flex items-center justify-center gap-3 p-8 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">Loading service menu...</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {microServices.map((service) => (
+                <div
+                  key={service.key}
+                  className="group relative flex flex-col rounded-2xl border border-border/60 bg-card hover:border-primary/40 transition-all duration-300 p-6"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <h4 className="text-lg font-black text-foreground group-hover:text-primary transition-colors leading-tight">
+                      {service.label}
+                    </h4>
+                    {service.segment === "nonprofit" && (
+                      <span className="shrink-0 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/30 text-[9px] font-black uppercase tracking-widest">
+                        Nonprofit
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[13px] text-muted-foreground font-medium leading-relaxed flex-1">
+                    {service.description}
+                  </p>
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mt-4">
+                    {service.creditCost.toLocaleString()} credits
+                  </div>
+                  <Button
+                    onClick={() => handleOpenModal({
+                      serviceKey: service.key,
+                      name: service.label,
+                      creditCost: service.creditCost,
+                      isMicroService: true,
+                      deployment: "Online",
+                    })}
+                    disabled={submitting}
+                    variant="outline"
+                    className="w-full h-11 mt-4 font-black text-[11px] uppercase tracking-[0.2em] border-border/60"
+                  >
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="mt-20 border-t border-border/40 pt-20">
              <div className="flex flex-col items-center text-center mb-12">
                 <h2 className="text-[13px] font-black tracking-[0.3em] uppercase text-primary mb-3">Manufactured Intelligence</h2>

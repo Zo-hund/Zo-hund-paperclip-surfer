@@ -25,17 +25,24 @@ import {
   CREDIT_PACKAGE_AMOUNTS,
   RQ_TIERS,
   RQ_ESCROW_PRINCIPAL_ID,
+  MICRO_SERVICES,
   resolveRqTier,
+  type MicroServiceKey,
 } from "@paperclipai/shared";
 import { spendCredits, refundCredits, InsufficientCreditsError } from "../services/creditWallet.js";
 import { renderCertificatePdf } from "../services/pdf-export.js";
 
 const submitRqSchema = z.object({
+  // Exactly one of tier / serviceKey must be present — enforced in the route
+  // handler (422) so the error is actionable rather than a generic zod 400.
   // Canonical tier slugs plus the legacy aliases older clients still send.
   tier: z.enum([
     "digital_foundation", "hybrid_growth", "metaverse_enterprise",
     "starter", "pro", "enterprise",
-  ]),
+  ]).optional(),
+  // Micro-service key (see MICRO_SERVICES) — validated against the catalog
+  // in the handler.
+  serviceKey: z.string().optional(),
   contextData: z.object({
     userContext: z.string().optional(),
     domainContext: z.string().optional(),
@@ -365,8 +372,35 @@ export function amxRoutes(db: Db) {
   });
 
   /**
+   * GET /api/companies/:companyId/amx/rq-catalog
+   * Returns the full RQ Factory offering: the three big tiers plus the
+   * on-demand micro-service menu, all priced in credits. The UI renders
+   * this instead of hardcoding the catalog client-side.
+   */
+  router.get("/companies/:companyId/amx/rq-catalog", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    res.json({
+      tiers: Object.entries(RQ_TIERS).map(([key, t]) => ({
+        key,
+        label: t.label,
+        creditCost: t.creditCost,
+      })),
+      microServices: Object.entries(MICRO_SERVICES).map(([key, s]) => ({
+        key,
+        label: s.label,
+        description: s.description,
+        creditCost: s.creditCost,
+        segment: s.segment,
+      })),
+    });
+  });
+
+  /**
    * POST /api/companies/:companyId/amx/rq-portal
-   * Submits a context factory request.
+   * Submits a context factory request — either a big tier (`tier`) or an
+   * on-demand micro-service (`serviceKey`), never both.
    *
    * Simulation runs are free (the default — "try the factory"). Live
    * production runs charge the tier's credit cost from the requester's
@@ -380,13 +414,38 @@ export function amxRoutes(db: Db) {
     const { actorId } = getActorInfo(req);
 
     const body = req.body as z.infer<typeof submitRqSchema>;
-    const tier = resolveRqTier(body.tier);
-    if (!tier) {
-      res.status(422).json({ error: `Unknown RQ tier "${body.tier}"` });
+    if ((body.tier === undefined) === (body.serviceKey === undefined)) {
+      res.status(422).json({ error: `Provide exactly one of "tier" or "serviceKey"` });
       return;
     }
+
+    // Resolve what's being manufactured: a big tier or a micro-service.
+    // rq_submissions.tier is free text — micro-services persist as svc_<key>.
+    let submissionTier: string;
+    let fullCreditCost: number;
+    let chargeMetadata: Record<string, unknown>;
+    if (body.serviceKey !== undefined) {
+      if (!(body.serviceKey in MICRO_SERVICES)) {
+        res.status(422).json({ error: `Unknown micro-service "${body.serviceKey}"` });
+        return;
+      }
+      const service = MICRO_SERVICES[body.serviceKey as MicroServiceKey];
+      submissionTier = `svc_${body.serviceKey}`;
+      fullCreditCost = service.creditCost;
+      chargeMetadata = { serviceKey: body.serviceKey, deploymentMode: body.deploymentMode };
+    } else {
+      const tier = resolveRqTier(body.tier!);
+      if (!tier) {
+        res.status(422).json({ error: `Unknown RQ tier "${body.tier}"` });
+        return;
+      }
+      submissionTier = tier;
+      fullCreditCost = RQ_TIERS[tier].creditCost;
+      chargeMetadata = { tier, deploymentMode: body.deploymentMode };
+    }
+
     const isSimulation = body.isSimulation ?? true;
-    const creditCost = isSimulation ? 0 : RQ_TIERS[tier].creditCost;
+    const creditCost = isSimulation ? 0 : fullCreditCost;
 
     let amxTxId: string | null = null;
     if (creditCost > 0) {
@@ -397,7 +456,7 @@ export function amxRoutes(db: Db) {
           amount: creditCost,
           toPrincipalId: RQ_ESCROW_PRINCIPAL_ID,
           transactionType: "rq_factory_charge",
-          metadata: { tier, deploymentMode: body.deploymentMode },
+          metadata: chargeMetadata,
         });
       } catch (err) {
         if (err instanceof InsufficientCreditsError) {
@@ -413,7 +472,7 @@ export function amxRoutes(db: Db) {
     }
 
     const submission = await rqSvc.submitRQ(companyId, actorId, {
-      tier,
+      tier: submissionTier,
       contextData: body.contextData,
       deploymentMode: body.deploymentMode,
       isSimulation,

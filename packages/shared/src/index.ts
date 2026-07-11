@@ -619,9 +619,11 @@ export {
   RQ_TIERS,
   RQ_TIER_ALIASES,
   RQ_ESCROW_PRINCIPAL_ID,
+  MICRO_SERVICES,
   resolveRqTier,
   type CreditPackageTier,
   type RqTier,
+  type MicroServiceKey,
 } from "./credits.js";
 
 export { API_PREFIX, API } from "./api.js";

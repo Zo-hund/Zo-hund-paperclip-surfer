@@ -56,3 +56,88 @@ export function resolveRqTier(slug: string): RqTier | null {
 
 /** System principal that holds charged-but-not-yet-released RQ credits. */
 export const RQ_ESCROW_PRINCIPAL_ID = "rq-factory-escrow";
+
+/**
+ * On-demand micro-service catalog — single deliverables priced in credits,
+ * submittable as an RQ alongside the three big tiers. Persisted on
+ * rq_submissions as tier `svc_<key>` (the tier column is free text).
+ */
+export const MICRO_SERVICES = {
+  social_post_pack: {
+    label: "Social Post Pack",
+    description: "12 branded social posts per month",
+    creditCost: 2_500,
+    segment: "general",
+  },
+  seo_blog_article: {
+    label: "SEO Blog Article",
+    description: "1,000-word SEO-optimized article",
+    creditCost: 1_500,
+    segment: "general",
+  },
+  brand_voice_setup: {
+    label: "Brand Voice + Context Setup",
+    description: "Brand voice definition and context onboarding",
+    creditCost: 7_500,
+    segment: "general",
+  },
+  landing_page_chatbot: {
+    label: "Landing Page + Chatbot",
+    description: "Context-aware landing page with embedded chatbot",
+    creditCost: 15_000,
+    segment: "general",
+  },
+  print_design: {
+    label: "Print Design Pack",
+    description: "Business card, flyer, or banner design",
+    creditCost: 2_000,
+    segment: "general",
+  },
+  video_script_avatar: {
+    label: "Video Script + AI Avatar",
+    description: "Video script with AI avatar clip",
+    creditCost: 5_000,
+    segment: "general",
+  },
+  grant_writing_draft: {
+    label: "Grant-Writing Draft",
+    description: "Grant application draft for nonprofit programs",
+    creditCost: 8_000,
+    segment: "nonprofit",
+  },
+  donor_campaign_kit: {
+    label: "Donor Campaign Kit",
+    description: "Donor outreach campaign with assets",
+    creditCost: 6_000,
+    segment: "nonprofit",
+  },
+  product_model_3d: {
+    label: "3D Product Model",
+    description: "Metaverse-ready 3D product model",
+    creditCost: 20_000,
+    segment: "general",
+  },
+  digital_twin: {
+    label: "Geospatial Digital Twin",
+    description: "Geospatial digital twin of a site or venue",
+    creditCost: 50_000,
+    segment: "general",
+  },
+  jaz_meeting_session: {
+    label: "JAZ Meeting-Agent Session",
+    description: "Hosted meeting session with the JAZ voice agent",
+    creditCost: 300,
+    segment: "general",
+  },
+  pow_certificate: {
+    label: "PoW Certificate Mint",
+    description: "Blockchain-verified proof-of-work certificate",
+    creditCost: 500,
+    segment: "general",
+  },
+} as const satisfies Record<
+  string,
+  { label: string; description: string; creditCost: number; segment: "general" | "nonprofit" }
+>;
+
+export type MicroServiceKey = keyof typeof MICRO_SERVICES;
