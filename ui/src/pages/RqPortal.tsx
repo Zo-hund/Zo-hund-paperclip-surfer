@@ -35,9 +35,10 @@ import { DeliverablesBriefcase } from "@/components/DeliverablesBriefcase";
 const TIERS = [
   {
     id: 1,
-    slug: "starter",
+    slug: "digital_foundation",
     name: "Digital Foundation",
     price: "$1,000",
+    creditCost: 100000,
     description: "Essential Digital Presence. Perfect for solopreneurs and startups looking to establish their digital presence with AI-powered automation.",
     features: [
       "Context Setup & Brand Voice Definition",
@@ -53,9 +54,10 @@ const TIERS = [
   },
   {
     id: 2,
-    slug: "pro",
+    slug: "hybrid_growth",
     name: "Hybrid Growth",
     price: "$2,000",
+    creditCost: 200000,
     description: "Growth & Physical Presence. For growing SMBs ready to scale with web development, print materials, and video content.",
     features: [
       "Everything in Tier 1",
@@ -73,9 +75,10 @@ const TIERS = [
   },
   {
     id: 3,
-    slug: "enterprise",
+    slug: "metaverse_enterprise",
     name: "Metaverse Enterprise",
     price: "$3,000",
+    creditCost: 300000,
     description: "Full Scale Domination. Forward-thinking brands ready for XR, digital twins, and metaverse presence.",
     features: [
       "Everything in Tier 2",
@@ -163,11 +166,21 @@ export function RqPortal() {
       });
       setContextFormData({ userContext: "", domainContext: "", institutionalMemory: "" });
     } catch (err) {
-      pushToast({
-        tone: "error",
-        title: "Submission Failed",
-        body: "There was an error processing your RQ. Please try again."
-      });
+      const apiErr = err as { status?: number; message?: string };
+      if (apiErr?.status === 402) {
+        // Live runs charge credits — surface the shortfall and route to purchase.
+        pushToast({
+          tone: "warn",
+          title: "Not enough credits",
+          body: apiErr.message ?? "This live run costs more credits than your balance. Buy a credit block to continue.",
+        });
+      } else {
+        pushToast({
+          tone: "error",
+          title: "Submission Failed",
+          body: "There was an error processing your RQ. Please try again."
+        });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -272,6 +285,9 @@ export function RqPortal() {
                     {tier.name}
                   </h4>
                   <div className="text-4xl font-black text-primary mt-2">{tier.price}</div>
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+                    or {tier.creditCost.toLocaleString()} credits · live run
+                  </div>
                   <p className="text-[13px] text-muted-foreground mt-4 leading-relaxed font-medium">
                     {tier.description}
                   </p>
@@ -501,7 +517,7 @@ export function RqPortal() {
                   </div>
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">Deployment Mode</span>
-                    <span className="text-sm font-black text-foreground">{isSimulation ? "Simulation (Learning Credits)" : "Live Performance (Production Tokens)"}</span>
+                    <span className="text-sm font-black text-foreground">{isSimulation ? "Simulation (Free)" : "Live Production (Charges Credits)"}</span>
                   </div>
                 </div>
                 <Button 
@@ -544,7 +560,9 @@ export function RqPortal() {
                   {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Initiate Manufacturing Swarm <ArrowRight className="h-4 w-4" /></>}
                 </Button>
                 <p className="text-[10px] text-center text-muted-foreground font-medium italic">
-                  This action will deduct credits and trigger the Context AI Factory.
+                  {isSimulation
+                    ? "Simulation runs are free — no credits are charged."
+                    : `Live run charges ${activeTier.creditCost.toLocaleString()} credits from your wallet (balance: ${wallet.credits.toLocaleString()}).`}
                 </p>
               </div>
             </div>

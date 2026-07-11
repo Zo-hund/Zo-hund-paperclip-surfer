@@ -21,6 +21,10 @@ export function rqPortalService(db: Db) {
     deploymentMode: string;
     amountPaidCents: number;
     isSimulation?: boolean;
+    /** Credits charged into RQ escrow for this run (0 for simulations). */
+    creditCost?: number;
+    /** Ledger transaction id of the escrow charge, when creditCost > 0. */
+    amxTxId?: string | null;
   }) {
     const isSimulation = data.isSimulation ?? true;
     
@@ -37,7 +41,12 @@ export function rqPortalService(db: Db) {
 
     // 2. Insert the submission linked to the issue
     const submission = await db.insert(rqSubmissions).values({
-      ...data,
+      tier: data.tier,
+      contextData: data.contextData,
+      deploymentMode: data.deploymentMode,
+      amountPaidCents: data.amountPaidCents,
+      creditCost: data.creditCost ?? 0,
+      amxTxId: data.amxTxId ?? null,
       companyId,
       userId,
       issueId: issue.id,

@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
 import { stripePrices, amxLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
+import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS } from "@paperclipai/shared";
 import { provisionMember, cancelMember, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
 import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
@@ -320,12 +321,13 @@ export function stripeApiRoutes(db: Db): Router {
    * Creates 4 one-time Stripe products for SIMS credit bundles.
    * Safe to re-run — existing entries are skipped.
    */
-  const CREDIT_PACKAGES = [
-    { name: "credits_starter",    credits: 1000,   amount: 900 },
-    { name: "credits_pro",        credits: 5000,   amount: 3900 },
-    { name: "credits_enterprise", credits: 25000,  amount: 14900 },
-    { name: "credits_scale",      credits: 100000, amount: 49900 },
-  ];
+  // Canonical pack definitions live in @paperclipai/shared (credits.ts) —
+  // adapt to the {name, credits, amount} shape this seeder uses.
+  const creditPackageSeeds = CREDIT_PACKAGES.map((p) => ({
+    name: p.tierName,
+    credits: p.credits,
+    amount: p.amountCents,
+  }));
 
   router.post("/companies/:companyId/stripe/seed-credit-packages", async (req, res) => {
     const { companyId } = req.params as { companyId: string };
@@ -342,7 +344,7 @@ export function stripeApiRoutes(db: Db): Router {
 
     const results: Array<{ tier: string; priceId: string; skipped?: boolean }> = [];
 
-    for (const pkg of CREDIT_PACKAGES) {
+    for (const pkg of creditPackageSeeds) {
       const existing = await db.select({ stripePriceId: stripePrices.stripePriceId })
         .from(stripePrices)
         .where(and(eq(stripePrices.companyId, companyId), eq(stripePrices.tierName, pkg.name), eq(stripePrices.isActive, 1)))
@@ -555,14 +557,8 @@ export function stripeApiRoutes(db: Db): Router {
     const resolvedCancelUrl = cancelUrl ?? `${appUrl}?checkout=canceled`;
 
     // Credit packages use one-time payment mode and carry creditAmount in metadata
-    const CREDIT_AMOUNTS: Record<string, number> = {
-      credits_starter: 1000,
-      credits_pro: 5000,
-      credits_enterprise: 25000,
-      credits_scale: 100000,
-    };
     const isOneTime = priceRow.interval === "one_time";
-    const creditAmount = CREDIT_AMOUNTS[tierName];
+    const creditAmount = CREDIT_PACKAGE_AMOUNTS[tierName];
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: isOneTime ? "payment" : "subscription",

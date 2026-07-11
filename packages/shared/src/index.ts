@@ -613,6 +613,17 @@ export {
   type ListPluginState,
 } from "./validators/index.js";
 
+export {
+  CREDIT_PACKAGES,
+  CREDIT_PACKAGE_AMOUNTS,
+  RQ_TIERS,
+  RQ_TIER_ALIASES,
+  RQ_ESCROW_PRINCIPAL_ID,
+  resolveRqTier,
+  type CreditPackageTier,
+  type RqTier,
+} from "./credits.js";
+
 export { API_PREFIX, API } from "./api.js";
 export { normalizeAgentUrlKey, deriveAgentUrlKey, isUuidLike } from "./agent-url-key.js";
 export { deriveProjectUrlKey, normalizeProjectUrlKey } from "./project-url-key.js";

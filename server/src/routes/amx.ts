@@ -5,11 +5,12 @@ import {
   amxChainEvents, amxCertificates, agents, issues,
   lmsMarketplaceListings, amxLedger, amxTransactions,
   lmsMemberProfiles, lmsLearnerBadges, lmsBadgeDefinitions, stripePrices, companies,
+  rqSubmissions,
 } from "@paperclipai/db";
 import { amxChainService } from "../services/amxChainService.js";
 import { rqPortalService } from "../services/rqPortalService.js";
 import { financeService } from "../services/finance.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
 import { eq, desc, and, or, inArray } from "drizzle-orm";
@@ -20,22 +21,30 @@ function getStripe(): Stripe {
   return new Stripe(key, { apiVersion: "2026-05-27.dahlia" });
 }
 
-const CREDIT_AMOUNT_MAP: Record<string, number> = {
-  credits_starter: 1000,
-  credits_pro: 5000,
-  credits_enterprise: 25000,
-  credits_scale: 100000,
-};
+import {
+  CREDIT_PACKAGE_AMOUNTS,
+  RQ_TIERS,
+  RQ_ESCROW_PRINCIPAL_ID,
+  resolveRqTier,
+} from "@paperclipai/shared";
+import { spendCredits, refundCredits, InsufficientCreditsError } from "../services/creditWallet.js";
 import { renderCertificatePdf } from "../services/pdf-export.js";
 
 const submitRqSchema = z.object({
-  tier: z.enum(["starter", "pro", "enterprise"]),
+  // Canonical tier slugs plus the legacy aliases older clients still send.
+  tier: z.enum([
+    "digital_foundation", "hybrid_growth", "metaverse_enterprise",
+    "starter", "pro", "enterprise",
+  ]),
   contextData: z.object({
     userContext: z.string().optional(),
     domainContext: z.string().optional(),
     institutionalMemory: z.string().optional(),
   }),
   deploymentMode: z.enum(["cloud", "on-prem", "hybrid"]),
+  // Previously absent from this schema, so zod silently STRIPPED the flag the
+  // UI was sending and every submission was forced into simulation mode.
+  isSimulation: z.boolean().optional(),
 });
 
 export function amxRoutes(db: Db) {
@@ -179,7 +188,7 @@ export function amxRoutes(db: Db) {
       return;
     }
 
-    const creditAmount = CREDIT_AMOUNT_MAP[packageTier] ?? 0;
+    const creditAmount = CREDIT_PACKAGE_AMOUNTS[packageTier] ?? 0;
     const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? `${req.protocol}://${req.get("host")}`;
 
     // Routes are company-prefixed (e.g. /AMXA/xp/wallet); build the return URL with the prefix.
@@ -352,18 +361,101 @@ export function amxRoutes(db: Db) {
   /**
    * POST /api/companies/:companyId/amx/rq-portal
    * Submits a context factory request.
+   *
+   * Simulation runs are free (the default — "try the factory"). Live
+   * production runs charge the tier's credit cost from the requester's
+   * wallet into RQ escrow BEFORE the submission is created; an insufficient
+   * balance returns 402 with the shortfall so the UI can route the user to
+   * the buy-credits flow.
    */
   router.post("/companies/:companyId/amx/rq-portal", validate(submitRqSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const { actorId } = getActorInfo(req);
 
+    const body = req.body as z.infer<typeof submitRqSchema>;
+    const tier = resolveRqTier(body.tier);
+    if (!tier) {
+      res.status(422).json({ error: `Unknown RQ tier "${body.tier}"` });
+      return;
+    }
+    const isSimulation = body.isSimulation ?? true;
+    const creditCost = isSimulation ? 0 : RQ_TIERS[tier].creditCost;
+
+    let amxTxId: string | null = null;
+    if (creditCost > 0) {
+      try {
+        amxTxId = await spendCredits(db, {
+          companyId,
+          principalId: actorId,
+          amount: creditCost,
+          toPrincipalId: RQ_ESCROW_PRINCIPAL_ID,
+          transactionType: "rq_factory_charge",
+          metadata: { tier, deploymentMode: body.deploymentMode },
+        });
+      } catch (err) {
+        if (err instanceof InsufficientCreditsError) {
+          res.status(402).json({
+            error: `Insufficient credits — this tier costs ${err.needed.toLocaleString()} credits and your balance is ${err.balance.toLocaleString()}. Buy a credit block to continue.`,
+            needed: err.needed,
+            balance: err.balance,
+          });
+          return;
+        }
+        throw err;
+      }
+    }
+
     const submission = await rqSvc.submitRQ(companyId, actorId, {
-      ...req.body,
-      amountPaidCents: 0, // Injected for demo
+      tier,
+      contextData: body.contextData,
+      deploymentMode: body.deploymentMode,
+      isSimulation,
+      amountPaidCents: 0,
+      creditCost,
+      amxTxId,
     });
 
     res.status(201).json(submission);
+  });
+
+  /**
+   * POST /api/companies/:companyId/amx/rq/:submissionId/refund
+   * Admin-only: cancels a charged RQ and returns its escrowed credits to
+   * the requester. Idempotent — an already-refunded or free submission
+   * returns refunded: 0.
+   */
+  router.post("/companies/:companyId/amx/rq/:submissionId/refund", async (req, res) => {
+    const { companyId, submissionId } = req.params as { companyId: string; submissionId: string };
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
+
+    const [submission] = await db.select().from(rqSubmissions)
+      .where(and(eq(rqSubmissions.id, submissionId), eq(rqSubmissions.companyId, companyId)))
+      .limit(1);
+    if (!submission) {
+      res.status(404).json({ error: "Submission not found" });
+      return;
+    }
+    if (submission.status === "cancelled" || submission.creditCost <= 0) {
+      res.json({ submissionId, refunded: 0, status: submission.status });
+      return;
+    }
+
+    const refundTxId = await refundCredits(db, {
+      companyId,
+      principalId: submission.userId,
+      amount: submission.creditCost,
+      fromPrincipalId: RQ_ESCROW_PRINCIPAL_ID,
+      transactionType: "rq_factory_refund",
+      metadata: { submissionId, tier: submission.tier },
+    });
+
+    await db.update(rqSubmissions)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(eq(rqSubmissions.id, submissionId));
+
+    res.json({ submissionId, refunded: submission.creditCost, refundTxId, status: "cancelled" });
   });
 
   /**
