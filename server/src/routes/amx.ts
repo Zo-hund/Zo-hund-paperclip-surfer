@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
 import {
   amxChainEvents, amxCertificates, agents, issues,
-  lmsMarketplaceListings, amxLedger, amxTransactions,
+  lmsMarketplaceListings, amxLedger, amxGlobalLedger, amxTransactions,
   lmsMemberProfiles, lmsLearnerBadges, lmsBadgeDefinitions, stripePrices, companies,
   rqSubmissions,
 } from "@paperclipai/db";
@@ -105,6 +105,10 @@ export function amxRoutes(db: Db) {
       .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, actorId)))
       .limit(1);
 
+    const [globalLedger] = await db.select().from(amxGlobalLedger)
+      .where(and(eq(amxGlobalLedger.principalType, "user"), eq(amxGlobalLedger.principalId, actorId)))
+      .limit(1);
+
     const transactions = await db.select().from(amxTransactions)
       .where(and(
         or(
@@ -136,6 +140,8 @@ export function amxRoutes(db: Db) {
     res.json({
       creditBalance: ledger?.creditBalance ?? 0,
       tokenBalance: ledger?.tokenBalance ?? 0,
+      globalCreditBalance: globalLedger?.creditBalance ?? 0,
+      totalCreditBalance: (ledger?.creditBalance ?? 0) + (globalLedger?.creditBalance ?? 0),
       engagementScore: profile?.engagementScore ?? 0,
       badges: badges.map(b => ({ ...b, awardedAt: b.awardedAt.toISOString() })),
       transactions: transactions.map(tx => ({

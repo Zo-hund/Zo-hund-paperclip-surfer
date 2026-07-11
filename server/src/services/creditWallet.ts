@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { amxLedger, amxTransactions } from "@paperclipai/db";
+import { amxLedger, amxGlobalLedger, amxTransactions } from "@paperclipai/db";
 
 /**
  * Credit wallet — the spend side of the credit economy.
@@ -14,6 +14,10 @@ import { amxLedger, amxTransactions } from "@paperclipai/db";
  * from the buyer's ledger row to a system escrow principal (which has no
  * ledger row of its own — the transactions ARE the escrow record). A refund
  * re-credits the buyer from that principal.
+ *
+ * Two ledgers back a spend: the company-scoped amx_ledger row (tier awards,
+ * earned credits) is drained first, then the platform-wide amx_global_ledger
+ * row (purchased credits, spendable in any company) covers the remainder.
  */
 
 export class InsufficientCreditsError extends Error {
@@ -38,9 +42,11 @@ export interface SpendInput {
   metadata?: Record<string, unknown>;
 }
 
-/** Debits the buyer's creditBalance and records the transaction. Returns the
- * transaction id. Throws InsufficientCreditsError when the balance (or a
- * missing ledger row, treated as 0) can't cover the amount. */
+/** Debits the buyer's creditBalance — company-scoped row first, then the
+ * global (purchased-credits) row for any remainder — and records ONE
+ * transaction for the total. Returns the transaction id. Throws
+ * InsufficientCreditsError when the combined company+global balance (missing
+ * rows treated as 0) can't cover the amount. */
 export async function spendCredits(db: Db, input: SpendInput): Promise<string> {
   if (!Number.isInteger(input.amount) || input.amount <= 0) {
     throw new Error("spendCredits amount must be a positive integer");
@@ -58,21 +64,50 @@ export async function spendCredits(db: Db, input: SpendInput): Promise<string> {
     )
     .limit(1);
 
-  const balance = ledger?.creditBalance ?? 0;
-  if (!ledger || balance < input.amount) {
-    throw new InsufficientCreditsError(input.amount, balance);
-  }
-
-  await db
-    .update(amxLedger)
-    .set({ creditBalance: balance - input.amount, updatedAt: new Date() })
+  const [globalLedger] = await db
+    .select()
+    .from(amxGlobalLedger)
     .where(
       and(
-        eq(amxLedger.companyId, input.companyId),
-        eq(amxLedger.principalType, "user"),
-        eq(amxLedger.principalId, input.principalId),
+        eq(amxGlobalLedger.principalType, "user"),
+        eq(amxGlobalLedger.principalId, input.principalId),
       ),
-    );
+    )
+    .limit(1);
+
+  const companyBalance = ledger?.creditBalance ?? 0;
+  const globalBalance = globalLedger?.creditBalance ?? 0;
+  if (companyBalance + globalBalance < input.amount) {
+    throw new InsufficientCreditsError(input.amount, companyBalance + globalBalance);
+  }
+
+  const companySpent = Math.min(companyBalance, input.amount);
+  const globalSpent = input.amount - companySpent;
+
+  if (companySpent > 0) {
+    await db
+      .update(amxLedger)
+      .set({ creditBalance: companyBalance - companySpent, updatedAt: new Date() })
+      .where(
+        and(
+          eq(amxLedger.companyId, input.companyId),
+          eq(amxLedger.principalType, "user"),
+          eq(amxLedger.principalId, input.principalId),
+        ),
+      );
+  }
+
+  if (globalSpent > 0) {
+    await db
+      .update(amxGlobalLedger)
+      .set({ creditBalance: globalBalance - globalSpent, updatedAt: new Date() })
+      .where(
+        and(
+          eq(amxGlobalLedger.principalType, "user"),
+          eq(amxGlobalLedger.principalId, input.principalId),
+        ),
+      );
+  }
 
   const [tx] = await db
     .insert(amxTransactions)
@@ -87,11 +122,45 @@ export async function spendCredits(db: Db, input: SpendInput): Promise<string> {
       currency: "CREDIT",
       transactionType: input.transactionType,
       status: "completed",
-      metadata: input.metadata ?? {},
+      metadata: { ...(input.metadata ?? {}), companySpent, globalSpent },
     })
     .returning({ id: amxTransactions.id });
 
   return tx!.id;
+}
+
+/** Reads the buyer's company-scoped and global credit balances (missing rows
+ * treated as 0) without mutating anything. */
+export async function getCombinedBalance(
+  db: Db,
+  params: { companyId: string; principalId: string },
+): Promise<{ companyCredits: number; globalCredits: number; total: number }> {
+  const [ledger] = await db
+    .select()
+    .from(amxLedger)
+    .where(
+      and(
+        eq(amxLedger.companyId, params.companyId),
+        eq(amxLedger.principalType, "user"),
+        eq(amxLedger.principalId, params.principalId),
+      ),
+    )
+    .limit(1);
+
+  const [globalLedger] = await db
+    .select()
+    .from(amxGlobalLedger)
+    .where(
+      and(
+        eq(amxGlobalLedger.principalType, "user"),
+        eq(amxGlobalLedger.principalId, params.principalId),
+      ),
+    )
+    .limit(1);
+
+  const companyCredits = ledger?.creditBalance ?? 0;
+  const globalCredits = globalLedger?.creditBalance ?? 0;
+  return { companyCredits, globalCredits, total: companyCredits + globalCredits };
 }
 
 export interface RefundInput {

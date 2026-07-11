@@ -1,7 +1,7 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
-import { stripePrices, amxLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
+import { stripePrices, amxGlobalLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
 import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS } from "@paperclipai/shared";
 import { provisionMember, cancelMember, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
@@ -621,7 +621,8 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
       const userId =
         session.metadata?.userId ?? session.client_reference_id ?? (checkoutEmail ? `email:${checkoutEmail}` : null);
 
-      // One-time credit purchase — metadata.creditAmount present
+      // One-time credit purchase — metadata.creditAmount present. Purchased
+      // credits land in the GLOBAL ledger so they're spendable in any company.
       if (session.metadata?.creditAmount) {
         const creditAmount = parseInt(session.metadata.creditAmount, 10);
         const principalId = session.metadata?.principalId ?? userId;
@@ -637,19 +638,18 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
             currency: "CREDIT",
             transactionType: "credit_purchase",
             status: "completed",
-            metadata: { packageTier: session.metadata?.packageTier, stripeSessionId: session.id },
+            metadata: { packageTier: session.metadata?.packageTier, stripeSessionId: session.id, scope: "global" },
           });
 
-          const [existing] = await db.select().from(amxLedger)
-            .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, principalId)));
+          const [existing] = await db.select().from(amxGlobalLedger)
+            .where(and(eq(amxGlobalLedger.principalType, "user"), eq(amxGlobalLedger.principalId, principalId)));
 
           if (existing) {
-            await db.update(amxLedger)
+            await db.update(amxGlobalLedger)
               .set({ creditBalance: existing.creditBalance + creditAmount, updatedAt: new Date() })
-              .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, principalId)));
+              .where(and(eq(amxGlobalLedger.principalType, "user"), eq(amxGlobalLedger.principalId, principalId)));
           } else {
-            await db.insert(amxLedger).values({
-              companyId,
+            await db.insert(amxGlobalLedger).values({
               principalType: "user",
               principalId,
               creditBalance: creditAmount,
