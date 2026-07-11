@@ -109,6 +109,21 @@ if [[ "${DEPLOY_LAYOUT_VALUE}" != "hostinger-shared-traefik" ]]; then
   mkdir -p "${TRAEFIK_ACME_STORAGE}" "${PAPERCLIP_DATA_PATH}"
   touch "${TRAEFIK_ACME_STORAGE}/acme.json"
   chmod 600 "${TRAEFIK_ACME_STORAGE}/acme.json"
+
+  # A blank ACME email makes traefik re-register its Let's Encrypt account on
+  # recreation, forcing certificate re-issuance (a multi-minute TLS outage
+  # per deploy, and it burns against LE's duplicate-certificate rate limit).
+  # Deploys scoped via DEPLOY_SERVICES never touch traefik, so only warn when
+  # traefik is actually in scope.
+  TRAEFIK_ACME_EMAIL_VALUE="$(read_env TRAEFIK_ACME_EMAIL)"
+  if [[ -z "${TRAEFIK_ACME_EMAIL_VALUE}" ]]; then
+    if [[ -z "${DEPLOY_SERVICES_VALUE}" || " ${DEPLOY_SERVICES_VALUE} " == *" traefik "* ]]; then
+      echo "WARNING: TRAEFIK_ACME_EMAIL is not set in ${ENV_FILE} and traefik is in deploy scope." >&2
+      echo "         If traefik is recreated it will re-register with Let's Encrypt and re-issue" >&2
+      echo "         the certificate (TLS outage + rate-limit risk). Set TRAEFIK_ACME_EMAIL, or" >&2
+      echo "         scope deploys with DEPLOY_SERVICES so traefik is left alone." >&2
+    fi
+  fi
 fi
 
 # ── OPPRRC delivery volume (idempotent) ─────────────────────────────────────
