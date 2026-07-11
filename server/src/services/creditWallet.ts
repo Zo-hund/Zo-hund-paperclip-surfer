@@ -232,3 +232,78 @@ export async function refundCredits(db: Db, input: RefundInput): Promise<string>
 
   return tx!.id;
 }
+
+export interface AwardAgentTokensInput {
+  companyId: string;
+  /** The fulfilling agent — becomes principalId of the 'agent' ledger row. */
+  agentId: string;
+  /** Tokens to credit; must be a positive integer. */
+  amount: number;
+  transactionType: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Credits an agent's company-scoped wallet with TOKENS (the earner/payout
+ * currency) released from RQ escrow. Agent wallets are ordinary amx_ledger
+ * rows with principalType 'agent' — created here on first earning. Records
+ * an AMX transaction from the escrow principal to the agent and returns its
+ * id. */
+export async function awardAgentTokens(db: Db, input: AwardAgentTokensInput): Promise<string> {
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    throw new Error("awardAgentTokens amount must be a positive integer");
+  }
+
+  const [ledger] = await db
+    .select()
+    .from(amxLedger)
+    .where(
+      and(
+        eq(amxLedger.companyId, input.companyId),
+        eq(amxLedger.principalType, "agent"),
+        eq(amxLedger.principalId, input.agentId),
+      ),
+    )
+    .limit(1);
+
+  if (ledger) {
+    await db
+      .update(amxLedger)
+      .set({ tokenBalance: ledger.tokenBalance + input.amount, updatedAt: new Date() })
+      .where(
+        and(
+          eq(amxLedger.companyId, input.companyId),
+          eq(amxLedger.principalType, "agent"),
+          eq(amxLedger.principalId, input.agentId),
+        ),
+      );
+  } else {
+    await db.insert(amxLedger).values({
+      companyId: input.companyId,
+      principalType: "agent",
+      principalId: input.agentId,
+      creditBalance: 0,
+      tokenBalance: input.amount,
+    });
+  }
+
+  const [tx] = await db
+    .insert(amxTransactions)
+    .values({
+      fromCompanyId: input.companyId,
+      toCompanyId: input.companyId,
+      fromPrincipalType: "system",
+      // Earnings are released from RQ escrow — same principal the original
+      // charge was parked at (RQ_ESCROW_PRINCIPAL_ID).
+      fromPrincipalId: "rq-factory-escrow",
+      toPrincipalType: "agent",
+      toPrincipalId: input.agentId,
+      amount: input.amount,
+      currency: "AMX",
+      transactionType: input.transactionType,
+      status: "completed",
+      metadata: input.metadata ?? {},
+    })
+    .returning({ id: amxTransactions.id });
+
+  return tx!.id;
+}

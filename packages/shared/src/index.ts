@@ -682,3 +682,6 @@ export {
   assertValidTimeZone,
   type ParsedCron,
 } from "./cron.js";
+
+// Appended (P2c agent wallets) — do not fold into the export block above.
+export { AGENT_EARNINGS_SHARE } from "./credits.js";

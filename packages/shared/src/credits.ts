@@ -163,3 +163,10 @@ export const TIER_MONTHLY_ALLOWANCE: Record<string, number> = {
   ambassador: 1000,
   earner: 2000,
 };
+
+/**
+ * Fraction of a completed RQ's escrowed creditCost that is distributed to
+ * the fulfilling agents' wallets as tokens on completion; the remainder is
+ * platform revenue (stays in escrow).
+ */
+export const AGENT_EARNINGS_SHARE = 0.8;
