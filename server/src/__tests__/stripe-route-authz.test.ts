@@ -115,6 +115,115 @@ describe("Stripe tenant routes — company-scoped authorization", () => {
   });
 });
 
+describe("custom-tier — company-scoped authorization and validation", () => {
+  const ORIGINAL_STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
+  afterEach(() => {
+    vi.clearAllMocks();
+    if (ORIGINAL_STRIPE_KEY === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = ORIGINAL_STRIPE_KEY;
+  });
+
+  const validBody = { tierName: "solo", name: "AMX Labs - Solo", amount: 10000, interval: "month" };
+
+  it("rejects a caller with no access to the target company (403)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_B}/stripe/custom-tier`)
+      .send(validBody);
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a member (non-admin) of the target company (403)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(memberOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send(validBody);
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a non-snake_case tierName (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, tierName: "Solo Plan" });
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects a missing name (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const { name: _name, ...body } = validBody;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send(body);
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects a negative amount (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, amount: -100 });
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects a non-integer amount (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, amount: 99.5 });
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects an invalid interval (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, interval: "daily" });
+    expect(res.status).toBe(422);
+  });
+
+  it("rejects seats=0 (422)", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send({ ...validBody, seats: 0 });
+    expect(res.status).toBe(422);
+  });
+
+  it("returns 503 when Stripe isn't configured, after passing authz+validation", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    const res = await request(createApp(adminOfA))
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send(validBody);
+    expect(res.status).toBe(503);
+  });
+
+  it("is idempotent per (companyId, tierName) — returns the existing price without creating a duplicate", async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_dummy_key_for_client_construction_only";
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as never as { actor: unknown }).actor = adminOfA;
+      next();
+    });
+    const chain = {
+      select: () => chain,
+      from: () => chain,
+      where: () => chain,
+      limit: async () => [{ stripePriceId: "price_existing_solo" }],
+    };
+    app.use("/api", stripeApiRoutes(chain as never));
+    app.use(errorHandler);
+
+    const res = await request(app)
+      .post(`/api/companies/${COMPANY_A}/stripe/custom-tier`)
+      .send(validBody);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ tier: "solo", priceId: "price_existing_solo", skipped: true });
+  });
+});
+
 describe("free-tier checkout — idempotent provisioning", () => {
   afterEach(() => vi.clearAllMocks());
 

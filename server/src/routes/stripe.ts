@@ -4,7 +4,8 @@ import type { Db } from "@paperclipai/db";
 import { stripePrices, amxLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
 import { eq, and } from "drizzle-orm";
 import { provisionMember, cancelMember, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
-import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin } from "./authz.js";
+import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin, getActorInfo } from "./authz.js";
+import { logActivity } from "../services/index.js";
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -150,6 +151,112 @@ export function stripeApiRoutes(db: Db): Router {
     }
 
     res.json({ seeded: results.length, results });
+  });
+
+  /**
+   * POST /companies/:companyId/stripe/custom-tier
+   * Creates ONE Stripe Product+Price for a tenant-specific tier that doesn't
+   * belong in the shared CATALOG_TIERS list (e.g. a seat-based pricing model
+   * unique to one company) and stores it in stripePrices, exactly like
+   * seed-catalog does per-tier — just parameterized instead of hardcoded.
+   * Idempotent per (companyId, tierName): re-posting the same tierName
+   * returns the existing active price rather than creating a duplicate.
+   */
+  router.post("/companies/:companyId/stripe/custom-tier", async (req, res) => {
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
+
+    const { tierName, name, description, amount, interval, seats } = req.body as {
+      tierName?: string;
+      name?: string;
+      description?: string;
+      amount?: number;
+      interval?: "month" | "year" | "week" | "one_time";
+      seats?: number;
+    };
+
+    if (!tierName || !/^[a-z0-9_]+$/.test(tierName)) {
+      res.status(422).json({ error: "tierName is required and must be lowercase snake_case" });
+      return;
+    }
+    if (!name || !name.trim()) {
+      res.status(422).json({ error: "name is required" });
+      return;
+    }
+    if (typeof amount !== "number" || !Number.isInteger(amount) || amount < 0) {
+      res.status(422).json({ error: "amount (cents, integer) is required" });
+      return;
+    }
+    const VALID_INTERVALS = ["month", "year", "week", "one_time"] as const;
+    if (!interval || !VALID_INTERVALS.includes(interval)) {
+      res.status(422).json({ error: `interval must be one of: ${VALID_INTERVALS.join(", ")}` });
+      return;
+    }
+    if (seats !== undefined && (!Number.isInteger(seats) || seats < 1)) {
+      res.status(422).json({ error: "seats must be a positive integer when provided" });
+      return;
+    }
+
+    let stripe: Stripe;
+    try {
+      stripe = getStripe();
+    } catch {
+      res.status(503).json({ error: "Stripe not configured — set STRIPE_SECRET_KEY" });
+      return;
+    }
+
+    const existing = await db
+      .select({ stripePriceId: stripePrices.stripePriceId })
+      .from(stripePrices)
+      .where(and(eq(stripePrices.companyId, companyId), eq(stripePrices.tierName, tierName), eq(stripePrices.isActive, 1)))
+      .limit(1);
+
+    if (existing.length > 0) {
+      res.json({ tier: tierName, priceId: existing[0]!.stripePriceId, skipped: true });
+      return;
+    }
+
+    const product = await stripe.products.create({
+      name,
+      description: description || undefined,
+      metadata: { tierName, companyId, ...(seats !== undefined ? { seats: String(seats) } : {}) },
+    });
+
+    const priceData: Stripe.PriceCreateParams = {
+      product: product.id,
+      currency: "usd",
+      unit_amount: amount,
+      metadata: { tierName, companyId, ...(seats !== undefined ? { seats: String(seats) } : {}) },
+      ...(amount > 0 && interval !== "one_time" ? { recurring: { interval } } : {}),
+    };
+    const price = await stripe.prices.create(priceData);
+
+    await db.insert(stripePrices).values({
+      companyId,
+      tierName,
+      stripeProductId: product.id,
+      stripePriceId: price.id,
+      currency: "usd",
+      amount,
+      interval,
+      isActive: 1,
+    });
+
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "company.stripe_custom_tier_created",
+      entityType: "company",
+      entityId: companyId,
+      details: { tierName, name, amount, interval, seats },
+    });
+
+    res.status(201).json({ tier: tierName, productId: product.id, priceId: price.id, amount, interval, seats: seats ?? null });
   });
 
   /**
