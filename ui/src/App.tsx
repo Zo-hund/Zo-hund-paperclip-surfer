@@ -59,6 +59,7 @@ import { BoardClaimPage } from "./pages/BoardClaim";
 import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
 import { GuestMeetingJoin } from "./pages/GuestMeetingJoin";
+import { PublicPricing } from "./pages/PublicPricing";
 import { NotFoundPage } from "./pages/NotFound";
 import { AgentMarketplace } from "./pages/AgentMarketplace";
 import { TechAtNiteBrand } from "./pages/TechAtNiteBrand";
@@ -405,6 +406,7 @@ export function App() {
         <Route path="request" element={<ServiceRequest />} />
         <Route path="join" element={<ServiceRequest />} />
         <Route path="portal/:companySlug" element={<ClientPortal />} />
+        <Route path="hub/:companyId/pricing" element={<PublicPricing />} />
         <Route path="profile" element={<MemberProfile />} />
 
         {/* ── Auth-required routes ── */}

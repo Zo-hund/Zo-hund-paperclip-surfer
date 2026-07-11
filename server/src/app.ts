@@ -52,6 +52,7 @@ import { pushRoutes } from "./routes/push.js";
 import { meRoutes } from "./routes/me.js";
 import { verifyRoutes } from "./routes/verify.js";
 import { stripeWebhookRoutes, stripeApiRoutes } from "./routes/stripe.js";
+import { stripePublicRoutes } from "./routes/stripe-public.js";
 import { opprrcRoutes } from "./routes/opprrc.js";
 import { startOpprrcBackupWorker } from "./services/opprrc-backup-worker.js";
 import { ensureOpprcRootStructure } from "./services/opprrc-storage.js";
@@ -285,6 +286,7 @@ export async function createApp(
   api.use(opprrcRoutes(db, opts.storageService));
   api.use(lmsRoutes(db));
   api.use(stripeApiRoutes(db));
+  api.use(stripePublicRoutes(db));
   api.use(auditRoutes(db));
   api.use(skillChangeRoutes(db));
   api.use(webhookRoutes(db));

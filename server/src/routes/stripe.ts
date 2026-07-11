@@ -562,7 +562,12 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       const companyId = session.metadata?.companyId;
-      const userId = session.metadata?.userId ?? session.client_reference_id;
+      // Public storefront checkouts (stripe-public.ts) carry no userId — the
+      // buyer has no account. Fall back to the email Stripe collected at
+      // checkout, namespaced so it can't collide with real user ids.
+      const checkoutEmail = session.customer_details?.email?.trim().toLowerCase() ?? null;
+      const userId =
+        session.metadata?.userId ?? session.client_reference_id ?? (checkoutEmail ? `email:${checkoutEmail}` : null);
 
       // One-time credit purchase — metadata.creditAmount present
       if (session.metadata?.creditAmount) {
@@ -624,6 +629,16 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
         status: sub.status,
         currentPeriodEnd: subscriptionPeriodEnd(sub) ?? undefined,
       });
+      // The subscription.updated handler needs companyId/userId/tierName on
+      // the SUBSCRIPTION's metadata (checkout-session metadata doesn't carry
+      // over). Stamp them now so later status changes (past_due, renewals)
+      // keep flowing through provisionMember. Best-effort — provisioning
+      // above already succeeded.
+      if (!sub.metadata?.userId) {
+        await stripe.subscriptions
+          .update(subscriptionId, { metadata: { ...sub.metadata, companyId, userId, tierName } })
+          .catch((err) => console.warn("[stripe] failed to stamp subscription metadata", subscriptionId, err));
+      }
       break;
     }
 
