@@ -163,3 +163,10 @@ export const TIER_MONTHLY_ALLOWANCE: Record<string, number> = {
   ambassador: 1000,
   earner: 2000,
 };
+
+/**
+ * Bonus fraction applied to credit-pack purchases for companies with an
+ * active nonprofit_baseline membership (active or trialing). A verified
+ * nonprofit buying a 1,000-credit pack receives 1,250 credits.
+ */
+export const NONPROFIT_PACK_BONUS = 0.25;
