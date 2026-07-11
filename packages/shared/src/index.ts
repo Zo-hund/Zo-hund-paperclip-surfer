@@ -619,6 +619,7 @@ export {
   RQ_TIERS,
   RQ_TIER_ALIASES,
   RQ_ESCROW_PRINCIPAL_ID,
+  TIER_MONTHLY_ALLOWANCE,
   resolveRqTier,
   type CreditPackageTier,
   type RqTier,

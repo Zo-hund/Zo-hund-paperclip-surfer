@@ -1,6 +1,7 @@
 import type { Db } from "@paperclipai/db";
 import { stripeSubscriptions, lmsMemberProfiles, stripePrices, amxLedger, amxTransactions } from "@paperclipai/db";
 import { eq, and, inArray } from "drizzle-orm";
+import { TIER_MONTHLY_ALLOWANCE } from "@paperclipai/shared";
 
 // Maps each tier name to the memberTypes[] it grants (additive — each tier includes lower tiers)
 export const TIER_MEMBER_TYPES: Record<string, string[]> = {
@@ -180,6 +181,63 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
       });
     }
   }
+}
+
+export interface MonthlyAllowanceInput {
+  companyId: string;
+  userId: string;
+  tierName: string;
+  invoiceId: string;
+}
+
+/**
+ * Grants the tier's recurring credit allowance for one billing cycle.
+ * Called from the invoice.paid webhook on subscription_cycle renewals —
+ * month 1 is covered by the one-time TIER_CREDIT_AWARD in provisionMember.
+ * Event-level idempotency is handled upstream by stripeProcessedEvents.
+ */
+export async function awardMonthlyAllowance(
+  db: Db,
+  input: MonthlyAllowanceInput,
+): Promise<{ awarded: number }> {
+  const allowance = TIER_MONTHLY_ALLOWANCE[input.tierName];
+  if (!allowance || allowance <= 0) return { awarded: 0 };
+
+  await db.insert(amxTransactions).values({
+    fromCompanyId: input.companyId,
+    toCompanyId: input.companyId,
+    fromPrincipalType: "system",
+    fromPrincipalId: "stripe-subscription",
+    toPrincipalType: "user",
+    toPrincipalId: input.userId,
+    amount: allowance,
+    currency: "CREDIT",
+    transactionType: "monthly_allowance",
+    status: "completed",
+    metadata: { tierName: input.tierName, invoiceId: input.invoiceId },
+  });
+
+  const [existingLedger] = await db.select().from(amxLedger)
+    .where(and(eq(amxLedger.companyId, input.companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, input.userId)));
+
+  if (existingLedger) {
+    await db.update(amxLedger)
+      .set({
+        creditBalance: existingLedger.creditBalance + allowance,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(amxLedger.companyId, input.companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, input.userId)));
+  } else {
+    await db.insert(amxLedger).values({
+      companyId: input.companyId,
+      principalType: "user",
+      principalId: input.userId,
+      creditBalance: allowance,
+      tokenBalance: 0,
+    });
+  }
+
+  return { awarded: allowance };
 }
 
 export async function cancelMember(db: Db, stripeSubscriptionId: string): Promise<void> {
