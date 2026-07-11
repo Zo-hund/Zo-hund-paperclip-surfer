@@ -684,4 +684,4 @@ export {
   type ParsedCron,
 } from "./cron.js";
 
-export { MARKETPLACE_PHASE_MULTIPLIERS, MARKETPLACE_PLATFORM_FEE } from "./credits.js";
+export { MARKETPLACE_PHASE_MULTIPLIERS, MARKETPLACE_PLATFORM_FEE, AGENT_EARNINGS_SHARE } from "./credits.js";

@@ -189,3 +189,10 @@ export const MARKETPLACE_PHASE_MULTIPLIERS = {
  * payout on marketplace hires — the buyer pays the full booking amount.
  */
 export const MARKETPLACE_PLATFORM_FEE = 0.1;
+
+/**
+ * Fraction of a completed RQ's escrowed creditCost that is distributed to
+ * the fulfilling agents' wallets as tokens on completion; the remainder is
+ * platform revenue (stays in escrow).
+ */
+export const AGENT_EARNINGS_SHARE = 0.8;

@@ -26,10 +26,16 @@ import {
   RQ_TIERS,
   RQ_ESCROW_PRINCIPAL_ID,
   MICRO_SERVICES,
+  AGENT_EARNINGS_SHARE,
   resolveRqTier,
   type MicroServiceKey,
 } from "@paperclipai/shared";
-import { spendCredits, refundCredits, InsufficientCreditsError } from "../services/creditWallet.js";
+import {
+  spendCredits,
+  refundCredits,
+  awardAgentTokens,
+  InsufficientCreditsError,
+} from "../services/creditWallet.js";
 import { renderCertificatePdf } from "../services/pdf-export.js";
 
 const submitRqSchema = z.object({
@@ -521,6 +527,111 @@ export function amxRoutes(db: Db) {
       .where(eq(rqSubmissions.id, submissionId));
 
     res.json({ submissionId, refunded: submission.creditCost, refundTxId, status: "cancelled" });
+  });
+
+  /**
+   * POST /api/companies/:companyId/amx/rq/:submissionId/complete
+   * Admin-only: certifies a fulfilled RQ and settles its escrow. The
+   * fulfilling agents (agentSwarmIds) split AGENT_EARNINGS_SHARE of the
+   * escrowed creditCost as TOKENS (floor per agent); everything not paid
+   * out — including the whole creditCost when the swarm is empty or the run
+   * was free — is retained as platform revenue.
+   */
+  router.post("/companies/:companyId/amx/rq/:submissionId/complete", async (req, res) => {
+    const { companyId, submissionId } = req.params as { companyId: string; submissionId: string };
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
+
+    const [submission] = await db.select().from(rqSubmissions)
+      .where(and(eq(rqSubmissions.id, submissionId), eq(rqSubmissions.companyId, companyId)))
+      .limit(1);
+    if (!submission) {
+      res.status(404).json({ error: "Submission not found" });
+      return;
+    }
+    if (submission.status === "certified" || submission.status === "cancelled") {
+      res.status(409).json({ error: `Submission is already ${submission.status}`, status: submission.status });
+      return;
+    }
+
+    await db.update(rqSubmissions)
+      .set({
+        status: "certified",
+        simulationStatus: "completed",
+        lifecycleStage: "post_production",
+        updatedAt: new Date(),
+      })
+      .where(eq(rqSubmissions.id, submissionId));
+
+    const pool = (submission.agentSwarmIds as string[] | null) ?? [];
+    const agentPayouts: Array<{ agentId: string; tokens: number }> = [];
+    if (submission.creditCost > 0 && pool.length > 0) {
+      const totalAgentShare = Math.floor(submission.creditCost * AGENT_EARNINGS_SHARE);
+      const perAgent = Math.floor(totalAgentShare / pool.length);
+      if (perAgent > 0) {
+        for (const agentId of pool) {
+          await awardAgentTokens(db, {
+            companyId,
+            agentId,
+            amount: perAgent,
+            transactionType: "agent_earnings",
+            metadata: { submissionId, tier: submission.tier },
+          });
+          agentPayouts.push({ agentId, tokens: perAgent });
+        }
+      }
+    }
+
+    // Floor remainders stay in escrow alongside the platform share.
+    const paidOut = agentPayouts.reduce((sum, p) => sum + p.tokens, 0);
+    res.json({
+      submissionId,
+      status: "certified",
+      agentPayouts,
+      platformRetained: submission.creditCost - paidOut,
+    });
+  });
+
+  /**
+   * GET /api/companies/:companyId/amx/agents/:agentId/wallet
+   * Returns an agent's company-scoped wallet balances (zeros when the agent
+   * has never earned) plus its last 10 ledger transactions in this company.
+   */
+  router.get("/companies/:companyId/amx/agents/:agentId/wallet", async (req, res) => {
+    const { companyId, agentId } = req.params as { companyId: string; agentId: string };
+    assertCompanyAccess(req, companyId);
+
+    const [ledger] = await db.select().from(amxLedger)
+      .where(and(
+        eq(amxLedger.companyId, companyId),
+        eq(amxLedger.principalType, "agent"),
+        eq(amxLedger.principalId, agentId),
+      ))
+      .limit(1);
+
+    const transactions = await db.select().from(amxTransactions)
+      .where(or(
+        and(eq(amxTransactions.fromPrincipalId, agentId), eq(amxTransactions.fromCompanyId, companyId)),
+        and(eq(amxTransactions.toPrincipalId, agentId), eq(amxTransactions.toCompanyId, companyId)),
+      ))
+      .orderBy(desc(amxTransactions.occurredAt))
+      .limit(10);
+
+    res.json({
+      creditBalance: ledger?.creditBalance ?? 0,
+      tokenBalance: ledger?.tokenBalance ?? 0,
+      transactions: transactions.map(tx => ({
+        id: tx.id,
+        amount: tx.amount,
+        currency: tx.currency,
+        transactionType: tx.transactionType,
+        fromPrincipalId: tx.fromPrincipalId,
+        toPrincipalId: tx.toPrincipalId,
+        status: tx.status,
+        occurredAt: tx.occurredAt.toISOString(),
+        metadata: tx.metadata ?? null,
+      })),
+    });
   });
 
   /**
