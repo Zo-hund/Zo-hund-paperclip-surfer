@@ -7,8 +7,15 @@ import { companyStaff, companyEvents, companyLogos, assets } from "@paperclipai/
  * Stripe's public checkout/payment-link pages — Stripe fetches Product
  * `images` URLs unauthenticated, so these must be served publicly. No
  * separate reference row needed: the namespace itself is the public-intent
- * marker, same pattern as logos/staff photos/event flyers below. */
-const STRIPE_PRODUCT_IMAGE_OBJECT_KEY_PREFIX = "assets/stripe-product/";
+ * marker, same pattern as logos/staff photos/event flyers below.
+ *
+ * storage/service.ts's buildObjectKey produces
+ * `${companyId}/${namespace}/${yyyy}/${mm}/${dd}/${uuid}-filename`, and the
+ * namespace we pass is `assets/${namespaceSuffix}` — so the marker segment
+ * is in the MIDDLE of objectKey, not a prefix (it's preceded by the
+ * company id, which varies per tenant). Match it as a substring.
+ */
+const STRIPE_PRODUCT_IMAGE_OBJECT_KEY_SEGMENT = "/assets/stripe-product/";
 
 export function companyContentService(db: Db) {
   return {
@@ -86,7 +93,7 @@ export function companyContentService(db: Db) {
       const stripeProductImageMatch = await db
         .select({ id: assets.id })
         .from(assets)
-        .where(and(eq(assets.id, assetId), like(assets.objectKey, `${STRIPE_PRODUCT_IMAGE_OBJECT_KEY_PREFIX}%`)))
+        .where(and(eq(assets.id, assetId), like(assets.objectKey, `%${STRIPE_PRODUCT_IMAGE_OBJECT_KEY_SEGMENT}%`)))
         .then((rows) => rows[0] ?? null);
       if (stripeProductImageMatch) return true;
 

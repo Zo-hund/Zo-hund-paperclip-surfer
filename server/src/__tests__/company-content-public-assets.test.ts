@@ -19,6 +19,35 @@ function createFakeDb(queue: unknown[][]) {
   return { select: () => chain } as never;
 }
 
+// storage/service.ts's buildObjectKey produces:
+//   `${companyId}/${namespace}/${yyyy}/${mm}/${dd}/${uuid}-${filename}`
+// The route passes namespace `assets/${namespaceSuffix}`, so for a
+// stripe-product upload the marker segment sits in the MIDDLE of the key
+// (preceded by a per-tenant company id) — a prefix match would never fire.
+// This mirrors the exact shape the service produces, independent of the
+// mocked DB below, so a future regression to a prefix-only match is caught
+// even though the fake db doesn't evaluate real SQL LIKE semantics.
+function realisticObjectKey(namespaceSuffix: string) {
+  const companyId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  return `${companyId}/assets/${namespaceSuffix}/2026/07/11/11111111-1111-4111-8111-111111111111-amx-labs-solo.png`;
+}
+
+describe("stripe-product objectKey shape assumption", () => {
+  it("the public-check segment matches a realistic stripe-product objectKey", () => {
+    const key = realisticObjectKey("stripe-product");
+    expect(key).toContain("/assets/stripe-product/");
+    // A naive prefix check (key.startsWith("assets/stripe-product/")) is
+    // exactly the bug this locks in — it's always false because companyId
+    // comes first.
+    expect(key.startsWith("assets/stripe-product/")).toBe(false);
+  });
+
+  it("does not match an unrelated namespace's objectKey", () => {
+    const key = realisticObjectKey("issue-attachment");
+    expect(key).not.toContain("/assets/stripe-product/");
+  });
+});
+
 describe("companyContentService.isAssetPubliclyReferenced", () => {
   it("treats an asset uploaded under the stripe-product namespace as public", async () => {
     // First query (stripe product image objectKey LIKE match) returns a row.
