@@ -28,9 +28,29 @@ export interface LmsDashboard {
   };
 }
 
+export interface LmsMarketplaceBooking {
+  id: string;
+  companyId: string;
+  listingId: string;
+  clientMemberId: string;
+  projectTitle: string;
+  description: string | null;
+  budgetSims: number;
+  status: "pending" | "active" | "completed" | "cancelled";
+  createdAt: string;
+}
+
 export const lmsApi = {
   getDashboard: (companyId: string) =>
     api.get<LmsDashboard>(`/companies/${companyId}/lms/dashboard`),
+
+  createMarketplaceBooking: (companyId: string, data: {
+    listingId: string;
+    clientMemberId: string;
+    projectTitle: string;
+    description?: string;
+    budgetSims: number;
+  }) => api.post<LmsMarketplaceBooking>(`/companies/${companyId}/lms/marketplace/bookings`, data),
 
   createWorkshop: (companyId: string, data: {
     name: string;
