@@ -1,6 +1,14 @@
-import { eq, and, asc, or } from "drizzle-orm";
+import { eq, and, asc, or, like } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { companyStaff, companyEvents, companyLogos } from "@paperclipai/db";
+import { companyStaff, companyEvents, companyLogos, assets } from "@paperclipai/db";
+
+/** Assets uploaded under this namespace (POST /assets/images with
+ * namespace: "stripe-product") are, by construction, meant for display on
+ * Stripe's public checkout/payment-link pages — Stripe fetches Product
+ * `images` URLs unauthenticated, so these must be served publicly. No
+ * separate reference row needed: the namespace itself is the public-intent
+ * marker, same pattern as logos/staff photos/event flyers below. */
+const STRIPE_PRODUCT_IMAGE_OBJECT_KEY_PREFIX = "assets/stripe-product/";
 
 export function companyContentService(db: Db) {
   return {
@@ -75,6 +83,13 @@ export function companyContentService(db: Db) {
     // Used by the scoped public asset route: an asset may only be served
     // unauthenticated if it's referenced by a published staff/event row.
     isAssetPubliclyReferenced: async (assetId: string) => {
+      const stripeProductImageMatch = await db
+        .select({ id: assets.id })
+        .from(assets)
+        .where(and(eq(assets.id, assetId), like(assets.objectKey, `${STRIPE_PRODUCT_IMAGE_OBJECT_KEY_PREFIX}%`)))
+        .then((rows) => rows[0] ?? null);
+      if (stripeProductImageMatch) return true;
+
       // Company logos are public branding — the guest meeting lobby (an
       // unauthenticated page) renders them via the public asset route.
       const logoMatch = await db
