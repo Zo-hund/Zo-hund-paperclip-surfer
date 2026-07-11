@@ -621,6 +621,7 @@ export {
   RQ_ESCROW_PRINCIPAL_ID,
   MICRO_SERVICES,
   TIER_MONTHLY_ALLOWANCE,
+  NONPROFIT_PACK_BONUS,
   resolveRqTier,
   type CreditPackageTier,
   type RqTier,

@@ -1,9 +1,9 @@
 import { Router } from "express";
 import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
-import { stripePrices, amxGlobalLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
-import { eq, and } from "drizzle-orm";
-import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS } from "@paperclipai/shared";
+import { stripePrices, stripeSubscriptions, amxGlobalLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
+import { eq, and, inArray } from "drizzle-orm";
+import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS, NONPROFIT_PACK_BONUS } from "@paperclipai/shared";
 import { provisionMember, cancelMember, awardMonthlyAllowance, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
 import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
@@ -596,6 +596,34 @@ function subscriptionPeriodEnd(sub: Stripe.Subscription): Date | null {
   return typeof epoch === "number" && Number.isFinite(epoch) ? new Date(epoch * 1000) : null;
 }
 
+/**
+ * Nonprofit credit-pack bonus — companies with an ACTIVE (or trialing)
+ * nonprofit_baseline membership receive +25% bonus credits on every
+ * credit-pack purchase. Returns the total credits to grant and the bonus
+ * portion (0 for non-nonprofit buyers). When companyId is missing the
+ * bonus check is skipped entirely — no query, no bonus.
+ */
+export async function resolveCreditPurchaseTotal(
+  db: Db,
+  { companyId, creditAmount }: { companyId: string | null | undefined; creditAmount: number },
+): Promise<{ total: number; bonus: number }> {
+  if (!companyId) return { total: creditAmount, bonus: 0 };
+  const [nonprofitSub] = await db
+    .select({ id: stripeSubscriptions.id })
+    .from(stripeSubscriptions)
+    .where(
+      and(
+        eq(stripeSubscriptions.companyId, companyId),
+        eq(stripeSubscriptions.tierName, "nonprofit_baseline"),
+        inArray(stripeSubscriptions.status, ["active", "trialing"]),
+      ),
+    )
+    .limit(1);
+  if (!nonprofitSub) return { total: creditAmount, bonus: 0 };
+  const bonus = Math.floor(creditAmount * NONPROFIT_PACK_BONUS);
+  return { total: creditAmount + bonus, bonus };
+}
+
 async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
   // Idempotency: Stripe delivers events at-least-once. Record the event id
   // first; if it's already present, this is a redelivery — skip it so credit
@@ -627,6 +655,9 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
         const creditAmount = parseInt(session.metadata.creditAmount, 10);
         const principalId = session.metadata?.principalId ?? userId;
         if (companyId && principalId && creditAmount > 0) {
+          // Nonprofit organizations earn +25% bonus credits on every pack.
+          const { total, bonus } = await resolveCreditPurchaseTotal(db, { companyId, creditAmount });
+
           await db.insert(amxTransactions).values({
             fromCompanyId: companyId,
             toCompanyId: companyId,
@@ -634,11 +665,16 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
             fromPrincipalId: "stripe-checkout",
             toPrincipalType: "user",
             toPrincipalId: principalId,
-            amount: creditAmount,
+            amount: total,
             currency: "CREDIT",
             transactionType: "credit_purchase",
             status: "completed",
-            metadata: { packageTier: session.metadata?.packageTier, stripeSessionId: session.id, scope: "global" },
+            metadata: {
+              packageTier: session.metadata?.packageTier,
+              stripeSessionId: session.id,
+              scope: "global",
+              ...(bonus > 0 ? { nonprofitBonus: bonus } : {}),
+            },
           });
 
           const [existing] = await db.select().from(amxGlobalLedger)
@@ -646,13 +682,13 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
 
           if (existing) {
             await db.update(amxGlobalLedger)
-              .set({ creditBalance: existing.creditBalance + creditAmount, updatedAt: new Date() })
+              .set({ creditBalance: existing.creditBalance + total, updatedAt: new Date() })
               .where(and(eq(amxGlobalLedger.principalType, "user"), eq(amxGlobalLedger.principalId, principalId)));
           } else {
             await db.insert(amxGlobalLedger).values({
               principalType: "user",
               principalId,
-              creditBalance: creditAmount,
+              creditBalance: total,
               tokenBalance: 0,
             });
           }
