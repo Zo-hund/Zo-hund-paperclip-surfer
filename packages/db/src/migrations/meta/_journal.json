@@ -547,6 +547,13 @@
       "when": 1783709574602,
       "tag": "0077_crazy_solo",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1783800612633,
+      "tag": "0078_loose_micromax",
+      "breakpoints": true
     }
   ]
 }

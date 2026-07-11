@@ -35,6 +35,27 @@ export const amxLedger = pgTable(
 );
 
 /**
+ * AMX Global Wallet Ledger
+ * Platform-wide balances for PURCHASED credits — spendable in any company.
+ * Tier awards / earned credits stay in the company-scoped amx_ledger.
+ */
+export const amxGlobalLedger = pgTable(
+  "amx_global_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    principalType: text("principal_type").notNull().default("user"),
+    principalId: text("principal_id").notNull(),
+    creditBalance: integer("credit_balance").notNull().default(0),
+    tokenBalance: integer("token_balance").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    principalUniqueIdx: uniqueIndex("amx_global_ledger_principal_idx").on(table.principalType, table.principalId),
+  }),
+);
+
+/**
  * AMX Global Transactions
  * Auditable P2P, H2A, A2A, and A2H transactions.
  */
