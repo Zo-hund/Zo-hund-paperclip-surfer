@@ -36,8 +36,18 @@ export interface LmsMarketplaceBooking {
   projectTitle: string;
   description: string | null;
   budgetSims: number;
+  phase: string | null;
   status: "pending" | "active" | "completed" | "cancelled";
   createdAt: string;
+}
+
+/** One group from GET .../listings/:listingId/earnings-by-phase — `phase` is
+ * null for the "unspecified" bucket (bookings from before the phase column
+ * existed). */
+export interface PhaseEarningsGroup {
+  phase: string | null;
+  totalSims: number;
+  bookingCount: number;
 }
 
 export const lmsApi = {
@@ -50,7 +60,13 @@ export const lmsApi = {
     projectTitle: string;
     description?: string;
     budgetSims: number;
+    phase?: string;
   }) => api.post<LmsMarketplaceBooking>(`/companies/${companyId}/lms/marketplace/bookings`, data),
+
+  getEarningsByPhase: (companyId: string, listingId: string) =>
+    api.get<PhaseEarningsGroup[]>(
+      `/companies/${companyId}/lms/marketplace/listings/${encodeURIComponent(listingId)}/earnings-by-phase`,
+    ),
 
   createWorkshop: (companyId: string, data: {
     name: string;

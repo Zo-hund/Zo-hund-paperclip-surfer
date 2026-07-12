@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   lmsWorkshops,
@@ -728,6 +728,9 @@ export function lmsRoutes(db: Db) {
     projectTitle: z.string().min(1),
     description: z.string().optional(),
     budgetSims: z.number().int().min(0).default(0),
+    // One of MARKETPLACE_PHASE_MULTIPLIERS' keys (@paperclipai/shared); optional
+    // since not every caller prices a hire by phase.
+    phase: z.string().optional(),
   });
 
   router.post("/companies/:companyId/lms/marketplace/bookings", validate(bookingCreateSchema), async (req, res) => {
@@ -835,6 +838,43 @@ export function lmsRoutes(db: Db) {
     const [updated] = await db.select().from(lmsMarketplaceBookings)
       .where(eq(lmsMarketplaceBookings.id, bookingId)).limit(1);
     res.json(updated);
+  });
+
+  /**
+   * GET /api/companies/:companyId/lms/marketplace/listings/:listingId/earnings-by-phase
+   * Groups a listing's completed bookings by run phase — powers the profile
+   * page's earnings breakdown. Bookings created before the `phase` column
+   * existed fall into a `phase: null` ("unspecified") bucket rather than
+   * being dropped.
+   */
+  router.get("/companies/:companyId/lms/marketplace/listings/:listingId/earnings-by-phase", async (req, res) => {
+    const { companyId, listingId } = req.params as { companyId: string; listingId: string };
+    assertCompanyAccess(req, companyId);
+
+    const [listing] = await db.select({ id: lmsMarketplaceListings.id })
+      .from(lmsMarketplaceListings)
+      .where(and(eq(lmsMarketplaceListings.id, listingId), eq(lmsMarketplaceListings.companyId, companyId)))
+      .limit(1);
+    if (!listing) {
+      res.status(404).json({ error: "Listing not found" });
+      return;
+    }
+
+    const rows = await db
+      .select({
+        phase: lmsMarketplaceBookings.phase,
+        totalSims: sql<number>`coalesce(sum(${lmsMarketplaceBookings.budgetSims}), 0)::int`,
+        bookingCount: sql<number>`count(*)::int`,
+      })
+      .from(lmsMarketplaceBookings)
+      .where(and(
+        eq(lmsMarketplaceBookings.listingId, listingId),
+        eq(lmsMarketplaceBookings.companyId, companyId),
+        eq(lmsMarketplaceBookings.status, "completed"),
+      ))
+      .groupBy(lmsMarketplaceBookings.phase);
+
+    res.json(rows);
   });
 
   // ── Gap 4: Earn Route ──────────────────────────────────────────────────────

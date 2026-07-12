@@ -81,6 +81,9 @@ export function amxRoutes(db: Db) {
 
     const earners = listings.map(l => ({
       id: l.id,
+      // Underlying agent/user id — lets a caller resolve the real principal
+      // behind a listing (e.g. to fetch its wallet) without a second query.
+      memberId: l.memberId,
       name: l.displayName,
       title: l.title,
       bio: l.bio ?? "",
@@ -683,6 +686,51 @@ export function amxRoutes(db: Db) {
       .where(or(
         and(eq(amxTransactions.fromPrincipalId, agentId), eq(amxTransactions.fromCompanyId, companyId)),
         and(eq(amxTransactions.toPrincipalId, agentId), eq(amxTransactions.toCompanyId, companyId)),
+      ))
+      .orderBy(desc(amxTransactions.occurredAt))
+      .limit(10);
+
+    res.json({
+      creditBalance: ledger?.creditBalance ?? 0,
+      tokenBalance: ledger?.tokenBalance ?? 0,
+      transactions: transactions.map(tx => ({
+        id: tx.id,
+        amount: tx.amount,
+        currency: tx.currency,
+        transactionType: tx.transactionType,
+        fromPrincipalId: tx.fromPrincipalId,
+        toPrincipalId: tx.toPrincipalId,
+        status: tx.status,
+        occurredAt: tx.occurredAt.toISOString(),
+        metadata: tx.metadata ?? null,
+      })),
+    });
+  });
+
+  /**
+   * GET /api/companies/:companyId/amx/members/:memberId/wallet
+   * Mirror of the agent-wallet route above, for a company member other than
+   * the caller — closes the gap where /amx/wallet only returns the caller's
+   * own actor-scoped wallet. Any company member may view another member's
+   * public marketplace profile, so this is assertCompanyAccess-gated only
+   * (not admin-only), same as the public /amx/exchange listings.
+   */
+  router.get("/companies/:companyId/amx/members/:memberId/wallet", async (req, res) => {
+    const { companyId, memberId } = req.params as { companyId: string; memberId: string };
+    assertCompanyAccess(req, companyId);
+
+    const [ledger] = await db.select().from(amxLedger)
+      .where(and(
+        eq(amxLedger.companyId, companyId),
+        eq(amxLedger.principalType, "user"),
+        eq(amxLedger.principalId, memberId),
+      ))
+      .limit(1);
+
+    const transactions = await db.select().from(amxTransactions)
+      .where(or(
+        and(eq(amxTransactions.fromPrincipalId, memberId), eq(amxTransactions.fromCompanyId, companyId)),
+        and(eq(amxTransactions.toPrincipalId, memberId), eq(amxTransactions.toCompanyId, companyId)),
       ))
       .orderBy(desc(amxTransactions.occurredAt))
       .limit(10);

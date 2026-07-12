@@ -554,6 +554,13 @@
       "when": 1783800612633,
       "tag": "0078_loose_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1783854070150,
+      "tag": "0079_lean_nextwave",
+      "breakpoints": true
     }
   ]
 }

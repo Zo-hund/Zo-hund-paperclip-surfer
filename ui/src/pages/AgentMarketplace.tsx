@@ -57,6 +57,18 @@ export interface MarketplaceTalent {
 
 const ALL_PHASE_IDS = RUN_PHASES.map((p) => p.id);
 
+// RUN_PHASES uses short UI ids ("sim", "pre", …); bookings persist the
+// canonical MARKETPLACE_PHASE_MULTIPLIERS key so the earnings-by-phase
+// endpoint (and any other consumer keyed off @paperclipai/shared) can group
+// on it directly without knowing this page's local id scheme.
+const PHASE_ID_TO_MULTIPLIER_KEY: Record<string, keyof typeof MARKETPLACE_PHASE_MULTIPLIERS> = {
+  sim: "simulation",
+  pre: "pre_production",
+  live: "live",
+  prod: "production",
+  post: "post_production",
+};
+
 function earnerToTalent(e: Earner): MarketplaceTalent {
   return {
     id: e.id,
@@ -130,6 +142,7 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
         projectTitle: `Marketplace hire: ${talent.name} — ${selectedPhase.label}`,
         description: `${hours}h ${selectedPhase.label} engagement at ${talent.hourlyRateTokens} ${currency}/hr (x${selectedPhase.creditMultiplier} phase multiplier).`,
         budgetSims: totalCost,
+        phase: PHASE_ID_TO_MULTIPLIER_KEY[selectedPhase.id] ?? selectedPhase.id,
       });
       queryClient.invalidateQueries({ queryKey: ["amx", "wallet"] });
       pushToast({
@@ -365,7 +378,10 @@ function TalentCard({ talent, activeTab, balance, currency, companyPrefix }: {
             </span>
           </div>
           <div className="flex gap-2">
-            {activeTab === "agents" && companyPrefix && (
+            {/* Profile page is driven by real listing/agent data now (not
+                agent-specific mock data), so every tab — agents, humans,
+                co-op pairs, teams — can link into it. */}
+            {companyPrefix && (
               <Link to={`/${companyPrefix}/marketplace/agent/${talent.id}`}>
                 <Button variant="outline" size="sm" className="h-9 px-3 font-black text-[10px] uppercase tracking-widest border-border/60">
                   Profile

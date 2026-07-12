@@ -182,6 +182,12 @@ export const lmsMarketplaceBookings = pgTable(
     projectTitle: text("project_title").notNull(),
     description: text("description"),
     budgetSims: integer("budget_sims").notNull().default(0),
+    // Run phase this booking was priced at — one of MARKETPLACE_PHASE_MULTIPLIERS'
+    // keys in @paperclipai/shared ('simulation' | 'pre_production' | 'production'
+    // | 'live' | 'post_production'). Free text (not enum) since the canonical set
+    // lives in the shared package, not the db package; nullable because bookings
+    // created before this column existed have no phase on record.
+    phase: text("phase"),
     // pending | active | completed | cancelled
     status: text("status").notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
