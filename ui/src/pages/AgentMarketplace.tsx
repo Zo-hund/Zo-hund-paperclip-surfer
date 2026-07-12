@@ -109,6 +109,10 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
   const [hours, setHours] = useState(4);
   const [step, setStep] = useState<"configure" | "confirm" | "done">("configure");
   const [submitting, setSubmitting] = useState(false);
+  // Optional "schedule for later" slot — off by default so the ASAP/
+  // unscheduled booking flow is unchanged unless the buyer opts in.
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledStart, setScheduledStart] = useState("");
 
   // Real current-user id — the booking's clientMemberId (whose ledger is debited).
   const { data: session } = useQuery({
@@ -123,6 +127,14 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
   const platformFee = Math.ceil(totalCost * MARKETPLACE_PLATFORM_FEE);
   const canAfford = balance >= totalCost;
   const availablePhases = RUN_PHASES.filter((p) => (talent.phases ?? ["sim","pre","live","prod","post"]).includes(p.id));
+
+  // Scheduled window — start comes from the picker, end is derived from the
+  // existing hours slider. Only sent to the API when the picker has a valid
+  // value; left blank (default) preserves today's ASAP/unscheduled behavior.
+  const scheduledStartDate = scheduleEnabled && scheduledStart ? new Date(scheduledStart) : null;
+  const scheduledEndDate = scheduledStartDate && !isNaN(scheduledStartDate.getTime())
+    ? new Date(scheduledStartDate.getTime() + hours * 60 * 60 * 1000)
+    : null;
 
   const handleConfirm = async () => {
     if (!selectedPhase || submitting) return;
@@ -143,6 +155,10 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
         description: `${hours}h ${selectedPhase.label} engagement at ${talent.hourlyRateTokens} ${currency}/hr (x${selectedPhase.creditMultiplier} phase multiplier).`,
         budgetSims: totalCost,
         phase: PHASE_ID_TO_MULTIPLIER_KEY[selectedPhase.id] ?? selectedPhase.id,
+        ...(scheduledStartDate && scheduledEndDate ? {
+          scheduledStartAt: scheduledStartDate.toISOString(),
+          scheduledEndAt: scheduledEndDate.toISOString(),
+        } : {}),
       });
       queryClient.invalidateQueries({ queryKey: ["amx", "wallet"] });
       pushToast({
@@ -254,6 +270,37 @@ export function EngageModal({ talent, activeTab, balance, currency, onClose, com
               <input type="range" min={1} max={40} value={hours} onChange={(e) => setHours(Number(e.target.value))}
                 className="w-full h-2 rounded-full appearance-none bg-accent/20 accent-primary cursor-pointer" />
               <div className="flex justify-between text-[9px] text-muted-foreground mt-1"><span>1 hr</span><span>40 hrs</span></div>
+            </div>
+          )}
+
+          {/* Optional schedule-for-later slot — defaults to off, so leaving
+              it untouched keeps the ASAP/unscheduled booking behavior. */}
+          {phase && (
+            <div className="mb-6 animate-in slide-in-from-bottom-1 duration-200">
+              <label className="flex items-center gap-2 cursor-pointer select-none mb-2">
+                <input
+                  type="checkbox"
+                  checked={scheduleEnabled}
+                  onChange={(e) => setScheduleEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded accent-primary"
+                />
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Schedule for later (optional)</span>
+              </label>
+              {scheduleEnabled && (
+                <div className="animate-in slide-in-from-top-1 duration-150">
+                  <input
+                    type="datetime-local"
+                    value={scheduledStart}
+                    onChange={(e) => setScheduledStart(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-border/40 bg-card/40 text-sm text-foreground"
+                  />
+                  {scheduledEndDate && (
+                    <p className="text-[10px] text-muted-foreground mt-1.5">
+                      Ends {scheduledEndDate.toLocaleString()} ({hours}h engagement)
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

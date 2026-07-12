@@ -21,6 +21,7 @@ import {
   amxLedger,
   amxCertificates,
   amxTransactions,
+  companyEvents,
 } from "@paperclipai/db";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
@@ -733,7 +734,15 @@ export function lmsRoutes(db: Db) {
     // One of MARKETPLACE_PHASE_MULTIPLIERS' keys (@paperclipai/shared); optional
     // since not every caller prices a hire by phase.
     phase: z.string().optional(),
-  });
+    // Optional scheduled engagement window — set when the client picks a
+    // calendar slot instead of an ASAP/simulation-mode booking. Both-or-
+    // neither so the calendar never has to reason about a half-open range.
+    scheduledStartAt: z.string().datetime().optional(),
+    scheduledEndAt: z.string().datetime().optional(),
+  }).refine(
+    (data) => (data.scheduledStartAt == null) === (data.scheduledEndAt == null),
+    { message: "scheduledStartAt and scheduledEndAt must both be provided or both omitted", path: ["scheduledEndAt"] },
+  );
 
   router.post("/companies/:companyId/lms/marketplace/bookings", validate(bookingCreateSchema), async (req, res) => {
     const { companyId } = req.params as { companyId: string };
@@ -780,7 +789,35 @@ export function lmsRoutes(db: Db) {
       }
     }
 
-    const [row] = await db.insert(lmsMarketplaceBookings).values({ companyId, ...body }).returning();
+    const { scheduledStartAt, scheduledEndAt, ...rest } = body;
+    const [row] = await db.insert(lmsMarketplaceBookings).values({
+      companyId,
+      ...rest,
+      ...(scheduledStartAt && scheduledEndAt
+        ? { scheduledStartAt: new Date(scheduledStartAt), scheduledEndAt: new Date(scheduledEndAt) }
+        : {}),
+    }).returning();
+
+    // Mirror a scheduled booking onto the unified calendar immediately —
+    // best-effort, same non-blocking convention as the chain-of-custody
+    // recordSecurityEvent calls above: a companyEvents insert failure must
+    // never block the booking itself.
+    if (scheduledStartAt && scheduledEndAt) {
+      try {
+        await db.insert(companyEvents).values({
+          companyId,
+          title: body.projectTitle,
+          description: body.description,
+          startDate: new Date(scheduledStartAt),
+          endDate: new Date(scheduledEndAt),
+          eventType: "marketplace",
+          sourceBookingId: row!.id,
+        });
+      } catch (err) {
+        console.warn("[lms] failed to create companyEvents row for scheduled booking", err);
+      }
+    }
+
     res.status(201).json(row);
   });
 

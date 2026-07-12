@@ -63,6 +63,7 @@ import { GuestMeetingJoin } from "./pages/GuestMeetingJoin";
 import { PublicPricing } from "./pages/PublicPricing";
 import { NotFoundPage } from "./pages/NotFound";
 import { AgentMarketplace } from "./pages/AgentMarketplace";
+import { MarketplaceCalendar } from "./pages/MarketplaceCalendar";
 import { TechAtNiteBrand } from "./pages/TechAtNiteBrand";
 import { AgentResumeProfile } from "./pages/AgentResumeProfile";
 import { BoardDeliverables } from "./pages/BoardDeliverables";
@@ -249,6 +250,7 @@ function boardRoutes() {
       <Route path="briefcase" element={<BoardDeliverables />} />
       <Route path="marketplace" element={<AgentMarketplace />} />
       <Route path="marketplace/agent/:marketplaceAgentId" element={<AgentResumeProfile />} />
+      <Route path="marketplace/calendar" element={<MarketplaceCalendar />} />
       <Route path="teams/roster" element={<TeamRoster />} />
       <Route path=":pluginRoutePath" element={<PluginPage />} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
@@ -469,6 +471,7 @@ export function App() {
           <Route path="tracing" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace" element={<UnprefixedBoardRedirect />} />
           <Route path="marketplace/agent/:marketplaceAgentId" element={<UnprefixedBoardRedirect />} />
+          <Route path="marketplace/calendar" element={<UnprefixedBoardRedirect />} />
           <Route path="briefcase" element={<UnprefixedBoardRedirect />} />
           <Route path="calendar" element={<UnprefixedBoardRedirect />} />
           <Route path="meetings" element={<UnprefixedBoardRedirect />} />

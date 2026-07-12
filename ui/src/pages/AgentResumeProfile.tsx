@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useCompany } from "@/context/CompanyContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentsApi } from "@/api/agents";
-import { amxApi, type Earner, type PrincipalWalletData } from "@/api/amx";
+import { amxApi, type Earner, type PrincipalWalletData, type MemberPortfolioItem, type AgentPortfolioItem } from "@/api/amx";
 import { lmsApi, type PhaseEarningsGroup } from "@/api/lms";
 
 // Human-readable names for the MARKETPLACE_PHASE_MULTIPLIERS keys
@@ -161,6 +161,21 @@ export function AgentResumeProfile() {
   const totalCompletedBookings = phaseEarnings.reduce((sum, g) => sum + g.bookingCount, 0);
   const totalEarningsSims = phaseEarnings.reduce((sum, g) => sum + g.totalSims, 0);
   const maxPhaseSims = Math.max(1, ...phaseEarnings.map((g) => g.totalSims));
+
+  // Portfolio — auto-derived from completed marketplace bookings (listing-
+  // backed profiles) or certified RQ Factory runs (agent-backed profiles).
+  const memberPortfolioQuery = useQuery({
+    queryKey: ["agent-profile", "portfolio", "member", selectedCompanyId, profile?.memberId],
+    queryFn: () => amxApi.getMemberPortfolio(selectedCompanyId!, profile!.memberId),
+    enabled: !!selectedCompanyId && !!profile?.memberId && profile?.kind === "listing",
+  });
+  const agentPortfolioQuery = useQuery({
+    queryKey: ["agent-profile", "portfolio", "agent", selectedCompanyId, profile?.memberId],
+    queryFn: () => amxApi.getAgentPortfolio(selectedCompanyId!, profile!.memberId),
+    enabled: !!selectedCompanyId && !!profile?.memberId && profile?.kind === "agent",
+  });
+  const memberPortfolioItems: MemberPortfolioItem[] = memberPortfolioQuery.data?.items ?? [];
+  const agentPortfolioItems: AgentPortfolioItem[] = agentPortfolioQuery.data?.items ?? [];
 
   const hireMutation = useMutation({
     mutationFn: async () => {
@@ -429,6 +444,60 @@ export function AgentResumeProfile() {
               )}
 
            </div>
+        </div>
+
+        {/* Portfolio — new bottom section, sibling of the grid above rather
+            than interleaved with it. */}
+        <div className="max-w-6xl mx-auto mt-8">
+          <section>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-1.5 rounded border border-border/60 bg-accent/5">
+                <Briefcase className="h-4 w-4 text-primary" />
+              </div>
+              <h2 className="text-xl font-black text-foreground">Portfolio</h2>
+            </div>
+
+            {profile.kind === "agent" ? (
+              agentPortfolioItems.length > 0 ? (
+                <div className="rounded-2xl border border-border/50 bg-card divide-y divide-border/40 overflow-hidden">
+                  {agentPortfolioItems.map((item) => (
+                    <div key={item.submissionId} className="flex items-center justify-between px-5 py-3 text-sm">
+                      <div className="min-w-0">
+                        <p className="font-bold text-foreground truncate">{item.tier.replace(/_/g, " ")} — RQ Factory</p>
+                        <p className="text-[11px] text-muted-foreground">{new Date(item.completedAt).toLocaleDateString()}</p>
+                      </div>
+                      <span className="font-black text-foreground shrink-0 ml-4">{item.creditCost.toLocaleString()} credits</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 rounded-2xl border border-border/50 bg-card text-sm text-muted-foreground">
+                  No certified RQ Factory runs on record yet.
+                </div>
+              )
+            ) : (
+              memberPortfolioItems.length > 0 ? (
+                <div className="rounded-2xl border border-border/50 bg-card divide-y divide-border/40 overflow-hidden">
+                  {memberPortfolioItems.map((item) => (
+                    <div key={item.bookingId} className="flex items-center justify-between px-5 py-3 text-sm gap-4">
+                      <div className="min-w-0">
+                        <p className="font-bold text-foreground truncate">{item.projectTitle}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {item.completedAt ? new Date(item.completedAt).toLocaleDateString() : "—"} · {phaseLabel(item.phase)} ·{" "}
+                          <span className="uppercase tracking-widest font-black">{item.role}</span>
+                        </p>
+                      </div>
+                      <span className="font-black text-foreground shrink-0">{item.budgetSims.toLocaleString()} SIMS</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 rounded-2xl border border-border/50 bg-card text-sm text-muted-foreground">
+                  No completed engagements on record yet.
+                </div>
+              )
+            )}
+          </section>
         </div>
       </main>
     </div>

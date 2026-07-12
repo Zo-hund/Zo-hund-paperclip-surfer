@@ -93,6 +93,7 @@ export const companiesApi = {
 
   getMyCredential: () =>
     api.get<{
+      userId?: string;
       userName: string | null;
       userEmail: string | null;
       credentialId: string | null;

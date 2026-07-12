@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import type { Db } from "@paperclipai/db";
 import {
   amxChainEvents, amxCertificates, agents, issues,
-  lmsMarketplaceListings, amxLedger, amxGlobalLedger, amxTransactions,
+  lmsMarketplaceListings, lmsMarketplaceBookings, amxLedger, amxGlobalLedger, amxTransactions,
   lmsMemberProfiles, lmsLearnerBadges, lmsBadgeDefinitions, stripePrices, companies,
   rqSubmissions,
 } from "@paperclipai/db";
@@ -874,6 +874,82 @@ export function amxRoutes(db: Db) {
         metadata: tx.metadata ?? null,
       })),
     });
+  });
+
+  /**
+   * GET /api/companies/:companyId/amx/members/:memberId/portfolio
+   * Auto-derives a member's portfolio from completed marketplace bookings —
+   * either side of the engagement (client who booked, or provider whose
+   * listing fulfilled it). Not hand-authored: there is no separate
+   * "portfolio content" table, this is a read-model over
+   * lmsMarketplaceBookings/lmsMarketplaceListings.
+   */
+  router.get("/companies/:companyId/amx/members/:memberId/portfolio", async (req, res) => {
+    const { companyId, memberId } = req.params as { companyId: string; memberId: string };
+    assertCompanyAccess(req, companyId);
+
+    const rows = await db.select({
+      bookingId: lmsMarketplaceBookings.id,
+      projectTitle: lmsMarketplaceBookings.projectTitle,
+      description: lmsMarketplaceBookings.description,
+      phase: lmsMarketplaceBookings.phase,
+      budgetSims: lmsMarketplaceBookings.budgetSims,
+      completedAt: lmsMarketplaceBookings.completedAt,
+      clientMemberId: lmsMarketplaceBookings.clientMemberId,
+      listingMemberId: lmsMarketplaceListings.memberId,
+    })
+      .from(lmsMarketplaceBookings)
+      .leftJoin(lmsMarketplaceListings, eq(lmsMarketplaceBookings.listingId, lmsMarketplaceListings.id))
+      .where(and(
+        eq(lmsMarketplaceBookings.companyId, companyId),
+        eq(lmsMarketplaceBookings.status, "completed"),
+        or(
+          eq(lmsMarketplaceBookings.clientMemberId, memberId),
+          eq(lmsMarketplaceListings.memberId, memberId),
+        ),
+      ))
+      .orderBy(desc(lmsMarketplaceBookings.completedAt));
+
+    res.json({
+      items: rows.map((row) => ({
+        bookingId: row.bookingId,
+        projectTitle: row.projectTitle,
+        description: row.description,
+        phase: row.phase,
+        budgetSims: row.budgetSims,
+        completedAt: row.completedAt ? row.completedAt.toISOString() : null,
+        role: row.clientMemberId === memberId ? "client" : "provider",
+      })),
+    });
+  });
+
+  /**
+   * GET /api/companies/:companyId/amx/agents/:agentId/portfolio
+   * Auto-derives an agent's portfolio from certified RQ Factory submissions
+   * it helped fulfill (agentSwarmIds). Agents aren't independently bookable
+   * via lmsMarketplaceListings today, so this is sourced purely from
+   * rqSubmissions — no completedAt column exists on that table, so updatedAt
+   * (set at the moment of certification, see the /rq/:submissionId/complete
+   * route above) is used as the completion timestamp.
+   */
+  router.get("/companies/:companyId/amx/agents/:agentId/portfolio", async (req, res) => {
+    const { companyId, agentId } = req.params as { companyId: string; agentId: string };
+    assertCompanyAccess(req, companyId);
+
+    const submissions = await db.select().from(rqSubmissions)
+      .where(and(eq(rqSubmissions.companyId, companyId), eq(rqSubmissions.status, "certified")))
+      .orderBy(desc(rqSubmissions.updatedAt));
+
+    const items = submissions
+      .filter((s) => ((s.agentSwarmIds as string[] | null) ?? []).includes(agentId))
+      .map((s) => ({
+        submissionId: s.id,
+        tier: s.tier,
+        creditCost: s.creditCost,
+        completedAt: s.updatedAt.toISOString(),
+      }));
+
+    res.json({ items });
   });
 
   /**
