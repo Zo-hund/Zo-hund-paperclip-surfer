@@ -192,6 +192,20 @@ export function AgentResumeProfile() {
     hireMutation.mutate();
   };
 
+  // Directory visibility toggle — only meaningful for a real roster agent
+  // (profile.kind === "agent"); marketplace-listing-backed profiles have no
+  // underlying agent row to patch.
+  const isPublicProfile = agentQuery.data?.isPublicProfile ?? false;
+  const togglePublicProfileMutation = useMutation({
+    mutationFn: async (next: boolean) => {
+      if (!profile || profile.kind !== "agent") throw new Error("No agent to update");
+      return agentsApi.update(profile.memberId, { isPublicProfile: next }, selectedCompanyId ?? undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agent-profile", "agent", selectedCompanyId, marketplaceAgentId] });
+    },
+  });
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background gap-3">
@@ -222,11 +236,29 @@ export function AgentResumeProfile() {
            <Link to={`/${selectedCompany?.issuePrefix}/marketplace`} className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
              <ArrowLeft className="h-4 w-4" /> Back to Marketplace
            </Link>
-           <div className="flex items-center gap-2">
-             <div className={`w-2 h-2 rounded-full ${profile.available ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
-             <span className={`text-[10px] font-black uppercase tracking-widest ${profile.available ? "text-emerald-500" : "text-amber-500"}`}>
-               {profile.available ? "Available for Hire" : "Currently Engaged"}
-             </span>
+           <div className="flex items-center gap-4">
+             {profile.kind === "agent" && (
+               <button
+                 type="button"
+                 role="switch"
+                 aria-checked={isPublicProfile}
+                 disabled={togglePublicProfileMutation.isPending}
+                 onClick={() => togglePublicProfileMutation.mutate(!isPublicProfile)}
+                 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                 title="Public profile — visible in the cross-company directory"
+               >
+                 <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${isPublicProfile ? "bg-emerald-500" : "bg-muted-foreground/30"}`}>
+                   <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isPublicProfile ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                 </span>
+                 Public profile
+               </button>
+             )}
+             <div className="flex items-center gap-2">
+               <div className={`w-2 h-2 rounded-full ${profile.available ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+               <span className={`text-[10px] font-black uppercase tracking-widest ${profile.available ? "text-emerald-500" : "text-amber-500"}`}>
+                 {profile.available ? "Available for Hire" : "Currently Engaged"}
+               </span>
+             </div>
            </div>
         </div>
       </div>
