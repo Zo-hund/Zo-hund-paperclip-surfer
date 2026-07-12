@@ -11,6 +11,7 @@ import { amxChainService } from "../services/amxChainService.js";
 import { rqPortalService } from "../services/rqPortalService.js";
 import { financeService } from "../services/finance.js";
 import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
+import { logActivity } from "../services/index.js";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
 import { eq, desc, and, or, inArray } from "drizzle-orm";
@@ -169,6 +170,75 @@ export function amxRoutes(db: Db) {
         metadata: tx.metadata ?? null,
       })),
     });
+  });
+
+  /**
+   * POST /api/companies/:companyId/amx/wallet/adjust
+   * Admin-only correction tool: directly adjusts a principal's company-scoped
+   * credit/token balance by a signed delta (e.g. reclaiming test-data credits,
+   * fixing a support issue) without going through a spend/earn/purchase flow.
+   * Every adjustment is recorded as an amx_transactions row so it shows up in
+   * the audit trail like any other balance change — nothing here is silent.
+   */
+  const walletAdjustSchema = z.object({
+    principalId: z.string().min(1),
+    principalType: z.enum(["user", "agent", "collective"]).default("user"),
+    creditDelta: z.number().int().default(0),
+    tokenDelta: z.number().int().default(0),
+    reason: z.string().min(1),
+  }).refine((v) => v.creditDelta !== 0 || v.tokenDelta !== 0, {
+    message: "At least one of creditDelta/tokenDelta must be non-zero",
+  });
+
+  router.post("/companies/:companyId/amx/wallet/adjust", validate(walletAdjustSchema), async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
+    const { principalId, principalType, creditDelta, tokenDelta, reason } = req.body as z.infer<typeof walletAdjustSchema>;
+
+    const [ledger] = await db.select().from(amxLedger)
+      .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, principalType), eq(amxLedger.principalId, principalId)))
+      .limit(1);
+
+    const nextCredit = Math.max(0, (ledger?.creditBalance ?? 0) + creditDelta);
+    const nextToken = Math.max(0, (ledger?.tokenBalance ?? 0) + tokenDelta);
+
+    if (ledger) {
+      await db.update(amxLedger)
+        .set({ creditBalance: nextCredit, tokenBalance: nextToken, updatedAt: new Date() })
+        .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, principalType), eq(amxLedger.principalId, principalId)));
+    } else {
+      await db.insert(amxLedger).values({ companyId, principalType, principalId, creditBalance: nextCredit, tokenBalance: nextToken });
+    }
+
+    const actor = getActorInfo(req);
+    const [tx] = await db.insert(amxTransactions).values({
+      fromCompanyId: companyId,
+      toCompanyId: companyId,
+      fromPrincipalType: "system",
+      fromPrincipalId: `admin:${actor.actorId}`,
+      toPrincipalType: principalType,
+      toPrincipalId: principalId,
+      amount: Math.abs(creditDelta) + Math.abs(tokenDelta),
+      currency: creditDelta !== 0 && tokenDelta !== 0 ? "MIXED" : creditDelta !== 0 ? "CREDIT" : "AMX",
+      transactionType: "admin_adjustment",
+      status: "completed",
+      metadata: { creditDelta, tokenDelta, reason, adjustedBy: actor.actorId },
+    }).returning({ id: amxTransactions.id });
+
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "amx.wallet_adjusted",
+      entityType: "amx_ledger",
+      entityId: principalId,
+      details: { principalType, creditDelta, tokenDelta, reason },
+    });
+
+    res.json({ principalId, principalType, creditBalance: nextCredit, tokenBalance: nextToken, transactionId: tx!.id });
   });
 
   /**

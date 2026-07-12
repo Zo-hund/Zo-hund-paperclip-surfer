@@ -27,7 +27,7 @@ import { validate } from "../middleware/validate.js";
 import { lmsService } from "../services/lmsService.js";
 import { lmsAnalyticsService } from "../services/lmsAnalyticsService.js";
 import { lmsNarrationService } from "../services/lmsNarrationService.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
 import { notFound } from "../errors.js";
 
@@ -687,6 +687,40 @@ export function lmsRoutes(db: Db) {
     const [row] = await db.insert(lmsMarketplaceListings).values({ companyId, ...body }).returning();
     res.status(201).json(row);
   });
+
+  const listingUpdateSchema = z.object({
+    displayName: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+    bio: z.string().optional(),
+    skills: z.array(z.string()).optional(),
+    hourlyRateSims: z.number().int().min(0).optional(),
+    availability: z.enum(["available", "busy", "on_project"]).optional(),
+    isActive: z.union([z.literal(0), z.literal(1)]).optional(),
+  });
+
+  // Admin-gated: a listing is a public storefront entry (visible to anyone
+  // booking through the marketplace), so editing/deactivating someone else's
+  // listing is a moderation action, not a self-service one.
+  router.patch("/companies/:companyId/lms/marketplace/listings/:listingId", validate(listingUpdateSchema), async (req, res) => {
+    const { companyId, listingId } = req.params as { companyId: string; listingId: string };
+    assertCompanyAccess(req, companyId);
+    assertCompanyRole(req, companyId, "admin");
+    const body = req.body as z.infer<typeof listingUpdateSchema>;
+
+    const [row] = await db.update(lmsMarketplaceListings)
+      .set({ ...body, updatedAt: new Date() })
+      .where(and(eq(lmsMarketplaceListings.id, listingId), eq(lmsMarketplaceListings.companyId, companyId)))
+      .returning();
+
+    if (!row) {
+      res.status(404).json({ error: "Listing not found" });
+      return;
+    }
+    res.json(row);
+  });
+
+  // No hard DELETE — deactivating (isActive: 0) via PATCH above preserves the
+  // listing's booking history (lmsMarketplaceBookings.listingId references it).
 
   const bookingCreateSchema = z.object({
     listingId: z.string().uuid(),
