@@ -38,6 +38,8 @@ export interface LmsMarketplaceBooking {
   budgetSims: number;
   phase: string | null;
   status: "pending" | "active" | "completed" | "cancelled";
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
   createdAt: string;
 }
 
@@ -61,6 +63,10 @@ export const lmsApi = {
     description?: string;
     budgetSims: number;
     phase?: string;
+    // Optional scheduled engagement window — omit both for the default
+    // ASAP/unscheduled booking behavior.
+    scheduledStartAt?: string;
+    scheduledEndAt?: string;
   }) => api.post<LmsMarketplaceBooking>(`/companies/${companyId}/lms/marketplace/bookings`, data),
 
   getEarningsByPhase: (companyId: string, listingId: string) =>

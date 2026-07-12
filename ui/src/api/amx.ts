@@ -187,6 +187,34 @@ export interface RqCatalog {
   microServices: RqCatalogMicroService[];
 }
 
+/** One completed engagement from GET .../members/:memberId/portfolio —
+ * auto-derived from completed lmsMarketplaceBookings, not hand-authored. */
+export interface MemberPortfolioItem {
+  bookingId: string;
+  projectTitle: string;
+  description: string | null;
+  phase: string | null;
+  budgetSims: number;
+  completedAt: string | null;
+  role: "provider" | "client";
+}
+
+export interface MemberPortfolioData {
+  items: MemberPortfolioItem[];
+}
+
+/** One certified RQ Factory run from GET .../agents/:agentId/portfolio. */
+export interface AgentPortfolioItem {
+  submissionId: string;
+  tier: string;
+  creditCost: number;
+  completedAt: string;
+}
+
+export interface AgentPortfolioData {
+  items: AgentPortfolioItem[];
+}
+
 export const amxApi = {
   getExchange: (companyId: string) =>
     api.get<ExchangeData>(`/companies/${companyId}/amx/exchange`),
@@ -202,6 +230,12 @@ export const amxApi = {
 
   getMemberWallet: (companyId: string, memberId: string) =>
     api.get<PrincipalWalletData>(`/companies/${companyId}/amx/members/${encodeURIComponent(memberId)}/wallet`),
+
+  getMemberPortfolio: (companyId: string, memberId: string) =>
+    api.get<MemberPortfolioData>(`/companies/${companyId}/amx/members/${encodeURIComponent(memberId)}/portfolio`),
+
+  getAgentPortfolio: (companyId: string, agentId: string) =>
+    api.get<AgentPortfolioData>(`/companies/${companyId}/amx/agents/${encodeURIComponent(agentId)}/portfolio`),
 
   getChain: (companyId: string) =>
     api.get<ChainData>(`/companies/${companyId}/amx/chain`),

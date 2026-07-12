@@ -43,6 +43,7 @@ import { amxRoutes } from "./routes/amx.js";
 import { amxNodeRoutes } from "./routes/amx-nodes.js";
 import { directoryProfileRoutes } from "./routes/directory-profiles.js";
 import { lmsRoutes } from "./routes/lms.js";
+import { calendarRoutes } from "./routes/calendar.js";
 import { auditRoutes } from "./routes/audit.js";
 import { skillChangeRoutes } from "./routes/skill-changes.js";
 import { webhookRoutes } from "./routes/webhooks.js";
@@ -290,6 +291,7 @@ export async function createApp(
   api.use(directoryProfileRoutes(db));
   api.use(opprrcRoutes(db, opts.storageService));
   api.use(lmsRoutes(db));
+  api.use(calendarRoutes(db));
   api.use(stripeApiRoutes(db));
   api.use(stripePublicRoutes(db));
   api.use(directoryCatalogRoutes(db));

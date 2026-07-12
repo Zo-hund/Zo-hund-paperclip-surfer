@@ -34,7 +34,8 @@ import { BuyCreditsModal } from "./XpWallet";
 import { EngageModal, MOCK_AGENTS } from "./AgentMarketplace";
 import { MOCK_MARKET_ITEMS, MarketplaceItem } from "@/lib/marketplace_data";
 import { calculatePlatformFee, calculateSellerPayout, formatCurrency } from "@/lib/financials";
-import { amxApi } from "@/api/amx";
+import { amxApi, type MemberPortfolioItem } from "@/api/amx";
+import { useQuery } from "@tanstack/react-query";
 
 // ── Pass Types ──────────────────────────────────────────────────────────────
 type MembershipTier = "Collective" | "Elective" | "Community Partner" | "Expert";
@@ -229,6 +230,10 @@ export function MemberProfile() {
   // Drives the real xp/tokens fetch below — set once the credential lookup
   // resolves (the URL-param fast path has no companyId to work with).
   const [walletCompanyId, setWalletCompanyId] = useState<string | null>(null);
+  // Drives the portfolio fetch below — the signed-in user's own member id,
+  // resolved from the credential lookup (no memberId in the URL-param fast
+  // path, same limitation as walletCompanyId above).
+  const [memberUserId, setMemberUserId] = useState<string | null>(null);
 
   // Fast path: credential from URL params (passed from invite accept).
   const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
@@ -273,10 +278,20 @@ export function MemberProfile() {
           qrPayload: `${window.location.origin}/verify/pass/${data.credentialId}`,
         }));
         if (data.companyId) setWalletCompanyId(data.companyId);
+        if (data.userId) setMemberUserId(data.userId);
       })
       .catch(() => { /* not signed in / no membership — keep current */ });
     return () => { cancelled = true; };
   }, []);
+
+  // Portfolio — auto-derived from this member's completed marketplace
+  // bookings (either side of the engagement).
+  const portfolioQuery = useQuery({
+    queryKey: ["member-profile", "portfolio", walletCompanyId, memberUserId],
+    queryFn: () => amxApi.getMemberPortfolio(walletCompanyId!, memberUserId!),
+    enabled: !!walletCompanyId && !!memberUserId,
+  });
+  const portfolioItems: MemberPortfolioItem[] = portfolioQuery.data?.items ?? [];
 
   // Real xp/tokens — this page only ever shows the signed-in user's own
   // profile, so the actor-scoped /amx/wallet route (no memberId param) is
@@ -496,6 +511,35 @@ export function MemberProfile() {
                     />
                 ))}
              </div>
+          </div>
+
+          {/* Portfolio — completed marketplace engagements, either side */}
+          <div className="mt-20 space-y-6">
+             <div>
+                <h2 className="text-2xl font-black tracking-tighter text-white">Portfolio</h2>
+                <p className="text-[12px] text-muted-foreground uppercase tracking-[0.2em] mt-1">Completed Marketplace Engagements</p>
+             </div>
+
+             {portfolioItems.length > 0 ? (
+                <div className="rounded-2xl border border-border/60 bg-card divide-y divide-border/40 overflow-hidden">
+                   {portfolioItems.map((item) => (
+                      <div key={item.bookingId} className="flex items-center justify-between px-5 py-4 text-sm gap-4">
+                         <div className="min-w-0">
+                            <p className="font-bold text-white truncate">{item.projectTitle}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                               {item.completedAt ? new Date(item.completedAt).toLocaleDateString() : "—"} ·{" "}
+                               <span className="uppercase tracking-widest font-black">{item.role}</span>
+                            </p>
+                         </div>
+                         <span className="font-black text-white shrink-0">{item.budgetSims.toLocaleString()} SIMS</span>
+                      </div>
+                   ))}
+                </div>
+             ) : (
+                <div className="p-6 rounded-2xl border border-border/60 bg-card text-sm text-muted-foreground">
+                   No completed engagements on record yet.
+                </div>
+             )}
           </div>
 
           <div className="mt-20 text-center">

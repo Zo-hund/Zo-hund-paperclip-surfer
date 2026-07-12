@@ -4,7 +4,8 @@
  * GET /me/credential — the current user's digital membership credential.
  *   Accessible to any signed-in board user; returns their own primary
  *   membership credential regardless of company role (no company access
- *   assertion). Used by the MemberProfile pass card.
+ *   assertion). Used by the MemberProfile pass card, and (via the `userId`
+ *   field) to fetch that member's portfolio from the amx portfolio route.
  */
 import { Router } from "express";
 import { eq } from "drizzle-orm";
@@ -34,6 +35,7 @@ export function meRoutes(db: Db) {
     const primary = memberships.find((m) => m.credentialId) ?? memberships[0] ?? null;
 
     res.json({
+      userId,
       userName: user?.name ?? null,
       userEmail: user?.email ?? null,
       credentialId: primary?.credentialId ?? null,
