@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, integer, timestamp, index, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { OpprcCategorySlug, OpprcAudience } from "@paperclipai/shared";
+import type { OpprcCategorySlug, OpprcAudience, OpprcDeliveryReviewStatus } from "@paperclipai/shared";
 import { companies } from "./companies.js";
 import { issues } from "./issues.js";
 import { assets } from "./assets.js";
@@ -23,6 +23,13 @@ const OPPRRC_CATEGORY_SLUGS_SQL: readonly OpprcCategorySlug[] = [
   "06_certificates",
 ];
 const OPPRRC_AUDIENCES_SQL: readonly OpprcAudience[] = ["BOARD-INTERNAL", "CLIENTS-EXTERNAL"];
+const OPPRRC_DELIVERY_REVIEW_STATUSES_SQL: readonly OpprcDeliveryReviewStatus[] = [
+  "not_submitted",
+  "pending_review",
+  "approved",
+  "revision_requested",
+  "rejected",
+];
 
 function sqlLiteralList(values: readonly string[]): ReturnType<typeof sql.raw> {
   return sql.raw(values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", "));
@@ -30,6 +37,7 @@ function sqlLiteralList(values: readonly string[]): ReturnType<typeof sql.raw> {
 
 const opprrcCategorySlugList = sqlLiteralList(OPPRRC_CATEGORY_SLUGS_SQL);
 const opprrcAudienceList = sqlLiteralList(OPPRRC_AUDIENCES_SQL);
+const opprrcReviewStatusList = sqlLiteralList(OPPRRC_DELIVERY_REVIEW_STATUSES_SQL);
 
 export const opprrcDeliveries = pgTable(
   "opprrc_deliveries",
@@ -56,6 +64,11 @@ export const opprrcDeliveries = pgTable(
     backupStatus: text("backup_status").notNull().default("not_started"),
     lastBackupAt: timestamp("last_backup_at", { withTimezone: true }),
 
+    // Board review lifecycle (see OPPRRC_DELIVERY_REVIEW_STATUSES in
+    // @paperclipai/shared) — driven by the generic `opprrc_delivery_review`
+    // approval type (packages/shared/src/constants.ts APPROVAL_TYPES).
+    reviewStatus: text("review_status").notNull().default("not_submitted"),
+
     // 100-run batch tracking
     runNumber: integer("run_number"),
     runBatchId: text("run_batch_id"),
@@ -71,6 +84,10 @@ export const opprrcDeliveries = pgTable(
     backupStatusIdx: index("opprrc_deliveries_backup_status_idx").on(table.backupStatus),
     categoryCheck: check("opprrc_deliveries_category_check", sql`${table.category} IN (${opprrcCategorySlugList})`),
     audienceCheck: check("opprrc_deliveries_audience_check", sql`${table.audience} IN (${opprrcAudienceList})`),
+    reviewStatusCheck: check(
+      "opprrc_deliveries_review_status_check",
+      sql`${table.reviewStatus} IN (${opprrcReviewStatusList})`,
+    ),
   }),
 );
 

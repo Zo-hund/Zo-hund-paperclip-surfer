@@ -235,6 +235,23 @@ export type OpprcCategorySlug = (typeof OPPRRC_CATEGORY_SLUGS)[number];
 export const OPPRRC_AUDIENCES = ["BOARD-INTERNAL", "CLIENTS-EXTERNAL"] as const;
 export type OpprcAudience = (typeof OPPRRC_AUDIENCES)[number];
 
+/**
+ * Board-review lifecycle for an OPPRRC delivery, driven by the generic
+ * `opprrc_delivery_review` approval type (see APPROVAL_TYPES below): a
+ * delivery starts `not_submitted`, moves to `pending_review` once a board
+ * review approval is requested, and resolves to `approved`, `rejected`, or
+ * back to `revision_requested` (which allows re-submission) once the board
+ * decides.
+ */
+export const OPPRRC_DELIVERY_REVIEW_STATUSES = [
+  "not_submitted",
+  "pending_review",
+  "approved",
+  "revision_requested",
+  "rejected",
+] as const;
+export type OpprcDeliveryReviewStatus = (typeof OPPRRC_DELIVERY_REVIEW_STATUSES)[number];
+
 export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
 
@@ -306,6 +323,7 @@ export const APPROVAL_TYPES = [
   "budget_override_required",
   "pit_stop_review",
   "promote_to_live",
+  "opprrc_delivery_review",
 ] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 

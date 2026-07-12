@@ -12,6 +12,7 @@ import {
   Workflow,
   ExternalLink,
   Rocket,
+  FolderCheck,
 } from "lucide-react";
 import { cn, formatCents } from "../lib/utils";
 import { Link } from "../lib/router";
@@ -23,6 +24,7 @@ export const typeLabel: Record<string, string> = {
   budget_override_required: "Budget Override",
   pit_stop_review: "PIT STOP Review",
   promote_to_live: "Promote to Market",
+  opprrc_delivery_review: "OPPRRC Delivery Review",
 };
 
 /** Build a contextual label for an approval, e.g. "Hire Agent: Designer" */
@@ -40,6 +42,7 @@ export const typeIcon: Record<string, typeof UserPlus> = {
   budget_override_required: ShieldAlert,
   pit_stop_review: FlaskConical,
   promote_to_live: Rocket,
+  opprrc_delivery_review: FolderCheck,
 };
 
 export const defaultTypeIcon = ShieldCheck;
@@ -399,6 +402,28 @@ export function PromoteToLivePayload({ payload }: { payload: Record<string, unkn
   );
 }
 
+export function OpprcDeliveryReviewPayload({ payload }: { payload: Record<string, unknown> }) {
+  const deliveryId = typeof payload.deliveryId === "string" ? payload.deliveryId : null;
+
+  return (
+    <div className="mt-3 space-y-1.5 text-sm">
+      {!!deliveryId && (
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs">Delivery</span>
+          {/* No company context is available here to build a link (same
+              tradeoff PromoteToLivePayload above makes for entityId) — show
+              the raw delivery id, resolvable via the OPPRRC dashboard. */}
+          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{deliveryId}</span>
+        </div>
+      )}
+      <p className="text-muted-foreground text-xs pt-1">
+        Approving marks this OPPRRC delivery as board-approved. Rejecting or requesting revision
+        updates its review status accordingly — the delivered file itself is unaffected either way.
+      </p>
+    </div>
+  );
+}
+
 export function ApprovalPayloadRenderer({
   type,
   payload,
@@ -412,5 +437,6 @@ export function ApprovalPayloadRenderer({
   if (type === "budget_override_required") return <BudgetOverridePayload payload={payload} />;
   if (type === "pit_stop_review") return <PitStopReviewPayload payload={payload} agentId={agentId} />;
   if (type === "promote_to_live") return <PromoteToLivePayload payload={payload} />;
+  if (type === "opprrc_delivery_review") return <OpprcDeliveryReviewPayload payload={payload} />;
   return <CeoStrategyPayload payload={payload} />;
 }

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { rqSubmissions, lmsMarketplaceBookings, lmsMarketplaceListings } from "@paperclipai/db";
+import { rqSubmissions, lmsMarketplaceBookings, lmsMarketplaceListings, opprrcDeliveries } from "@paperclipai/db";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
@@ -119,6 +119,35 @@ export function approvalRoutes(db: Db) {
       }
     }
 
+    // Eligibility guard: an "opprrc_delivery_review" approval can only be
+    // requested for a delivery that belongs to this company and isn't
+    // already mid-review or already decided — prevents duplicate pending
+    // reviews for the same delivery. Checked BEFORE the approval row is
+    // created, same convention as promote_to_live above. The matched
+    // delivery's id is captured so it can be flipped to "pending_review"
+    // once the approval is actually created (see below svc.create call).
+    let opprrcReviewDeliveryId: string | null = null;
+    if (approvalInput.type === "opprrc_delivery_review") {
+      const reviewPayload = (normalizedPayload ?? {}) as Record<string, unknown>;
+      const deliveryId = reviewPayload.deliveryId;
+      if (typeof deliveryId !== "string" || !deliveryId) {
+        throw badRequest("payload.deliveryId is required");
+      }
+
+      const delivery = await db
+        .select()
+        .from(opprrcDeliveries)
+        .where(and(eq(opprrcDeliveries.id, deliveryId), eq(opprrcDeliveries.companyId, companyId)))
+        .then((rows) => rows[0] ?? null);
+      if (!delivery) {
+        throw notFound("Delivery not found");
+      }
+      if (!(delivery.reviewStatus === "not_submitted" || delivery.reviewStatus === "revision_requested")) {
+        throw unprocessable("Delivery is already under review or already decided");
+      }
+      opprrcReviewDeliveryId = deliveryId;
+    }
+
     const actor = getActorInfo(req);
     const approval = await svc.create(companyId, {
       ...approvalInput,
@@ -138,6 +167,23 @@ export function approvalRoutes(db: Db) {
         agentId: actor.agentId,
         userId: actor.actorType === "user" ? actor.actorId : null,
       });
+    }
+
+    if (opprrcReviewDeliveryId) {
+      // Non-blocking: the approval has already been created successfully at
+      // this point, so a hiccup updating the delivery's reviewStatus must
+      // never surface as a failure of the approval-creation request itself.
+      try {
+        await db
+          .update(opprrcDeliveries)
+          .set({ reviewStatus: "pending_review", updatedAt: new Date() })
+          .where(eq(opprrcDeliveries.id, opprrcReviewDeliveryId));
+      } catch (err) {
+        logger.warn(
+          { err, approvalId: approval.id, deliveryId: opprrcReviewDeliveryId },
+          "failed to set delivery reviewStatus=pending_review after opprrc_delivery_review approval creation",
+        );
+      }
     }
 
     await logActivity(db, {
@@ -362,6 +408,67 @@ export function approvalRoutes(db: Db) {
             },
           });
         }
+      } else if (approval.type === "opprrc_delivery_review") {
+        // OPPRRC board review gate: an approved opprrc_delivery_review
+        // approval marks the underlying delivery's reviewStatus as
+        // "approved". Mirrors the promote_to_live branch above: non-blocking
+        // try/catch + activity log on both outcomes, best-effort chain event.
+        const reviewPayload = approval.payload as Record<string, unknown>;
+        const deliveryId = typeof reviewPayload.deliveryId === "string" ? reviewPayload.deliveryId : null;
+
+        try {
+          if (!deliveryId) {
+            throw new Error("invalid opprrc_delivery_review payload: deliveryId missing");
+          }
+          await db
+            .update(opprrcDeliveries)
+            .set({ reviewStatus: "approved", updatedAt: new Date() })
+            .where(eq(opprrcDeliveries.id, deliveryId));
+
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.opprrc_delivery_approved",
+            entityType: "approval",
+            entityId: approval.id,
+            details: { deliveryId },
+          });
+
+          // Chain-of-custody record — best-effort, must never undo or block
+          // a decision the caller already believes succeeded.
+          try {
+            await amxChainService(db).recordSecurityEvent(
+              approval.companyId,
+              "user",
+              req.actor.userId ?? "board",
+              "OPPRRC_DELIVERY_APPROVED",
+              { approvalId: approval.id, deliveryId },
+            );
+          } catch (chainErr) {
+            logger.warn(
+              { err: chainErr, approvalId: approval.id, deliveryId },
+              "failed to record OPPRRC_DELIVERY_APPROVED chain event",
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            { err, approvalId: approval.id, deliveryId },
+            "failed to update delivery reviewStatus after opprrc_delivery_review approval",
+          );
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.opprrc_delivery_review_apply_failed",
+            entityType: "approval",
+            entityId: approval.id,
+            details: {
+              deliveryId,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          });
+        }
       } else if (approval.requestedByAgentId) {
         try {
           const wakeRun = await heartbeat.wakeup(approval.requestedByAgentId, {
@@ -448,6 +555,47 @@ export function approvalRoutes(db: Db) {
         entityId: approval.id,
         details: { type: approval.type },
       });
+
+      if (approval.type === "opprrc_delivery_review") {
+        const reviewPayload = approval.payload as Record<string, unknown>;
+        const deliveryId = typeof reviewPayload.deliveryId === "string" ? reviewPayload.deliveryId : null;
+        try {
+          if (!deliveryId) {
+            throw new Error("invalid opprrc_delivery_review payload: deliveryId missing");
+          }
+          await db
+            .update(opprrcDeliveries)
+            .set({ reviewStatus: "rejected", updatedAt: new Date() })
+            .where(eq(opprrcDeliveries.id, deliveryId));
+
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.opprrc_delivery_rejected",
+            entityType: "approval",
+            entityId: approval.id,
+            details: { deliveryId },
+          });
+        } catch (err) {
+          logger.warn(
+            { err, approvalId: approval.id, deliveryId },
+            "failed to update delivery reviewStatus after opprrc_delivery_review rejection",
+          );
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.opprrc_delivery_review_apply_failed",
+            entityType: "approval",
+            entityId: approval.id,
+            details: {
+              deliveryId,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          });
+        }
+      }
     }
 
     res.json(redactApprovalPayload(approval));
@@ -474,6 +622,47 @@ export function approvalRoutes(db: Db) {
         entityId: approval.id,
         details: { type: approval.type },
       });
+
+      if (approval.type === "opprrc_delivery_review") {
+        const reviewPayload = approval.payload as Record<string, unknown>;
+        const deliveryId = typeof reviewPayload.deliveryId === "string" ? reviewPayload.deliveryId : null;
+        try {
+          if (!deliveryId) {
+            throw new Error("invalid opprrc_delivery_review payload: deliveryId missing");
+          }
+          await db
+            .update(opprrcDeliveries)
+            .set({ reviewStatus: "revision_requested", updatedAt: new Date() })
+            .where(eq(opprrcDeliveries.id, deliveryId));
+
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.opprrc_delivery_revision_requested",
+            entityType: "approval",
+            entityId: approval.id,
+            details: { deliveryId },
+          });
+        } catch (err) {
+          logger.warn(
+            { err, approvalId: approval.id, deliveryId },
+            "failed to update delivery reviewStatus after opprrc_delivery_review revision request",
+          );
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.opprrc_delivery_review_apply_failed",
+            entityType: "approval",
+            entityId: approval.id,
+            details: {
+              deliveryId,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          });
+        }
+      }
 
       res.json(redactApprovalPayload(approval));
     },

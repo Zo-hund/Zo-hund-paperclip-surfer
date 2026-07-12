@@ -115,6 +115,22 @@ export function opprrcRoutes(db: Db, storage: StorageService): Router {
     },
   );
 
+  // Get a single delivery — full row (category, audience, reviewStatus,
+  // vpsFileUrl, deliveredAt, etc.), used by the OPPRRC delivery detail page.
+  router.get("/companies/:companyId/opprrc/deliveries/:deliveryId", async (req, res, next) => {
+    try {
+      assertCompanyAccess(req, req.params.companyId);
+      const delivery = await svc.getDelivery(req.params.deliveryId);
+      if (!delivery || delivery.companyId !== req.params.companyId) {
+        res.status(404).json({ error: "Delivery not found" });
+        return;
+      }
+      res.json(delivery);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Get storage details for a single delivery
   router.get("/companies/:companyId/opprrc/deliveries/:deliveryId/storage", async (req, res, next) => {
     try {
