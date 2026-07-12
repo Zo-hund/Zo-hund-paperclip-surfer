@@ -92,6 +92,11 @@ describe("GET /companies/:companyId/amx/members/:memberId/portfolio", () => {
           budgetSims: 500,
           completedAt: "2026-07-02T00:00:00.000Z",
           role: "client",
+          // Already past simulation (phase: "production") — not eligible
+          // for the promote_to_live gate.
+          eligibleForPromotion: false,
+          entityType: "marketplace_booking",
+          entityId: "bk-client",
         },
         {
           bookingId: "bk-provider",
@@ -101,6 +106,9 @@ describe("GET /companies/:companyId/amx/members/:memberId/portfolio", () => {
           budgetSims: 800,
           completedAt: "2026-07-01T00:00:00.000Z",
           role: "provider",
+          eligibleForPromotion: false,
+          entityType: "marketplace_booking",
+          entityId: "bk-provider",
         },
       ],
     });
@@ -155,6 +163,44 @@ describe("GET /companies/:companyId/amx/agents/:agentId/portfolio", () => {
           tier: "digital_foundation",
           creditCost: 1000,
           completedAt: "2026-07-03T00:00:00.000Z",
+          // status "certified" with no isSimulation flag on the fixture —
+          // not eligible for the promote_to_live gate.
+          eligibleForPromotion: false,
+          entityType: "rq_submission",
+          entityId: "sub-1",
+        },
+      ],
+    });
+  });
+
+  it("also returns sim-completed-but-not-yet-certified submissions, flagged eligibleForPromotion", async () => {
+    const rows = [
+      {
+        id: "sub-3",
+        companyId: COMPANY,
+        tier: "hybrid_growth",
+        status: "review", // not yet certified — but sim run is done
+        creditCost: 1500,
+        agentSwarmIds: ["agent-a"],
+        isSimulation: true,
+        simulationStatus: "completed",
+        updatedAt: new Date("2026-07-05T00:00:00Z"),
+      },
+    ];
+    const res = await request(createApp(member, rows))
+      .get(`/api/companies/${COMPANY}/amx/agents/agent-a/portfolio`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      items: [
+        {
+          submissionId: "sub-3",
+          tier: "hybrid_growth",
+          creditCost: 1500,
+          completedAt: "2026-07-05T00:00:00.000Z",
+          eligibleForPromotion: true,
+          entityType: "rq_submission",
+          entityId: "sub-3",
         },
       ],
     });

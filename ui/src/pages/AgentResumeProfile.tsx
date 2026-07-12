@@ -22,6 +22,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentsApi } from "@/api/agents";
 import { amxApi, type Earner, type PrincipalWalletData, type MemberPortfolioItem, type AgentPortfolioItem } from "@/api/amx";
 import { lmsApi, type PhaseEarningsGroup } from "@/api/lms";
+import { approvalsApi } from "@/api/approvals";
+import { useToast } from "@/context/ToastContext";
+import { PromoteToMarketControl } from "@/components/PromoteToMarketControl";
 
 // Human-readable names for the MARKETPLACE_PHASE_MULTIPLIERS keys
 // (@paperclipai/shared) — that constant is the canonical source of which
@@ -176,6 +179,47 @@ export function AgentResumeProfile() {
   });
   const memberPortfolioItems: MemberPortfolioItem[] = memberPortfolioQuery.data?.items ?? [];
   const agentPortfolioItems: AgentPortfolioItem[] = agentPortfolioQuery.data?.items ?? [];
+
+  // Pending promote_to_live approvals for this company — used to decide
+  // whether a promotion-eligible portfolio item shows "Promote to Market"
+  // or "Pending Board Approval".
+  const { pushToast } = useToast();
+  const pendingApprovalsQuery = useQuery({
+    queryKey: ["agent-profile", "approvals", "pending", selectedCompanyId],
+    queryFn: () => approvalsApi.list(selectedCompanyId!, "pending"),
+    enabled: !!selectedCompanyId,
+  });
+  const pendingPromotionKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const approval of pendingApprovalsQuery.data ?? []) {
+      if (approval.type !== "promote_to_live") continue;
+      const payload = (approval.payload ?? {}) as Record<string, unknown>;
+      if (typeof payload.entityType === "string" && typeof payload.entityId === "string") {
+        keys.add(`${payload.entityType}:${payload.entityId}`);
+      }
+    }
+    return keys;
+  }, [pendingApprovalsQuery.data]);
+
+  const promoteMutation = useMutation({
+    mutationFn: (item: { entityType: "rq_submission" | "marketplace_booking"; entityId: string }) => {
+      if (!selectedCompanyId) throw new Error("No company selected");
+      return approvalsApi.create(selectedCompanyId, {
+        type: "promote_to_live",
+        payload: { entityType: item.entityType, entityId: item.entityId },
+      });
+    },
+    onSuccess: () => {
+      pushToast({ title: "Promotion requested", body: "Sent to the board for approval.", tone: "success" });
+      if (selectedCompanyId) {
+        queryClient.invalidateQueries({ queryKey: ["agent-profile", "approvals", "pending", selectedCompanyId] });
+      }
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Failed to request promotion";
+      pushToast({ title: "Promotion request failed", body: message, tone: "error" });
+    },
+  });
 
   const hireMutation = useMutation({
     mutationFn: async () => {
@@ -493,12 +537,21 @@ export function AgentResumeProfile() {
               agentPortfolioItems.length > 0 ? (
                 <div className="rounded-2xl border border-border/50 bg-card divide-y divide-border/40 overflow-hidden">
                   {agentPortfolioItems.map((item) => (
-                    <div key={item.submissionId} className="flex items-center justify-between px-5 py-3 text-sm">
+                    <div key={item.submissionId} className="flex items-center justify-between px-5 py-3 text-sm gap-3">
                       <div className="min-w-0">
                         <p className="font-bold text-foreground truncate">{item.tier.replace(/_/g, " ")} — RQ Factory</p>
                         <p className="text-[11px] text-muted-foreground">{new Date(item.completedAt).toLocaleDateString()}</p>
                       </div>
-                      <span className="font-black text-foreground shrink-0 ml-4">{item.creditCost.toLocaleString()} credits</span>
+                      <div className="flex items-center gap-3 shrink-0 ml-4">
+                        {item.eligibleForPromotion && (
+                          <PromoteToMarketControl
+                            isPending={pendingPromotionKeys.has(`${item.entityType}:${item.entityId}`)}
+                            isRequesting={promoteMutation.isPending && promoteMutation.variables?.entityId === item.entityId}
+                            onPromote={() => promoteMutation.mutate({ entityType: item.entityType, entityId: item.entityId })}
+                          />
+                        )}
+                        <span className="font-black text-foreground">{item.creditCost.toLocaleString()} credits</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -519,7 +572,16 @@ export function AgentResumeProfile() {
                           <span className="uppercase tracking-widest font-black">{item.role}</span>
                         </p>
                       </div>
-                      <span className="font-black text-foreground shrink-0">{item.budgetSims.toLocaleString()} SIMS</span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {item.eligibleForPromotion && (
+                          <PromoteToMarketControl
+                            isPending={pendingPromotionKeys.has(`${item.entityType}:${item.entityId}`)}
+                            isRequesting={promoteMutation.isPending && promoteMutation.variables?.entityId === item.entityId}
+                            onPromote={() => promoteMutation.mutate({ entityType: item.entityType, entityId: item.entityId })}
+                          />
+                        )}
+                        <span className="font-black text-foreground">{item.budgetSims.toLocaleString()} SIMS</span>
+                      </div>
                     </div>
                   ))}
                 </div>

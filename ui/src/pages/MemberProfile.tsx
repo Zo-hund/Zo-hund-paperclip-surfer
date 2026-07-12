@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Zap, ShieldCheck, Globe, Sparkles, Share2, Download,
   CheckCircle2, CreditCard, Award, Crown, User, ArrowLeft, RefreshCw,
@@ -35,7 +35,10 @@ import { EngageModal, MOCK_AGENTS } from "./AgentMarketplace";
 import { MOCK_MARKET_ITEMS, MarketplaceItem } from "@/lib/marketplace_data";
 import { calculatePlatformFee, calculateSellerPayout, formatCurrency } from "@/lib/financials";
 import { amxApi, type MemberPortfolioItem } from "@/api/amx";
-import { useQuery } from "@tanstack/react-query";
+import { approvalsApi } from "@/api/approvals";
+import { useToast } from "@/context/ToastContext";
+import { PromoteToMarketControl } from "@/components/PromoteToMarketControl";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 // ── Pass Types ──────────────────────────────────────────────────────────────
 type MembershipTier = "Collective" | "Elective" | "Community Partner" | "Expert";
@@ -293,6 +296,49 @@ export function MemberProfile() {
   });
   const portfolioItems: MemberPortfolioItem[] = portfolioQuery.data?.items ?? [];
 
+  // Pending promote_to_live approvals for this company — used to decide
+  // whether a promotion-eligible portfolio item shows "Promote to Market"
+  // or "Pending Board Approval" (see the matching logic in
+  // AgentResumeProfile.tsx, the other page that surfaces this control).
+  const { pushToast } = useToast();
+  const queryClient = useQueryClient();
+  const pendingApprovalsQuery = useQuery({
+    queryKey: ["member-profile", "approvals", "pending", walletCompanyId],
+    queryFn: () => approvalsApi.list(walletCompanyId!, "pending"),
+    enabled: !!walletCompanyId,
+  });
+  const pendingPromotionKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const approval of pendingApprovalsQuery.data ?? []) {
+      if (approval.type !== "promote_to_live") continue;
+      const payload = (approval.payload ?? {}) as Record<string, unknown>;
+      if (typeof payload.entityType === "string" && typeof payload.entityId === "string") {
+        keys.add(`${payload.entityType}:${payload.entityId}`);
+      }
+    }
+    return keys;
+  }, [pendingApprovalsQuery.data]);
+
+  const promoteMutation = useMutation({
+    mutationFn: (item: { entityType: "rq_submission" | "marketplace_booking"; entityId: string }) => {
+      if (!walletCompanyId) throw new Error("No company selected");
+      return approvalsApi.create(walletCompanyId, {
+        type: "promote_to_live",
+        payload: { entityType: item.entityType, entityId: item.entityId },
+      });
+    },
+    onSuccess: () => {
+      pushToast({ title: "Promotion requested", body: "Sent to the board for approval.", tone: "success" });
+      if (walletCompanyId) {
+        queryClient.invalidateQueries({ queryKey: ["member-profile", "approvals", "pending", walletCompanyId] });
+      }
+    },
+    onError: (err: unknown) => {
+      const message = err instanceof Error ? err.message : "Failed to request promotion";
+      pushToast({ title: "Promotion request failed", body: message, tone: "error" });
+    },
+  });
+
   // Real xp/tokens — this page only ever shows the signed-in user's own
   // profile, so the actor-scoped /amx/wallet route (no memberId param) is
   // the correct source; engagementScore doubles as "xp" here.
@@ -531,7 +577,16 @@ export function MemberProfile() {
                                <span className="uppercase tracking-widest font-black">{item.role}</span>
                             </p>
                          </div>
-                         <span className="font-black text-white shrink-0">{item.budgetSims.toLocaleString()} SIMS</span>
+                         <div className="flex items-center gap-3 shrink-0">
+                            {item.eligibleForPromotion && (
+                               <PromoteToMarketControl
+                                  isPending={pendingPromotionKeys.has(`${item.entityType}:${item.entityId}`)}
+                                  isRequesting={promoteMutation.isPending && promoteMutation.variables?.entityId === item.entityId}
+                                  onPromote={() => promoteMutation.mutate({ entityType: item.entityType, entityId: item.entityId })}
+                               />
+                            )}
+                            <span className="font-black text-white">{item.budgetSims.toLocaleString()} SIMS</span>
+                         </div>
                       </div>
                    ))}
                 </div>

@@ -197,18 +197,29 @@ export interface MemberPortfolioItem {
   budgetSims: number;
   completedAt: string | null;
   role: "provider" | "client";
+  /** True when this item is still in the "simulation" phase and can be
+   * requested for the "Promote to Market" approval gate. */
+  eligibleForPromotion: boolean;
+  entityType: "marketplace_booking";
+  entityId: string;
 }
 
 export interface MemberPortfolioData {
   items: MemberPortfolioItem[];
 }
 
-/** One certified RQ Factory run from GET .../agents/:agentId/portfolio. */
+/** One certified (or sim-completed, not-yet-promoted) RQ Factory run from
+ * GET .../agents/:agentId/portfolio. */
 export interface AgentPortfolioItem {
   submissionId: string;
   tier: string;
   creditCost: number;
   completedAt: string;
+  /** True when this run is still isSimulation && simulationStatus ===
+   * "completed" and can be requested for the "Promote to Market" gate. */
+  eligibleForPromotion: boolean;
+  entityType: "rq_submission";
+  entityId: string;
 }
 
 export interface AgentPortfolioData {

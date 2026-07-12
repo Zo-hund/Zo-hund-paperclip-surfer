@@ -919,6 +919,13 @@ export function amxRoutes(db: Db) {
         budgetSims: row.budgetSims,
         completedAt: row.completedAt ? row.completedAt.toISOString() : null,
         role: row.clientMemberId === memberId ? "client" : "provider",
+        // A "completed" booking still sitting in the "simulation" phase is
+        // eligible for the "Promote to Market" gate (see approvals.ts /
+        // promote_to_live) — every other phase is either already past
+        // simulation or not eligible to promote from here.
+        eligibleForPromotion: row.phase === "simulation",
+        entityType: "marketplace_booking" as const,
+        entityId: row.bookingId,
       })),
     });
   });
@@ -936,8 +943,18 @@ export function amxRoutes(db: Db) {
     const { companyId, agentId } = req.params as { companyId: string; agentId: string };
     assertCompanyAccess(req, companyId);
 
+    // Certified submissions (finished the full RQ workflow) plus sim-eligible
+    // submissions that haven't been promoted yet (isSimulation && completed
+    // sim run) — the latter is what powers the "Promote to Market" gate
+    // (see approvals.ts / promote_to_live) on the agent's portfolio card.
     const submissions = await db.select().from(rqSubmissions)
-      .where(and(eq(rqSubmissions.companyId, companyId), eq(rqSubmissions.status, "certified")))
+      .where(and(
+        eq(rqSubmissions.companyId, companyId),
+        or(
+          eq(rqSubmissions.status, "certified"),
+          and(eq(rqSubmissions.isSimulation, true), eq(rqSubmissions.simulationStatus, "completed")),
+        ),
+      ))
       .orderBy(desc(rqSubmissions.updatedAt));
 
     const items = submissions
@@ -947,6 +964,9 @@ export function amxRoutes(db: Db) {
         tier: s.tier,
         creditCost: s.creditCost,
         completedAt: s.updatedAt.toISOString(),
+        eligibleForPromotion: Boolean(s.isSimulation) && s.simulationStatus === "completed",
+        entityType: "rq_submission" as const,
+        entityId: s.id,
       }));
 
     res.json({ items });
