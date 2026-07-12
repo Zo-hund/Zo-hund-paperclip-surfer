@@ -27,6 +27,7 @@ import { validate } from "../middleware/validate.js";
 import { lmsService } from "../services/lmsService.js";
 import { lmsAnalyticsService } from "../services/lmsAnalyticsService.js";
 import { lmsNarrationService } from "../services/lmsNarrationService.js";
+import { amxChainService } from "../services/amxChainService.js";
 import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
 import { notFound } from "../errors.js";
@@ -119,6 +120,7 @@ export function lmsRoutes(db: Db) {
   const svc = lmsService(db);
   const analytics = lmsAnalyticsService(db);
   const narration = lmsNarrationService(db);
+  const chainSvc = amxChainService(db);
 
   // ──────────────────────────────────────────────
   // TECH AT NITE LEARNER DASHBOARD (real data)
@@ -749,7 +751,7 @@ export function lmsRoutes(db: Db) {
         .set({ tokenBalance: clientLedger.tokenBalance - body.budgetSims, updatedAt: new Date() })
         .where(and(eq(amxLedger.companyId, companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, body.clientMemberId)));
 
-      await db.insert(amxTransactions).values({
+      const [chargeTx] = await db.insert(amxTransactions).values({
         fromCompanyId: companyId,
         toCompanyId: companyId,
         fromPrincipalType: "user",
@@ -761,7 +763,18 @@ export function lmsRoutes(db: Db) {
         transactionType: "marketplace_booking",
         status: "completed",
         metadata: { projectTitle: body.projectTitle },
-      });
+      }).returning({ id: amxTransactions.id });
+
+      // Chain-of-custody record — best-effort, must never block the booking.
+      try {
+        await chainSvc.recordSecurityEvent(companyId, "user", body.clientMemberId, "MARKETPLACE_CHARGE", {
+          transactionId: chargeTx!.id,
+          amount: body.budgetSims,
+          projectTitle: body.projectTitle,
+        });
+      } catch (err) {
+        console.warn("[lms] failed to record MARKETPLACE_CHARGE chain event", err);
+      }
     }
 
     const [row] = await db.insert(lmsMarketplaceBookings).values({ companyId, ...body }).returning();
@@ -816,7 +829,7 @@ export function lmsRoutes(db: Db) {
           });
         }
 
-        await db.insert(amxTransactions).values({
+        const [payoutTx] = await db.insert(amxTransactions).values({
           fromCompanyId: companyId,
           toCompanyId: companyId,
           fromPrincipalType: "system",
@@ -828,7 +841,18 @@ export function lmsRoutes(db: Db) {
           transactionType: "marketplace_booking",
           status: "completed",
           metadata: { bookingId, projectTitle: booking.projectTitle },
-        });
+        }).returning({ id: amxTransactions.id });
+
+        // Chain-of-custody record — best-effort, must never block the payout.
+        try {
+          await chainSvc.recordSecurityEvent(companyId, "user", earnerMemberId, "MARKETPLACE_PAYOUT", {
+            transactionId: payoutTx!.id,
+            amount: booking.budgetSims,
+            bookingId,
+          });
+        } catch (err) {
+          console.warn("[lms] failed to record MARKETPLACE_PAYOUT chain event", err);
+        }
       }
     }
 

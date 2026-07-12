@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { amxLedger, amxGlobalLedger, amxTransactions } from "@paperclipai/db";
+import { amxChainService } from "./amxChainService.js";
 
 /**
  * Credit wallet — the spend side of the credit economy.
@@ -126,6 +127,19 @@ export async function spendCredits(db: Db, input: SpendInput): Promise<string> {
     })
     .returning({ id: amxTransactions.id });
 
+  // Chain-of-custody record — best-effort: a chain write failure must never
+  // undo or block a spend the caller already believes succeeded.
+  try {
+    await amxChainService(db).recordSecurityEvent(input.companyId, "user", input.principalId, "CREDIT_SPEND", {
+      transactionId: tx!.id,
+      amount: input.amount,
+      toPrincipalId: input.toPrincipalId,
+      transactionType: input.transactionType,
+    });
+  } catch (err) {
+    console.warn("[creditWallet] failed to record CREDIT_SPEND chain event", err);
+  }
+
   return tx!.id;
 }
 
@@ -230,6 +244,18 @@ export async function refundCredits(db: Db, input: RefundInput): Promise<string>
     })
     .returning({ id: amxTransactions.id });
 
+  // Chain-of-custody record — best-effort, see spendCredits.
+  try {
+    await amxChainService(db).recordSecurityEvent(input.companyId, "user", input.principalId, "CREDIT_REFUND", {
+      transactionId: tx!.id,
+      amount: input.amount,
+      fromPrincipalId: input.fromPrincipalId,
+      transactionType: input.transactionType,
+    });
+  } catch (err) {
+    console.warn("[creditWallet] failed to record CREDIT_REFUND chain event", err);
+  }
+
   return tx!.id;
 }
 
@@ -304,6 +330,17 @@ export async function awardAgentTokens(db: Db, input: AwardAgentTokensInput): Pr
       metadata: input.metadata ?? {},
     })
     .returning({ id: amxTransactions.id });
+
+  // Chain-of-custody record — best-effort, see spendCredits.
+  try {
+    await amxChainService(db).recordSecurityEvent(input.companyId, "agent", input.agentId, "AGENT_EARNINGS", {
+      transactionId: tx!.id,
+      amount: input.amount,
+      transactionType: input.transactionType,
+    });
+  } catch (err) {
+    console.warn("[creditWallet] failed to record AGENT_EARNINGS chain event", err);
+  }
 
   return tx!.id;
 }

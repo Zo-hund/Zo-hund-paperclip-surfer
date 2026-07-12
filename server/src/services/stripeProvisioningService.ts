@@ -2,6 +2,7 @@ import type { Db } from "@paperclipai/db";
 import { stripeSubscriptions, lmsMemberProfiles, stripePrices, amxLedger, amxTransactions } from "@paperclipai/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { TIER_MONTHLY_ALLOWANCE } from "@paperclipai/shared";
+import { amxChainService } from "./amxChainService.js";
 
 // Maps each tier name to the memberTypes[] it grants (additive — each tier includes lower tiers)
 export const TIER_MEMBER_TYPES: Record<string, string[]> = {
@@ -203,7 +204,7 @@ export async function awardMonthlyAllowance(
   const allowance = TIER_MONTHLY_ALLOWANCE[input.tierName];
   if (!allowance || allowance <= 0) return { awarded: 0 };
 
-  await db.insert(amxTransactions).values({
+  const [tx] = await db.insert(amxTransactions).values({
     fromCompanyId: input.companyId,
     toCompanyId: input.companyId,
     fromPrincipalType: "system",
@@ -215,7 +216,7 @@ export async function awardMonthlyAllowance(
     transactionType: "monthly_allowance",
     status: "completed",
     metadata: { tierName: input.tierName, invoiceId: input.invoiceId },
-  });
+  }).returning({ id: amxTransactions.id });
 
   const [existingLedger] = await db.select().from(amxLedger)
     .where(and(eq(amxLedger.companyId, input.companyId), eq(amxLedger.principalType, "user"), eq(amxLedger.principalId, input.userId)));
@@ -235,6 +236,17 @@ export async function awardMonthlyAllowance(
       creditBalance: allowance,
       tokenBalance: 0,
     });
+  }
+
+  // Chain-of-custody record — best-effort, must never block the allowance grant.
+  try {
+    await amxChainService(db).recordSecurityEvent(input.companyId, "user", input.userId, "MONTHLY_ALLOWANCE", {
+      transactionId: tx!.id,
+      amount: allowance,
+      invoiceId: input.invoiceId,
+    });
+  } catch (err) {
+    console.warn("[stripeProvisioningService] failed to record MONTHLY_ALLOWANCE chain event", err);
   }
 
   return { awarded: allowance };

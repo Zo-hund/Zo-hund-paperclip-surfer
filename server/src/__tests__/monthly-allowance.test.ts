@@ -75,8 +75,9 @@ describe("awardMonthlyAllowance", () => {
 
     expect(result).toEqual({ awarded: 30_000 });
     expect(state.updates).toHaveLength(0);
-    // First insert is the transaction, second the new ledger row.
-    expect(state.inserts).toHaveLength(2);
+    // First insert is the transaction, second the new ledger row, third the
+    // amx_chain_events chain-of-custody record.
+    expect(state.inserts).toHaveLength(3);
     expect(state.inserts[1]).toMatchObject({
       companyId: COMPANY_ID,
       principalType: "user",
@@ -101,7 +102,8 @@ describe("awardMonthlyAllowance", () => {
 
     await awardMonthlyAllowance(db, { ...BASE, tierName: "builder" });
 
-    expect(state.inserts).toHaveLength(1);
+    // The transaction insert, plus the amx_chain_events chain-of-custody record.
+    expect(state.inserts).toHaveLength(2);
     expect(state.inserts[0]).toMatchObject({
       fromCompanyId: COMPANY_ID,
       toCompanyId: COMPANY_ID,

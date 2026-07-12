@@ -14,7 +14,7 @@ import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js
 import { logActivity } from "../services/index.js";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
-import { eq, desc, and, or, inArray } from "drizzle-orm";
+import { eq, desc, and, or, inArray, gte, lte, count } from "drizzle-orm";
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -341,6 +341,62 @@ export function amxRoutes(db: Db) {
     }));
 
     res.json({ logs });
+  });
+
+  /**
+   * GET /api/companies/:companyId/amx/chain/directory
+   * Richer, filterable browse/trace view over amx_chain_events — additive to
+   * /amx/chain above (that route's response shape is left untouched since
+   * other code may depend on it). Returns raw event rows (id/action/
+   * principalType/principalId/payload/createdAt); the UI layer is
+   * responsible for any display-only enrichment (e.g. agent name lookup).
+   */
+  const chainDirectoryQuerySchema = z.object({
+    action: z.string().min(1).optional(),
+    principalId: z.string().min(1).optional(),
+    since: z.coerce.date().optional(),
+    until: z.coerce.date().optional(),
+    // Clamped (not rejected) below — an oversized limit is a client asking
+    // for "everything", not an invalid request.
+    limit: z.coerce.number().int().positive().optional(),
+  });
+
+  router.get("/companies/:companyId/amx/chain/directory", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const parsed = chainDirectoryQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid query parameters", details: parsed.error.flatten() });
+      return;
+    }
+    const { action, principalId, since, until } = parsed.data;
+    const limit = Math.min(parsed.data.limit ?? 50, 200);
+
+    const filters = [
+      eq(amxChainEvents.companyId, companyId),
+      ...(action ? [eq(amxChainEvents.action, action)] : []),
+      ...(principalId ? [eq(amxChainEvents.principalId, principalId)] : []),
+      ...(since ? [gte(amxChainEvents.createdAt, since)] : []),
+      ...(until ? [lte(amxChainEvents.createdAt, until)] : []),
+    ];
+
+    const [events, [totalRow]] = await Promise.all([
+      db.select().from(amxChainEvents).where(and(...filters)).orderBy(desc(amxChainEvents.createdAt)).limit(limit),
+      db.select({ total: count() }).from(amxChainEvents).where(and(...filters)),
+    ]);
+
+    res.json({
+      events: events.map((e) => ({
+        id: e.id,
+        action: e.action,
+        principalType: e.principalType,
+        principalId: e.principalId,
+        payload: e.payload,
+        createdAt: e.createdAt.toISOString(),
+      })),
+      total: totalRow?.total ?? 0,
+    });
   });
 
   /**
