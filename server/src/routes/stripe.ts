@@ -7,6 +7,7 @@ import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS, NONPROFIT_PACK_BONUS } from "@
 import { provisionMember, cancelMember, awardMonthlyAllowance, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
 import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
+import { amxChainService } from "../services/amxChainService.js";
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -658,7 +659,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
           // Nonprofit organizations earn +25% bonus credits on every pack.
           const { total, bonus } = await resolveCreditPurchaseTotal(db, { companyId, creditAmount });
 
-          await db.insert(amxTransactions).values({
+          const [purchaseTx] = await db.insert(amxTransactions).values({
             fromCompanyId: companyId,
             toCompanyId: companyId,
             fromPrincipalType: "system",
@@ -675,7 +676,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
               scope: "global",
               ...(bonus > 0 ? { nonprofitBonus: bonus } : {}),
             },
-          });
+          }).returning({ id: amxTransactions.id });
 
           const [existing] = await db.select().from(amxGlobalLedger)
             .where(and(eq(amxGlobalLedger.principalType, "user"), eq(amxGlobalLedger.principalId, principalId)));
@@ -691,6 +692,18 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
               creditBalance: total,
               tokenBalance: 0,
             });
+          }
+
+          // Chain-of-custody record — best-effort, must never block fulfillment.
+          try {
+            await amxChainService(db).recordSecurityEvent(companyId, "user", principalId, "CREDIT_PURCHASE", {
+              transactionId: purchaseTx!.id,
+              amount: total,
+              packageTier: session.metadata?.packageTier,
+              stripeSessionId: session.id,
+            });
+          } catch (err) {
+            console.warn("[stripe] failed to record CREDIT_PURCHASE chain event", err);
           }
         }
         break;

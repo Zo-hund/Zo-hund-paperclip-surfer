@@ -65,6 +65,28 @@ export interface ChainData {
   logs: ChainLog[];
 }
 
+export interface ChainDirectoryEvent {
+  id: string;
+  action: string;
+  principalType: string;
+  principalId: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ChainDirectoryData {
+  events: ChainDirectoryEvent[];
+  total: number;
+}
+
+export interface ChainDirectoryFilters {
+  action?: string;
+  principalId?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+}
+
 export interface AmxCertificate {
   id: string;
   companyId: string;
@@ -150,6 +172,17 @@ export const amxApi = {
 
   getChain: (companyId: string) =>
     api.get<ChainData>(`/companies/${companyId}/amx/chain`),
+
+  getChainDirectory: (companyId: string, filters: ChainDirectoryFilters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.action) params.set("action", filters.action);
+    if (filters.principalId) params.set("principalId", filters.principalId);
+    if (filters.since) params.set("since", filters.since);
+    if (filters.until) params.set("until", filters.until);
+    if (filters.limit) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return api.get<ChainDirectoryData>(`/companies/${companyId}/amx/chain/directory${qs ? `?${qs}` : ""}`);
+  },
 
   getCertificates: (companyId: string) =>
     api.get<AmxCertificate[]>(`/companies/${companyId}/amx/certificates`),

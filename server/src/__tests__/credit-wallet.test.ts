@@ -88,7 +88,9 @@ describe("spendCredits", () => {
     expect(state.updates).toHaveLength(2);
     expect(state.updates[0]).toMatchObject({ table: "amx_ledger", values: { creditBalance: 0 } });
     expect(state.updates[1]).toMatchObject({ table: "amx_global_ledger", values: { creditBalance: 60_000 } });
-    expect(state.inserts).toHaveLength(1);
+    // Exactly ONE amx_transactions row for the split spend — a second insert
+    // (amx_chain_events, the chain-of-custody record) is expected alongside it.
+    expect(state.inserts.filter((i) => i.table === "amx_transactions")).toHaveLength(1);
     expect(state.inserts[0]!.values).toMatchObject({
       amount: 100_000,
       metadata: { companySpent: 60_000, globalSpent: 40_000 },

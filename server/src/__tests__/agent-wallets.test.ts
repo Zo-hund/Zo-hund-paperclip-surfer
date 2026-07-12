@@ -92,8 +92,9 @@ describe("awardAgentTokens", () => {
     expect(txId).toBe("tx-1");
     expect(state.updates).toHaveLength(1);
     expect(state.updates[0]).toMatchObject({ table: "amx_ledger", values: { tokenBalance: 40_100 } });
-    // Only the transaction was inserted — the row already existed.
-    expect(state.inserts).toHaveLength(1);
+    // Only the transaction was inserted (the ledger row already existed) —
+    // plus the amx_chain_events chain-of-custody record.
+    expect(state.inserts.filter((i) => i.table === "amx_transactions")).toHaveLength(1);
     expect(state.inserts[0]!.table).toBe("amx_transactions");
     expect(state.inserts[0]!.values).toMatchObject({
       fromCompanyId: COMPANY,
