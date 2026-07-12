@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Workflow,
   ExternalLink,
+  Rocket,
 } from "lucide-react";
 import { cn, formatCents } from "../lib/utils";
 import { Link } from "../lib/router";
@@ -21,6 +22,7 @@ export const typeLabel: Record<string, string> = {
   approve_ceo_strategy: "CEO Strategy",
   budget_override_required: "Budget Override",
   pit_stop_review: "PIT STOP Review",
+  promote_to_live: "Promote to Market",
 };
 
 /** Build a contextual label for an approval, e.g. "Hire Agent: Designer" */
@@ -37,6 +39,7 @@ export const typeIcon: Record<string, typeof UserPlus> = {
   approve_ceo_strategy: Lightbulb,
   budget_override_required: ShieldAlert,
   pit_stop_review: FlaskConical,
+  promote_to_live: Rocket,
 };
 
 export const defaultTypeIcon = ShieldCheck;
@@ -370,6 +373,32 @@ export function PitStopReviewPayload({
   );
 }
 
+const ENTITY_TYPE_LABEL: Record<string, string> = {
+  rq_submission: "RQ Factory Submission",
+  marketplace_booking: "Marketplace Booking",
+};
+
+export function PromoteToLivePayload({ payload }: { payload: Record<string, unknown> }) {
+  const entityType = typeof payload.entityType === "string" ? payload.entityType : null;
+  const entityId = typeof payload.entityId === "string" ? payload.entityId : null;
+
+  return (
+    <div className="mt-3 space-y-1.5 text-sm">
+      <PayloadField label="Entity" value={entityType ? ENTITY_TYPE_LABEL[entityType] ?? entityType : "—"} />
+      {!!entityId && (
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs">ID</span>
+          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{entityId}</span>
+        </div>
+      )}
+      <p className="text-muted-foreground text-xs pt-1">
+        Approving flips this entity from simulation to live — it will start counting toward production
+        metrics and be no longer editable as a sim run.
+      </p>
+    </div>
+  );
+}
+
 export function ApprovalPayloadRenderer({
   type,
   payload,
@@ -382,5 +411,6 @@ export function ApprovalPayloadRenderer({
   if (type === "hire_agent") return <HireAgentPayload payload={payload} />;
   if (type === "budget_override_required") return <BudgetOverridePayload payload={payload} />;
   if (type === "pit_stop_review") return <PitStopReviewPayload payload={payload} agentId={agentId} />;
+  if (type === "promote_to_live") return <PromoteToLivePayload payload={payload} />;
   return <CeoStrategyPayload payload={payload} />;
 }

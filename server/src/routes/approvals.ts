@@ -1,5 +1,7 @@
 import { Router } from "express";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
+import { rqSubmissions, lmsMarketplaceBookings } from "@paperclipai/db";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
@@ -19,6 +21,8 @@ import {
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
+import { badRequest, notFound, unprocessable } from "../errors.js";
+import { amxChainService } from "../services/amxChainService.js";
 
 function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(approval: T): T {
   return {
@@ -71,6 +75,49 @@ export function approvalRoutes(db: Db) {
             { strictMode: strictSecretsMode },
           )
         : approvalInput.payload;
+
+    // Eligibility guard: a "promote to market" approval can only be requested
+    // for an entity that has actually finished its simulation phase — this
+    // prevents someone from requesting promotion for something that was
+    // never sim-tested. Checked BEFORE the approval row is created so an
+    // ineligible request never enters the board's queue.
+    if (approvalInput.type === "promote_to_live") {
+      const promotePayload = (normalizedPayload ?? {}) as Record<string, unknown>;
+      const entityType = promotePayload.entityType;
+      const entityId = promotePayload.entityId;
+      if (entityType !== "rq_submission" && entityType !== "marketplace_booking") {
+        throw badRequest("payload.entityType must be 'rq_submission' or 'marketplace_booking'");
+      }
+      if (typeof entityId !== "string" || !entityId) {
+        throw badRequest("payload.entityId is required");
+      }
+
+      if (entityType === "rq_submission") {
+        const submission = await db
+          .select()
+          .from(rqSubmissions)
+          .where(and(eq(rqSubmissions.id, entityId), eq(rqSubmissions.companyId, companyId)))
+          .then((rows) => rows[0] ?? null);
+        if (!submission) {
+          throw notFound("RQ submission not found");
+        }
+        if (!(submission.isSimulation && submission.simulationStatus === "completed")) {
+          throw unprocessable("RQ submission is not in a completed simulation state");
+        }
+      } else {
+        const booking = await db
+          .select()
+          .from(lmsMarketplaceBookings)
+          .where(and(eq(lmsMarketplaceBookings.id, entityId), eq(lmsMarketplaceBookings.companyId, companyId)))
+          .then((rows) => rows[0] ?? null);
+        if (!booking) {
+          throw notFound("Marketplace booking not found");
+        }
+        if (!(booking.phase === "simulation" && booking.status === "completed")) {
+          throw unprocessable("Marketplace booking is not in a completed simulation state");
+        }
+      }
+    }
 
     const actor = getActorInfo(req);
     const approval = await svc.create(companyId, {
@@ -220,6 +267,80 @@ export function approvalRoutes(db: Db) {
               },
             });
           }
+        }
+      } else if (approval.type === "promote_to_live") {
+        // MARKET PROMOTION gate: flipping a sim-mode RQ submission or
+        // marketplace booking to live only happens here, via an approved
+        // promote_to_live approval. Mirrors the pit_stop_review branch above:
+        // non-blocking try/catch + activity log on both outcomes.
+        const promotePayload = approval.payload as Record<string, unknown>;
+        const entityType = typeof promotePayload.entityType === "string" ? promotePayload.entityType : null;
+        const entityId = typeof promotePayload.entityId === "string" ? promotePayload.entityId : null;
+
+        try {
+          if (entityType === "rq_submission" && entityId) {
+            await db
+              .update(rqSubmissions)
+              .set({
+                isSimulation: false,
+                lifecycleStage: "live",
+                simulationStatus: "certified",
+                updatedAt: new Date(),
+              })
+              .where(eq(rqSubmissions.id, entityId));
+          } else if (entityType === "marketplace_booking" && entityId) {
+            await db
+              .update(lmsMarketplaceBookings)
+              .set({ phase: "live" })
+              .where(eq(lmsMarketplaceBookings.id, entityId));
+          } else {
+            throw new Error(`invalid promote_to_live payload: entityType=${entityType} entityId=${entityId}`);
+          }
+
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.promoted_to_live",
+            entityType: "approval",
+            entityId: approval.id,
+            details: { entityType, entityId },
+          });
+
+          // Chain-of-custody record — best-effort, must never undo or block
+          // a promotion the caller already believes succeeded.
+          try {
+            await amxChainService(db).recordSecurityEvent(
+              approval.companyId,
+              "user",
+              req.actor.userId ?? "board",
+              "MARKET_PROMOTION",
+              { approvalId: approval.id, entityType, entityId },
+            );
+          } catch (chainErr) {
+            logger.warn(
+              { err: chainErr, approvalId: approval.id, entityType, entityId },
+              "failed to record MARKET_PROMOTION chain event",
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            { err, approvalId: approval.id, entityType, entityId },
+            "failed to promote entity to live after promote_to_live approval",
+          );
+          await logActivity(db, {
+            companyId: approval.companyId,
+            actorType: "user",
+            actorId: req.actor.userId ?? "board",
+            action: "approval.promote_to_live_failed",
+            entityType: "approval",
+            entityId: approval.id,
+            details: {
+              entityType,
+              entityId,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          });
         }
       } else if (approval.requestedByAgentId) {
         try {
