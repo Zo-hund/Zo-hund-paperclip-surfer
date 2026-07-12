@@ -38,6 +38,7 @@ import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
 import { InstanceGeneralSettings } from "./pages/InstanceGeneralSettings";
 import { InstanceChainDirectory } from "./pages/InstanceChainDirectory";
+import { InstanceProfileDirectory } from "./pages/InstanceProfileDirectory";
 import { InstanceSettings } from "./pages/InstanceSettings";
 import { InstanceExperimentalSettings } from "./pages/InstanceExperimentalSettings";
 import { PluginManager } from "./pages/PluginManager";
@@ -76,6 +77,7 @@ import { ServiceRequest } from "./pages/ServiceRequest";
 import { ClientPortal } from "./pages/ClientPortal";
 import { VerifyPassPage } from "./pages/VerifyPass";
 import { MemberProfile } from "./pages/MemberProfile";
+import { PublicProfileDirectory } from "./pages/PublicProfileDirectory";
 import { LmsWorkshops } from "./pages/LmsWorkshops";
 import { LmsWorkshopDetail } from "./pages/LmsWorkshopDetail";
 import { LmsSessions } from "./pages/LmsSessions";
@@ -409,6 +411,7 @@ export function App() {
         <Route path="portal/:companySlug" element={<ClientPortal />} />
         <Route path="hub/:companyId/pricing" element={<PublicPricing />} />
         <Route path="profile" element={<MemberProfile />} />
+        <Route path="directory/profiles" element={<PublicProfileDirectory />} />
 
         {/* ── Auth-required routes ── */}
         <Route path="auth" element={<AuthPage />} />
@@ -428,6 +431,7 @@ export function App() {
             <Route index element={<Navigate to="general" replace />} />
             <Route path="general" element={<InstanceGeneralSettings />} />
             <Route path="chain" element={<InstanceChainDirectory />} />
+            <Route path="profiles" element={<InstanceProfileDirectory />} />
             <Route path="heartbeats" element={<InstanceSettings />} />
             <Route path="experimental" element={<InstanceExperimentalSettings />} />
             <Route path="plugins" element={<PluginManager />} />

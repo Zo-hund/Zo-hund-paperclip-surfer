@@ -31,6 +31,8 @@ function makeAgent(id: string, name: string): Agent {
     cronExpression: null,
     scheduleTimezone: null,
     nextScheduledAt: null,
+    isPublicProfile: false,
+    skills: [],
     createdAt: new Date(),
     updatedAt: new Date(),
     urlKey: name.toLowerCase(),

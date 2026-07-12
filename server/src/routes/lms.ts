@@ -83,6 +83,9 @@ const memberProfileSchema = z.object({
   careerInterest: z.string().optional(),
   linkedParentUserId: z.string().optional(),
   linkedLearnerIds: z.array(z.string()).optional(),
+  // Directory visibility for this member's public profile page — see
+  // lmsMemberProfiles.isPublicProfile in packages/db/src/schema/lms_operations.ts.
+  isPublicProfile: z.boolean().optional(),
 });
 
 const interventionSchema = z.object({

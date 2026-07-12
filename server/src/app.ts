@@ -40,6 +40,7 @@ import { agentKpiRoutes } from "./routes/agent-kpis.js";
 import { agentExperimentRoutes } from "./routes/agent-experiments.js";
 import { amxRoutes } from "./routes/amx.js";
 import { amxNodeRoutes } from "./routes/amx-nodes.js";
+import { directoryProfileRoutes } from "./routes/directory-profiles.js";
 import { lmsRoutes } from "./routes/lms.js";
 import { auditRoutes } from "./routes/audit.js";
 import { skillChangeRoutes } from "./routes/skill-changes.js";
@@ -283,6 +284,7 @@ export async function createApp(
   api.use(agentKpiRoutes(db));
   api.use(agentExperimentRoutes(db));
   api.use(amxRoutes(db));
+  api.use(directoryProfileRoutes(db));
   api.use(opprrcRoutes(db, opts.storageService));
   api.use(lmsRoutes(db));
   api.use(stripeApiRoutes(db));

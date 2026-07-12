@@ -84,6 +84,11 @@ export interface Agent {
   scheduleTimezone: string | null;
   nextScheduledAt: Date | null;
   metadata: Record<string, unknown> | null;
+  // Directory visibility for this agent's resume/profile page — off by
+  // default. See packages/db/src/schema/agents.ts.
+  isPublicProfile: boolean;
+  // Free-text skill tags, used as a filter facet on the profile directory.
+  skills: string[];
   createdAt: Date;
   updatedAt: Date;
 }

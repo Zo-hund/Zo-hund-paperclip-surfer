@@ -60,6 +60,12 @@ export const createAgentSchema = z.object({
   scheduleEnabled: z.boolean().optional().default(false),
   cronExpression: z.string().optional().nullable(),
   scheduleTimezone: z.string().optional().nullable(),
+  // Directory visibility toggle + filter facet — see agents.isPublicProfile
+  // / agents.skills in packages/db/src/schema/agents.ts. Optional here so
+  // existing create/update callers that don't send them are unaffected;
+  // updateAgentSchema (below) inherits both via .partial().
+  isPublicProfile: z.boolean().optional(),
+  skills: z.array(z.string()).optional(),
 });
 
 export type CreateAgent = z.infer<typeof createAgentSchema>;
