@@ -34,6 +34,7 @@ import { BuyCreditsModal } from "./XpWallet";
 import { EngageModal, MOCK_AGENTS } from "./AgentMarketplace";
 import { MOCK_MARKET_ITEMS, MarketplaceItem } from "@/lib/marketplace_data";
 import { calculatePlatformFee, calculateSellerPayout, formatCurrency } from "@/lib/financials";
+import { amxApi } from "@/api/amx";
 
 // ── Pass Types ──────────────────────────────────────────────────────────────
 type MembershipTier = "Collective" | "Elective" | "Community Partner" | "Expert";
@@ -225,6 +226,9 @@ function MarketItemCard({ item, onBuy }: { item: MarketplaceItem; onBuy: (item: 
 export function MemberProfile() {
   const [member, setMember] = useState(DEFAULT_MEMBER);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
+  // Drives the real xp/tokens fetch below — set once the credential lookup
+  // resolves (the URL-param fast path has no companyId to work with).
+  const [walletCompanyId, setWalletCompanyId] = useState<string | null>(null);
 
   // Fast path: credential from URL params (passed from invite accept).
   const searchParams = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
@@ -240,8 +244,9 @@ export function MemberProfile() {
       tier: TIER_BY_ROLE[qTier ?? "member"] ?? "Community Partner",
       issuedAt: qIssued ? new Date(qIssued).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase() : prev.issuedAt,
       status: "Verified",
-      xp: 0,
-      tokens: 0,
+      // No companyId in this URL-param fast path, so xp/tokens can't be
+      // fetched here — leave whatever's already in state (the real-wallet
+      // effect below fills them in once the credential lookup resolves).
       qrPayload: `${window.location.origin}/verify/pass/${qCredId}`,
     }));
   }, [qCredId, qTier, qIssued]);
@@ -263,14 +268,30 @@ export function MemberProfile() {
             ? new Date(issuedRaw).toLocaleDateString("en-US", { month: "short", year: "numeric" }).toUpperCase()
             : prev.issuedAt,
           status: data.status === "active" ? "Verified" : "Pending",
-          xp: 0,
-          tokens: 0,
+          // xp/tokens come from the real wallet fetch below, keyed off this
+          // credential's companyId — not hardcoded here.
           qrPayload: `${window.location.origin}/verify/pass/${data.credentialId}`,
         }));
+        if (data.companyId) setWalletCompanyId(data.companyId);
       })
       .catch(() => { /* not signed in / no membership — keep current */ });
     return () => { cancelled = true; };
   }, []);
+
+  // Real xp/tokens — this page only ever shows the signed-in user's own
+  // profile, so the actor-scoped /amx/wallet route (no memberId param) is
+  // the correct source; engagementScore doubles as "xp" here.
+  React.useEffect(() => {
+    if (!walletCompanyId) return;
+    let cancelled = false;
+    amxApi.getWallet(walletCompanyId)
+      .then((data) => {
+        if (cancelled) return;
+        setMember(prev => ({ ...prev, xp: data.engagementScore, tokens: data.tokenBalance }));
+      })
+      .catch(() => { /* wallet not provisioned yet — keep current */ });
+    return () => { cancelled = true; };
+  }, [walletCompanyId]);
   const [showEngageModal, setShowEngageModal] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
 

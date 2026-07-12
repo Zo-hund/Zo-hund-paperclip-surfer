@@ -1,0 +1,1 @@
+ALTER TABLE "lms_marketplace_bookings" ADD COLUMN "phase" text;

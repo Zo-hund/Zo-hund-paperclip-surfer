@@ -2,6 +2,8 @@ import { api } from "./client";
 
 export interface Earner {
   id: string;
+  /** Underlying agent/user id behind this listing — use to fetch its wallet. */
+  memberId: string;
   name: string;
   title: string;
   bio: string;
@@ -49,6 +51,14 @@ export interface WalletData {
   tokenBalance: number;
   engagementScore: number;
   badges: WalletBadge[];
+  transactions: WalletTransaction[];
+}
+
+/** Shape returned by the agent- and member-wallet routes — no engagement
+ * score or badges, those are actor-scoped concepts from /amx/wallet. */
+export interface PrincipalWalletData {
+  creditBalance: number;
+  tokenBalance: number;
   transactions: WalletTransaction[];
 }
 
@@ -169,6 +179,12 @@ export const amxApi = {
 
   getWallet: (companyId: string) =>
     api.get<WalletData>(`/companies/${companyId}/amx/wallet`),
+
+  getAgentWallet: (companyId: string, agentId: string) =>
+    api.get<PrincipalWalletData>(`/companies/${companyId}/amx/agents/${encodeURIComponent(agentId)}/wallet`),
+
+  getMemberWallet: (companyId: string, memberId: string) =>
+    api.get<PrincipalWalletData>(`/companies/${companyId}/amx/members/${encodeURIComponent(memberId)}/wallet`),
 
   getChain: (companyId: string) =>
     api.get<ChainData>(`/companies/${companyId}/amx/chain`),
