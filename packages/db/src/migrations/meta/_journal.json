@@ -568,6 +568,13 @@
       "when": 1783859290402,
       "tag": "0080_superb_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1783895454771,
+      "tag": "0081_jazzy_spot",
+      "breakpoints": true
     }
   ]
 }

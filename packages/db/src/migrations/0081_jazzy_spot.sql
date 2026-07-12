@@ -1,0 +1,2 @@
+ALTER TABLE "opprrc_deliveries" ADD COLUMN "review_status" text DEFAULT 'not_submitted' NOT NULL;--> statement-breakpoint
+ALTER TABLE "opprrc_deliveries" ADD CONSTRAINT "opprrc_deliveries_review_status_check" CHECK ("opprrc_deliveries"."review_status" IN ('not_submitted', 'pending_review', 'approved', 'revision_requested', 'rejected'));

@@ -245,7 +245,7 @@ function boardRoutes() {
       <Route path="lms/enrollments" element={<LmsEnrollments />} />
       <Route path="lms/progress/:userId" element={<LmsProgress />} />
       <Route path="opprrc" element={<OpprcDashboard />} />
-      <Route path="opprrc/:recordId" element={<OpprcRecord />} />
+      <Route path="opprrc/deliveries/:deliveryId" element={<OpprcRecord />} />
       <Route path="reports" element={<Reports />} />
       <Route path="certificates" element={<Certificates />} />
       <Route path="billing" element={<Billing />} />
