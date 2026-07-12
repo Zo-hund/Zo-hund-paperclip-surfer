@@ -29,6 +29,8 @@ import { Inbox } from "./pages/Inbox";
 import { CompanySettings } from "./pages/CompanySettings";
 import { CompanySkills } from "./pages/CompanySkills";
 import { McpServers } from "./pages/McpServers";
+import { ToolbeltsHarnesses } from "./pages/ToolbeltsHarnesses";
+import { SkillsDirectory } from "./pages/SkillsDirectory";
 import { Analytics } from "./pages/Analytics";
 import { RunHistory } from "./pages/RunHistory";
 import { Memories } from "./pages/Memories";
@@ -176,6 +178,7 @@ function boardRoutes() {
       <Route path="company/import" element={<CompanyImport />} />
       <Route path="skills/*" element={<CompanySkills />} />
       <Route path="mcp-servers" element={<McpServers />} />
+      <Route path="toolbelts" element={<ToolbeltsHarnesses />} />
       <Route path="analytics" element={<Analytics />} />
       <Route path="run-history" element={<RunHistory />} />
       <Route path="memories" element={<Memories />} />
@@ -414,6 +417,7 @@ export function App() {
         <Route path="hub/:companyId/pricing" element={<PublicPricing />} />
         <Route path="directory/companies" element={<PublicCompanyDirectory />} />
         <Route path="directory/catalog" element={<PublicCatalogDirectory />} />
+        <Route path="directory/skills" element={<SkillsDirectory />} />
         <Route path="profile" element={<MemberProfile />} />
         <Route path="directory/profiles" element={<PublicProfileDirectory />} />
 
@@ -438,6 +442,7 @@ export function App() {
             <Route path="profiles" element={<InstanceProfileDirectory />} />
             <Route path="heartbeats" element={<InstanceSettings />} />
             <Route path="experimental" element={<InstanceExperimentalSettings />} />
+            <Route path="toolbelts" element={<ToolbeltsHarnesses mode="instance" />} />
             <Route path="plugins" element={<PluginManager />} />
             <Route path="plugins/:pluginId" element={<PluginSettings />} />
           </Route>
@@ -471,6 +476,7 @@ export function App() {
           <Route path="dispatch/console" element={<UnprefixedBoardRedirect />} />
           <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
           <Route path="mcp-servers" element={<UnprefixedBoardRedirect />} />
+          <Route path="toolbelts" element={<UnprefixedBoardRedirect />} />
           <Route path="analytics" element={<UnprefixedBoardRedirect />} />
           <Route path="run-history" element={<UnprefixedBoardRedirect />} />
           <Route path="memories" element={<UnprefixedBoardRedirect />} />

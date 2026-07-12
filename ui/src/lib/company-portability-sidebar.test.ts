@@ -27,6 +27,7 @@ function makeAgent(id: string, name: string): Agent {
     permissions: { canCreateAgents: false },
     lastHeartbeatAt: null,
     metadata: null,
+    harnessId: null,
     scheduleEnabled: false,
     cronExpression: null,
     scheduleTimezone: null,

@@ -89,6 +89,8 @@ export interface Agent {
   isPublicProfile: boolean;
   // Free-text skill tags, used as a filter facet on the profile directory.
   skills: string[];
+  // Optional link to a harness preset (packages/db/schema/toolbelts.ts).
+  harnessId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

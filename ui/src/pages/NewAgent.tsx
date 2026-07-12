@@ -5,6 +5,7 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { agentsApi } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
+import { harnessesApi } from "../api/toolbelts";
 import { queryKeys } from "../lib/queryKeys";
 import { AGENT_ROLES } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Shield } from "lucide-react";
 import { cn, agentUrl } from "../lib/utils";
 import { roleLabels } from "../components/agent-config-primitives";
@@ -74,6 +82,7 @@ export function NewAgent() {
   const [reportsTo, setReportsTo] = useState<string | null>(null);
   const [configValues, setConfigValues] = useState<CreateConfigValues>(defaultCreateValues);
   const [selectedSkillKeys, setSelectedSkillKeys] = useState<string[]>([]);
+  const [harnessId, setHarnessId] = useState<string>("");
   const [roleOpen, setRoleOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -101,6 +110,29 @@ export function NewAgent() {
     queryFn: () => companySkillsApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId),
   });
+
+  const { data: harnesses } = useQuery({
+    queryKey: queryKeys.harnesses.list(selectedCompanyId ?? ""),
+    queryFn: () => harnessesApi.list(selectedCompanyId!),
+    enabled: Boolean(selectedCompanyId),
+  });
+
+  function handleHarnessChange(nextHarnessId: string) {
+    if (nextHarnessId === "__none__") {
+      setHarnessId("");
+      return;
+    }
+    setHarnessId(nextHarnessId);
+    const harness = (harnesses ?? []).find((h) => h.id === nextHarnessId);
+    if (!harness) return;
+    const adapterType = harness.adapterType;
+    setConfigValues((prev) => {
+      const next = SUPPORTED_ADVANCED_ADAPTER_TYPES.has(adapterType)
+        ? createValuesForAdapterType(adapterType)
+        : { ...prev, adapterType };
+      return { ...next, model: harness.model };
+    });
+  }
 
   const isFirstAgent = !agents || agents.length === 0;
   const effectiveRole = isFirstAgent ? "ceo" : role;
@@ -186,6 +218,7 @@ export function NewAgent() {
       ...(title.trim() ? { title: title.trim() } : {}),
       ...(reportsTo ? { reportsTo } : {}),
       ...(selectedSkillKeys.length > 0 ? { desiredSkills: selectedSkillKeys } : {}),
+      ...(harnessId ? { harnessId } : {}),
       adapterType: configValues.adapterType,
       adapterConfig: buildAdapterConfig(),
       runtimeConfig: {
@@ -281,6 +314,31 @@ export function NewAgent() {
             disabled={isFirstAgent}
           />
         </div>
+
+        {/* Harness (optional) — applies a preset adapter/model in one click */}
+        {(harnesses ?? []).length > 0 && (
+          <div className="px-4 py-3 border-t border-border">
+            <label className="text-xs font-medium text-muted-foreground">
+              Harness <span className="font-normal">(optional)</span>
+            </label>
+            <Select value={harnessId || "__none__"} onValueChange={handleHarnessChange}>
+              <SelectTrigger className="h-9 mt-1">
+                <SelectValue placeholder="None — configure adapter manually" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None — configure adapter manually</SelectItem>
+                {(harnesses ?? []).map((harness) => (
+                  <SelectItem key={harness.id} value={harness.id}>
+                    {harness.name} ({harness.adapterType} · {harness.model})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Sets the adapter and model below from a saved harness preset.
+            </p>
+          </div>
+        )}
 
         {/* Shared config form */}
         <AgentConfigForm

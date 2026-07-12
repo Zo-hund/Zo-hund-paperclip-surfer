@@ -36,6 +36,7 @@ import {
   FileText,
   CreditCard,
   Tag,
+  Wrench,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -143,6 +144,7 @@ export function Sidebar() {
           <SidebarNavItem to="/org" label="Org" icon={Network} />
           <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
           <SidebarNavItem to="/mcp-servers" label="MCPs" icon={Plug} />
+          <SidebarNavItem to="/toolbelts" label="Toolbelts & Harnesses" icon={Wrench} />
           <SidebarNavItem to="/analytics" label="Analytics" icon={BarChart3} />
           <SidebarNavItem to="/run-history" label="Run History" icon={GitBranch} liveCount={liveRunCount} />
           <SidebarNavItem to="/memories" label="Memories" icon={Brain} />
