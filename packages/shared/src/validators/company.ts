@@ -20,6 +20,10 @@ export const updateCompanySchema = createCompanySchema
     requireBoardApprovalForNewAgents: z.boolean().optional(),
     brandColor: brandColorSchema,
     logoAssetId: logoAssetIdSchema,
+    // Directory visibility — see companies.isPublic. Off by default; an
+    // explicit admin opt-in surfaces the company in the public directory.
+    isPublic: z.boolean().optional(),
+    tagline: z.string().max(200).nullable().optional(),
   });
 
 export type UpdateCompany = z.infer<typeof updateCompanySchema>;

@@ -19,6 +19,8 @@ function makeCompany(overrides: Partial<Company>): Company {
     deploymentTarget: "cloud",
     logoAssetId: null,
     logoUrl: null,
+    isPublic: false,
+    tagline: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

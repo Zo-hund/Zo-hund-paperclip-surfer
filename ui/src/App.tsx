@@ -62,6 +62,8 @@ import { CliAuthPage } from "./pages/CliAuth";
 import { InviteLandingPage } from "./pages/InviteLanding";
 import { GuestMeetingJoin } from "./pages/GuestMeetingJoin";
 import { PublicPricing } from "./pages/PublicPricing";
+import { PublicCompanyDirectory } from "./pages/PublicCompanyDirectory";
+import { PublicCatalogDirectory } from "./pages/PublicCatalogDirectory";
 import { NotFoundPage } from "./pages/NotFound";
 import { AgentMarketplace } from "./pages/AgentMarketplace";
 import { TechAtNiteBrand } from "./pages/TechAtNiteBrand";
@@ -410,6 +412,8 @@ export function App() {
         <Route path="join" element={<ServiceRequest />} />
         <Route path="portal/:companySlug" element={<ClientPortal />} />
         <Route path="hub/:companyId/pricing" element={<PublicPricing />} />
+        <Route path="directory/companies" element={<PublicCompanyDirectory />} />
+        <Route path="directory/catalog" element={<PublicCatalogDirectory />} />
         <Route path="profile" element={<MemberProfile />} />
         <Route path="directory/profiles" element={<PublicProfileDirectory />} />
 

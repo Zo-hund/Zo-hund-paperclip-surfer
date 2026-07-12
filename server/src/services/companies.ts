@@ -47,6 +47,8 @@ export function companyService(db: Db) {
     brandColor: companies.brandColor,
     deploymentTarget: companies.deploymentTarget,
     logoAssetId: companyLogos.assetId,
+    isPublic: companies.isPublic,
+    tagline: companies.tagline,
     createdAt: companies.createdAt,
     updatedAt: companies.updatedAt,
   };

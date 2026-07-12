@@ -16,6 +16,8 @@ export interface Company {
   deploymentTarget: string;
   logoAssetId: string | null;
   logoUrl: string | null;
+  isPublic: boolean;
+  tagline: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

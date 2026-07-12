@@ -43,6 +43,7 @@ export function CompanySettings() {
   const [brandColor, setBrandColor] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+  const [tagline, setTagline] = useState("");
 
   // Sync local state from selected company
   useEffect(() => {
@@ -51,6 +52,7 @@ export function CompanySettings() {
     setDescription(selectedCompany.description ?? "");
     setBrandColor(selectedCompany.brandColor ?? "");
     setLogoUrl(selectedCompany.logoUrl ?? "");
+    setTagline(selectedCompany.tagline ?? "");
   }, [selectedCompany]);
 
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -62,13 +64,15 @@ export function CompanySettings() {
     !!selectedCompany &&
     (companyName !== selectedCompany.name ||
       description !== (selectedCompany.description ?? "") ||
-      brandColor !== (selectedCompany.brandColor ?? ""));
+      brandColor !== (selectedCompany.brandColor ?? "") ||
+      tagline !== (selectedCompany.tagline ?? ""));
 
   const generalMutation = useMutation({
     mutationFn: (data: {
       name: string;
       description: string | null;
       brandColor: string | null;
+      tagline: string | null;
     }) => companiesApi.update(selectedCompanyId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
@@ -80,6 +84,14 @@ export function CompanySettings() {
       companiesApi.update(selectedCompanyId!, {
         requireBoardApprovalForNewAgents: requireApproval
       }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+    }
+  });
+
+  const directoryVisibilityMutation = useMutation({
+    mutationFn: (isPublic: boolean) =>
+      companiesApi.update(selectedCompanyId!, { isPublic }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     }
@@ -280,7 +292,8 @@ export function CompanySettings() {
     generalMutation.mutate({
       name: companyName.trim(),
       description: description.trim() || null,
-      brandColor: brandColor || null
+      brandColor: brandColor || null,
+      tagline: tagline.trim() || null
     });
   }
 
@@ -315,6 +328,19 @@ export function CompanySettings() {
               value={description}
               placeholder="Optional company description"
               onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Tagline"
+            hint="Short one-line pitch shown on the public company directory."
+          >
+            <input
+              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              type="text"
+              maxLength={200}
+              value={tagline}
+              placeholder="Optional short tagline"
+              onChange={(e) => setTagline(e.target.value)}
             />
           </Field>
         </div>
@@ -451,6 +477,21 @@ export function CompanySettings() {
             hint="New agent hires stay pending until approved by board."
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
             onChange={(v) => settingsMutation.mutate(v)}
+          />
+        </div>
+      </div>
+
+      {/* Directory */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Directory
+        </div>
+        <div className="rounded-md border border-border px-4 py-3">
+          <ToggleField
+            label="List in public directory"
+            hint="Shows this company's name, tagline, description, and active plans/services on the unauthenticated public directory (/directory/companies, /directory/catalog)."
+            checked={!!selectedCompany.isPublic}
+            onChange={(v) => directoryVisibilityMutation.mutate(v)}
           />
         </div>
       </div>
