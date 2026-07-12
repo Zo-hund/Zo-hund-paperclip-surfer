@@ -51,6 +51,9 @@ export const createAgentSchema = z.object({
   reportsTo: z.string().uuid().optional().nullable(),
   capabilities: z.string().optional().nullable(),
   desiredSkills: z.array(z.string().min(1)).optional(),
+  // Optional link to a harness preset (packages/db/schema/toolbelts.ts) that
+  // defines this agent's adapter/model + tool bundle + guardrail profile.
+  harnessId: z.string().uuid().optional().nullable(),
   adapterType: z.enum(AGENT_ADAPTER_TYPES).optional().default("process"),
   adapterConfig: adapterConfigSchema.optional().default({}),
   runtimeConfig: z.record(z.unknown()).optional().default({}),

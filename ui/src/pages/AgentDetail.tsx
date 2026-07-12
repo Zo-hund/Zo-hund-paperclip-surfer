@@ -8,6 +8,7 @@ import {
   type AgentPermissionUpdate,
 } from "../api/agents";
 import { companySkillsApi } from "../api/companySkills";
+import { harnessesApi } from "../api/toolbelts";
 import { budgetsApi } from "../api/budgets";
 import { heartbeatsApi } from "../api/heartbeats";
 import { instanceSettingsApi } from "../api/instanceSettings";
@@ -85,6 +86,13 @@ import {
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
 import { RunTranscriptView, type TranscriptMode } from "../components/transcript/RunTranscriptView";
 import {
@@ -1522,6 +1530,12 @@ function ConfigurationTab({
     enabled: Boolean(companyId),
   });
 
+  const { data: harnesses } = useQuery({
+    queryKey: companyId ? queryKeys.harnesses.list(companyId) : ["harnesses", "none"],
+    queryFn: () => harnessesApi.list(companyId!),
+    enabled: Boolean(companyId),
+  });
+
   const updateAgent = useMutation({
     mutationFn: (data: Record<string, unknown>) => agentsApi.update(agent.id, data, companyId),
     onMutate: () => {
@@ -1570,8 +1584,51 @@ function ConfigurationTab({
           ? "Enabled via explicit company permission grant."
           : "Disabled unless explicitly granted.";
 
+  function handleHarnessChange(nextHarnessId: string) {
+    if (nextHarnessId === "__none__") {
+      updateAgent.mutate({ harnessId: null });
+      return;
+    }
+    const harness = (harnesses ?? []).find((h) => h.id === nextHarnessId);
+    if (!harness) return;
+    // adapterConfig.model is the convention every adapter's buildAdapterConfig
+    // uses (see packages/adapters/*/src/ui/build-config.ts) — merged with the
+    // agent's existing adapterConfig server-side unless the adapter type changes.
+    updateAgent.mutate({
+      harnessId: harness.id,
+      adapterType: harness.adapterType,
+      adapterConfig: { model: harness.model },
+    });
+  }
+
   return (
     <div className="space-y-6">
+      {(harnesses ?? []).length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium mb-3">Harness</h3>
+          <div className="border border-border rounded-lg p-4">
+            <label className="text-xs font-medium text-muted-foreground">
+              Preset <span className="font-normal">(optional)</span>
+            </label>
+            <Select value={agent.harnessId ?? "__none__"} onValueChange={handleHarnessChange}>
+              <SelectTrigger className="h-9 mt-1" disabled={isConfigSaving}>
+                <SelectValue placeholder="None — configure adapter manually" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None — configure adapter manually</SelectItem>
+                {(harnesses ?? []).map((harness) => (
+                  <SelectItem key={harness.id} value={harness.id}>
+                    {harness.name} ({harness.adapterType} · {harness.model})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Applying a harness immediately sets this agent's adapter and model.
+            </p>
+          </div>
+        </div>
+      )}
       <AgentConfigForm
         mode="edit"
         agent={agent}

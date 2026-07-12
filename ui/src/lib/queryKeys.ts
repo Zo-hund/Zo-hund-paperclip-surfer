@@ -137,6 +137,17 @@ export const queryKeys = {
   mcpServers: {
     list: (companyId: string) => ["mcp-servers", companyId] as const,
   },
+  toolbelts: {
+    list: (companyId: string) => ["toolbelts", companyId] as const,
+    instance: ["toolbelts", "instance"] as const,
+  },
+  harnesses: {
+    list: (companyId: string) => ["harnesses", companyId] as const,
+    instance: ["harnesses", "instance"] as const,
+  },
+  skillsDirectory: {
+    list: ["skills-directory"] as const,
+  },
   amxNodes: {
     list: (companyId: string) => ["amx-nodes", companyId] as const,
     leases: (companyId: string) => ["amx-nodes", companyId, "leases"] as const,

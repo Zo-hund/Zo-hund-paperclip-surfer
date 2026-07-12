@@ -84,6 +84,8 @@ export interface Agent {
   scheduleTimezone: string | null;
   nextScheduledAt: Date | null;
   metadata: Record<string, unknown> | null;
+  // Optional link to a harness preset (packages/db/schema/toolbelts.ts).
+  harnessId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
