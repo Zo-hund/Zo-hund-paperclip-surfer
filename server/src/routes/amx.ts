@@ -10,7 +10,7 @@ import {
 import { amxChainService } from "../services/amxChainService.js";
 import { rqPortalService } from "../services/rqPortalService.js";
 import { financeService } from "../services/finance.js";
-import { assertCompanyAccess, assertCompanyRole, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
 import { z } from "zod";
 import { validate } from "../middleware/validate.js";
@@ -397,6 +397,74 @@ export function amxRoutes(db: Db) {
         principalId: e.principalId,
         payload: e.payload,
         createdAt: e.createdAt.toISOString(),
+      })),
+      total: totalRow?.total ?? 0,
+    });
+  });
+
+  /**
+   * GET /api/instance/amx/chain/directory
+   * Cross-company sibling of the route above — amx_chain_events has a NOT
+   * NULL companyId FK, so there's no "instance-wide" table to query; this
+   * just drops the companyId filter (making it optional instead) and swaps
+   * assertCompanyAccess for assertInstanceAdmin, since regular board users
+   * must never see another tenant's ledger events. Includes each event's
+   * company name/prefix (via join) since a cross-company list is otherwise
+   * unreadable — the company-scoped route omits this, it doesn't need it.
+   */
+  router.get("/instance/amx/chain/directory", async (req, res) => {
+    assertInstanceAdmin(req);
+
+    const parsed = chainDirectoryQuerySchema.extend({
+      companyId: z.string().uuid().optional(),
+    }).safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid query parameters", details: parsed.error.flatten() });
+      return;
+    }
+    const { action, principalId, since, until, companyId } = parsed.data;
+    const limit = Math.min(parsed.data.limit ?? 50, 200);
+
+    const filters = [
+      ...(companyId ? [eq(amxChainEvents.companyId, companyId)] : []),
+      ...(action ? [eq(amxChainEvents.action, action)] : []),
+      ...(principalId ? [eq(amxChainEvents.principalId, principalId)] : []),
+      ...(since ? [gte(amxChainEvents.createdAt, since)] : []),
+      ...(until ? [lte(amxChainEvents.createdAt, until)] : []),
+    ];
+    const whereClause = filters.length > 0 ? and(...filters) : undefined;
+
+    const [events, [totalRow]] = await Promise.all([
+      db.select({
+        id: amxChainEvents.id,
+        action: amxChainEvents.action,
+        principalType: amxChainEvents.principalType,
+        principalId: amxChainEvents.principalId,
+        payload: amxChainEvents.payload,
+        createdAt: amxChainEvents.createdAt,
+        companyId: amxChainEvents.companyId,
+        companyName: companies.name,
+        companyPrefix: companies.issuePrefix,
+      })
+        .from(amxChainEvents)
+        .leftJoin(companies, eq(amxChainEvents.companyId, companies.id))
+        .where(whereClause)
+        .orderBy(desc(amxChainEvents.createdAt))
+        .limit(limit),
+      db.select({ total: count() }).from(amxChainEvents).where(whereClause),
+    ]);
+
+    res.json({
+      events: events.map((e) => ({
+        id: e.id,
+        action: e.action,
+        principalType: e.principalType,
+        principalId: e.principalId,
+        payload: e.payload,
+        createdAt: e.createdAt.toISOString(),
+        companyId: e.companyId,
+        companyName: e.companyName,
+        companyPrefix: e.companyPrefix,
       })),
       total: totalRow?.total ?? 0,
     });

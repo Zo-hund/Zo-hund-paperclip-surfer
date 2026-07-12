@@ -97,6 +97,23 @@ export interface ChainDirectoryFilters {
   limit?: number;
 }
 
+/** Instance-wide event — same shape as ChainDirectoryEvent plus the company
+ * it belongs to, since a cross-company list is unreadable without it. */
+export interface InstanceChainDirectoryEvent extends ChainDirectoryEvent {
+  companyId: string | null;
+  companyName: string | null;
+  companyPrefix: string | null;
+}
+
+export interface InstanceChainDirectoryData {
+  events: InstanceChainDirectoryEvent[];
+  total: number;
+}
+
+export interface InstanceChainDirectoryFilters extends ChainDirectoryFilters {
+  companyId?: string;
+}
+
 export interface AmxCertificate {
   id: string;
   companyId: string;
@@ -198,6 +215,18 @@ export const amxApi = {
     if (filters.limit) params.set("limit", String(filters.limit));
     const qs = params.toString();
     return api.get<ChainDirectoryData>(`/companies/${companyId}/amx/chain/directory${qs ? `?${qs}` : ""}`);
+  },
+
+  getInstanceChainDirectory: (filters: InstanceChainDirectoryFilters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.action) params.set("action", filters.action);
+    if (filters.principalId) params.set("principalId", filters.principalId);
+    if (filters.since) params.set("since", filters.since);
+    if (filters.until) params.set("until", filters.until);
+    if (filters.limit) params.set("limit", String(filters.limit));
+    if (filters.companyId) params.set("companyId", filters.companyId);
+    const qs = params.toString();
+    return api.get<InstanceChainDirectoryData>(`/instance/amx/chain/directory${qs ? `?${qs}` : ""}`);
   },
 
   getCertificates: (companyId: string) =>

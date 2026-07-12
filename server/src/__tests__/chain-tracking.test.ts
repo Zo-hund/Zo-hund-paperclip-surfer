@@ -275,3 +275,109 @@ describe("GET /companies/:companyId/amx/chain/directory", () => {
     expect(res.status).toBe(403);
   });
 });
+
+/** Fake db for the instance-wide route: same queue/terminal shape as
+ * createDirectoryFakeDb, but from() returns a leftJoin() step (the route
+ * joins companies for display) before where(). */
+function createInstanceDirectoryFakeDb(queue: unknown[][]) {
+  let call = 0;
+  const state = { limits: [] as number[] };
+  function terminal(rows: unknown[]) {
+    return {
+      orderBy: () => ({
+        limit: async (n: number) => {
+          state.limits.push(n);
+          return rows;
+        },
+      }),
+      then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+        Promise.resolve(rows).then(resolve, reject),
+    };
+  }
+  const db = {
+    select: () => ({
+      // The route's events query chains .leftJoin().where(), but the
+      // parallel count query chains .where() directly (no join needed for a
+      // count) — support both off the same from() result.
+      from: () => ({
+        leftJoin: () => ({
+          where: () => terminal(queue[call++] ?? []),
+        }),
+        where: () => terminal(queue[call++] ?? []),
+      }),
+    }),
+  };
+  return { db: db as never, state };
+}
+
+function createInstanceApp(actor: Record<string, unknown>, queue: unknown[][]) {
+  const { db, state } = createInstanceDirectoryFakeDb(queue);
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as never as { actor: unknown }).actor = actor;
+    next();
+  });
+  app.use("/api", amxRoutes(db));
+  app.use(errorHandler);
+  return { app, state };
+}
+
+const instanceAdmin = {
+  type: "board", source: "session", userId: "admin-1",
+  isInstanceAdmin: true, companyIds: [], companyRoles: {},
+};
+
+const INSTANCE_EVENT_ROW = {
+  ...EVENT_ROW,
+  companyName: "AMX Labs — Membership",
+  companyPrefix: "AMXA",
+};
+
+describe("GET /instance/amx/chain/directory", () => {
+  it("rejects a non-instance-admin board user (403)", async () => {
+    const { app } = createInstanceApp(member, []);
+    const res = await request(app).get("/api/instance/amx/chain/directory");
+    expect(res.status).toBe(403);
+  });
+
+  it("returns cross-company events including company name/prefix for an instance admin", async () => {
+    const { app, state } = createInstanceApp(instanceAdmin, [[INSTANCE_EVENT_ROW], [{ total: 1 }]]);
+    const res = await request(app).get("/api/instance/amx/chain/directory");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      events: [{
+        id: "evt-1",
+        action: "CREDIT_SPEND",
+        principalType: "user",
+        principalId: "user-1",
+        payload: { transactionId: "tx-1", amount: 100 },
+        createdAt: "2026-07-01T00:00:00.000Z",
+        companyId: COMPANY,
+        companyName: "AMX Labs — Membership",
+        companyPrefix: "AMXA",
+      }],
+      total: 1,
+    });
+    expect(state.limits).toEqual([50]);
+  });
+
+  it("accepts an optional companyId filter to narrow within the cross-company view", async () => {
+    const { app } = createInstanceApp(instanceAdmin, [[INSTANCE_EVENT_ROW], [{ total: 1 }]]);
+    const res = await request(app)
+      .get("/api/instance/amx/chain/directory")
+      .query({ companyId: COMPANY });
+    expect(res.status).toBe(200);
+    expect(res.body.events).toHaveLength(1);
+  });
+
+  it("clamps an oversized limit down to 200", async () => {
+    const { app, state } = createInstanceApp(instanceAdmin, [[], [{ total: 0 }]]);
+    const res = await request(app)
+      .get("/api/instance/amx/chain/directory")
+      .query({ limit: "5000" });
+    expect(res.status).toBe(200);
+    expect(state.limits).toEqual([200]);
+  });
+});
