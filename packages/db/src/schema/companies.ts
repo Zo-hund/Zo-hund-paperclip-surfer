@@ -18,6 +18,10 @@ export const companies = pgTable(
       .default(true),
     brandColor: text("brand_color"),
     deploymentTarget: text("deployment_target").notNull().default("cloud"),
+    // Directory visibility: whether this company appears in the unauthenticated
+    // public company/product directory. Off by default — an explicit admin opt-in.
+    isPublic: boolean("is_public").notNull().default(false),
+    tagline: text("tagline"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

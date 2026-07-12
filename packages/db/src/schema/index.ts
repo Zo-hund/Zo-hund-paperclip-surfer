@@ -79,3 +79,4 @@ export { companyWebhooks, companyWebhookDeliveries } from "./company_webhooks.js
 export { companyStaff } from "./company_staff.js";
 export { companyEvents } from "./company_events.js";
 export { opprrcDeliveries, opprrcBackupJobs } from "./opprrc_deliveries.js";
+export { toolbelts, harnesses } from "./toolbelts.js";

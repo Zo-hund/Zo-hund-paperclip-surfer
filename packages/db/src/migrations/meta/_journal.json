@@ -561,6 +561,13 @@
       "when": 1783854070150,
       "tag": "0079_lean_nextwave",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1783859290402,
+      "tag": "0080_superb_doomsday",
+      "breakpoints": true
     }
   ]
 }

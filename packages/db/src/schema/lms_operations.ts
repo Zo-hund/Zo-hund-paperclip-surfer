@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, jsonb, boolean, index } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { lmsWorkshops } from "./lms_training.js";
 
@@ -35,6 +35,8 @@ export const lmsMemberProfiles = pgTable(
     marketplaceRevenue: integer("marketplace_revenue").notNull().default(0), // cents earned via marketplace
     donationAmount: integer("donation_amount").notNull().default(0), // cents donated lifetime
     sponsorshipTier: text("sponsorship_tier"), // bronze | silver | gold | platinum
+    // Directory visibility for this member's public profile page — off by default.
+    isPublicProfile: boolean("is_public_profile").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

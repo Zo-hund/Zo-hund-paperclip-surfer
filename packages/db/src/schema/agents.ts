@@ -37,6 +37,15 @@ export const agents = pgTable(
     scheduleTimezone: text("schedule_timezone"),
     nextScheduledAt: timestamp("next_scheduled_at", { withTimezone: true }),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    // Directory visibility for this agent's resume/profile page — off by default.
+    isPublicProfile: boolean("is_public_profile").notNull().default(false),
+    // Free-text skill tags (matches lmsMarketplaceListings.skills' shape) —
+    // used as a filter facet on the profile directory.
+    skills: jsonb("skills").$type<string[]>().notNull().default([]),
+    // Optional link to a harness preset (packages/db/schema/toolbelts.ts) that
+    // defines this agent's tool bundle + guardrail profile. Nullable: most
+    // agents keep using adapterConfig/runtimeConfig directly.
+    harnessId: uuid("harness_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

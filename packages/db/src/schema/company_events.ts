@@ -18,6 +18,12 @@ export const companyEvents = pgTable(
     registrationUrl: text("registration_url"),
     qrCodeAssetId: uuid("qr_code_asset_id").references(() => assets.id),
     isPublished: boolean("is_published").notNull().default(true),
+    // workshop | marketplace | community | board | other — lets the unified
+    // calendar (company events + marketplace bookings) style/filter by kind.
+    eventType: text("event_type").notNull().default("general"),
+    // Set when this calendar entry was generated from a marketplace booking
+    // (see lmsMarketplaceBookings) rather than authored directly.
+    sourceBookingId: uuid("source_booking_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

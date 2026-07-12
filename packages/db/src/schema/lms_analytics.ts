@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, jsonb, boolean, index } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 
 /**
@@ -160,6 +160,9 @@ export const lmsMarketplaceListings = pgTable(
     reviewCount: integer("review_count").notNull().default(0),
     projectsCompleted: integer("projects_completed").notNull().default(0),
     isActive: integer("is_active").notNull().default(1),
+    // Directory visibility — separate from isActive so a listing can be
+    // paused without losing its public directory placement, and vice versa.
+    isPublic: boolean("is_public").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -190,6 +193,11 @@ export const lmsMarketplaceBookings = pgTable(
     phase: text("phase"),
     // pending | active | completed | cancelled
     status: text("status").notNull().default("pending"),
+    // Optional scheduled engagement window — set when the client picks a
+    // calendar slot instead of an ASAP/simulation-mode booking. Powers the
+    // unified marketplace calendar alongside companyEvents.
+    scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
+    scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
