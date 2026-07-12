@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { rqSubmissions, lmsMarketplaceBookings } from "@paperclipai/db";
+import { rqSubmissions, lmsMarketplaceBookings, lmsMarketplaceListings } from "@paperclipai/db";
 import {
   addApprovalCommentSchema,
   createApprovalSchema,
@@ -289,10 +289,30 @@ export function approvalRoutes(db: Db) {
               })
               .where(eq(rqSubmissions.id, entityId));
           } else if (entityType === "marketplace_booking" && entityId) {
-            await db
+            const [booking] = await db
               .update(lmsMarketplaceBookings)
               .set({ phase: "live" })
-              .where(eq(lmsMarketplaceBookings.id, entityId));
+              .where(eq(lmsMarketplaceBookings.id, entityId))
+              .returning();
+
+            // A promoted booking's listing becomes market-visible too — the
+            // public catalog (directory-catalog.ts) only surfaces listings
+            // with isPublic=true, so this is what makes the promotion
+            // actually show up there. Best-effort: only touches listings
+            // that aren't already public, never un-publishes one.
+            if (booking?.listingId) {
+              try {
+                await db
+                  .update(lmsMarketplaceListings)
+                  .set({ isPublic: true, updatedAt: new Date() })
+                  .where(and(eq(lmsMarketplaceListings.id, booking.listingId), eq(lmsMarketplaceListings.isPublic, false)));
+              } catch (listingErr) {
+                logger.warn(
+                  { err: listingErr, approvalId: approval.id, listingId: booking.listingId },
+                  "failed to publish listing to catalog after promote_to_live approval",
+                );
+              }
+            }
           } else {
             throw new Error(`invalid promote_to_live payload: entityType=${entityType} entityId=${entityId}`);
           }

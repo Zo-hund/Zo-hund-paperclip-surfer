@@ -58,8 +58,9 @@ vi.mock("../services/amxChainService.js", () => ({
  * promotion UPDATE in the approve handler's promote_to_live branch. Select
  * results are queue-driven (same convention as marketplace-moderation.test.ts
  * / chain-tracking.test.ts); updates are captured by table name + values. */
-function createFakeDb(selectQueue: unknown[][] = []) {
+function createFakeDb(selectQueue: unknown[][] = [], returningQueue: unknown[][] = []) {
   const queue = [...selectQueue];
+  const retQueue = [...returningQueue];
   const state = {
     updates: [] as Array<{ table: string; values: Record<string, unknown> }>,
   };
@@ -73,7 +74,10 @@ function createFakeDb(selectQueue: unknown[][] = []) {
       set: (values: Record<string, unknown>) => ({
         where: () => {
           state.updates.push({ table: getTableName(table), values });
-          return Promise.resolve();
+          return {
+            then: (resolve: (v: unknown) => unknown) => resolve(undefined),
+            returning: () => Promise.resolve(retQueue.shift() ?? []),
+          };
         },
       }),
     }),
@@ -95,8 +99,8 @@ const agentActor = {
   companyId: COMPANY,
 };
 
-function createApp(actor: Record<string, unknown>, selectQueue: unknown[][] = []) {
-  const { db, state } = createFakeDb(selectQueue);
+function createApp(actor: Record<string, unknown>, selectQueue: unknown[][] = [], returningQueue: unknown[][] = []) {
+  const { db, state } = createFakeDb(selectQueue, returningQueue);
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -249,7 +253,7 @@ describe("POST /approvals/:id/approve — promote_to_live side effect", () => {
     );
   });
 
-  it("flips phase to 'live' for a marketplace_booking", async () => {
+  it("flips phase to 'live' for a marketplace_booking and publishes its listing to the catalog", async () => {
     mockApprovalService.approve.mockResolvedValue({
       approval: {
         id: "approval-2",
@@ -262,15 +266,39 @@ describe("POST /approvals/:id/approve — promote_to_live side effect", () => {
       applied: true,
     });
 
-    const { app, state } = createApp(boardActor);
+    const { app, state } = createApp(boardActor, [], [[{ id: "booking-1", listingId: "listing-1" }]]);
     const res = await request(app).post("/api/approvals/approval-2/approve").send({});
 
     expect(res.status).toBe(200);
-    expect(state.updates).toHaveLength(1);
+    expect(state.updates).toHaveLength(2);
     expect(state.updates[0]).toMatchObject({
       table: "lms_marketplace_bookings",
       values: { phase: "live" },
     });
+    expect(state.updates[1]).toMatchObject({
+      table: "lms_marketplace_listings",
+      values: { isPublic: true },
+    });
+  });
+
+  it("does not touch the listing when the promoted booking has no listingId on the returned row", async () => {
+    mockApprovalService.approve.mockResolvedValue({
+      approval: {
+        id: "approval-2",
+        companyId: COMPANY,
+        type: "promote_to_live",
+        status: "approved",
+        payload: { entityType: "marketplace_booking", entityId: "booking-1" },
+        requestedByAgentId: null,
+      },
+      applied: true,
+    });
+
+    const { app, state } = createApp(boardActor, [], [[{ id: "booking-1", listingId: null }]]);
+    const res = await request(app).post("/api/approvals/approval-2/approve").send({});
+
+    expect(res.status).toBe(200);
+    expect(state.updates).toHaveLength(1);
   });
 
   it("rejecting a promote_to_live approval does NOT flip anything", async () => {
