@@ -19,6 +19,7 @@ export interface SeatsSummary {
   purchased: number;
   used: number;
   available: number;
+  priceConfigured: boolean;
 }
 
 export const stripeApi = {

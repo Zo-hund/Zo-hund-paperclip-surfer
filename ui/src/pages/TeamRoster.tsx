@@ -516,7 +516,7 @@ function TeamSeatsCard({ companyId, userId }: { companyId: string; userId: strin
   });
 
   const seats = seatsQuery.data;
-  const noSeatPriceConfigured = !seatsQuery.isLoading && (seats?.purchased ?? 0) === 0;
+  const noSeatPriceConfigured = !seatsQuery.isLoading && seats?.priceConfigured === false;
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">

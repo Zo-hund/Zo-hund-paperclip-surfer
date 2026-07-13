@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { stripePrices, stripeSubscriptions, amxGlobalLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS, NONPROFIT_PACK_BONUS } from "@paperclipai/shared";
+import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS, NONPROFIT_PACK_BONUS, SEAT_TIER_NAME } from "@paperclipai/shared";
 import {
   provisionMember,
   cancelMember,
@@ -609,18 +609,33 @@ export function stripeApiRoutes(db: Db): Router {
    * GET /companies/:companyId/seats
    * Team-seats summary: purchased seats (sum of active/trialing SEAT_TIER_NAME
    * subscription quantities), used seats (active human members excluding the
-   * owner), and how many remain available.
+   * owner), how many remain available, and whether a team_seats price even
+   * exists for this company yet. `purchased` is legitimately 0 both before a
+   * price is configured AND after it's configured but nobody has bought a
+   * seat — priceConfigured disambiguates those two cases so the UI doesn't
+   * show "no pricing configured" for a company that's correctly priced and
+   * simply hasn't sold a seat yet.
    */
   router.get("/companies/:companyId/seats", async (req, res) => {
     const { companyId } = req.params as { companyId: string };
     assertCompanyAccess(req, companyId);
 
-    const [purchased, used] = await Promise.all([
+    const [purchased, used, priceRow] = await Promise.all([
       getPurchasedSeats(db, companyId),
       getUsedSeats(db, companyId),
+      db
+        .select({ id: stripePrices.id })
+        .from(stripePrices)
+        .where(and(eq(stripePrices.companyId, companyId), eq(stripePrices.tierName, SEAT_TIER_NAME), eq(stripePrices.isActive, 1)))
+        .limit(1),
     ]);
 
-    res.json({ purchased, used, available: Math.max(0, purchased - used) });
+    res.json({
+      purchased,
+      used,
+      available: Math.max(0, purchased - used),
+      priceConfigured: priceRow.length > 0,
+    });
   });
 
   return router;
