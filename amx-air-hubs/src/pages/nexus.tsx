@@ -45,6 +45,7 @@ export function NexusPage() {
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
   const [selectedAnchor, setSelectedAnchor] = useState<GeoAnchor | null>(null);
   const [sceneReady, setSceneReady] = useState(false);
+  const [rendererBackend, setRendererBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
   const geo = useGeoAnchors(roomCode);
   const telemetry = useNexusTelemetry();
   const crew = agents.slice(0, 4);
@@ -66,16 +67,16 @@ export function NexusPage() {
   };
 
   return <div className="page nexus-page">
-    <div className="section-wrap"><PageHeader eyebrow="NEXUS CORE / THREE.JS" title="AMX spatial operations" description="Operate Blender-authored XR spaces, LiveKit Skill Pods, agent systems, and synchronized geospatial anchors from one room." actions={<StatusPill tone={sceneReady ? "green" : "gold"}>{sceneReady ? "3D room ready" : "Loading scene"}</StatusPill>}/></div>
-    <div className="nexus-status-band"><div className="section-wrap"><span><i className="live-dot"/>NEXUS ONLINE</span><span><Wifi/>{telemetry.latency} ms</span><span><Gauge/>{telemetry.fps} FPS</span><span><Cpu/>GPU {telemetry.gpu}%</span><span><Bot/>{telemetry.agentsOnline} agents</span><time>{telemetry.timestamp}</time></div></div>
+    <div className="section-wrap"><PageHeader eyebrow="NEXUS CORE / THREE.JS WEBGPU" title="AMX spatial operations" description="Operate Blender-authored XR spaces, LiveKit Skill Pods, agent systems, and synchronized geospatial anchors from one room." actions={<StatusPill tone={rendererBackend === "webgpu" ? "green" : "gold"}>{rendererBackend === "webgpu" ? "WebGPU active" : rendererBackend === "webgl2" ? "WebGL2 fallback" : sceneReady ? "GPU initializing" : "Loading scene"}</StatusPill>}/></div>
+    <div className="nexus-status-band"><div className="section-wrap"><span><i className="live-dot"/>NEXUS ONLINE</span><span><Wifi/>{telemetry.latency} ms</span><span><Gauge/>{telemetry.fps} FPS</span><span><Cpu/>{rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2" : "GPU INIT"}</span><span><Activity/>LOAD {telemetry.gpu}%</span><span><Bot/>{telemetry.agentsOnline} agents</span><time>{telemetry.timestamp}</time></div></div>
     <div className="section-wrap nexus-tabs" role="tablist">{([
       ["room", "Spatial room", Box], ["anchors", "Geo anchors", Satellite], ["fleet", "Fleet", Router], ["factory", "AI factory", Cpu],
     ] as const).map(([id, label, Icon]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}><Icon/>{label}</button>)}</div>
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <NexusRoomScene localStream={localStream} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} onReady={() => setSceneReady(true)}/>
-        <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / LIVE THREE.JS</span><b>NEXUS CONTROL ROOM</b></div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
+        <NexusRoomScene localStream={localStream} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} onReady={() => setSceneReady(true)} onBackend={setRendererBackend}/>
+        <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>NEXUS CONTROL ROOM</b></div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">
         <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>

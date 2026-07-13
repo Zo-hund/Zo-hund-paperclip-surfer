@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import * as THREE from "three";
+import * as THREE from "three/webgpu";
 import { Camera, RotateCcw, ScanLine, Smartphone } from "lucide-react";
 import type { Agent } from "./data";
 import type { GeoAnchor } from "./geospatial";
@@ -110,8 +110,8 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
     const camera = new THREE.PerspectiveCamera(52, host.clientWidth / host.clientHeight, 0.01, 250);
     camera.position.set(0, 1.45, 4.2);
     camera.lookAt(0, 0.9, 0);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = new THREE.WebGPURenderer({ antialias: true, alpha: true, forceWebGL: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.setClearColor(0x000000, 0);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -234,7 +234,16 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
           await startCamera(error);
           return;
         }
-        await renderer.xr.setSession(xrSession);
+        cancelAnimationFrame(animationFrame);
+        try {
+          await renderer.setAnimationLoop(renderFrame);
+          await renderer.xr.setSession(xrSession);
+        } catch (error) {
+          await renderer.setAnimationLoop(null);
+          startManualLoop();
+          await startCamera(error);
+          return;
+        }
         const viewerSpace = await xrSession.requestReferenceSpace("viewer");
         localSpace = await xrSession.requestReferenceSpace("local-floor").catch(() => xrSession.requestReferenceSpace("local"));
         hitSource = await xrSession.requestHitTestSource({ space: viewerSpace });
@@ -246,6 +255,7 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
           localSpace = null;
           modeRef.current = "preview";
           setMode("preview");
+          void renderer.setAnimationLoop(null).then(startManualLoop);
           if (!placedRef.current) setMessage("AR session ended. Retry to reopen the camera.");
         });
         xrSession.addEventListener("select", async () => {
@@ -272,7 +282,9 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
 
     const clock = new THREE.Clock();
     let markerFrame = 0;
-    renderer.setAnimationLoop((_, frame) => {
+    let renderedFrames = 0;
+    const renderFrame = (_: number, frame?: any) => {
+      host.dataset.frames = String(renderedFrames++);
       if (frame && hitSource && localSpace && !placedRef.current) {
         const results = frame.getHitTestResults(hitSource);
         lastHitResult = results[0] || null;
@@ -305,6 +317,25 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
       }
       if (brandMark?.visible) brandMark.rotation.y = clock.elapsedTime * 0.35;
       renderer.render(scene, camera);
+    };
+    let animationFrame = 0;
+    let disposed = false;
+    const manualFrame = (time: number) => {
+      if (disposed || modeRef.current === "xr") return;
+      renderFrame(time);
+      animationFrame = requestAnimationFrame(manualFrame);
+    };
+    const startManualLoop = () => {
+      cancelAnimationFrame(animationFrame);
+      if (!disposed) animationFrame = requestAnimationFrame(manualFrame);
+    };
+    void renderer.init().then(() => {
+      if (disposed) return;
+      host.dataset.renderer = "webgl2";
+      startManualLoop();
+    }).catch((initError: unknown) => {
+      if (disposed) return;
+      setMessage(initError instanceof Error ? initError.message : "The XR renderer could not be initialized");
     });
 
     const resize = () => {
@@ -314,10 +345,12 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
     };
     window.addEventListener("resize", resize);
     return () => {
+      disposed = true;
+      cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
-      renderer.setAnimationLoop(null);
+      void renderer.setAnimationLoop(null);
       renderer.domElement.removeEventListener("pointerdown", placeFromPointer);
-      renderer.dispose();
+      void renderer.dispose();
       void xrSession?.end();
       cameraStream?.getTracks().forEach((track) => track.stop());
       if (videoRef.current?.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
@@ -334,7 +367,7 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
     <div className="xr-stage">
       <video ref={videoRef} className="camera-feed" autoPlay muted playsInline aria-label="Live camera view for augmented reality" />
       <div ref={hostRef} className="xr-host" aria-label="Interactive Three.js agent placement scene" />
-      <div className="xr-mode"><span className="live-dot"/>{mode === "xr" ? "WebXR + anchors" : mode === "camera" ? "Camera AR live" : "Three.js preview"}</div>
+      <div className="xr-mode"><span className="live-dot"/>{mode === "xr" ? "WebXR / WebGL2 bridge" : mode === "camera" ? "Camera AR / WebGL2" : "Three.js XR preview"}</div>
       <div className="scan-reticle" aria-hidden="true"><span/><span/><span/><span/></div>
       <div className="xr-instruction">
         <Smartphone size={18}/><span>{message}</span>

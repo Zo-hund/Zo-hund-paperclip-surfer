@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import * as THREE from "three";
+import * as THREE from "three/webgpu";
+import { forceWebGLDiagnostic, getRendererBackend } from "./webgpu";
 
 export function BrandScene() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -10,8 +11,13 @@ export function BrandScene() {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, host.clientWidth / host.clientHeight, 0.1, 50);
     camera.position.set(0, 0.2, 7.7);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = new THREE.WebGPURenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+      forceWebGL: forceWebGLDiagnostic(),
+    });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -40,12 +46,21 @@ export function BrandScene() {
     });
 
     const clock = new THREE.Clock();
-    renderer.setAnimationLoop(() => {
+    let animationFrame = 0;
+    const render = () => {
       if (model) {
         model.rotation.y = Math.sin(clock.elapsedTime * 0.42) * 0.24;
         model.position.y = Math.sin(clock.elapsedTime * 0.9) * 0.06;
       }
       renderer.render(scene, camera);
+      animationFrame = requestAnimationFrame(render);
+    };
+    void renderer.init().then(() => {
+      if (disposed) return;
+      host.dataset.renderer = getRendererBackend(renderer);
+      render();
+    }).catch(() => {
+      if (!disposed) host.dataset.renderer = "unavailable";
     });
     const resize = () => {
       camera.aspect = host.clientWidth / host.clientHeight;
@@ -55,9 +70,9 @@ export function BrandScene() {
     window.addEventListener("resize", resize);
     return () => {
       disposed = true;
+      cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
-      renderer.setAnimationLoop(null);
-      renderer.dispose();
+      void renderer.dispose();
       host.removeChild(renderer.domElement);
     };
   }, []);

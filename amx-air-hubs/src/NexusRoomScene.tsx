@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import * as THREE from "three";
+import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { GeoAnchor } from "./geospatial";
+import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
 export type LightPreset = "mission" | "focus" | "standby";
 
@@ -12,6 +13,7 @@ interface Props {
   lightPreset: LightPreset;
   reducedMotion?: boolean;
   onReady?: () => void;
+  onBackend?: (backend: RendererBackend) => void;
 }
 
 function anchorBeacon(anchor: GeoAnchor) {
@@ -33,7 +35,7 @@ function anchorBeacon(anchor: GeoAnchor) {
   return group;
 }
 
-export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotion, onReady }: Props) {
+export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotion, onReady, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<THREE.Mesh | null>(null);
   const lightRefs = useRef<THREE.Light[]>([]);
@@ -43,7 +45,9 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const onReadyRef = useRef(onReady);
+  const onBackendRef = useRef(onBackend);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  useEffect(() => { onBackendRef.current = onBackend; }, [onBackend]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -53,14 +57,16 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
     scene.fog = new THREE.FogExp2(0x02070d, 0.025);
     const camera = new THREE.PerspectiveCamera(42, host.clientWidth / host.clientHeight, 0.05, 100);
     camera.position.set(0, 4.15, 9.4);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = new THREE.WebGPURenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+      forceWebGL: forceWebGLDiagnostic(),
+    });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.className = "nexus-room-canvas";
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -90,18 +96,18 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          mesh.castShadow = !mesh.name.startsWith("Screen_");
-          mesh.receiveShadow = true;
           if (mesh.name === "Screen_User") screenRef.current = mesh;
         }
         if ((child as THREE.Light).isLight) {
           const light = child as THREE.Light;
           light.userData.baseIntensity = light.intensity;
           lightRefs.current.push(light);
-          if ("castShadow" in light) light.castShadow = true;
         }
       });
       scene.add(model);
+      const bounds = new THREE.Box3().setFromObject(model);
+      const size = bounds.getSize(new THREE.Vector3());
+      host.dataset.modelBounds = `${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`;
       setLoading(false);
       onReadyRef.current?.();
     }, undefined, (loadError) => {
@@ -110,9 +116,11 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
     });
 
     const clock = new THREE.Clock();
-    let animationId = 0;
+    const captureFrame = new URLSearchParams(window.location.search).get("capture") === "1";
+    let frame = 0;
     const render = () => {
-      animationId = requestAnimationFrame(render);
+      const currentFrame = frame++;
+      host.dataset.frames = String(currentFrame);
       const elapsed = clock.getElapsedTime();
       controls.update();
       if (model && !reducedMotion) {
@@ -124,8 +132,29 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
         });
       }
       renderer.render(scene, camera);
+      if (captureFrame || currentFrame % 30 === 0) {
+        host.dataset.drawCalls = String(renderer.info.render.drawCalls);
+        host.dataset.triangles = String(renderer.info.render.triangles);
+      }
     };
-    render();
+    let animationFrame = 0;
+    let disposed = false;
+    const animate = () => {
+      if (disposed) return;
+      render();
+      if (!captureFrame || !model || frame < 3) animationFrame = requestAnimationFrame(animate);
+    };
+    void renderer.init().then(() => {
+      if (disposed) return;
+      const backend = getRendererBackend(renderer);
+      host.dataset.renderer = backend;
+      onBackendRef.current?.(backend);
+      animate();
+    }).catch((initError: unknown) => {
+      if (disposed) return;
+      setLoading(false);
+      setError(initError instanceof Error ? initError.message : "The GPU renderer could not be initialized");
+    });
     const resize = () => {
       camera.aspect = host.clientWidth / host.clientHeight;
       camera.updateProjectionMatrix();
@@ -133,10 +162,11 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
     };
     window.addEventListener("resize", resize);
     return () => {
-      cancelAnimationFrame(animationId);
+      disposed = true;
+      cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
       controls.dispose();
-      renderer.dispose();
+      void renderer.dispose();
       textureRef.current?.dispose();
       videoRef.current?.pause();
       anchorLayerRef.current = null;

@@ -38,7 +38,7 @@ export function HomePage() {
         <div className="hero-proof"><ShieldCheck/><div><b>OPPRRC proof enabled</b><span>Organization / Program / Project / Resource / Report / Certificate</span></div></div>
       </div>
       <div className="hero-agent" style={{"--agent":agent.color} as React.CSSProperties}>
-        <div className="hero-agent-label"><span className="eyebrow">BLENDER / WEBGL CORE</span><b>AMX SPATIAL MARK</b></div>
+        <div className="hero-agent-label"><span className="eyebrow">BLENDER / WEBGPU CORE</span><b>AMX SPATIAL MARK</b></div>
         <BrandScene/>
         <div className="agent-transmission"><span className="signal-bars"><i/><i/><i/><i/></span><p>{agent.name} is online. Solo, co-op, and team rooms are ready.</p></div>
       </div>

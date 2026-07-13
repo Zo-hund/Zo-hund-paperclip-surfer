@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Hand, Move, Play, ScanLine } from "lucide-react";
-import * as THREE from "three";
+import * as THREE from "three/webgpu";
 import type { ComfortSettings, ExperienceMode } from "./immersive";
+import { forceWebGLDiagnostic, getRendererBackend } from "./webgpu";
 
 interface Props {
   mode: Exclude<ExperienceMode, "2d" | "ar">;
@@ -47,6 +48,7 @@ export function ImmersiveWorld({ mode, comfort, reducedMotion, onInteract, onFal
   const moveRef = useRef(new THREE.Vector3());
   const [sessionState, setSessionState] = useState<"preview" | "entering" | "live">("preview");
   const [selected, setSelected] = useState("Mission world ready");
+  const [rendererBackend, setRendererBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
 
   useEffect(() => {
     const host = hostRef.current;
@@ -56,8 +58,13 @@ export function ImmersiveWorld({ mode, comfort, reducedMotion, onInteract, onFal
     scene.fog = new THREE.FogExp2(0x050b10, 0.035);
     const camera = new THREE.PerspectiveCamera(58, host.clientWidth / host.clientHeight, 0.05, 120);
     camera.position.set(0, comfort.posture === "seated" ? 1.25 : 1.65, 6.2);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: mode === "mr", preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = new THREE.WebGPURenderer({
+      antialias: true,
+      alpha: mode === "mr",
+      powerPreference: "high-performance",
+      forceWebGL: mode !== "3d" || forceWebGLDiagnostic(),
+    });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.xr.enabled = true;
@@ -175,7 +182,10 @@ export function ImmersiveWorld({ mode, comfort, reducedMotion, onInteract, onFal
     };
 
     const clock = new THREE.Clock();
-    renderer.setAnimationLoop(() => {
+    let renderedFrames = 0;
+    const render = () => {
+      const currentFrame = renderedFrames++;
+      host.dataset.frames = String(currentFrame);
       const delta = Math.min(clock.getDelta(), 0.05);
       const speed = (comfort.movementSpeed / 20) * delta;
       const move = moveRef.current;
@@ -194,6 +204,25 @@ export function ImmersiveWorld({ mode, comfort, reducedMotion, onInteract, onFal
         interactive.slice(0, 3).forEach((object, index) => { object.rotation.z = Math.sin(elapsed * 0.55 + index) * 0.04; });
       }
       renderer.render(scene, camera);
+      if (currentFrame % 30 === 0) host.dataset.drawCalls = String(renderer.info.render.drawCalls);
+    };
+    let animationFrame = 0;
+    let disposed = false;
+    const animate = () => {
+      if (disposed) return;
+      render();
+      animationFrame = requestAnimationFrame(animate);
+    };
+    void renderer.init().then(() => {
+      if (disposed) return;
+      const backend = getRendererBackend(renderer);
+      host.dataset.renderer = backend;
+      setRendererBackend(backend);
+      if (mode === "3d") animate();
+      else void renderer.setAnimationLoop(render);
+    }).catch((initError: unknown) => {
+      if (disposed) return;
+      onFallback(mode === "3d" ? "2d" : mode === "vr" ? "3d" : "ar", initError instanceof Error ? initError.message : "The GPU renderer could not be initialized");
     });
 
     const resize = () => {
@@ -203,14 +232,16 @@ export function ImmersiveWorld({ mode, comfort, reducedMotion, onInteract, onFal
     };
     window.addEventListener("resize", resize);
     return () => {
+      disposed = true;
+      cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
       renderer.domElement.removeEventListener("pointermove", pointerMove);
       renderer.domElement.removeEventListener("pointerup", pointerUp);
-      renderer.setAnimationLoop(null);
-      renderer.dispose();
+      void renderer.setAnimationLoop(null);
+      void renderer.dispose();
       host.removeChild(renderer.domElement);
     };
   }, [comfort.movementSpeed, comfort.posture, mode, onFallback, onInteract, reducedMotion]);
@@ -218,7 +249,7 @@ export function ImmersiveWorld({ mode, comfort, reducedMotion, onInteract, onFal
   const nudge = (x: number, z: number) => moveRef.current.add(new THREE.Vector3(x, 0, z));
   return <div className={`immersive-world mode-${mode}`}>
     <div ref={hostRef} className="immersive-world-host" aria-label={`${mode.toUpperCase()} human-agent mission world`}/>
-    <div className="world-signal"><span className="live-dot"/><b>{mode === "vr" ? "VR Skill Pod" : mode === "mr" ? "MR Workspace" : "Browser 3D World"}</b><small>{selected}</small></div>
+    <div className="world-signal"><span className="live-dot"/><b>{mode === "vr" ? "VR Skill Pod" : mode === "mr" ? "MR Workspace" : "Browser 3D World"}</b><small>{selected} / {rendererBackend === "webgpu" ? "WebGPU" : rendererBackend === "webgl2" ? "WebGL2 XR bridge" : "GPU initializing"}</small></div>
     {(mode === "vr" || mode === "mr") && <button className="button primary compact xr-session-button" onClick={() => void startXRRef.current()} disabled={sessionState === "entering"}>
       {mode === "vr" ? <Play/> : <ScanLine/>}{sessionState === "live" ? "XR session live" : sessionState === "entering" ? "Checking headset" : `Enter ${mode.toUpperCase()}`}
     </button>}
