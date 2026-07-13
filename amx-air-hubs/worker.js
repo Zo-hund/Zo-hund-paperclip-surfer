@@ -98,7 +98,9 @@ export default {
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
     const response = await env.ASSETS.fetch(request);
     if (response.status !== 404 || url.pathname.includes(".")) return response;
-    return new Response(APP_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
+    const runtimeConfig = JSON.stringify({ supabaseUrl: env.SUPABASE_URL || "", supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY || "" }).replace(/</g, "\\u003c");
+    const html = APP_HTML.replace("</head>", `<script>window.__AMX_CONFIG__=${runtimeConfig}</script></head>`);
+    return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
   },
 };
 

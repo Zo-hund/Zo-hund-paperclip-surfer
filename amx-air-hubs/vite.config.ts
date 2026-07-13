@@ -10,6 +10,7 @@ export default defineConfig({
           "three-engine": ["three"],
           "react-vendor": ["react", "react-dom", "react-router-dom"],
           "qr-engine": ["qrcode"],
+          "realtime-engine": ["@supabase/supabase-js"],
         },
       },
     },
