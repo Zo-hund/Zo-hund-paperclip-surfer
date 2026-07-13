@@ -31,7 +31,7 @@ export function HomePage() {
         <p>Your phone is the cockpit. An AI agent guides the mission. Every completed run becomes proof you can carry forward.</p>
         <div className="experience-modes"><span><CircleUserRound/>Solo</span><span><Users/>Co-op</span><span><ShieldCheck/>Teams</span></div>
         <div className="hero-actions">
-          <button className="button primary large" onClick={()=>navigate(`/mission/${activeMission.id}/pre`)}><ScanLine/>Launch WebXR mission</button>
+          <button className="button primary large" onClick={()=>navigate(`/play/${activeMission.id}`)}><ScanLine/>Choose experience mode</button>
           <button className="button secondary large" onClick={()=>navigate("/missions")}><Compass/>Explore runway</button>
         </div>
         <div className="hero-proof"><ShieldCheck/><div><b>OPPRRC proof enabled</b><span>Organization / Program / Project / Resource / Report / Certificate</span></div></div>
