@@ -58,7 +58,10 @@ async function handleApi(request, env, url) {
   if (url.pathname.startsWith("/api/rooms/")) {
     if (request.headers.get("Upgrade") !== "websocket") return json({ error: "WebSocket upgrade required" }, 426);
     const roomCode = url.pathname.split("/").pop();
-    if (!env.ROOMS) return openEphemeralRoom(request, roomCode);
+    if (!env.ROOMS) {
+      try { return openEphemeralRoom(request, roomCode); }
+      catch (error) { return json({ error: error?.message || "WebSocket runtime error", runtime: typeof WebSocketPair }, 500); }
+    }
     const room = env.ROOMS.get(env.ROOMS.idFromName(roomCode));
     return room.fetch(request);
   }
