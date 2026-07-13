@@ -624,6 +624,7 @@ export {
   MICRO_SERVICES,
   TIER_MONTHLY_ALLOWANCE,
   NONPROFIT_PACK_BONUS,
+  SEAT_TIER_NAME,
   resolveRqTier,
   type CreditPackageTier,
   type RqTier,

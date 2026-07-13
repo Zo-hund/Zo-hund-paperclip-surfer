@@ -33,6 +33,14 @@ vi.mock("../auth/email-service.js", () => ({
   isEmailConfigured: (...args: any[]) => mockIsEmailConfigured(...args),
 }));
 
+// This suite exercises the email side effect of invite creation, not the
+// team-seats gate — stub plenty of headroom so the new seat check never
+// blocks these requests.
+vi.mock("../services/stripeProvisioningService.js", () => ({
+  getPurchasedSeats: vi.fn().mockResolvedValue(1000),
+  getUsedSeats: vi.fn().mockResolvedValue(0),
+}));
+
 function createDbStub() {
   // createCompanyInviteForCompany does: db.insert(invites).values({...}).returning().then(rows => rows[0])
   const insert = vi.fn().mockReturnValue({

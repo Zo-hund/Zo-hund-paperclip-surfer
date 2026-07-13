@@ -1,13 +1,24 @@
 import { Router } from "express";
 import Stripe from "stripe";
+import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { stripePrices, stripeSubscriptions, amxGlobalLedger, amxTransactions, companies, stripeProcessedEvents } from "@paperclipai/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { CREDIT_PACKAGES, CREDIT_PACKAGE_AMOUNTS, NONPROFIT_PACK_BONUS } from "@paperclipai/shared";
-import { provisionMember, cancelMember, awardMonthlyAllowance, TIER_MEMBER_TYPES, getPriceForTier } from "../services/stripeProvisioningService.js";
+import {
+  provisionMember,
+  cancelMember,
+  awardMonthlyAllowance,
+  TIER_MEMBER_TYPES,
+  getPriceForTier,
+  getPurchasedSeats,
+  getUsedSeats,
+} from "../services/stripeProvisioningService.js";
 import { assertCompanyAccess, assertCompanyRole, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { logActivity } from "../services/index.js";
 import { amxChainService } from "../services/amxChainService.js";
+
+const checkoutQuantitySchema = z.number().int().min(1).max(500).default(1);
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -521,6 +532,15 @@ export function stripeApiRoutes(db: Db): Router {
       return;
     }
 
+    const quantityParse = checkoutQuantitySchema.safeParse(
+      req.body?.quantity === undefined ? undefined : Number(req.body.quantity),
+    );
+    if (!quantityParse.success) {
+      res.status(400).json({ error: "quantity must be an integer between 1 and 500" });
+      return;
+    }
+    const quantity = quantityParse.data;
+
     const priceRow = await getPriceForTier(db, companyId, tierName);
     if (!priceRow) {
       res.status(404).json({ error: `No active price for tier "${tierName}". Run seed-catalog first.` });
@@ -540,6 +560,7 @@ export function stripeApiRoutes(db: Db): Router {
         stripeSubscriptionId: `free-${companyId}-${userId}-${tierName}`,
         stripePriceId: priceRow.stripePriceId,
         status: "active",
+        quantity,
       });
       res.json({ url: null, provisioned: true, tier: tierName });
       return;
@@ -563,7 +584,7 @@ export function stripeApiRoutes(db: Db): Router {
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: isOneTime ? "payment" : "subscription",
-      line_items: [{ price: priceRow.stripePriceId, quantity: 1 }],
+      line_items: [{ price: priceRow.stripePriceId, quantity }],
       metadata: {
         companyId,
         userId,
@@ -582,6 +603,24 @@ export function stripeApiRoutes(db: Db): Router {
       const msg = err instanceof Error ? err.message : "Stripe error";
       res.status(500).json({ error: msg });
     }
+  });
+
+  /**
+   * GET /companies/:companyId/seats
+   * Team-seats summary: purchased seats (sum of active/trialing SEAT_TIER_NAME
+   * subscription quantities), used seats (active human members excluding the
+   * owner), and how many remain available.
+   */
+  router.get("/companies/:companyId/seats", async (req, res) => {
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(req, companyId);
+
+    const [purchased, used] = await Promise.all([
+      getPurchasedSeats(db, companyId),
+      getUsedSeats(db, companyId),
+    ]);
+
+    res.json({ purchased, used, available: Math.max(0, purchased - used) });
   });
 
   return router;
@@ -720,6 +759,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
       const stripe = getStripe();
       const sub = await stripe.subscriptions.retrieve(subscriptionId);
       const priceId = sub.items.data[0]?.price.id ?? "";
+      const quantity = sub.items.data[0]?.quantity ?? 1;
       await provisionMember(db, {
         companyId,
         userId,
@@ -728,6 +768,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
         stripeSubscriptionId: subscriptionId,
         stripePriceId: priceId,
         status: sub.status,
+        quantity,
         currentPeriodEnd: subscriptionPeriodEnd(sub) ?? undefined,
       });
       // The subscription.updated handler needs companyId/userId/tierName on
@@ -750,6 +791,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
       const tierName = sub.metadata?.tierName;
       if (!companyId || !userId || !tierName) return;
       const priceId = sub.items.data[0]?.price.id ?? "";
+      const quantity = sub.items.data[0]?.quantity ?? 1;
       await provisionMember(db, {
         companyId,
         userId,
@@ -758,6 +800,7 @@ async function handleStripeEvent(db: Db, event: Stripe.Event): Promise<void> {
         stripeSubscriptionId: sub.id,
         stripePriceId: priceId,
         status: sub.status,
+        quantity,
         currentPeriodEnd: subscriptionPeriodEnd(sub) ?? undefined,
       });
       break;

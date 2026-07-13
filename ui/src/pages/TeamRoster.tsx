@@ -1,13 +1,22 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, Zap, Bot, UserCheck, ShieldCheck, Play, Cpu, Video,
   CheckCircle2, Lock, TrendingUp, Star, Plus, ChevronRight, X,
   Sparkles, ArrowRight, Layers, Medal, Activity, Heart, Trophy,
-  AlertTriangle, Target, Clock, Flame, BarChart2, Globe
+  AlertTriangle, Target, Clock, Flame, BarChart2, Globe,
+  CreditCard, Minus, Loader2, Armchair
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/context/CompanyContext";
 import { Link } from "@/lib/router";
+import { accessApi, type CompanyMembership } from "@/api/access";
+import { agentsApi } from "@/api/agents";
+import type { Agent } from "@paperclipai/shared";
+import { stripeApi } from "@/api/stripe";
+import { authApi } from "@/api/auth";
+import { queryKeys } from "@/lib/queryKeys";
+import { SEAT_TIER_NAME } from "@paperclipai/shared";
 
 // ── XP level thresholds ───────────────────────────────────────────────────────
 
@@ -46,7 +55,7 @@ export interface RosterMember {
   badges: string[];
 }
 
-// ── Default demo roster ───────────────────────────────────────────────────────
+// ── Default demo roster (fallback shown before real data loads) ───────────────
 
 const DEFAULT_ROSTER: RosterMember[] = [
   { id: "r1", name: "Hermes Advanced", title: "Nous Research Reasoning Elite", type: "agent", origin: "internal", avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=hermes-advanced", xp: 1650, health: 94, status: "live_ready",  teamId: "alpha", hiredAt: "2026-04-01", phase: "prod",  simRuns: 12, badges: ["Top Rated Plus", "Nous Verified"] },
@@ -380,13 +389,264 @@ function TeamColumn({ team, members, onUpdate }: {
   );
 }
 
+// ── Real-data mapping ─────────────────────────────────────────────────────────
+//
+// company_memberships has no XP/health/activation-stage tracking — those are
+// presentational-only gamification concepts this page has always simulated
+// locally. Real identity (who's actually a member, their role, when they
+// joined) now comes from the access API instead of a hardcoded array; the
+// game-flavor fields get honest defaults (0 XP, 100% health, no team) rather
+// than fabricated numbers.
+
+const ROLE_TITLES: Record<string, string> = {
+  owner: "Company Owner",
+  admin: "Administrator",
+  member: "Team Member",
+  viewer: "Viewer",
+};
+
+function membershipStatusToActivation(status: CompanyMembership["status"]): ActivationStatus {
+  if (status === "active") return "sim_ready";
+  if (status === "pending") return "in_training";
+  return "paused";
+}
+
+function agentStatusToActivation(status: Agent["status"] | undefined): ActivationStatus {
+  switch (status) {
+    case "active":
+    case "running":
+      return "live_active";
+    case "idle":
+      return "sim_ready";
+    case "pending_approval":
+      return "in_training";
+    case "paused":
+    case "error":
+    case "terminated":
+      return "paused";
+    default:
+      return "in_training";
+  }
+}
+
+function buildRosterFromRealData(
+  memberships: CompanyMembership[],
+  directory: { userId: string; name: string }[],
+  agents: Agent[],
+): RosterMember[] {
+  const nameByUserId = new Map(directory.map((d) => [d.userId, d.name]));
+  const agentById = new Map(agents.map((a) => [a.id, a]));
+
+  return memberships.map((m): RosterMember => {
+    if (m.principalType === "agent") {
+      const agent = agentById.get(m.principalId);
+      const status = m.status === "active" ? agentStatusToActivation(agent?.status) : "paused";
+      return {
+        id: m.id,
+        name: agent?.name ?? `Agent ${m.principalId.slice(0, 8)}`,
+        title: agent?.title ?? "AI Agent",
+        type: "agent",
+        origin: "internal",
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(m.principalId)}`,
+        xp: 0,
+        health: 100,
+        status,
+        teamId: null,
+        hiredAt: m.createdAt,
+        phase: null,
+        simRuns: 0,
+        badges: [],
+      };
+    }
+
+    const status = membershipStatusToActivation(m.status);
+    return {
+      id: m.id,
+      name: nameByUserId.get(m.principalId) ?? `Member ${m.principalId.slice(0, 8)}`,
+      title: ROLE_TITLES[m.membershipRole ?? ""] ?? "Team Member",
+      type: "human",
+      origin: "internal",
+      avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(m.principalId)}`,
+      xp: 0,
+      health: 100,
+      status,
+      teamId: null,
+      hiredAt: m.createdAt,
+      phase: null,
+      simRuns: 0,
+      badges: m.membershipRole === "owner" ? ["Owner"] : [],
+    };
+  });
+}
+
+// ── Team Seats card ───────────────────────────────────────────────────────────
+
+function TeamSeatsCard({ companyId, userId }: { companyId: string; userId: string }) {
+  const queryClient = useQueryClient();
+  const [quantity, setQuantity] = useState(5);
+  const [buyError, setBuyError] = useState<string | null>(null);
+
+  const seatsQuery = useQuery({
+    queryKey: queryKeys.stripe.seats(companyId),
+    queryFn: () => stripeApi.getSeats(companyId),
+    enabled: !!companyId,
+  });
+
+  const buySeatsMutation = useMutation({
+    mutationFn: () =>
+      stripeApi.createCheckout(companyId, {
+        tierName: SEAT_TIER_NAME,
+        userId,
+        quantity,
+        successUrl: window.location.href,
+        cancelUrl: window.location.href,
+      }),
+    onSuccess: (data) => {
+      setBuyError(null);
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        // Free-tier / direct-provision path — refresh the seats summary.
+        queryClient.invalidateQueries({ queryKey: queryKeys.stripe.seats(companyId) });
+      }
+    },
+    onError: (err) => {
+      setBuyError(err instanceof Error ? err.message : "Failed to start checkout");
+    },
+  });
+
+  const seats = seatsQuery.data;
+  const noSeatPriceConfigured = !seatsQuery.isLoading && (seats?.purchased ?? 0) === 0;
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/40 flex items-center gap-2">
+        <Armchair className="h-4 w-4 text-primary" />
+        <h3 className="text-[12px] font-black uppercase tracking-widest">Team Seats</h3>
+      </div>
+      <div className="p-5">
+        {seatsQuery.isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-[12px]">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading seat usage…
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div>
+                <div className="text-2xl font-black text-foreground">{seats?.purchased ?? 0}</div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Purchased</div>
+              </div>
+              <div>
+                <div className="text-2xl font-black text-foreground">{seats?.used ?? 0}</div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Used</div>
+              </div>
+              <div>
+                <div className={`text-2xl font-black ${(seats?.available ?? 0) > 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                  {seats?.available ?? 0}
+                </div>
+                <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Available</div>
+              </div>
+            </div>
+
+            {noSeatPriceConfigured ? (
+              <div className="rounded-xl border border-dashed border-border/50 bg-accent/5 p-4 text-[11px] text-muted-foreground">
+                No team seat pricing is configured for this company yet. Ask an instance admin to configure team seat
+                pricing before you can buy seats.
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center rounded-xl border border-border/50 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    className="h-9 w-9 flex items-center justify-center hover:bg-accent/20 text-muted-foreground"
+                    aria-label="Decrease seat quantity"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    value={quantity}
+                    onChange={(e) => {
+                      const next = Number.parseInt(e.target.value, 10);
+                      setQuantity(Number.isFinite(next) && next > 0 ? next : 1);
+                    }}
+                    className="w-14 h-9 text-center bg-transparent text-[13px] font-black outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => q + 1)}
+                    className="h-9 w-9 flex items-center justify-center hover:bg-accent/20 text-muted-foreground"
+                    aria-label="Increase seat quantity"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <Button
+                  onClick={() => buySeatsMutation.mutate()}
+                  disabled={buySeatsMutation.isPending}
+                  className="h-9 gap-2 font-black text-[11px] uppercase tracking-widest"
+                >
+                  {buySeatsMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <CreditCard className="h-3.5 w-3.5" />
+                  )}
+                  Buy {quantity} Seat{quantity === 1 ? "" : "s"}
+                </Button>
+              </div>
+            )}
+            {buyError && <p className="mt-3 text-[11px] text-destructive">{buyError}</p>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main TeamRoster page ──────────────────────────────────────────────────────
 
 export function TeamRoster() {
-  const { selectedCompany } = useCompany();
+  const { selectedCompany, selectedCompanyId } = useCompany();
   const [roster, setRoster] = useState<RosterMember[]>(DEFAULT_ROSTER);
   const [view, setView] = useState<"board" | "list">("board");
   const [filterStatus, setFilterStatus] = useState<ActivationStatus | "all">("all");
+
+  const { data: session } = useQuery({
+    queryKey: ["session"],
+    queryFn: () => authApi.getSession(),
+  });
+
+  const membersQuery = useQuery({
+    queryKey: queryKeys.access.members(selectedCompanyId!),
+    queryFn: () => accessApi.listMembers(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const directoryQuery = useQuery({
+    queryKey: queryKeys.access.members(selectedCompanyId!).concat("directory"),
+    queryFn: () => accessApi.listMemberDirectory(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const agentsQuery = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const realRoster = useMemo(() => {
+    if (!membersQuery.data) return null;
+    return buildRosterFromRealData(membersQuery.data, directoryQuery.data ?? [], agentsQuery.data ?? []);
+  }, [membersQuery.data, directoryQuery.data, agentsQuery.data]);
+
+  // Seed local roster state from real membership data once it loads. Team
+  // assignment / SIM-LIVE activation stay client-only (no server model for
+  // them yet), so this only overwrites when the underlying data set changes.
+  useEffect(() => {
+    if (realRoster) setRoster(realRoster);
+  }, [realRoster]);
 
   const updateMember = useCallback((id: string, patch: Partial<RosterMember>) => {
     setRoster((prev) => prev.map((m) => m.id === id ? { ...m, ...patch } : m));
@@ -455,6 +715,15 @@ export function TeamRoster() {
           </div>
         </div>
       </section>
+
+      {/* Team Seats */}
+      {selectedCompanyId && session?.session.userId && (
+        <div className="px-4 md:px-8 py-6 border-b border-border/20">
+          <div className="max-w-7xl mx-auto">
+            <TeamSeatsCard companyId={selectedCompanyId} userId={session.session.userId} />
+          </div>
+        </div>
+      )}
 
       {/* XP Gate Legend */}
       <div className="px-4 md:px-8 py-4 border-b border-border/20 bg-accent/5">

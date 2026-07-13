@@ -1,7 +1,7 @@
 import type { AgentAdapterType, CompanyMembershipRole, JoinRequest } from "@paperclipai/shared";
 import { api } from "./client";
 
-type CompanyMembership = {
+export type CompanyMembership = {
   id: string;
   companyId: string;
   principalType: "user" | "agent";
