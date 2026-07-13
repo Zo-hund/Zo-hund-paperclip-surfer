@@ -2,6 +2,12 @@ const rateBuckets = new Map();
 const ephemeralRooms = new Map();
 const APP_HTML = "__AMX_APP_HTML__";
 const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), fullscreen=(self), xr-spatial-tracking=(self)";
+const AGENT_TOOLS = [
+  { name: "system.health", description: "Inspect AMX runtime health", source: "runtime", available: true },
+  { name: "mission.context", description: "Read the active mission context", source: "skill", available: true },
+  { name: "proof.latest", description: "Read the latest proof record", source: "runtime", available: true },
+  { name: "spatial.capabilities", description: "Inspect browser XR and GPU support", source: "runtime", available: true },
+];
 
 function capabilityHeaders(headers = {}) {
   return { ...headers, "Permissions-Policy": CAPABILITY_POLICY, "Referrer-Policy": "strict-origin-when-cross-origin", "X-Content-Type-Options": "nosniff" };
@@ -53,6 +59,109 @@ function allowRequest(request) {
   return bucket.count <= 120;
 }
 
+function gatewayUrl(base, path) {
+  const parsed = new URL(base);
+  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost") throw new Error("Gateway URL must use HTTPS");
+  return new URL(path.replace(/^\//, ""), parsed.toString().endsWith("/") ? parsed : `${parsed}/`);
+}
+
+async function gatewayRequest(base, token, path, payload) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const response = await fetch(gatewayUrl(base, path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Gateway returned ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function agentCapabilities(env) {
+  const mcpGatewayConfigured = Boolean(env.MCP_GATEWAY_URL);
+  const pluginGatewayConfigured = Boolean(env.PLUGIN_GATEWAY_URL);
+  return {
+    transport: env.AGENT_RUNTIME_URL ? "remote" : "local",
+    agentRuntimeConfigured: Boolean(env.AGENT_RUNTIME_URL),
+    mcpGatewayConfigured,
+    pluginGatewayConfigured,
+    livekitConfigured: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET),
+    tools: [
+      ...AGENT_TOOLS,
+      { name: "plugin.catalog", description: "List tools from the configured Plugin gateway", source: "plugin", available: pluginGatewayConfigured },
+      { name: "mcp.tools", description: "List tools from the configured MCP gateway", source: "mcp", available: mcpGatewayConfigured },
+    ],
+  };
+}
+
+function sanitizeAgentPayload(body) {
+  const allowedKinds = new Set(["text", "audio", "image", "video", "code", "document"]);
+  return {
+    agentId: String(body.agentId || "agent").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64),
+    agentName: String(body.agentName || "AMX Agent").replace(/[<>]/g, "").slice(0, 80),
+    text: String(body.text || "").slice(0, 12_000),
+    contentKind: allowedKinds.has(body.contentKind) ? body.contentKind : "text",
+    attachments: (Array.isArray(body.attachments) ? body.attachments : []).slice(0, 12).map((attachment) => ({
+      id: String(attachment.id || crypto.randomUUID()).slice(0, 80),
+      kind: allowedKinds.has(attachment.kind) ? attachment.kind : "document",
+      name: String(attachment.name || "attachment").replace(/[<>]/g, "").slice(0, 180),
+      mimeType: String(attachment.mimeType || "application/octet-stream").slice(0, 120),
+      size: Math.max(0, Math.min(Number(attachment.size) || 0, 100_000_000)),
+      transfer: attachment.transfer === "inline" ? "inline" : "metadata",
+      content: typeof attachment.content === "string" ? attachment.content.slice(0, 60_000) : undefined,
+      dataUrl: typeof attachment.dataUrl === "string" && attachment.dataUrl.length <= 5_800_000 ? attachment.dataUrl : undefined,
+    })),
+  };
+}
+
+function localAgentResult(payload) {
+  const kinds = [...new Set(payload.attachments.map((attachment) => attachment.kind))];
+  const timestamp = new Date().toISOString();
+  const tools = [
+    { id: crypto.randomUUID(), name: "mission.context", source: "skill", status: "complete", detail: "Local mission context loaded.", timestamp },
+  ];
+  if (kinds.includes("code")) tools.push({ id: crypto.randomUUID(), name: "scene-code.review", source: "skill", status: "complete", detail: "Code content registered for local review.", timestamp });
+  if (kinds.some((kind) => ["audio", "image", "video"].includes(kind))) tools.push({ id: crypto.randomUUID(), name: "media.intake", source: "runtime", status: "complete", detail: "Media registered; inference requires the remote agent runtime.", timestamp });
+  const subject = payload.text || (kinds.length ? `${kinds.join(" + ")} content` : "task");
+  return {
+    text: `${payload.agentName} accepted: "${subject.slice(0, 180)}" for local orchestration.${kinds.length ? ` ${payload.attachments.length} attachment${payload.attachments.length === 1 ? "" : "s"} registered.` : ""}`,
+    transport: "local",
+    tools,
+  };
+}
+
+function normalizeRemoteTools(tools) {
+  const validSources = new Set(["skill", "plugin", "mcp", "runtime"]);
+  const validStatuses = new Set(["running", "complete", "blocked"]);
+  if (!Array.isArray(tools)) return [];
+  return tools.filter((tool) => tool && typeof tool === "object").slice(0, 30).map((tool) => ({
+    id: String(tool.id || crypto.randomUUID()).slice(0, 120),
+    name: String(tool.name || "remote.tool").slice(0, 160),
+    source: validSources.has(tool.source) ? tool.source : "runtime",
+    status: validStatuses.has(tool.status) ? tool.status : "complete",
+    detail: String(tool.detail || "Remote tool completed.").slice(0, 1000),
+    timestamp: typeof tool.timestamp === "string" && !Number.isNaN(Date.parse(tool.timestamp)) ? tool.timestamp : new Date().toISOString(),
+  }));
+}
+
+async function invokeBuiltInTool(toolName, context, env) {
+  if (toolName === "system.health") return { service: "amx-air-hubs", online: true, timestamp: new Date().toISOString() };
+  if (toolName === "mission.context") return { agentId: context.agentId || "agent", missionId: context.missionId || "webxr-creator", source: "client-context" };
+  if (toolName === "spatial.capabilities") return context.browser || { webgpu: false, webxr: false, camera: false };
+  if (toolName === "proof.latest") {
+    await initialize(env.DB);
+    if (!env.DB) return context.latestProof || { status: "No proof database is connected" };
+    const result = await env.DB.prepare("SELECT payload FROM proof_records ORDER BY created_at DESC LIMIT 1").first();
+    return result?.payload ? JSON.parse(result.payload) : { status: "No proof records" };
+  }
+  throw new Error("Unknown built-in tool");
+}
+
 function openEphemeralRoom(request, roomCode) {
   const pair = new WebSocketPair();
   const [client, server] = Object.values(pair);
@@ -92,6 +201,50 @@ async function initialize(db) {
 async function handleApi(request, env, url) {
   if (!allowRequest(request)) return json({ error: "Rate limit exceeded" }, 429);
   if (url.pathname === "/api/health") return json({ ok: true, service: "amx-air-hubs", livekit: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) });
+  if (request.method === "GET" && url.pathname === "/api/agents/capabilities") return json(agentCapabilities(env));
+  if (request.method === "POST" && url.pathname === "/api/agents/respond") {
+    const payload = sanitizeAgentPayload(await request.json().catch(() => ({})));
+    if (!payload.text && !payload.attachments.length) return json({ error: "Text or an attachment is required" }, 400);
+    if (!env.AGENT_RUNTIME_URL) return json(localAgentResult(payload));
+    try {
+      const result = await gatewayRequest(env.AGENT_RUNTIME_URL, env.AGENT_RUNTIME_TOKEN, "respond", payload);
+      return json({
+        text: String(result.text || result.output || "Remote agent completed the request.").slice(0, 30_000),
+        transport: "remote",
+        tools: normalizeRemoteTools(result.tools),
+      });
+    } catch (error) {
+      const fallback = localAgentResult(payload);
+      return json({ ...fallback, warning: error instanceof Error ? error.message : "Remote runtime unavailable" });
+    }
+  }
+  if (request.method === "POST" && url.pathname === "/api/agents/tools/invoke") {
+    const body = await request.json().catch(() => ({}));
+    const toolName = String(body.toolName || "").slice(0, 160);
+    const source = toolName.startsWith("mcp.") ? "mcp" : toolName.startsWith("plugin.") ? "plugin" : AGENT_TOOLS.find((tool) => tool.name === toolName)?.source || "runtime";
+    const timestamp = new Date().toISOString();
+    try {
+      let output;
+      if (source === "mcp") {
+        if (!env.MCP_GATEWAY_URL) throw new Error("MCP gateway is not configured");
+        output = await gatewayRequest(env.MCP_GATEWAY_URL, env.MCP_GATEWAY_TOKEN, "invoke", { toolName, agentId: body.agentId, context: body.context || {} });
+      } else if (toolName.startsWith("plugin.")) {
+        if (!env.PLUGIN_GATEWAY_URL) throw new Error("Plugin gateway is not configured");
+        output = await gatewayRequest(env.PLUGIN_GATEWAY_URL, env.PLUGIN_GATEWAY_TOKEN, "invoke", { toolName, agentId: body.agentId, context: body.context || {} });
+      } else {
+        output = await invokeBuiltInTool(toolName, { ...(body.context || {}), agentId: body.agentId }, env);
+      }
+      return json({
+        trace: { id: crypto.randomUUID(), name: toolName, source, status: "complete", detail: "Tool execution completed.", timestamp },
+        output: typeof output === "string" ? output : JSON.stringify(output, null, 2),
+      });
+    } catch (error) {
+      return json({
+        trace: { id: crypto.randomUUID(), name: toolName, source, status: "blocked", detail: error instanceof Error ? error.message : "Tool execution failed", timestamp },
+        output: error instanceof Error ? error.message : "Tool execution failed",
+      });
+    }
+  }
   if (request.method === "POST" && url.pathname === "/api/livekit/token") {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
       return json({ error: "LiveKit is not configured on this stage", configured: false }, 503);

@@ -4,6 +4,7 @@ import { CompletePage, HomePage, AgentsPage, MissionRunPage, MissionsPage, PreRu
 import { AdminPage, AnalyticsPage, ControlPage, MarketplacePage, PodsPage, ScanResolver, SponsorPage, SponsorResolver, WalletPage } from "./pages/secondary";
 import { QRStudioPage, RoleDashboardPage, TenantConsolePage } from "./pages/operations";
 import { NexusPage } from "./pages/nexus";
+import { AgentWorkbenchPage } from "./pages/agent-workbench";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
   ModeExperiencePage, ReplayPage, RoomLobbyPage, TeamMonitorPage, TeamProfilePage,
@@ -18,6 +19,7 @@ function ShellRoutes() {
     <Route path="/missions" element={<MissionsPage/>}/>
     <Route path="/agents" element={<AgentsPage/>}/>
     <Route path="/agents/:agentId/profile" element={<AgentProfilePage/>}/>
+    <Route path="/agents/:agentId/workspace" element={<AgentWorkbenchPage/>}/>
     <Route path="/play/:missionId" element={<ExperienceLauncherPage/>}/>
     <Route path="/mission/:id/pre" element={<PreRunPage/>}/>
     <Route path="/mission/:id/complete" element={<CompletePage/>}/>
