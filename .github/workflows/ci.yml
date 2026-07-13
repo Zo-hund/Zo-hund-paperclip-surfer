@@ -127,6 +127,9 @@ jobs:
       - name: Run Tests
         run: pnpm test:run
 
+      - name: Run AMX AIR Hubs Worker contract tests
+        run: pnpm --filter @amx/air-hubs test
+
   helm-validate:
     name: helm validate
     needs: build-and-test
