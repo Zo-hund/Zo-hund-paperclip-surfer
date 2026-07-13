@@ -98,12 +98,33 @@ export function updatePod(id: string, patch: Partial<SkillPod>) {
 }
 
 export function joinPod(code: string, name = "Guest Learner") {
-  let joined: SkillPod | undefined;
-  write(PODS, getPods().map((pod) => {
-    if (pod.code !== code.toUpperCase()) return pod;
-    joined = { ...pod, participants: [...pod.participants, { id: crypto.randomUUID(), name, role: "Learner", progress: 0, status: "active" }] };
-    return joined;
-  }));
+  const normalizedCode = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(normalizedCode)) return undefined;
+
+  const participant = { id: crypto.randomUUID(), name, role: "Learner" as const, progress: 0, status: "active" as const };
+  const pods = getPods();
+  let joined = pods.find((pod) => pod.code === normalizedCode);
+
+  if (joined) {
+    joined = { ...joined, participants: [...joined.participants, participant] };
+    write(PODS, pods.map((pod) => pod.id === joined?.id ? joined : pod));
+  } else {
+    joined = {
+      id: `pod-remote-${normalizedCode.toLowerCase()}`,
+      code: normalizedCode,
+      name: `Remote Skill Pod / ${normalizedCode}`,
+      type: "remote",
+      missionId: "xrt-green-mode",
+      trainerId: "remote",
+      participants: [participant],
+      agents: ["jaz", "taz"],
+      status: "active",
+      trainerApproved: false,
+      createdAt: new Date().toISOString(),
+    };
+    write(PODS, [joined, ...pods]);
+  }
+
   return joined;
 }
 
