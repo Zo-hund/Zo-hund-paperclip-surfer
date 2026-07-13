@@ -43,6 +43,28 @@ function read<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) || "") as T; } catch { return fallback; }
 }
 
+function isLocalHost() {
+  return ["localhost", "127.0.0.1"].includes(location.hostname);
+}
+
+function proofForServer(proof: ProofRecord) {
+  if (!proof.mediaProofUrl?.startsWith("data:") || JSON.stringify(proof).length < 850_000) return proof;
+  const { mediaProofUrl: _mediaProofUrl, ...bounded } = proof;
+  return bounded;
+}
+
+function syncProofRecord(type: "proof:create" | "proof:update" | "proof:complete", proof: ProofRecord) {
+  const payload = proofForServer(proof);
+  if (!navigator.onLine) {
+    queueOffline(type, payload);
+    return;
+  }
+  if (isLocalHost()) return;
+  void fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: crypto.randomUUID(), type, payload }) })
+    .then((response) => { if (!response.ok) queueOffline(type, payload); })
+    .catch(() => queueOffline(type, payload));
+}
+
 export function trackEvent(eventName: string, payload: Omit<AnalyticsEvent, "id" | "eventName" | "timestamp"> = {}) {
   const events = read<AnalyticsEvent[]>(EVENTS_KEY, []);
   const event = { id: crypto.randomUUID(), eventName, tenantId: getActiveTenant(), ...payload, timestamp: new Date().toISOString() };
@@ -77,7 +99,7 @@ export function startProofRecord(mission: Mission, role: Role): ProofRecord {
   const proof: ProofRecord = { ...base, signature: proofSignature(base) };
   localStorage.setItem("amx_active_proof", proof.id);
   localStorage.setItem(PROOFS_KEY, JSON.stringify([proof, ...getProofs().filter((item) => !(item.missionId === mission.id && item.status === "in_progress"))]));
-  if (!navigator.onLine) queueOffline("proof:create", proof);
+  syncProofRecord("proof:create", proof);
   return proof;
 }
 
@@ -86,12 +108,32 @@ export function updateProofRecord(id: string, patch: Partial<ProofRecord>) {
   const next = proofs.map((proof) => proof.id === id ? { ...proof, ...patch } : proof);
   localStorage.setItem(PROOFS_KEY, JSON.stringify(next));
   const updated = next.find((proof) => proof.id === id);
-  if (updated && !navigator.onLine) queueOffline("proof:update", updated);
+  if (updated) syncProofRecord("proof:update", updated);
   return updated;
 }
 
 export function attachProofMedia(id: string, dataUrl: string) {
-  return updateProofRecord(id, { mediaProofUrl: dataUrl });
+  const proofs = getProofs();
+  const next = proofs.map((proof) => proof.id === id ? { ...proof, mediaProofUrl: dataUrl } : proof);
+  localStorage.setItem(PROOFS_KEY, JSON.stringify(next));
+  const updated = next.find((proof) => proof.id === id);
+  if (!updated) return undefined;
+  if (!window.__AMX_CONFIG__?.mediaStorageConfigured || isLocalHost()) {
+    syncProofRecord("proof:update", updated);
+    return updated;
+  }
+  void fetch(dataUrl).then((response) => response.blob()).then(async (blob) => {
+    const response = await fetch("/api/media", {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "image/jpeg", "X-AMX-Filename": `${updated.missionId}-evidence.jpg`, "X-AMX-Tenant": updated.tenantId },
+      body: blob,
+    });
+    if (!response.ok) throw new Error("Proof media upload failed");
+    const stored = await response.json() as { url?: string };
+    if (!stored.url) throw new Error("Proof media URL is missing");
+    updateProofRecord(id, { mediaProofUrl: stored.url });
+  }).catch(() => syncProofRecord("proof:update", updated));
+  return updated;
 }
 
 export function getAnalytics() {
@@ -112,7 +154,7 @@ export function createProofRecord(mission: Mission, role: Role, xp: number, star
   const proofs = read<ProofRecord[]>(PROOFS_KEY, []);
   localStorage.setItem(PROOFS_KEY, JSON.stringify([proof, ...proofs.filter((item) => item.id !== proof.id)]));
   localStorage.removeItem("amx_active_proof");
-  if (!navigator.onLine) queueOffline("proof:complete", proof);
+  syncProofRecord("proof:complete", proof);
   awardBadge(mission.badge);
   trackEvent("mission_completed", { missionId: mission.id, role });
   return proof;

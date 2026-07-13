@@ -52,7 +52,7 @@ async function prepareAttachment(file: File): Promise<AgentAttachment> {
   else if (file.size <= MAX_INLINE_BYTES && ["audio", "image", "video"].includes(kind)) dataUrl = await readDataUrl(file);
   return {
     id: crypto.randomUUID(), kind, name: file.name, mimeType: file.type || "application/octet-stream", size: file.size,
-    previewUrl, content, dataUrl, transfer: content || dataUrl ? "inline" : "metadata",
+    previewUrl, file, content, dataUrl, transfer: content || dataUrl ? "inline" : "metadata",
   };
 }
 

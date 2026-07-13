@@ -1,4 +1,4 @@
-const CACHE = "amx-air-v4";
+const CACHE = "amx-air-v5";
 const CORE = [
   "/",
   "/index.html",
@@ -6,6 +6,7 @@ const CORE = [
   "/icon.svg",
   "/brand/amx-air-hubs-brand.png",
   "/models/amx-mark.bin",
+  "/models/amx-mark.glb",
   "/models/nexus-control-room.glb",
 ];
 

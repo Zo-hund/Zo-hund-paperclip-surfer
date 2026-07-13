@@ -8,9 +8,9 @@ CREATE TABLE IF NOT EXISTS proof_records (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS proof_tenant_idx ON proof_records (tenant_id, created_at);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS analytics_events (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -21,9 +21,9 @@ CREATE TABLE IF NOT EXISTS analytics_events (
   payload TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
-
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS analytics_tenant_idx ON analytics_events (tenant_id, created_at);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS skill_pods (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS skill_pods (
   payload TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS media_objects (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS media_objects (
   object_key TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
-
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS media_tenant_idx ON media_objects (tenant_id, created_at);
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS agent_runs (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -55,5 +55,5 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   request_id TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
-
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS agent_runs_tenant_idx ON agent_runs (tenant_id, created_at);

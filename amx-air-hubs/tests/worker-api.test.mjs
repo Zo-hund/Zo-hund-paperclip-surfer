@@ -1,0 +1,229 @@
+import assert from "node:assert/strict";
+import { beforeEach, describe, test } from "node:test";
+import worker from "../worker.js";
+
+function assets(status = 404) {
+  return { fetch: async () => new Response(status === 404 ? "missing" : "asset", { status }) };
+}
+
+function request(path, init) {
+  return new Request(`https://amx.example${path}`, init);
+}
+
+function jsonRequest(path, body, method = "POST") {
+  return request(path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": crypto.randomUUID() }, body: JSON.stringify(body) });
+}
+
+function memoryBucket() {
+  const objects = new Map();
+  return {
+    async put(id, body, options) { objects.set(id, { body, ...options }); },
+    async get(id) {
+      const object = objects.get(id);
+      if (!object) return null;
+      return {
+        body: object.body,
+        httpMetadata: object.httpMetadata,
+        customMetadata: object.customMetadata,
+        httpEtag: `"${id}"`,
+        async arrayBuffer() { return object.body instanceof ArrayBuffer ? object.body : object.body.buffer.slice(object.body.byteOffset, object.body.byteOffset + object.body.byteLength); },
+        writeHttpMetadata(headers) { if (object.httpMetadata?.contentType) headers.set("Content-Type", object.httpMetadata.contentType); },
+      };
+    },
+    async delete(id) { objects.delete(id); },
+  };
+}
+
+function memoryDatabase() {
+  const writes = [];
+  return {
+    writes,
+    prepare(sql) {
+      return {
+        bind(...values) {
+          return {
+            async run() { writes.push({ sql, values }); return { success: true }; },
+            async all() { return { results: [] }; },
+            async first() { return { ok: 1 }; },
+          };
+        },
+        async run() { return { success: true }; },
+        async first() { return { ok: 1 }; },
+      };
+    },
+    async batch(statements) {
+      for (const statement of statements) if (typeof statement.run === "function") await statement.run();
+      return [];
+    },
+  };
+}
+
+describe("AMX AIR Hubs Worker API", () => {
+  let env;
+
+  beforeEach(() => {
+    env = { ASSETS: assets() };
+  });
+
+  test("returns liveness metadata, request tracing, and security headers", async () => {
+    const response = await worker.fetch(request("/api/health", { headers: { "X-Request-ID": "test-request-123" } }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.ok, true);
+    assert.equal(body.service, "amx-air-hubs");
+    assert.equal(body.version, "1.1.0");
+    assert.equal(body.requestId, "test-request-123");
+    assert.equal(response.headers.get("X-Request-ID"), "test-request-123");
+    assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
+    assert.equal(response.headers.get("X-Frame-Options"), "DENY");
+  });
+
+  test("enforces required production services", async () => {
+    env.REQUIRED_SERVICES = "database,media,livekit";
+    const response = await worker.fetch(request("/api/ready"), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.equal(body.ready, false);
+    assert.equal(body.mode, "not-ready");
+    assert.deepEqual(body.missingRequired, ["database", "media", "livekit"]);
+  });
+
+  test("reports configured remote capabilities without exposing secrets", async () => {
+    Object.assign(env, {
+      AGENT_RUNTIME_URL: "https://agents.example.com",
+      AGENT_RUNTIME_TOKEN: "secret-agent-token",
+      MCP_GATEWAY_URL: "https://mcp.example.com",
+      MCP_GATEWAY_TOKEN: "secret-mcp-token",
+      PLUGIN_GATEWAY_URL: "https://plugins.example.com",
+      LIVEKIT_URL: "wss://livekit.example.com",
+      LIVEKIT_API_KEY: "key",
+      LIVEKIT_API_SECRET: "secret",
+    });
+    const response = await worker.fetch(request("/api/agents/capabilities"), env);
+    const text = await response.text();
+    const body = JSON.parse(text);
+
+    assert.equal(body.transport, "remote");
+    assert.equal(body.agentRuntimeConfigured, true);
+    assert.equal(body.mcpGatewayConfigured, true);
+    assert.equal(body.pluginGatewayConfigured, true);
+    assert.equal(body.livekitConfigured, true);
+    assert.equal(text.includes("secret-agent-token"), false);
+    assert.equal(text.includes("secret-mcp-token"), false);
+  });
+
+  test("rejects malformed JSON with a bounded client error", async () => {
+    const response = await worker.fetch(request("/api/agents/respond", { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": crypto.randomUUID() }, body: "{" }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(body.error, "Request body must contain valid JSON");
+    assert.ok(body.requestId);
+  });
+
+  test("provides a truthful local agent fallback and tool trace", async () => {
+    const response = await worker.fetch(jsonRequest("/api/agents/respond", { agentId: "naz", agentName: "NAZ", text: "Review this scene", contentKind: "code", attachments: [] }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.transport, "local");
+    assert.match(body.text, /NAZ accepted/);
+    assert.ok(body.tools.some((tool) => tool.name === "mission.context"));
+  });
+
+  test("hydrates stored R2 media into a remote agent request", async (context) => {
+    const bucket = memoryBucket();
+    await bucket.put("stored-1234", new Uint8Array([1, 2, 3, 4]), { httpMetadata: { contentType: "application/octet-stream" }, customMetadata: {} });
+    env.MEDIA = bucket;
+    env.AGENT_RUNTIME_URL = "https://agents.example.com";
+    let forwarded;
+    context.mock.method(globalThis, "fetch", async (_url, init) => {
+      forwarded = JSON.parse(init.body);
+      return new Response(JSON.stringify({ text: "Remote media reviewed", tools: [] }), { headers: { "Content-Type": "application/json" } });
+    });
+    const response = await worker.fetch(jsonRequest("/api/agents/respond", {
+      agentId: "naz",
+      agentName: "NAZ",
+      text: "Review stored media",
+      contentKind: "document",
+      attachments: [{ id: "attachment-1", kind: "document", name: "scene.glb", mimeType: "application/octet-stream", size: 4, transfer: "stored", storageUrl: "/api/media/stored-1234" }],
+    }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.transport, "remote");
+    assert.equal(forwarded.attachments[0].transfer, "inline");
+    assert.equal(forwarded.attachments[0].dataUrl, "data:application/octet-stream;base64,AQIDBA==");
+  });
+
+  test("blocks unknown tools without crashing the runtime", async () => {
+    const response = await worker.fetch(jsonRequest("/api/agents/tools/invoke", { toolName: "unknown.tool", agentId: "naz" }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.trace.status, "blocked");
+    assert.match(body.output, /Unknown built-in tool/);
+  });
+
+  test("validates and accepts analytics in stateless mode", async () => {
+    const response = await worker.fetch(jsonRequest("/api/analytics/events", { id: "event-1", eventName: "mission_completed", tenantId: "tenant-1", timestamp: new Date().toISOString() }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 202);
+    assert.equal(body.accepted, true);
+    assert.equal(body.persisted, false);
+    assert.equal(body.id, "event-1");
+  });
+
+  test("attests and persists the complete proof payload", async () => {
+    const database = memoryDatabase();
+    env.DB = database;
+    env.PROOF_SIGNING_SECRET = "production-proof-signing-secret-32-bytes";
+    const response = await worker.fetch(jsonRequest("/api/sync", {
+      id: "queue-1",
+      type: "proof:complete",
+      payload: { id: "proof-1", tenantId: "tenant-1", learnerId: "learner-1", missionId: "mission-1", status: "complete", timestamp: new Date().toISOString(), report: { score: 92 } },
+    }), env);
+    const body = await response.json();
+    const insert = database.writes.find((write) => write.sql.includes("INSERT OR REPLACE INTO proof_records"));
+    const persisted = JSON.parse(insert.values[5]);
+
+    assert.equal(response.status, 202);
+    assert.equal(body.persisted, true);
+    assert.equal(persisted.report.score, 92);
+    assert.equal(persisted.serverAttestation.algorithm, "HMAC-SHA256");
+    assert.ok(persisted.serverAttestation.signature.length > 30);
+  });
+
+  test("stores, retrieves, and deletes media through the R2 contract", async () => {
+    env.MEDIA = memoryBucket();
+    const upload = await worker.fetch(request("/api/media", {
+      method: "POST",
+      headers: { "Content-Type": "image/png", "X-AMX-Filename": "scene.png", "X-AMX-Tenant": "tenant-1", "CF-Connecting-IP": crypto.randomUUID() },
+      body: new Uint8Array([1, 2, 3, 4]),
+    }), env);
+    const stored = await upload.json();
+    const download = await worker.fetch(request(stored.url), env);
+    const bytes = Array.from(new Uint8Array(await download.arrayBuffer()));
+    const removal = await worker.fetch(request(stored.url, { method: "DELETE", headers: { "CF-Connecting-IP": crypto.randomUUID() } }), env);
+    const missing = await worker.fetch(request(stored.url), env);
+
+    assert.equal(upload.status, 201);
+    assert.equal(download.status, 200);
+    assert.equal(download.headers.get("Content-Type"), "image/png");
+    assert.deepEqual(bytes, [1, 2, 3, 4]);
+    assert.equal(removal.status, 204);
+    assert.equal(missing.status, 404);
+  });
+
+  test("adds a nonce-based content security policy to SPA fallbacks", async () => {
+    const response = await worker.fetch(request("/agents/naz/workspace"), env);
+    const csp = response.headers.get("Content-Security-Policy") || "";
+
+    assert.equal(response.status, 200);
+    assert.match(csp, /script-src 'self' 'nonce-/);
+    assert.match(csp, /frame-ancestors 'none'/);
+  });
+});

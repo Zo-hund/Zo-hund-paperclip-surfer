@@ -5,6 +5,7 @@ import { AdminPage, AnalyticsPage, ControlPage, MarketplacePage, PodsPage, ScanR
 import { QRStudioPage, RoleDashboardPage, TenantConsolePage } from "./pages/operations";
 import { NexusPage } from "./pages/nexus";
 import { AgentWorkbenchPage } from "./pages/agent-workbench";
+import { RuntimeStatusPage } from "./pages/runtime-status";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
   ModeExperiencePage, ReplayPage, RoomLobbyPage, TeamMonitorPage, TeamProfilePage,
@@ -30,6 +31,7 @@ function ShellRoutes() {
     <Route path="/admin" element={<AdminPage/>}/>
     <Route path="/analytics" element={<AnalyticsPage/>}/>
     <Route path="/control" element={<ControlPage/>}/>
+    <Route path="/control/runtime" element={<RuntimeStatusPage/>}/>
     <Route path="/nexus" element={<NexusPage/>}/>
     <Route path="/qr-studio" element={<QRStudioPage/>}/>
     <Route path="/tenants" element={<TenantConsolePage/>}/>

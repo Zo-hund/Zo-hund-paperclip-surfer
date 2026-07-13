@@ -10,9 +10,11 @@ export interface AgentAttachment {
   mimeType: string;
   size: number;
   previewUrl?: string;
+  file?: File;
   content?: string;
   dataUrl?: string;
-  transfer: "inline" | "metadata";
+  storageUrl?: string;
+  transfer: "inline" | "metadata" | "stored";
 }
 
 export interface AgentToolTrace {
@@ -41,6 +43,10 @@ export interface AgentRuntimeStatus {
   mcpGatewayConfigured: boolean;
   pluginGatewayConfigured: boolean;
   livekitConfigured: boolean;
+  persistenceConfigured?: boolean;
+  mediaStorageConfigured?: boolean;
+  roomTransport?: "durable-object" | "supabase" | "local-only";
+  deploymentMode?: "full" | "degraded" | "not-ready";
   tools: Array<{ name: string; description: string; source: AgentToolTrace["source"]; available: boolean }>;
 }
 
@@ -71,8 +77,30 @@ const fallbackTools: AgentRuntimeStatus["tools"] = [
   { name: "mcp.tools", description: "List tools from the configured MCP gateway", source: "mcp", available: false },
 ];
 
-function safeAttachments(attachments: AgentAttachment[]) {
-  return attachments.slice(0, 12).map(({ previewUrl: _previewUrl, ...attachment }) => attachment);
+async function uploadAttachment(attachment: AgentAttachment) {
+  const { previewUrl: _previewUrl, file, ...transport } = attachment;
+  if (!file || ["localhost", "127.0.0.1"].includes(location.hostname) || !window.__AMX_CONFIG__?.mediaStorageConfigured || file.size > 25 * 1024 * 1024) return transport;
+  try {
+    const response = await fetch("/api/media", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "X-AMX-Filename": file.name,
+        "X-AMX-Tenant": localStorage.getItem("amx_active_tenant") || "tech-at-nite",
+      },
+      body: file,
+    });
+    if (!response.ok) return transport;
+    const stored = await response.json() as { url?: string };
+    if (!stored.url) return transport;
+    return { ...transport, storageUrl: stored.url, transfer: transport.dataUrl || transport.content ? "inline" as const : "stored" as const };
+  } catch {
+    return transport;
+  }
+}
+
+async function safeAttachments(attachments: AgentAttachment[]) {
+  return Promise.all(attachments.slice(0, 12).map(uploadAttachment));
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -127,7 +155,7 @@ function localReply(agent: Agent, text: string, attachments: AgentAttachment[], 
 }
 
 export async function sendAgentRequest(agent: Agent, text: string, attachments: AgentAttachment[], contentKind: AgentContentKind) {
-  const payload = { agentId: agent.id, agentName: agent.name, text: text.slice(0, 12_000), contentKind, attachments: safeAttachments(attachments) };
+  const payload = { agentId: agent.id, agentName: agent.name, tenantId: localStorage.getItem("amx_active_tenant") || "tech-at-nite", text: text.slice(0, 12_000), contentKind, attachments: await safeAttachments(attachments) };
   try {
     return await requestJson<{ text: string; transport: RuntimeTransport; tools: AgentToolTrace[] }>("/api/agents/respond", {
       method: "POST",
