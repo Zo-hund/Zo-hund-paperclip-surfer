@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import QRCode from "qrcode";
 import {
   Accessibility, Activity, BadgeCheck, Bot, ChevronRight, CircleUserRound, Download,
-  Home, LayoutGrid, Menu, Move3d, Radio, Settings2, ShieldCheck, ShoppingBag, Volume2, VolumeX, X, Zap,
+  Cpu, Home, LayoutGrid, Menu, Move3d, Radio, Settings2, ShieldCheck, ShoppingBag, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import type { Agent, Mission } from "./data";
 import { sponsorConfig } from "./data";
@@ -21,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/dashboard", label: "Dashboard", icon: Activity },
     { to: "/missions", label: "Missions", icon: Radio },
     { to: `/play/${activeMission.id}`, label: "Play", icon: Move3d },
+    { to: "/nexus", label: "Nexus", icon: Cpu },
     { to: "/agents", label: "Agents", icon: Bot },
     { to: "/wallet", label: "Proof", icon: BadgeCheck },
     { to: "/control", label: "Control", icon: LayoutGrid },

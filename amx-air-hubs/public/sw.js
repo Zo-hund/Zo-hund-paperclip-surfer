@@ -1,4 +1,4 @@
-const CACHE = "amx-air-v3";
+const CACHE = "amx-air-v4";
 const CORE = [
   "/",
   "/index.html",
@@ -6,6 +6,7 @@ const CORE = [
   "/icon.svg",
   "/brand/amx-air-hubs-brand.png",
   "/models/amx-mark.bin",
+  "/models/nexus-control-room.glb",
 ];
 
 self.addEventListener("install", (event) => {

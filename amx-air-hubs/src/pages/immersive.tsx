@@ -13,6 +13,7 @@ import { useAMX } from "../AppContext";
 import { AgentGlyph, Metric, PageHeader, QRCodeCard, StatusPill, XPBar } from "../components";
 import { agents, missions, type Mission } from "../data";
 import { ImmersiveWorld } from "../ImmersiveWorld";
+import { useGeoAnchors } from "../geospatial";
 import {
   beginImmersiveRun, completeQuestObjective, ensureRoom, experienceModes, getComfort,
   getContinuity, getLevel, getQuest, getRoom, getRunTimeline, humanProfile, modeRoute,
@@ -128,6 +129,7 @@ export function ModeExperiencePage({ mode }: { mode: ExperienceMode }) {
   const crew=useMemo(()=>crewFor(mission,continuity.socialMode),[continuity.socialMode,mission]);
   const [room,setRoom]=useState<Room>(()=>ensureRoom(continuity,mission,role,crew));
   const live=useRealtimeRoom(room.code);
+  const geo=useGeoAnchors(room.code);
   const sendLive=live.send;
   const current=quest.objectives.find((objective)=>objective.status==="active") || quest.objectives[quest.objectives.length-1];
   const complete=quest.reward.unlocked;
@@ -156,7 +158,10 @@ export function ModeExperiencePage({ mode }: { mode: ExperienceMode }) {
     <header className="immersive-hud-top"><Link className="icon-button" to={`/play/${mission.id}`} aria-label="Exit to experience launcher"><ChevronLeft/></Link><div className="hud-mission"><span>LIVE RUN / {mission.title}</span><div><i style={{width:`${progress}%`}}/></div></div><div className="hud-score"><Zap/><b>{xp} XP</b><span>{progress}%</span></div></header>
     <div className="mode-switcher" aria-label="Experience mode">{experienceModes.map((item)=><button key={item.id} className={item.id===mode?"active":""} onClick={()=>switchMode(item.id)}>{item.short}</button>)}</div>
     <main className="immersive-stage">
-      {mode==="2d"?<Cockpit2D mission={mission} quest={quest} onInteract={addEvent}/>:mode==="ar"?<div className="immersive-ar-host"><ARScene agent={crew[0]||agents[0]} onPlaced={()=>addEvent("Agent anchored in AR")} textOnly={settings.textOnlyMode}/></div>:<ImmersiveWorld mode={mode} comfort={comfort} reducedMotion={settings.reducedMotion} onInteract={addEvent} onFallback={recover}/>} 
+      {mode === "2d" ? <Cockpit2D mission={mission} quest={quest} onInteract={addEvent}/> : mode === "ar" ?
+        <div className="immersive-ar-host"><ARScene agent={crew[0]||agents[0]} onPlaced={()=>addEvent("Agent anchored in AR")} onSessionStart={geo.requestLocation} anchors={geo.projectedAnchors} onAnchorPlaced={(placement)=>geo.publishAnchor({label:`${(crew[0]||agents[0]).name} spatial anchor`,...placement,source:placement.source})} textOnly={settings.textOnlyMode}/></div> :
+        <ImmersiveWorld mode={mode} comfort={comfort} reducedMotion={settings.reducedMotion} onInteract={addEvent} onFallback={recover}/>
+      }
       <aside className="live-objective-panel">
         <div className="objective-head"><div><span className="eyebrow">QUEST OBJECTIVE</span><small>{continuity.socialMode.toUpperCase()} / STEP {Math.min(continuity.currentStep+1,mission.steps.length)}</small></div><strong>{String(Math.min(continuity.currentStep+1,mission.steps.length)).padStart(2,"0")}</strong></div>
         <h1>{complete?"Run complete":current.title}</h1><p>{complete?"Individual and team proof are ready for review.":current.detail}</p>

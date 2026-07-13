@@ -15,6 +15,7 @@ import {
 } from "../components";
 import { ARScene } from "../ARScene";
 import { BrandScene } from "../BrandScene";
+import { useGeoAnchors } from "../geospatial";
 import { recordCampaignEvent } from "../operations";
 
 export function HomePage() {
@@ -120,6 +121,7 @@ function SmartStatus({online}:{online:boolean}){return online?<Wifi/>:<WifiOff/>
 
 export function MissionRunPage() {
   const {id}=useParams();const mission=getMission(id);const navigate=useNavigate();const {role,settings,grantXP,setLatestProof,refreshRewards}=useAMX();
+  const geo=useGeoAnchors(`MISSION-${mission.id}`);
   const agent=agents.find((item)=>item.id===mission.agentId)||agents[0];const [placed,setPlaced]=useState(false);const [step,setStep]=useState(0);const [copilotOpen,setCopilotOpen]=useState(false);const [question,setQuestion]=useState("");const [answer,setAnswer]=useState("");const [quizOpen,setQuizOpen]=useState(false);const [quizAnswer,setQuizAnswer]=useState<number|null>(null);const [quizMessage,setQuizMessage]=useState("");const [evidenceSaved,setEvidenceSaved]=useState(false);const startedAt=useRef(Date.now());const placeGranted=useRef(false);
   const onPlaced=useCallback(()=>{setPlaced(true);if(!placeGranted.current){placeGranted.current=true;grantXP(xpRules.placeAgent);speak(voiceScripts[agent.id].placeAgent,settings.audioEnabled);trackEvent("agent_placed",{missionId:mission.id,role})}},[agent.id,grantXP,mission.id,role,settings.audioEnabled]);
   const current=mission.steps[step];const progress=((step+(placed?1:0))/(mission.steps.length+1))*100;
@@ -129,7 +131,7 @@ export function MissionRunPage() {
   const submitQuiz=()=>{if(quizAnswer===null)return;if(quizAnswer===mission.quiz.correct){grantXP(xpRules.bonusQuiz);setQuizMessage("Correct. Bonus XP secured.");setTimeout(finish,650)}else{setQuizMessage("Not quite. Review the checkpoint and try again.")}};
   return <div className="mission-run">
     <div className="run-topbar"><Link to={`/mission/${mission.id}/pre`} className="icon-button" aria-label="Exit mission"><XIcon/></Link><div><span className="eyebrow">PRO RUN / {mission.title}</span><div className="step-progress"><span style={{width:`${progress}%`}}/></div></div><span className="run-xp"><Zap/>+{placed?xpRules.placeAgent:0} XP</span></div>
-    <div className="run-stage"><ARScene agent={agent} onPlaced={onPlaced} textOnly={settings.textOnlyMode}/>
+    <div className="run-stage"><ARScene agent={agent} onPlaced={onPlaced} onSessionStart={geo.requestLocation} anchors={geo.projectedAnchors} onAnchorPlaced={(placement)=>geo.publishAnchor({label:`${agent.name} mission anchor`,...placement,source:placement.source})} textOnly={settings.textOnlyMode}/>
       <aside className="mission-panel"><div className="mission-panel-agent"><AgentGlyph agent={agent} size="small"/><div><span className="eyebrow">{agent.name} TRANSMISSION</span><VoiceIndicator enabled={settings.audioEnabled}/></div></div>
         {!placed?<div className="placement-copy"><ScanLine/><h2>Place {agent.name}</h2><p>Enter AR or tap the preview field to anchor your guide. Keep the area around you clear.</p><span className="pulse-label"><i/>WAITING FOR PLACEMENT</span></div>:<>
           <div className="checkpoint-count"><span>CHECKPOINT {step+1} OF {mission.steps.length}</span><b>{String(step+1).padStart(2,"0")}</b></div>

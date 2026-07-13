@@ -6,7 +6,7 @@ export interface RoomMessage { id: string; sender: string; text: string; timesta
 
 declare global {
   interface Window {
-    __AMX_CONFIG__?: { supabaseUrl?: string; supabasePublishableKey?: string };
+    __AMX_CONFIG__?: { supabaseUrl?: string; supabasePublishableKey?: string; livekitConfigured?: boolean };
   }
 }
 

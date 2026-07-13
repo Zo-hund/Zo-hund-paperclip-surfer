@@ -1,9 +1,46 @@
 const rateBuckets = new Map();
 const ephemeralRooms = new Map();
 const APP_HTML = "__AMX_APP_HTML__";
+const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), fullscreen=(self), xr-spatial-tracking=(self)";
+
+function capabilityHeaders(headers = {}) {
+  return { ...headers, "Permissions-Policy": CAPABILITY_POLICY, "Referrer-Policy": "strict-origin-when-cross-origin", "X-Content-Type-Options": "nosniff" };
+}
 
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  return new Response(JSON.stringify(data), { status, headers: capabilityHeaders({ "Content-Type": "application/json", "Cache-Control": "no-store" }) });
+}
+
+function base64Url(value) {
+  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : new Uint8Array(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+async function createLiveKitToken(env, room, identity, name) {
+  const now = Math.floor(Date.now() / 1000);
+  const encodedHeader = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const encodedPayload = base64Url(JSON.stringify({
+    iss: env.LIVEKIT_API_KEY,
+    sub: identity,
+    name,
+    nbf: now - 5,
+    exp: now + 60 * 15,
+    jti: crypto.randomUUID(),
+    metadata: JSON.stringify({ app: "amx-air-hubs", room }),
+    video: { room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true },
+  }));
+  const unsigned = `${encodedHeader}.${encodedPayload}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(env.LIVEKIT_API_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(unsigned));
+  return `${unsigned}.${base64Url(signature)}`;
 }
 
 function allowRequest(request) {
@@ -54,7 +91,27 @@ async function initialize(db) {
 
 async function handleApi(request, env, url) {
   if (!allowRequest(request)) return json({ error: "Rate limit exceeded" }, 429);
-  if (url.pathname === "/api/health") return json({ ok: true, service: "amx-air-hubs" });
+  if (url.pathname === "/api/health") return json({ ok: true, service: "amx-air-hubs", livekit: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET) });
+  if (request.method === "POST" && url.pathname === "/api/livekit/token") {
+    if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
+      return json({ error: "LiveKit is not configured on this stage", configured: false }, 503);
+    }
+    let serverUrl;
+    try {
+      const parsed = new URL(env.LIVEKIT_URL);
+      if (!["wss:", "ws:"].includes(parsed.protocol)) throw new Error("LiveKit URL must use WebSocket transport");
+      serverUrl = parsed.toString().replace(/\/$/, "");
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Invalid LiveKit URL" }, 500);
+    }
+    const body = await request.json().catch(() => ({}));
+    const room = String(body.room || "").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64);
+    const identity = String(body.identity || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+    const name = String(body.name || identity || "AMX Explorer").replace(/[<>]/g, "").slice(0, 80);
+    if (!room || !identity) return json({ error: "Room and identity are required" }, 400);
+    const participantToken = await createLiveKitToken(env, room, identity, name);
+    return json({ serverUrl, participantToken, room, expiresIn: 900 });
+  }
   if (url.pathname.startsWith("/api/rooms/")) {
     if (request.headers.get("Upgrade") !== "websocket") return json({ error: "WebSocket upgrade required" }, 426);
     const roomCode = url.pathname.split("/").pop();
@@ -97,10 +154,18 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
     const response = await env.ASSETS.fetch(request);
-    if (response.status !== 404 || url.pathname.includes(".")) return response;
-    const runtimeConfig = JSON.stringify({ supabaseUrl: env.SUPABASE_URL || "", supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY || "" }).replace(/</g, "\\u003c");
+    if (response.status !== 404 || url.pathname.includes(".")) {
+      const headers = new Headers(response.headers);
+      Object.entries(capabilityHeaders()).forEach(([key, value]) => headers.set(key, value));
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    }
+    const runtimeConfig = JSON.stringify({
+      supabaseUrl: env.SUPABASE_URL || "",
+      supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY || "",
+      livekitConfigured: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET),
+    }).replace(/</g, "\\u003c");
     const html = APP_HTML.replace("</head>", `<script>window.__AMX_CONFIG__=${runtimeConfig}</script></head>`);
-    return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
+    return new Response(html, { headers: capabilityHeaders({ "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }) });
   },
 };
 
