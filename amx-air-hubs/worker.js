@@ -1,5 +1,6 @@
 const rateBuckets = new Map();
 const ephemeralRooms = new Map();
+const APP_HTML = "__AMX_APP_HTML__";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -94,7 +95,7 @@ export default {
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
     const response = await env.ASSETS.fetch(request);
     if (response.status !== 404 || url.pathname.includes(".")) return response;
-    return env.ASSETS.fetch(new Request(new URL("/index.html", url), request));
+    return new Response(APP_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
   },
 };
 

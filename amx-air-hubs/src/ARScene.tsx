@@ -104,7 +104,7 @@ export function ARScene({ agent, onPlaced, textOnly }: Props) {
 
     let brandMark: THREE.Object3D | null = null;
     import("three/examples/jsm/loaders/GLTFLoader.js").then(({ GLTFLoader }) => {
-      new GLTFLoader().load("/models/amx-mark.glb", (gltf) => {
+      new GLTFLoader().load("/models/amx-mark.bin", (gltf) => {
         brandMark = gltf.scene;
         brandMark.scale.setScalar(0.28);
         brandMark.position.set(0, 2.45, -0.45);

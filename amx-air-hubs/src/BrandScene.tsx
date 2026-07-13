@@ -30,7 +30,7 @@ export function BrandScene() {
     let model: THREE.Object3D | null = null;
     let disposed = false;
     import("three/examples/jsm/loaders/GLTFLoader.js").then(({ GLTFLoader }) => {
-      new GLTFLoader().load("/models/amx-mark.glb", (gltf) => {
+      new GLTFLoader().load("/models/amx-mark.bin", (gltf) => {
         if (disposed) return;
         model = gltf.scene;
         model.rotation.x = 0.1;

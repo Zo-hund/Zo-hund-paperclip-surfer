@@ -5,7 +5,7 @@ const CORE = [
   "/manifest.webmanifest",
   "/icon.svg",
   "/brand/amx-air-hubs-brand.png",
-  "/models/amx-mark.glb",
+  "/models/amx-mark.bin",
 ];
 
 self.addEventListener("install", (event) => {
