@@ -9,6 +9,15 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode><BrowserRouter><AppProvider><App/></AppProvider></BrowserRouter></StrictMode>,
 );
 
-if ("serviceWorker" in navigator && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+if ("serviceWorker" in navigator) {
+  const isPrivateSitesHost = location.hostname.endsWith(".chatgpt.site");
+  const isLocalHost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+
+  if (isPrivateSitesHost) {
+    void navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => void registration.unregister());
+    });
+  } else if (!isLocalHost) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+  }
 }
