@@ -85,6 +85,7 @@ export const queryKeys = {
     joinRequests: (companyId: string, status: string = "pending_approval") =>
       ["access", "join-requests", companyId, status] as const,
     invite: (token: string) => ["access", "invite", token] as const,
+    members: (companyId: string) => ["access", "members", companyId] as const,
   },
   opprrc: {
     deliveries: (companyId: string, issueId?: string) =>
@@ -197,6 +198,7 @@ export const queryKeys = {
   },
   stripe: {
     prices: (companyId: string) => ["stripe", "prices", companyId] as const,
+    seats: (companyId: string) => ["stripe", "seats", companyId] as const,
   },
   certificates: {
     list: (companyId: string) => ["certificates", companyId] as const,

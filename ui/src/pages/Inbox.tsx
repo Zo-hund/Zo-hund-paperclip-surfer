@@ -732,6 +732,10 @@ export function Inbox() {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     },
     onError: (err) => {
+      if (err instanceof ApiError && err.status === 402) {
+        setActionError("No seats available — buy more seats in Team settings.");
+        return;
+      }
       setActionError(err instanceof Error ? err.message : "Failed to approve join request");
     },
   });

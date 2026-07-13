@@ -1,7 +1,7 @@
 import type { Db } from "@paperclipai/db";
-import { stripeSubscriptions, lmsMemberProfiles, stripePrices, amxLedger, amxTransactions } from "@paperclipai/db";
-import { eq, and, inArray } from "drizzle-orm";
-import { TIER_MONTHLY_ALLOWANCE } from "@paperclipai/shared";
+import { stripeSubscriptions, lmsMemberProfiles, stripePrices, amxLedger, amxTransactions, companyMemberships } from "@paperclipai/db";
+import { eq, and, inArray, count, sql } from "drizzle-orm";
+import { TIER_MONTHLY_ALLOWANCE, SEAT_TIER_NAME } from "@paperclipai/shared";
 import { amxChainService } from "./amxChainService.js";
 
 // Maps each tier name to the memberTypes[] it grants (additive — each tier includes lower tiers)
@@ -68,6 +68,9 @@ export interface ProvisionInput {
   stripePriceId: string;
   status: string;
   currentPeriodEnd?: Date;
+  /** Stripe subscription item quantity. Defaults to 1 (matching the column
+   * default) when omitted — every non-seat subscription kind ignores this. */
+  quantity?: number;
 }
 
 export async function provisionMember(db: Db, input: ProvisionInput): Promise<void> {
@@ -94,6 +97,7 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
         status: input.status,
         stripePriceId: input.stripePriceId,
         tierName: input.tierName,
+        quantity: input.quantity ?? 1,
         currentPeriodEnd: input.currentPeriodEnd ?? null,
         updatedAt: new Date(),
       })
@@ -107,6 +111,7 @@ export async function provisionMember(db: Db, input: ProvisionInput): Promise<vo
       stripePriceId: input.stripePriceId,
       tierName: input.tierName,
       status: input.status,
+      quantity: input.quantity ?? 1,
       currentPeriodEnd: input.currentPeriodEnd ?? null,
     });
   }
@@ -300,6 +305,50 @@ export async function cancelMember(db: Db, stripeSubscriptionId: string): Promis
         eq(lmsMemberProfiles.userId, sub.userId),
       ),
     );
+}
+
+/**
+ * Total purchased team seats for a company — the sum of `quantity` across
+ * every stripeSubscriptions row with tierName = SEAT_TIER_NAME whose status
+ * is active or trialing. A company can hold at most one seat subscription in
+ * practice (checkout upserts by stripeSubscriptionId), but this sums across
+ * all matching rows defensively rather than assuming exactly one.
+ */
+export async function getPurchasedSeats(db: Db, companyId: string): Promise<number> {
+  const rows = await db
+    .select({ quantity: stripeSubscriptions.quantity })
+    .from(stripeSubscriptions)
+    .where(
+      and(
+        eq(stripeSubscriptions.companyId, companyId),
+        eq(stripeSubscriptions.tierName, SEAT_TIER_NAME),
+        inArray(stripeSubscriptions.status, ["active", "trialing"]),
+      ),
+    );
+  return rows.reduce((sum, row) => sum + row.quantity, 0);
+}
+
+/**
+ * Number of active human team members currently consuming a seat — every
+ * active `company_memberships` row with principalType="user" EXCEPT the
+ * company owner, who is free and doesn't count against the seat cap.
+ */
+export async function getUsedSeats(db: Db, companyId: string): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(companyMemberships)
+    .where(
+      and(
+        eq(companyMemberships.companyId, companyId),
+        eq(companyMemberships.principalType, "user"),
+        eq(companyMemberships.status, "active"),
+        // membershipRole is nullable — use IS DISTINCT FROM so a null role
+        // (never explicitly set to "owner") still counts as a used seat
+        // instead of being silently dropped by NULL's three-valued <> logic.
+        sql`${companyMemberships.membershipRole} is distinct from 'owner'`,
+      ),
+    );
+  return row?.value ?? 0;
 }
 
 export async function getPriceForTier(db: Db, companyId: string, tierName: string) {

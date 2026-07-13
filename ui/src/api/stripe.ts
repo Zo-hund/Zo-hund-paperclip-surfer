@@ -15,6 +15,12 @@ export interface CheckoutResponse {
   tier?: string;
 }
 
+export interface SeatsSummary {
+  purchased: number;
+  used: number;
+  available: number;
+}
+
 export const stripeApi = {
   getPrices: (companyId: string) =>
     api.get<{ prices: StripePrice[] }>(`/companies/${companyId}/stripe/prices`),
@@ -22,7 +28,11 @@ export const stripeApi = {
   createCheckout: (companyId: string, data: {
     tierName: string;
     userId: string;
+    quantity?: number;
     successUrl?: string;
     cancelUrl?: string;
   }) => api.post<CheckoutResponse>(`/companies/${companyId}/stripe/checkout`, data),
+
+  getSeats: (companyId: string) =>
+    api.get<SeatsSummary>(`/companies/${companyId}/seats`),
 };

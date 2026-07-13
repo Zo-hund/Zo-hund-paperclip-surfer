@@ -13,6 +13,11 @@ export const stripeSubscriptions = pgTable(
     tierName: text("tier_name").notNull(),
     // active | past_due | canceled | unpaid | trialing
     status: text("status").notNull().default("active"),
+    // Stripe subscription item quantity. Used by the team-seats feature
+    // (tierName = SEAT_TIER_NAME) to track purchased seat count; defaults to
+    // 1 for every other subscription kind, matching the pre-existing
+    // hardcoded quantity: 1 in every checkout line item.
+    quantity: integer("quantity").notNull().default(1),
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
     cancelAtPeriodEnd: integer("cancel_at_period_end").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

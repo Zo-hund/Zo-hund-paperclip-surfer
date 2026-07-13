@@ -14,6 +14,16 @@
  *   (marketplace escrow payouts, tier bonuses).
  */
 
+/**
+ * Well-known `tierName` value for the recurring per-seat team billing
+ * subscription (server/src/services/stripeProvisioningService.ts —
+ * getPurchasedSeats/getUsedSeats). A company buys this tier with
+ * `quantity` = seat count via Stripe Checkout; the Stripe Checkout
+ * subscription quantity is the purchased-seat count, kept in sync via the
+ * checkout + customer.subscription.updated webhook flow.
+ */
+export const SEAT_TIER_NAME = "team_seats" as const;
+
 export const CREDIT_PACKAGES = [
   { tierName: "credits_starter",    credits: 1_000,   amountCents: 900,    label: "Starter Block" },
   { tierName: "credits_pro",        credits: 5_000,   amountCents: 3_900,  label: "Pro Block" },

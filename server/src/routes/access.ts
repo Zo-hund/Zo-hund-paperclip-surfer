@@ -36,10 +36,12 @@ import {
   conflict,
   notFound,
   unauthorized,
-  badRequest
+  badRequest,
+  insufficientSeats
 } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { validate } from "../middleware/validate.js";
+import { getPurchasedSeats, getUsedSeats } from "../services/stripeProvisioningService.js";
 import {
   accessService,
   agentService,
@@ -1876,6 +1878,26 @@ export function accessRoutes(
     if (!allowed) throw forbidden("Permission denied");
   }
 
+  /**
+   * Team-seats gate: throws 402 when this company has no free seat left.
+   * Only human staff consume seats (agents and the owner are exempt) — see
+   * getUsedSeats/getPurchasedSeats in stripeProvisioningService.ts.
+   */
+  async function assertSeatAvailable(
+    companyId: string,
+    action: string = "approve this request"
+  ) {
+    const [purchased, used] = await Promise.all([
+      getPurchasedSeats(db, companyId),
+      getUsedSeats(db, companyId),
+    ]);
+    if (used >= purchased) {
+      throw insufficientSeats(
+        `No seats available (${used}/${purchased} used) — purchase more seats to ${action}.`
+      );
+    }
+  }
+
   async function assertCanGenerateOpenClawInvitePrompt(
     req: Request,
     companyId: string
@@ -1992,6 +2014,13 @@ export function accessRoutes(
     async (req, res) => {
       const companyId = req.params.companyId as string;
       await assertCompanyPermission(req, companyId, "users:invite");
+      // Informational early check — an invite that could result in a human
+      // join (allowedJoinTypes "human" or "both") warns up front when the
+      // company is already at its seat cap, rather than only failing later
+      // when someone tries to accept it. This does NOT reserve a seat.
+      if (req.body.allowedJoinTypes !== "agent") {
+        await assertSeatAvailable(companyId, "send this invite");
+      }
       const inviteEmail =
         typeof req.body.inviteEmail === "string" ? req.body.inviteEmail.trim() || null : null;
       const membershipRole =
@@ -2806,6 +2835,14 @@ export function accessRoutes(
         .where(eq(invites.id, existing.inviteId))
         .then((rows) => rows[0] ?? null);
       if (!invite) throw notFound("Invite not found");
+
+      // Seat cap enforcement: only human join requests consume a seat.
+      // Agents aren't staff and are never gated here. This is the actual
+      // moment membership becomes active, so it's the real enforcement
+      // point (the invite-creation check above is informational only).
+      if (existing.requestType === "human") {
+        await assertSeatAvailable(companyId);
+      }
 
       let createdAgentId: string | null = existing.createdAgentId ?? null;
       if (existing.requestType === "human") {

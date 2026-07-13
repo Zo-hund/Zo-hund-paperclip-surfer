@@ -32,3 +32,8 @@ export function conflict(message: string, details?: unknown) {
 export function unprocessable(message: string, details?: unknown) {
   return new HttpError(422, message, details);
 }
+
+/** Payment Required — a company has hit its purchased-seat cap. */
+export function insufficientSeats(message: string, details?: unknown) {
+  return new HttpError(402, message, details);
+}
