@@ -38,6 +38,34 @@ export interface DataCenterSnapshot {
   carbonGramsPerKwh: number;
   racks: RackTelemetry[];
   alarms: string[];
+  feed: {
+    mode: "simulation" | "live" | "stale";
+    adapter: "simulation" | "redfish" | "snmp" | "modbus" | "dcim";
+    sourceSystem: string;
+    ageSeconds: number;
+  };
+}
+
+export interface LiveDataCenterTelemetry {
+  id: string;
+  tenantId: string;
+  adapter: "redfish" | "snmp" | "modbus" | "dcim";
+  sourceSystem: string;
+  timestamp: string;
+  receivedAt: string;
+  stale: boolean;
+  pod: {
+    itLoadKw: number;
+    facilityKw: number;
+    pue: number;
+    coolingKw: number;
+    networkGbps: number;
+    storageTb: number;
+    availabilityPercent: number;
+    carbonGramsPerKwh: number;
+  };
+  racks: RackTelemetry[];
+  alarms: string[];
 }
 
 export interface DataCenterScenario {
@@ -126,6 +154,28 @@ export function buildDataCenterSnapshot(telemetry: TwinTelemetry, tenant: Tenant
     carbonGramsPerKwh: Math.round(292 + Math.sin(Date.parse(telemetry.timestamp) / 240_000) * 34),
     racks,
     alarms,
+    feed: { mode: "simulation", adapter: "simulation", sourceSystem: "AMX training generator", ageSeconds: 0 },
+  };
+}
+
+export function mergeLiveDataCenterSnapshot(simulated: DataCenterSnapshot, live: LiveDataCenterTelemetry | null): DataCenterSnapshot {
+  if (!live || live.tenantId !== simulated.tenant.id) return simulated;
+  const ageSeconds = Math.max(0, Math.round((Date.now() - Date.parse(live.timestamp)) / 1000));
+  if (simulated.scenario !== "normal-operations") {
+    return { ...simulated, feed: { mode: "simulation", adapter: live.adapter, sourceSystem: `Scenario overlay / ${live.sourceSystem}`, ageSeconds } };
+  }
+  if (live.stale || ageSeconds > 120) {
+    return { ...simulated, feed: { mode: "stale", adapter: live.adapter, sourceSystem: live.sourceSystem, ageSeconds } };
+  }
+  return {
+    ...simulated,
+    timestamp: live.timestamp,
+    source: "mapped DCIM",
+    scenario: "normal-operations",
+    ...live.pod,
+    racks: live.racks,
+    alarms: live.alarms,
+    feed: { mode: "live", adapter: live.adapter, sourceSystem: live.sourceSystem, ageSeconds },
   };
 }
 
@@ -133,6 +183,7 @@ export function dataCenterAgentContext(snapshot: DataCenterSnapshot) {
   return {
     tenant: { id: snapshot.tenant.id, name: snapshot.tenant.name, workload: snapshot.tenant.workload, sla: snapshot.tenant.sla },
     provenance: snapshot.source,
+    feed: snapshot.feed,
     scenario: snapshot.scenario,
     pod: {
       itLoadKw: snapshot.itLoadKw,

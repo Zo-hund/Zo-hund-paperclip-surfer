@@ -14,7 +14,7 @@ Each selected tenant has an SLA, reserved power envelope, workload profile, and 
 - East-west network throughput
 - Storage capacity, availability, alarms, and grid carbon context
 
-The data source is always visible. `training simulation` means the values are generated from the twin simulator. `mapped DCIM` means the base telemetry was received as sensor data. A mapped feed must preserve its timestamp and provenance.
+The data source is always visible. `training simulation` means the values are generated from the twin simulator. `mapped DCIM` means a fresh normalized adapter payload is driving the panel. Feed age, adapter protocol, and stale fallback are visible in the tenant context band.
 
 ## Training scenarios
 
@@ -40,22 +40,41 @@ Every tool receives a context packet containing the tenant, source, active scena
 
 ## Mapping real data
 
-Connect a sensor or DCIM adapter upstream of the existing twin telemetry transport. Normalize vendor-specific Redfish, SNMP, Modbus, BACnet, or DCIM fields into the `TwinTelemetry` contract in `src/digital-twin.ts`:
+Set the server-only `DCIM_INGEST_TOKEN`, then have a trusted Redfish, SNMP, Modbus, or DCIM gateway send normalized snapshots to `POST /api/telemetry/data-center` with `Authorization: Bearer <token>`. Browser clients never receive this token.
 
-```ts
+```json
 {
-  timestamp: "2026-07-14T12:00:00.000Z",
-  source: "sensor",
-  energyKw: 82.4,
-  temperatureC: 24.8,
-  vibrationMmS: 0.7,
-  throughput: 91,
-  coolingPercent: 73,
-  utilizationPercent: 68
+  "id": "northstar-20260714T120000Z",
+  "tenantId": "northstar-ai",
+  "adapter": "redfish",
+  "sourceSystem": "pod-bmc-gateway-01",
+  "timestamp": "2026-07-14T12:00:00.000Z",
+  "pod": {
+    "itLoadKw": 61.4,
+    "facilityKw": 78.2,
+    "pue": 1.27,
+    "coolingKw": 16.8,
+    "networkGbps": 24.2,
+    "storageTb": 448,
+    "availabilityPercent": 99.99,
+    "carbonGramsPerKwh": 281
+  },
+  "racks": [{
+    "id": "rack-01",
+    "label": "R01",
+    "workload": "GPU inference",
+    "powerKw": 15.2,
+    "inletC": 24.1,
+    "capacityPercent": 74,
+    "networkGbps": 6.1
+  }],
+  "alarms": []
 }
 ```
 
-The tenant pod derives rack context from this normalized envelope. For production operations, replace derived rack values with rack-specific readings in the same tenant context packet and retain the original device IDs, units, quality flags, and timestamps in the upstream adapter.
+The Worker validates ranges, derives rack health consistently, stores the tenant snapshot in D1, and exposes the latest item through `GET /api/telemetry/data-center?tenantId=<tenant>`. The UI polls every 15 seconds. A reading older than 120 seconds is marked stale and the panel falls back to explicit simulation values. Scenario selection always enters training simulation, even when a live feed is available.
+
+The upstream adapter remains responsible for vendor credentials, device polling, unit conversion, quality flags, and preserving raw audit data. This API is read-only telemetry; it cannot actuate facility equipment.
 
 ## Workshop flow
 

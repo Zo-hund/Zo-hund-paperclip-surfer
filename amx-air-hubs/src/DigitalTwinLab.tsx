@@ -6,7 +6,8 @@ import { twinScenarios, useDigitalTwin, type TwinScenarioId } from "./digital-tw
 import { Metric, StatusPill } from "./components";
 import { runSimulationSkill, simulationSkills, type SimulationSkillId, type SimulationSkillRun } from "./simulation-skills";
 import { DataCenterPod } from "./DataCenterPod";
-import { buildDataCenterSnapshot, dataCenterAgentContext, tenantProfiles, type DataCenterScenarioId } from "./data-center-twin";
+import { buildDataCenterSnapshot, dataCenterAgentContext, mergeLiveDataCenterSnapshot, tenantProfiles, type DataCenterScenarioId } from "./data-center-twin";
+import { useDataCenterTelemetry } from "./use-data-center-telemetry";
 
 const DigitalTwinScene = lazy(async () => ({ default: (await import("./DigitalTwinScene")).DigitalTwinScene }));
 
@@ -27,7 +28,8 @@ export function DigitalTwinLab({ roomCode, reducedMotion, onBackend }: Props) {
   const [dataCenterScenario, setDataCenterScenario] = useState<DataCenterScenarioId>("normal-operations");
   const scenario = useMemo(() => twinScenarios.find((item) => item.id === twin.scenario) || twinScenarios[0], [twin.scenario]);
   const tenant = useMemo(() => tenantProfiles.find((item) => item.id === tenantId) || tenantProfiles[0], [tenantId]);
-  const dataCenter = useMemo(() => buildDataCenterSnapshot(twin.telemetry, tenant, dataCenterScenario), [dataCenterScenario, tenant, twin.telemetry]);
+  const liveDataCenter = useDataCenterTelemetry(tenantId);
+  const dataCenter = useMemo(() => mergeLiveDataCenterSnapshot(buildDataCenterSnapshot(twin.telemetry, tenant, dataCenterScenario), liveDataCenter), [dataCenterScenario, liveDataCenter, tenant, twin.telemetry]);
 
   const askTwin = async () => {
     const prompt = question.trim();

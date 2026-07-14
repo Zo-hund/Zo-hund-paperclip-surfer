@@ -216,6 +216,62 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.deepEqual(output.alarms, ["R03 capacity exceeds reserved envelope"]);
   });
 
+  test("requires a configured bearer token for data center telemetry", async () => {
+    const response = await worker.fetch(jsonRequest("/api/telemetry/data-center", { id: "feed-1" }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.equal(body.error, "Telemetry ingestion is not configured");
+  });
+
+  test("normalizes and persists tenant data center telemetry", async () => {
+    const database = memoryDatabase();
+    env.DB = database;
+    env.DCIM_INGEST_TOKEN = "test-ingest-token";
+    const payload = {
+      id: "northstar-feed-1",
+      tenantId: "northstar-ai",
+      adapter: "redfish",
+      sourceSystem: "lab-bmc-gateway",
+      timestamp: new Date().toISOString(),
+      pod: { itLoadKw: 61.4, facilityKw: 78.2, pue: 1.27, coolingKw: 16.8, networkGbps: 24.2, storageTb: 448, availabilityPercent: 99.99, carbonGramsPerKwh: 281 },
+      racks: [{ id: "r01", label: "R01", workload: "GPU inference", powerKw: 15.2, inletC: 32.1, capacityPercent: 74, networkGbps: 6.1 }],
+      alarms: ["R01 inlet temperature 32.1 C"],
+    };
+    const response = await worker.fetch(request("/api/telemetry/data-center", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer test-ingest-token", "CF-Connecting-IP": crypto.randomUUID() },
+      body: JSON.stringify(payload),
+    }), env);
+    const body = await response.json();
+    const insert = database.writes.find((write) => write.sql.includes("INSERT OR REPLACE INTO data_center_telemetry"));
+    const persisted = JSON.parse(insert.values[6]);
+
+    assert.equal(response.status, 201);
+    assert.equal(body.item.adapter, "redfish");
+    assert.equal(body.item.racks[0].health, "critical");
+    assert.equal(persisted.tenantId, "northstar-ai");
+    assert.ok(insert);
+  });
+
+  test("rejects unsafe telemetry ranges", async () => {
+    env.DB = memoryDatabase();
+    env.DCIM_INGEST_TOKEN = "test-ingest-token";
+    const response = await worker.fetch(request("/api/telemetry/data-center", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer test-ingest-token", "CF-Connecting-IP": crypto.randomUUID() },
+      body: JSON.stringify({
+        id: "bad-feed", tenantId: "northstar-ai", adapter: "modbus", sourceSystem: "lab-plc", timestamp: new Date().toISOString(),
+        pod: { itLoadKw: 10, facilityKw: 12, pue: 0.4, coolingKw: 2, networkGbps: 1, storageTb: 1, availabilityPercent: 99, carbonGramsPerKwh: 200 },
+        racks: [{ label: "R01", powerKw: 5, inletC: 20, capacityPercent: 40, networkGbps: 2 }],
+      }),
+    }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(body.error, /pod.pue/);
+  });
+
   test("validates and accepts analytics in stateless mode", async () => {
     const response = await worker.fetch(jsonRequest("/api/analytics/events", { id: "event-1", eventName: "mission_completed", tenantId: "tenant-1", timestamp: new Date().toISOString() }), env);
     const body = await response.json();

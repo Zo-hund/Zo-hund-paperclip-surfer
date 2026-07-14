@@ -57,7 +57,7 @@ export function DataCenterPod({ roomCode, snapshot, tenantId, scenario, onTenant
   return <section className="dc-pod-console" aria-label="Mini data center tenant operations pod">
     <div className="dc-pod-heading">
       <div><span className="eyebrow">MINI DATA CENTER POD</span><h3>Tenant operations</h3></div>
-      <StatusPill tone={snapshot.source === "mapped DCIM" ? "green" : "gold"}>{snapshot.source}</StatusPill>
+      <StatusPill tone={snapshot.feed.mode === "live" ? "green" : "gold"}>{snapshot.feed.mode === "stale" ? "stale feed / simulation" : snapshot.source}</StatusPill>
     </div>
 
     <div className="dc-tenant-strip" aria-label="Data center tenants">
@@ -70,7 +70,7 @@ export function DataCenterPod({ roomCode, snapshot, tenantId, scenario, onTenant
       <div><span>Tenant SLA</span><b>{snapshot.tenant.sla}</b></div>
       <div><span>Reserved power</span><b>{snapshot.tenant.reservedKw} kW</b></div>
       <div><span>Workload</span><b>{snapshot.tenant.workload}</b></div>
-      <div><span>Telemetry</span><b>{new Date(snapshot.timestamp).toLocaleTimeString()}</b></div>
+      <div><span>Telemetry</span><b>{snapshot.feed.adapter.toUpperCase()} / {snapshot.feed.mode === "live" ? `${snapshot.feed.ageSeconds}s old` : snapshot.feed.mode === "stale" ? "STALE" : snapshot.feed.adapter === "simulation" ? "GENERATED" : "SCENARIO"}</b></div>
     </div>
 
     <div className="dc-kpi-grid">

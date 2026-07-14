@@ -8,7 +8,8 @@ const MAX_AGENT_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const MAX_GATEWAY_RESPONSE_BYTES = 2 * 1024 * 1024;
-const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "proof-signing"]);
+const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "proof-signing", "telemetry"]);
+const DATA_CENTER_ADAPTERS = new Set(["redfish", "snmp", "modbus", "dcim"]);
 const MEDIA_TYPES = new Set([
   "application/json", "application/octet-stream", "application/pdf", "model/gltf+json", "model/gltf-binary",
   "text/css", "text/javascript", "text/markdown", "text/plain", "text/typescript",
@@ -132,6 +133,7 @@ function runtimeReadiness(env) {
     plugins: serviceUrlConfigured(env.PLUGIN_GATEWAY_URL, ["https:", "http:"]),
     livekit: serviceUrlConfigured(env.LIVEKIT_URL, ["wss:", "ws:"]) && Boolean(env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET),
     "proof-signing": Boolean(env.PROOF_SIGNING_SECRET),
+    telemetry: Boolean(env.DB && env.DCIM_INGEST_TOKEN),
   };
   const missingRequired = [...required].filter((name) => !configured[name]);
   const optionalMissing = Object.entries(configured).filter(([, value]) => !value).map(([name]) => name);
@@ -504,6 +506,63 @@ function validateTwinEvent(body) {
   };
 }
 
+function requireMetric(value, label, minimum, maximum) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < minimum || number > maximum) throw new HttpError(400, `${label} is outside the supported range`);
+  return number;
+}
+
+function validateDataCenterTelemetry(body) {
+  const id = safeId(body.id);
+  const tenantId = safeId(body.tenantId);
+  const adapter = DATA_CENTER_ADAPTERS.has(body.adapter) ? body.adapter : "";
+  const sourceSystem = safeLabel(body.sourceSystem).slice(0, 120);
+  if (!id || !tenantId || !adapter || !sourceSystem || !validTimestamp(body.timestamp)) throw new HttpError(400, "Telemetry id, tenantId, adapter, sourceSystem, and timestamp are required");
+  if (!isPlainObject(body.pod)) throw new HttpError(400, "Telemetry pod metrics are required");
+  if (!Array.isArray(body.racks) || !body.racks.length || body.racks.length > 64) throw new HttpError(400, "Telemetry requires 1 to 64 racks");
+  const racks = body.racks.map((rack, index) => {
+    if (!isPlainObject(rack)) throw new HttpError(400, "Each rack telemetry entry must be an object");
+    const label = safeLabel(rack.label, `R${index + 1}`).slice(0, 24);
+    const inletC = requireMetric(rack.inletC, `${label} inletC`, -20, 90);
+    const capacityPercent = requireMetric(rack.capacityPercent, `${label} capacityPercent`, 0, 150);
+    const networkGbps = requireMetric(rack.networkGbps, `${label} networkGbps`, 0, 10_000);
+    const health = inletC >= 31 || capacityPercent >= 102 || networkGbps < 1.5 ? "critical" : inletC >= 27 || capacityPercent >= 88 ? "watch" : "nominal";
+    return {
+      id: safeId(rack.id, `${tenantId}-r${index + 1}`),
+      label,
+      workload: safeLabel(rack.workload, "mapped workload").slice(0, 80),
+      powerKw: requireMetric(rack.powerKw, `${label} powerKw`, 0, 5_000),
+      inletC,
+      capacityPercent: Math.round(capacityPercent),
+      networkGbps,
+      health,
+    };
+  });
+  const pod = {
+    itLoadKw: requireMetric(body.pod.itLoadKw, "pod.itLoadKw", 0, 100_000),
+    facilityKw: requireMetric(body.pod.facilityKw, "pod.facilityKw", 0, 150_000),
+    pue: requireMetric(body.pod.pue, "pod.pue", 1, 5),
+    coolingKw: requireMetric(body.pod.coolingKw, "pod.coolingKw", 0, 100_000),
+    networkGbps: requireMetric(body.pod.networkGbps, "pod.networkGbps", 0, 100_000),
+    storageTb: requireMetric(body.pod.storageTb, "pod.storageTb", 0, 10_000_000),
+    availabilityPercent: requireMetric(body.pod.availabilityPercent, "pod.availabilityPercent", 0, 100),
+    carbonGramsPerKwh: requireMetric(body.pod.carbonGramsPerKwh, "pod.carbonGramsPerKwh", 0, 5_000),
+  };
+  return {
+    id, tenantId, adapter, sourceSystem, timestamp: body.timestamp, receivedAt: new Date().toISOString(), pod, racks,
+    alarms: Array.isArray(body.alarms) ? body.alarms.map((alarm) => safeLabel(alarm)).filter(Boolean).slice(0, 64) : [],
+  };
+}
+
+function authorizedTelemetryIngest(request, env) {
+  const supplied = request.headers.get("Authorization") || "";
+  const expected = `Bearer ${env.DCIM_INGEST_TOKEN}`;
+  if (supplied.length !== expected.length) return false;
+  let difference = 0;
+  for (let index = 0; index < expected.length; index += 1) difference |= supplied.charCodeAt(index) ^ expected.charCodeAt(index);
+  return difference === 0;
+}
+
 function validateProofPayload(body) {
   if (!isPlainObject(body)) throw new HttpError(400, "Proof payload is required");
   const proof = {
@@ -564,6 +623,13 @@ async function persistTwinEvent(env, event) {
   await initialize(env.DB);
   await env.DB.prepare("INSERT OR REPLACE INTO digital_twin_events (id, tenant_id, twin_id, room_code, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .bind(event.id, event.tenantId, event.twinId, event.roomCode, event.eventType, JSON.stringify(event.payload), event.createdAt).run();
+}
+
+async function persistDataCenterTelemetry(env, item) {
+  if (!env.DB) throw new HttpError(503, "Telemetry database is not configured");
+  await initialize(env.DB);
+  await env.DB.prepare("INSERT OR REPLACE INTO data_center_telemetry (id, tenant_id, adapter, source_system, observed_at, received_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(item.id, item.tenantId, item.adapter, item.sourceSystem, item.timestamp, item.receivedAt, JSON.stringify(item)).run();
 }
 
 async function persistProof(env, proof) {
@@ -706,6 +772,8 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS geo_anchors_room_idx ON geo_anchors (tenant_id, room_code, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS digital_twin_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, twin_id TEXT NOT NULL, room_code TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS digital_twin_room_idx ON digital_twin_events (tenant_id, room_code, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS data_center_telemetry (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, adapter TEXT NOT NULL, source_system TEXT NOT NULL, observed_at TEXT NOT NULL, received_at TEXT NOT NULL, payload TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS data_center_telemetry_tenant_idx ON data_center_telemetry (tenant_id, observed_at)"),
   ]).catch((error) => {
     databaseInitialization = undefined;
     throw error;
@@ -724,6 +792,25 @@ async function handleApi(request, env, url, requestId) {
     return reply({ ...readiness, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, readiness.ready ? 200 : 503);
   }
   if (request.method === "GET" && url.pathname === "/api/agents/capabilities") return reply(agentCapabilities(env));
+  if (request.method === "GET" && url.pathname === "/api/telemetry/data-center") {
+    const tenantId = safeId(url.searchParams.get("tenantId"));
+    if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+    if (!env.DB) return reply({ item: null, persisted: false, requestId });
+    await initialize(env.DB);
+    const row = await env.DB.prepare("SELECT payload FROM data_center_telemetry WHERE tenant_id = ? ORDER BY observed_at DESC LIMIT 1").bind(tenantId).first();
+    if (!row?.payload) return reply({ item: null, persisted: true, requestId });
+    const item = JSON.parse(row.payload);
+    item.stale = Date.now() - Date.parse(item.timestamp) > 120_000;
+    return reply({ item, persisted: true, requestId });
+  }
+  if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") {
+    if (!env.DCIM_INGEST_TOKEN) return reply({ error: "Telemetry ingestion is not configured", requestId }, 503);
+    if (!authorizedTelemetryIngest(request, env)) return reply({ error: "Telemetry ingest authorization failed", requestId }, 401);
+    const item = validateDataCenterTelemetry(await readJson(request, 256 * 1024));
+    await persistDataCenterTelemetry(env, item);
+    logEvent("info", "telemetry.ingested", { requestId, tenantId: item.tenantId, adapter: item.adapter, rackCount: item.racks.length });
+    return reply({ item: { ...item, stale: false }, persisted: true, requestId }, 201);
+  }
   if (request.method === "POST" && url.pathname === "/api/agents/respond") {
     const payload = sanitizeAgentPayload(await readJson(request, MAX_AGENT_BODY_BYTES));
     if (!payload.text && !payload.attachments.length) return reply({ error: "Text or an attachment is required", requestId }, 400);
