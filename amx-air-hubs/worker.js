@@ -122,7 +122,7 @@ function runtimeReadiness(env) {
     media: Boolean(env.MEDIA),
     realtime: serviceUrlConfigured(env.SUPABASE_URL, ["https:"]) && Boolean(env.SUPABASE_PUBLISHABLE_KEY),
     rooms: Boolean(env.ROOMS) || (serviceUrlConfigured(env.SUPABASE_URL, ["https:"]) && Boolean(env.SUPABASE_PUBLISHABLE_KEY)),
-    agent: serviceUrlConfigured(env.AGENT_RUNTIME_URL, ["https:", "http:"]),
+    agent: serviceUrlConfigured(env.AGENT_RUNTIME_URL, ["https:", "http:"]) || Boolean(env.OPENAI_API_KEY),
     mcp: serviceUrlConfigured(env.MCP_GATEWAY_URL, ["https:", "http:"]),
     plugins: serviceUrlConfigured(env.PLUGIN_GATEWAY_URL, ["https:", "http:"]),
     livekit: serviceUrlConfigured(env.LIVEKIT_URL, ["wss:", "ws:"]) && Boolean(env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET),
@@ -192,6 +192,59 @@ async function createLiveKitToken(env, room, identity, name) {
   return `${unsigned}.${base64Url(signature)}`;
 }
 
+async function createLiveKitAdminToken(env, room) {
+  const now = Math.floor(Date.now() / 1000);
+  const encodedHeader = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const encodedPayload = base64Url(JSON.stringify({
+    iss: env.LIVEKIT_API_KEY,
+    sub: "amx-air-hubs-worker",
+    nbf: now - 5,
+    exp: now + 60,
+    jti: crypto.randomUUID(),
+    video: { room, roomAdmin: true },
+  }));
+  const unsigned = `${encodedHeader}.${encodedPayload}`;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.LIVEKIT_API_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(unsigned));
+  return `${unsigned}.${base64Url(signature)}`;
+}
+
+async function ensureLiveKitAgentDispatch(env, room, requestId) {
+  const agentName = safeId(env.LIVEKIT_AGENT_NAME);
+  if (!agentName) return { configured: false, dispatched: false };
+  const endpoint = new URL(env.LIVEKIT_URL);
+  endpoint.protocol = endpoint.protocol === "wss:" ? "https:" : "http:";
+  endpoint.pathname = "/twirp/livekit.AgentDispatchService/ListDispatch";
+  endpoint.search = "";
+  endpoint.hash = "";
+  const token = await createLiveKitAdminToken(env, room);
+  const headers = { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const listResponse = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ room }), signal: controller.signal });
+    if (!listResponse.ok) throw new Error(`Agent dispatch list returned ${listResponse.status}`);
+    const list = await listResponse.json();
+    const dispatches = list.agent_dispatches || list.agentDispatches || [];
+    if (Array.isArray(dispatches) && dispatches.some((dispatch) => dispatch.agent_name === agentName || dispatch.agentName === agentName)) {
+      return { configured: true, dispatched: true, existing: true, agentName };
+    }
+    endpoint.pathname = "/twirp/livekit.AgentDispatchService/CreateDispatch";
+    const createResponse = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ agent_name: agentName, room, metadata: JSON.stringify({ app: "amx-air-hubs", room }) }),
+      signal: controller.signal,
+    });
+    if (!createResponse.ok) throw new Error(`Agent dispatch create returned ${createResponse.status}`);
+    return { configured: true, dispatched: true, existing: false, agentName };
+  } catch (error) {
+    logEvent("warn", "livekit.agent_dispatch_failed", { requestId, room, agentName, error: error instanceof Error ? error.message : "Agent dispatch failed" });
+    return { configured: true, dispatched: false, agentName };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 function allowRequest(request) {
   const key = request.headers.get("CF-Connecting-IP") || "local";
   const now = Date.now();
@@ -237,6 +290,47 @@ async function gatewayRequest(base, token, path, payload, requestId) {
   } catch (error) {
     logEvent("warn", "gateway.failed", { requestId, host: target.hostname, path: target.pathname, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : "Unknown gateway error" });
     throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function openAIResponse(env, payload, requestId) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const attachmentSummary = payload.attachments.length
+    ? `\nAttachments: ${payload.attachments.map((attachment) => `${attachment.kind}:${attachment.name}`).join(", ")}`
+    : "";
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+        "X-Request-ID": requestId,
+      },
+      body: JSON.stringify({
+        model: safeLabel(env.OPENAI_MODEL, "gpt-5-mini"),
+        store: false,
+        max_output_tokens: 700,
+        instructions: "You are an AMX AIR Hubs digital-twin operator. Explain telemetry and simulations clearly. Never claim a physical action occurred. Treat approved actions as recorded intent until a verified physical adapter reports completion.",
+        input: `${payload.text || "Review the supplied content."}${attachmentSummary}`,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`OpenAI Responses API returned ${response.status}`);
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_GATEWAY_RESPONSE_BYTES) throw new Error("OpenAI response is too large");
+    const result = JSON.parse(text);
+    const output = typeof result.output_text === "string"
+      ? result.output_text
+      : (Array.isArray(result.output) ? result.output : []).flatMap((item) => Array.isArray(item?.content) ? item.content : []).map((item) => item?.text).filter(Boolean).join("\n");
+    if (!output) throw new Error("OpenAI returned no text output");
+    return {
+      text: output.slice(0, 30_000),
+      transport: "remote",
+      tools: [{ id: crypto.randomUUID(), name: "openai.responses", source: "runtime", status: "complete", detail: `Response generated by ${safeLabel(env.OPENAI_MODEL, "gpt-5-mini")}.`, timestamp: new Date().toISOString() }],
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -348,6 +442,58 @@ function validateAnalyticsEvent(body) {
   };
 }
 
+function safeNumber(value, fallback = 0, minimum = -1_000_000, maximum = 1_000_000) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback;
+}
+
+function validateAnchorPayload(body) {
+  const id = safeId(body.id);
+  const roomCode = safeId(body.roomCode).toUpperCase().slice(0, 64);
+  const source = ["webxr", "camera", "map"].includes(body.source) ? body.source : "map";
+  const localPosition = Array.isArray(body.localPosition) && body.localPosition.length === 3
+    ? body.localPosition.map((value) => safeNumber(value, 0, -10_000, 10_000))
+    : [0, 0, 0];
+  const orientation = Array.isArray(body.orientation) && body.orientation.length === 4
+    ? body.orientation.map((value, index) => safeNumber(value, index === 3 ? 1 : 0, -1, 1))
+    : [0, 0, 0, 1];
+  if (!id || !roomCode) throw new HttpError(400, "Anchor id and roomCode are required");
+  return {
+    id,
+    tenantId: safeId(body.tenantId, "tech-at-nite"),
+    roomCode,
+    label: safeLabel(body.label, "Spatial anchor").slice(0, 80),
+    ownerId: safeId(body.ownerId, "participant"),
+    latitude: body.latitude === null || body.latitude === undefined ? null : safeNumber(body.latitude, 0, -90, 90),
+    longitude: body.longitude === null || body.longitude === undefined ? null : safeNumber(body.longitude, 0, -180, 180),
+    altitude: body.altitude === null || body.altitude === undefined ? null : safeNumber(body.altitude, 0, -20_000, 100_000),
+    accuracy: body.accuracy === null || body.accuracy === undefined ? null : safeNumber(body.accuracy, 0, 0, 100_000),
+    localPosition,
+    orientation,
+    source,
+    persistentHandle: typeof body.persistentHandle === "string" ? safeLabel(body.persistentHandle).slice(0, 240) : undefined,
+    createdAt: validTimestamp(body.createdAt) ? body.createdAt : new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function validateTwinEvent(body) {
+  const id = safeId(body.id);
+  const twinId = safeId(body.twinId);
+  const roomCode = safeId(body.roomCode).toUpperCase().slice(0, 64);
+  const eventType = ["scenario", "approval", "telemetry"].includes(body.eventType) ? body.eventType : "";
+  if (!id || !twinId || !roomCode || !eventType) throw new HttpError(400, "Twin id, roomCode, and supported eventType are required");
+  return {
+    id,
+    tenantId: safeId(body.tenantId, "tech-at-nite"),
+    twinId,
+    roomCode,
+    eventType,
+    payload: isPlainObject(body.payload) ? body.payload : {},
+    createdAt: validTimestamp(body.createdAt) ? body.createdAt : new Date().toISOString(),
+  };
+}
+
 function validateProofPayload(body) {
   if (!isPlainObject(body)) throw new HttpError(400, "Proof payload is required");
   const proof = {
@@ -394,6 +540,20 @@ async function persistAnalytics(env, event) {
   await initialize(env.DB);
   await env.DB.prepare("INSERT OR REPLACE INTO analytics_events (id, tenant_id, event_name, mission_id, campaign_id, location_tag, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
     .bind(event.id, event.tenantId, event.eventName, event.missionId || null, event.campaignId || null, event.locationTag || null, JSON.stringify(event), event.timestamp).run();
+}
+
+async function persistAnchor(env, anchor) {
+  if (!env.DB) return;
+  await initialize(env.DB);
+  await env.DB.prepare("INSERT OR REPLACE INTO geo_anchors (id, tenant_id, room_code, payload, updated_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(anchor.id, anchor.tenantId, anchor.roomCode, JSON.stringify(anchor), anchor.updatedAt).run();
+}
+
+async function persistTwinEvent(env, event) {
+  if (!env.DB) return;
+  await initialize(env.DB);
+  await env.DB.prepare("INSERT OR REPLACE INTO digital_twin_events (id, tenant_id, twin_id, room_code, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(event.id, event.tenantId, event.twinId, event.roomCode, event.eventType, JSON.stringify(event.payload), event.createdAt).run();
 }
 
 async function persistProof(env, proof) {
@@ -504,6 +664,10 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS media_tenant_idx ON media_objects (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL, transport TEXT NOT NULL, content_kind TEXT NOT NULL, attachment_count INTEGER NOT NULL, status TEXT NOT NULL, request_id TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS agent_runs_tenant_idx ON agent_runs (tenant_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS geo_anchors (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, room_code TEXT NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS geo_anchors_room_idx ON geo_anchors (tenant_id, room_code, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS digital_twin_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, twin_id TEXT NOT NULL, room_code TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS digital_twin_room_idx ON digital_twin_events (tenant_id, room_code, created_at)"),
   ]).catch((error) => {
     databaseInitialization = undefined;
     throw error;
@@ -532,7 +696,9 @@ async function handleApi(request, env, url, requestId) {
     }
     try {
       const gatewayPayload = await hydrateAttachmentsForGateway(payload, url.origin, env);
-      const result = await gatewayRequest(env.AGENT_RUNTIME_URL, env.AGENT_RUNTIME_TOKEN, "respond", gatewayPayload, requestId);
+      const result = env.AGENT_RUNTIME_URL
+        ? await gatewayRequest(env.AGENT_RUNTIME_URL, env.AGENT_RUNTIME_TOKEN, "respond", gatewayPayload, requestId)
+        : await openAIResponse(env, gatewayPayload, requestId);
       await recordAgentRun(env, { tenantId: payload.tenantId, agentId: payload.agentId, transport: "remote", contentKind: payload.contentKind, attachmentCount: payload.attachments.length, status: "complete", requestId });
       return reply({
         text: String(result.text || result.output || "Remote agent completed the request.").slice(0, 30_000),
@@ -649,7 +815,8 @@ async function handleApi(request, env, url, requestId) {
     const name = safeLabel(body.name, identity || "AMX Explorer").slice(0, 80);
     if (!room || !identity) return reply({ error: "Room and identity are required", requestId }, 400);
     const participantToken = await createLiveKitToken(env, room, identity, name);
-    return reply({ serverUrl, participantToken, room, expiresIn: 900, requestId });
+    const agentDispatch = await ensureLiveKitAgentDispatch(env, room, requestId);
+    return reply({ serverUrl, participantToken, room, expiresIn: 900, agentDispatch, requestId });
   }
   if (url.pathname.startsWith("/api/rooms/")) {
     if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return reply({ error: "WebSocket upgrade required", requestId }, 426);
@@ -661,6 +828,46 @@ async function handleApi(request, env, url, requestId) {
     }
     const room = env.ROOMS.get(env.ROOMS.idFromName(roomCode));
     return room.fetch(request);
+  }
+  if (request.method === "GET" && url.pathname === "/api/anchors") {
+    if (!env.DB) return reply({ items: [], persisted: false, requestId });
+    await initialize(env.DB);
+    const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    const roomCode = safeId(url.searchParams.get("room")).toUpperCase().slice(0, 64);
+    if (!roomCode) return reply({ error: "Room code is required", requestId }, 400);
+    const result = await env.DB.prepare("SELECT payload FROM geo_anchors WHERE tenant_id = ? AND room_code = ? ORDER BY updated_at ASC LIMIT 100").bind(tenantId, roomCode).all();
+    const items = result.results.flatMap((row) => { try { return [JSON.parse(row.payload)]; } catch { return []; } });
+    return reply({ items, persisted: true, requestId });
+  }
+  if (request.method === "POST" && url.pathname === "/api/anchors") {
+    const anchor = validateAnchorPayload(await readJson(request, 96 * 1024));
+    await persistAnchor(env, anchor);
+    return reply({ item: anchor, persisted: Boolean(env.DB), requestId }, 201);
+  }
+  if (request.method === "DELETE" && url.pathname.startsWith("/api/anchors/")) {
+    const id = safeId(url.pathname.split("/").pop());
+    if (!id) return reply({ error: "Anchor id is required", requestId }, 400);
+    if (env.DB) {
+      await initialize(env.DB);
+      const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+      await env.DB.prepare("DELETE FROM geo_anchors WHERE id = ? AND tenant_id = ?").bind(id, tenantId).run();
+    }
+    return new Response(null, { status: 204, headers: capabilityHeaders({ "Cache-Control": "no-store", "X-Request-ID": requestId }) });
+  }
+  if (request.method === "GET" && url.pathname === "/api/twins/events") {
+    if (!env.DB) return reply({ items: [], persisted: false, requestId });
+    await initialize(env.DB);
+    const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    const roomCode = safeId(url.searchParams.get("room")).toUpperCase().slice(0, 64);
+    if (!roomCode) return reply({ error: "Room code is required", requestId }, 400);
+    const result = await env.DB.prepare("SELECT id, twin_id, room_code, event_type, payload, created_at FROM digital_twin_events WHERE tenant_id = ? AND room_code = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId, roomCode).all();
+    const items = result.results.map((row) => ({ id: row.id, twinId: row.twin_id, roomCode: row.room_code, eventType: row.event_type, payload: JSON.parse(row.payload || "{}"), createdAt: row.created_at }));
+    return reply({ items, persisted: true, requestId });
+  }
+  if (request.method === "POST" && url.pathname === "/api/twins/events") {
+    const event = validateTwinEvent(await readJson(request, 128 * 1024));
+    await persistTwinEvent(env, event);
+    return reply({ item: event, persisted: Boolean(env.DB), requestId }, 201);
   }
   if (request.method === "POST" && url.pathname === "/api/analytics/events") {
     const event = validateAnalyticsEvent(await readJson(request, 64 * 1024));

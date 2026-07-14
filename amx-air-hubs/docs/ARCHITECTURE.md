@@ -64,3 +64,7 @@ R2 stores media bytes. D1 stores only searchable metadata. Agent prompts are not
 - `not-ready`: an integration named in `REQUIRED_SERVICES` is absent or invalid.
 
 The UI must preserve these distinctions. Local fallbacks are functional but never labeled as remote, durable, LiveKit, Plugin, or MCP connections.
+
+## AI digital twin layer
+
+The twin runtime is split across src/digital-twin.ts, src/DigitalTwinLab.tsx, and src/DigitalTwinScene.tsx. It owns telemetry provenance, predictive risk, governed scenarios, Blender node bindings, Supabase synchronization, D1 audit events, and the conversational Agent Runtime context. See AI_DIGITAL_TWIN.md for the Blender and safety contracts.

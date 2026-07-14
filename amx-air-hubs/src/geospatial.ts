@@ -81,6 +81,15 @@ export function useGeoAnchors(roomCode: string) {
   useEffect(() => {
     sessionStorage.setItem("amx_participant", participantId);
     setAnchors(readAnchors(room));
+    if (!isLocalHost()) {
+      void fetch(`/api/anchors?room=${encodeURIComponent(room)}`)
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("Anchor hydration failed")))
+        .then((data: { items?: GeoAnchor[] }) => {
+          if (!Array.isArray(data.items)) return;
+          data.items.forEach((anchor) => receive({ action: "upsert", anchor }));
+        })
+        .catch(() => undefined);
+    }
     const connectLocal = () => {
       if (!("BroadcastChannel" in window)) return;
       const channel = new BroadcastChannel(`amx-geo-${room}`);
@@ -140,6 +149,12 @@ export function useGeoAnchors(roomCode: string) {
     receive(packet);
     if (realtimeRef.current) void realtimeRef.current.send({ type: "broadcast", event: "anchor-sync", payload: packet });
     else localRef.current?.postMessage(packet);
+    if (!isLocalHost()) {
+      const request = packet.action === "upsert"
+        ? fetch("/api/anchors", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(packet.anchor) })
+        : fetch(`/api/anchors/${encodeURIComponent(packet.anchor.id)}`, { method: "DELETE" });
+      void request.catch(() => undefined);
+    }
   }, [receive]);
 
   const publishAnchor = useCallback((input: Partial<GeoAnchor> & Pick<GeoAnchor, "label" | "localPosition" | "source">) => {

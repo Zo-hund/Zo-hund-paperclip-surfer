@@ -77,3 +77,25 @@ Returns up to 100 recent proof payloads for the sanitized tenant ID.
 ### `GET /api/rooms/:roomCode`
 
 Requires a WebSocket upgrade. A Durable Object binding is preferred. The in-isolate ephemeral fallback is suitable only for local/degraded operation and does not provide cross-isolate durability.
+
+## Spatial anchors and digital twins
+
+### GET /api/anchors?room={ROOM}
+
+Returns the durable anchor set for a room.
+
+### POST /api/anchors
+
+Validates and upserts one WebXR, camera, or map anchor.
+
+### DELETE /api/anchors/{id}
+
+Removes a durable anchor for the active tenant.
+
+### GET /api/twins/events?room={ROOM}
+
+Returns recent scenario and approval audit events.
+
+### POST /api/twins/events
+
+Records a validated scenario, approval, or telemetry event. The browser currently persists scenario and approval events; high-frequency telemetry remains on the realtime channel.

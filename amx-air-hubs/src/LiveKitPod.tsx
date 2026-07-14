@@ -52,6 +52,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
   const audioHostRef = useRef<HTMLDivElement>(null);
   const onLocalStreamRef = useRef(onLocalStream);
   useEffect(() => { onLocalStreamRef.current = onLocalStream; }, [onLocalStream]);
+  useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
 
   const addVideoTrack = useCallback((track: LocalVideoTrack | RemoteVideoTrack, id: string, name: string, local: boolean) => {
     setSurfaces((current) => [...current.filter((surface) => surface.id !== id), { id, name, local, track }]);
@@ -72,6 +73,13 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
   useEffect(() => disconnect, [disconnect]);
 
   const openLocalPreview = useCallback(async (reason?: string) => {
+    fallbackStreamRef.current?.getTracks().forEach((track) => track.stop());
+    fallbackStreamRef.current = null;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus("error");
+      setMessage("Camera media is unavailable on this browser or insecure origin");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -97,12 +105,13 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ room: safeRoom, identity, name: "AMX Explorer" }),
       });
-      const credentials = await response.json().catch(() => ({})) as { serverUrl?: string; participantToken?: string; error?: string };
+      const credentials = await response.json().catch(() => ({})) as { serverUrl?: string; participantToken?: string; error?: string; agentDispatch?: { configured?: boolean; dispatched?: boolean; agentName?: string } };
       if (!response.ok || !credentials.serverUrl || !credentials.participantToken) {
         await openLocalPreview(response.status === 503 ? "Local self-view live; add LiveKit stage credentials for multi-user media" : credentials.error);
         return;
       }
-      const room = new Room({ adaptiveStream: true, dynacast: true });
+      roomRef.current?.disconnect();
+      const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true });
       roomRef.current = room;
       const updateCount = () => setParticipantCount(room.remoteParticipants.size + 1);
       room.on(RoomEvent.ParticipantConnected, updateCount);
@@ -115,11 +124,23 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
         track.detach().forEach((element) => element.remove());
         setSurfaces((current) => current.filter((surface) => surface.track !== track));
       });
+      room.on(RoomEvent.Reconnecting, () => {
+        setStatus("connecting");
+        setMessage("Reconnecting room media...");
+      });
+      room.on(RoomEvent.Reconnected, () => {
+        setStatus("livekit");
+        setMessage("LiveKit room reconnected");
+        updateCount();
+      });
       room.on(RoomEvent.Disconnected, () => {
         setStatus("idle");
         setMessage("Room disconnected");
+        setSurfaces([]);
+        onLocalStreamRef.current?.(null);
       });
       await room.connect(credentials.serverUrl, credentials.participantToken);
+      await room.startAudio().catch(() => undefined);
       setMessage("Opening camera and microphone...");
       await room.localParticipant.setCameraEnabled(true);
       const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
@@ -128,11 +149,13 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
         addVideoTrack(localTrack, identity, "You", true);
         onLocalStreamRef.current?.(new MediaStream([localTrack.mediaStreamTrack]));
       }
+      let microphoneReady = true;
       try { await room.localParticipant.setMicrophoneEnabled(true); }
-      catch { setMessage("LiveKit connected; microphone permission is off"); }
+      catch { microphoneReady = false; }
       setParticipantCount(room.remoteParticipants.size + 1);
       setStatus("livekit");
-      setMessage("LiveKit room connected");
+      const agentState = credentials.agentDispatch?.dispatched ? ` / ${credentials.agentDispatch.agentName || "voice agent"} dispatched` : credentials.agentDispatch?.configured ? " / voice agent unavailable" : "";
+      setMessage(`LiveKit room connected${agentState}${microphoneReady ? "" : " / microphone permission is off"}`);
     } catch (error) {
       await openLocalPreview(error instanceof Error ? `Local self-view live; ${error.message}` : undefined);
     }
@@ -143,7 +166,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
     <div className="livekit-pod-head"><div><span className="eyebrow">LIVEKIT ROOM / {safeRoom}</span><h2>Human + agent screens</h2></div><span className={`pod-transport ${status}`}><i/>{status === "livekit" ? "LIVEKIT" : status === "local" ? "LOCAL VIDEO" : status.toUpperCase()}</span></div>
     <div className="pod-screen-grid">
       {surfaces.length ? surfaces.map((surface) => <PodVideoTile key={surface.id} surface={surface}/>) : <div className="pod-camera-off"><CameraOff/><span>Your screen is private until you join</span></div>}
-      {agents.slice(0, compact ? 2 : 3).map((agent) => <div className="pod-agent-screen" key={agent.id} style={{ "--agent-screen": agent.color } as React.CSSProperties}><span><Bot/></span><b>{agent.name}</b><small>{agent.role}</small><i>AGENT ONLINE</i></div>)}
+      {agents.slice(0, compact ? 2 : 3).map((agent) => <div className="pod-agent-screen" key={agent.id} style={{ "--agent-screen": agent.color } as React.CSSProperties}><span><Bot/></span><b>{agent.name}</b><small>{agent.role}</small><i>AGENT READY</i></div>)}
     </div>
     <div ref={audioHostRef} className="pod-audio-host"/>
     <div className="livekit-pod-foot"><div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span><Mic/>{status === "livekit" ? "room audio" : "audio private"}</span></div>{live ? <button className="button secondary" onClick={disconnect}><CameraOff/>Leave media</button> : <button className="button primary" disabled={status === "connecting"} onClick={join}>{status === "connecting" ? <Radio/> : <Video/>}{status === "connecting" ? "Connecting" : "Join pod"}</button>}</div>

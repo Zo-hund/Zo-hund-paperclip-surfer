@@ -158,6 +158,33 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(forwarded.attachments[0].dataUrl, "data:application/octet-stream;base64,AQIDBA==");
   });
 
+  test("uses the OpenAI Responses API when its server-side key is configured", async (context) => {
+    env.OPENAI_API_KEY = "test-openai-key";
+    env.OPENAI_MODEL = "gpt-5-mini";
+    let requestBody;
+    context.mock.method(globalThis, "fetch", async (url, init) => {
+      assert.equal(String(url), "https://api.openai.com/v1/responses");
+      assert.equal(init.headers.Authorization, "Bearer test-openai-key");
+      requestBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ output_text: "The cooling trend is stable." }), { headers: { "Content-Type": "application/json" } });
+    });
+    const response = await worker.fetch(jsonRequest("/api/agents/respond", {
+      agentId: "twin-operator",
+      agentName: "Twin Operator",
+      text: "Explain the cooling forecast",
+      contentKind: "text",
+      attachments: [],
+    }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.transport, "remote");
+    assert.equal(body.text, "The cooling trend is stable.");
+    assert.equal(requestBody.store, false);
+    assert.equal(requestBody.model, "gpt-5-mini");
+    assert.ok(body.tools.some((tool) => tool.name === "openai.responses"));
+  });
+
   test("blocks unknown tools without crashing the runtime", async () => {
     const response = await worker.fetch(jsonRequest("/api/agents/tools/invoke", { toolName: "unknown.tool", agentId: "naz" }), env);
     const body = await response.json();
@@ -218,6 +245,77 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(missing.status, 404);
   });
 
+  test("issues a room token and explicitly dispatches the configured LiveKit agent", async (context) => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      LIVEKIT_AGENT_NAME: "amx-voice-agent",
+    });
+    const calls = [];
+    context.mock.method(globalThis, "fetch", async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(init.body) });
+      if (String(url).includes("ListDispatch")) return new Response(JSON.stringify({ agent_dispatches: [] }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ id: "dispatch-1", agent_name: "amx-voice-agent", room: "NEXUS1" }), { headers: { "Content-Type": "application/json" } });
+    });
+    const response = await worker.fetch(jsonRequest("/api/livekit/token", { room: "NEXUS1", identity: "participant-1", name: "AMX Explorer" }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.room, "NEXUS1");
+    assert.equal(body.participantToken.split(".").length, 3);
+    assert.equal(body.agentDispatch.dispatched, true);
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].url, /CreateDispatch/);
+  });
+  test("persists validated geospatial anchors", async () => {
+    const database = memoryDatabase();
+    env.DB = database;
+    const response = await worker.fetch(jsonRequest("/api/anchors", {
+      id: "anchor-1",
+      tenantId: "tenant-1",
+      roomCode: "nexus1",
+      label: "Cooling station",
+      ownerId: "participant-1",
+      latitude: 41.88,
+      longitude: -87.63,
+      altitude: 181,
+      accuracy: 4.2,
+      localPosition: [1, 0, -2],
+      orientation: [0, 0, 0, 1],
+      source: "webxr",
+      createdAt: new Date().toISOString(),
+    }), env);
+    const body = await response.json();
+    const insert = database.writes.find((write) => write.sql.includes("INSERT OR REPLACE INTO geo_anchors"));
+
+    assert.equal(response.status, 201);
+    assert.equal(body.persisted, true);
+    assert.equal(body.item.roomCode, "NEXUS1");
+    assert.equal(body.item.source, "webxr");
+    assert.ok(insert);
+  });
+
+  test("records governed digital twin scenario events", async () => {
+    const database = memoryDatabase();
+    env.DB = database;
+    const response = await worker.fetch(jsonRequest("/api/twins/events", {
+      id: "twin-event-1",
+      tenantId: "tenant-1",
+      twinId: "facility-cell-01",
+      roomCode: "NEXUS1",
+      eventType: "scenario",
+      payload: { scenario: "cooling-loss", approved: false },
+      createdAt: new Date().toISOString(),
+    }), env);
+    const body = await response.json();
+    const insert = database.writes.find((write) => write.sql.includes("INSERT OR REPLACE INTO digital_twin_events"));
+
+    assert.equal(response.status, 201);
+    assert.equal(body.persisted, true);
+    assert.equal(body.item.eventType, "scenario");
+    assert.ok(insert);
+  });
   test("adds a nonce-based content security policy to SPA fallbacks", async () => {
     const response = await worker.fetch(request("/agents/naz/workspace"), env);
     const csp = response.headers.get("Content-Security-Policy") || "";

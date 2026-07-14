@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
-  Activity, Bot, Box, Camera, Cpu, Crosshair, Database, Gauge, Lightbulb,
+  Activity, Bot, Box, BrainCircuit, Camera, Cpu, Crosshair, Database, Gauge, Lightbulb,
   LocateFixed, MapPin, Radio, RefreshCw, Router, Satellite, Server, Sun, Users, Wifi, Zap,
 } from "lucide-react";
 import { agents } from "../data";
 import { useGeoAnchors, type GeoAnchor } from "../geospatial";
-import { LiveKitPod } from "../LiveKitPod";
-import { NexusRoomScene, type LightPreset } from "../NexusRoomScene";
+
+import type { LightPreset } from "../NexusRoomScene";
 import { Metric, PageHeader, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
 
-type NexusTab = "room" | "anchors" | "fleet" | "factory";
+const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
+const NexusRoomScene = lazy(async () => ({ default: (await import("../NexusRoomScene")).NexusRoomScene }));
+const DigitalTwinLab = lazy(async () => ({ default: (await import("../DigitalTwinLab")).DigitalTwinLab }));
+
+type NexusTab = "room" | "twin" | "anchors" | "fleet" | "factory";
 
 function useNexusTelemetry() {
   const [tick, setTick] = useState(0);
@@ -70,19 +74,21 @@ export function NexusPage() {
     <div className="section-wrap"><PageHeader eyebrow="NEXUS CORE / THREE.JS WEBGPU" title="AMX spatial operations" description="Operate Blender-authored XR spaces, LiveKit Skill Pods, agent systems, and synchronized geospatial anchors from one room." actions={<StatusPill tone={rendererBackend === "webgpu" ? "green" : "gold"}>{rendererBackend === "webgpu" ? "WebGPU active" : rendererBackend === "webgl2" ? "WebGL2 fallback" : sceneReady ? "GPU initializing" : "Loading scene"}</StatusPill>}/></div>
     <div className="nexus-status-band"><div className="section-wrap"><span><i className="live-dot"/>NEXUS ONLINE</span><span><Wifi/>{telemetry.latency} ms</span><span><Gauge/>{telemetry.fps} FPS</span><span><Cpu/>{rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2" : "GPU INIT"}</span><span><Activity/>LOAD {telemetry.gpu}%</span><span><Bot/>{telemetry.agentsOnline} agents</span><time>{telemetry.timestamp}</time></div></div>
     <div className="section-wrap nexus-tabs" role="tablist">{([
-      ["room", "Spatial room", Box], ["anchors", "Geo anchors", Satellite], ["fleet", "Fleet", Router], ["factory", "AI factory", Cpu],
+      ["room", "Spatial room", Box], ["twin", "AI twin", BrainCircuit], ["anchors", "Geo anchors", Satellite], ["fleet", "Fleet", Router], ["factory", "AI factory", Cpu],
     ] as const).map(([id, label, Icon]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}><Icon/>{label}</button>)}</div>
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <NexusRoomScene localStream={localStream} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} onReady={() => setSceneReady(true)} onBackend={setRendererBackend}/>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} onReady={() => setSceneReady(true)} onBackend={setRendererBackend}/></Suspense>
         <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>NEXUS CONTROL ROOM</b></div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">
         <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>
-        <LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream}/>
+        <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream}/></Suspense>
       </aside>
     </div>}
+
+    {tab === "twin" && <Suspense fallback={<div className="section-wrap nexus-scene-loading"><span/><b>Preparing AI digital twin</b></div>}><DigitalTwinLab roomCode={roomCode} reducedMotion={settings.reducedMotion} onBackend={setRendererBackend}/></Suspense>}
 
     {tab === "anchors" && <div className="section-wrap nexus-anchor-layout">
       <section className="nexus-anchor-map-panel"><div className="section-heading"><div><span className="eyebrow">REALTIME SPATIAL MAP</span><h2>Room anchors</h2></div><StatusPill tone={geo.locationStatus === "ready" ? "green" : "gold"}>{geo.locationStatus}</StatusPill></div><GeoMap anchors={geo.projectedAnchors} onSelect={setSelectedAnchor}/><div className="geo-coordinate-strip"><span><LocateFixed/>{geo.location ? `${geo.location.latitude.toFixed(6)}, ${geo.location.longitude.toFixed(6)}` : "Location not enabled"}</span><span>Accuracy {geo.location ? `${Math.round(geo.location.accuracy)} m` : "--"}</span><button className="button secondary" onClick={geo.requestLocation}><RefreshCw/>Refresh location</button></div></section>

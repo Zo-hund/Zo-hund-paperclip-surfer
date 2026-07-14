@@ -194,11 +194,25 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
       }
       try {
         cameraStream?.getTracks().forEach((track) => track.stop());
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        const preferred = {
+          video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
-        });
-        if (!videoRef.current) return;
+        } satisfies MediaStreamConstraints;
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia(preferred);
+        } catch (cameraError) {
+          const overconstrained = cameraError instanceof DOMException && cameraError.name === "OverconstrainedError";
+          if (!overconstrained) throw cameraError;
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false,
+          });
+        }
+        if (!videoRef.current) {
+          cameraStream.getTracks().forEach((track) => track.stop());
+          cameraStream = null;
+          throw new Error("The camera preview surface is unavailable.");
+        }
         videoRef.current.srcObject = cameraStream;
         await videoRef.current.play();
         modeRef.current = "camera";

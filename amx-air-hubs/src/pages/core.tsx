@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowRight, BadgeCheck, Bot, Camera, Check, CheckCircle2, ChevronLeft, ChevronRight,
@@ -13,10 +13,11 @@ import {
   AgentCard, AgentGlyph, Metric, MissionCard, PageHeader, ProofStatus, QRCodeCard,
   SponsorBanner, StatusPill, VoiceIndicator, XPBar,
 } from "../components";
-import { ARScene } from "../ARScene";
-import { BrandScene } from "../BrandScene";
 import { useGeoAnchors } from "../geospatial";
 import { recordCampaignEvent } from "../operations";
+
+const ARScene = lazy(() => import("../ARScene").then((module) => ({ default: module.ARScene })));
+const BrandScene = lazy(() => import("../BrandScene").then((module) => ({ default: module.BrandScene })));
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ export function HomePage() {
       </div>
       <div className="hero-agent" style={{"--agent":agent.color} as React.CSSProperties}>
         <div className="hero-agent-label"><span className="eyebrow">BLENDER / WEBGPU CORE</span><b>AMX SPATIAL MARK</b></div>
-        <BrandScene/>
+        <Suspense fallback={<div className="scene-loading" aria-label="Loading Blender scene"/>}><BrandScene/></Suspense>
         <div className="agent-transmission"><span className="signal-bars"><i/><i/><i/><i/></span><p>{agent.name} is online. Solo, co-op, and team rooms are ready.</p></div>
       </div>
       <div className="hero-console">
@@ -131,7 +132,7 @@ export function MissionRunPage() {
   const submitQuiz=()=>{if(quizAnswer===null)return;if(quizAnswer===mission.quiz.correct){grantXP(xpRules.bonusQuiz);setQuizMessage("Correct. Bonus XP secured.");setTimeout(finish,650)}else{setQuizMessage("Not quite. Review the checkpoint and try again.")}};
   return <div className="mission-run">
     <div className="run-topbar"><Link to={`/mission/${mission.id}/pre`} className="icon-button" aria-label="Exit mission"><XIcon/></Link><div><span className="eyebrow">PRO RUN / {mission.title}</span><div className="step-progress"><span style={{width:`${progress}%`}}/></div></div><span className="run-xp"><Zap/>+{placed?xpRules.placeAgent:0} XP</span></div>
-    <div className="run-stage"><ARScene agent={agent} onPlaced={onPlaced} onSessionStart={geo.requestLocation} anchors={geo.projectedAnchors} onAnchorPlaced={(placement)=>geo.publishAnchor({label:`${agent.name} mission anchor`,...placement,source:placement.source})} textOnly={settings.textOnlyMode}/>
+    <div className="run-stage"><Suspense fallback={<div className="scene-loading" aria-label="Loading AR scene"/>}><ARScene agent={agent} onPlaced={onPlaced} onSessionStart={geo.requestLocation} anchors={geo.projectedAnchors} onAnchorPlaced={(placement)=>geo.publishAnchor({label:`${agent.name} mission anchor`,...placement,source:placement.source})} textOnly={settings.textOnlyMode}/></Suspense>
       <aside className="mission-panel"><div className="mission-panel-agent"><AgentGlyph agent={agent} size="small"/><div><span className="eyebrow">{agent.name} TRANSMISSION</span><VoiceIndicator enabled={settings.audioEnabled}/></div></div>
         {!placed?<div className="placement-copy"><ScanLine/><h2>Place {agent.name}</h2><p>Enter AR or tap the preview field to anchor your guide. Keep the area around you clear.</p><span className="pulse-label"><i/>WAITING FOR PLACEMENT</span></div>:<>
           <div className="checkpoint-count"><span>CHECKPOINT {step+1} OF {mission.steps.length}</span><b>{String(step+1).padStart(2,"0")}</b></div>
