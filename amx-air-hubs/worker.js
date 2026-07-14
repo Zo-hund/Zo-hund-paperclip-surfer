@@ -223,8 +223,8 @@ async function ensureLiveKitAgentDispatch(env, room, requestId) {
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
     const listResponse = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify({ room }), signal: controller.signal });
-    if (!listResponse.ok) throw new Error(`Agent dispatch list returned ${listResponse.status}`);
-    const list = await listResponse.json();
+    if (!listResponse.ok && listResponse.status !== 404) throw new Error(`Agent dispatch list returned ${listResponse.status}`);
+    const list = listResponse.ok ? await listResponse.json() : {};
     const dispatches = list.agent_dispatches || list.agentDispatches || [];
     if (Array.isArray(dispatches) && dispatches.some((dispatch) => dispatch.agent_name === agentName || dispatch.agentName === agentName)) {
       return { configured: true, dispatched: true, existing: true, agentName };

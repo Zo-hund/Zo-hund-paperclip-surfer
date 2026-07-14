@@ -255,7 +255,7 @@ describe("AMX AIR Hubs Worker API", () => {
     const calls = [];
     context.mock.method(globalThis, "fetch", async (url, init) => {
       calls.push({ url: String(url), body: JSON.parse(init.body) });
-      if (String(url).includes("ListDispatch")) return new Response(JSON.stringify({ agent_dispatches: [] }), { headers: { "Content-Type": "application/json" } });
+      if (String(url).includes("ListDispatch")) return new Response(JSON.stringify({ code: "not_found" }), { status: 404, headers: { "Content-Type": "application/json" } });
       return new Response(JSON.stringify({ id: "dispatch-1", agent_name: "amx-voice-agent", room: "NEXUS1" }), { headers: { "Content-Type": "application/json" } });
     });
     const response = await worker.fetch(jsonRequest("/api/livekit/token", { room: "NEXUS1", identity: "participant-1", name: "AMX Explorer" }), env);
