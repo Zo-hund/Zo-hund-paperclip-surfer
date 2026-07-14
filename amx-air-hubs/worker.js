@@ -173,7 +173,9 @@ async function createLiveKitToken(env, room, identity, name) {
   const encodedPayload = base64Url(JSON.stringify({
     iss: env.LIVEKIT_API_KEY,
     sub: identity,
+    identity,
     name,
+    iat: now,
     nbf: now - 5,
     exp: now + 60 * 15,
     jti: crypto.randomUUID(),
@@ -198,6 +200,9 @@ async function createLiveKitAdminToken(env, room) {
   const encodedPayload = base64Url(JSON.stringify({
     iss: env.LIVEKIT_API_KEY,
     sub: "amx-air-hubs-worker",
+    identity: "amx-air-hubs-worker",
+    name: "AMX AIR Hubs Worker",
+    iat: now,
     nbf: now - 5,
     exp: now + 60,
     jti: crypto.randomUUID(),

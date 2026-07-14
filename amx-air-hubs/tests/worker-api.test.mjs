@@ -264,6 +264,10 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(response.status, 200);
     assert.equal(body.room, "NEXUS1");
     assert.equal(body.participantToken.split(".").length, 3);
+    const tokenPayload = JSON.parse(Buffer.from(body.participantToken.split(".")[1], "base64url").toString("utf8"));
+    assert.equal(tokenPayload.identity, "participant-1");
+    assert.equal(tokenPayload.name, "AMX Explorer");
+    assert.equal(typeof tokenPayload.iat, "number");
     assert.equal(body.agentDispatch.dispatched, true);
     assert.equal(calls.length, 2);
     assert.match(calls[1].url, /CreateDispatch/);
