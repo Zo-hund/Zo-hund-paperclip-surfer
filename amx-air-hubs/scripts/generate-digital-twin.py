@@ -207,6 +207,14 @@ def main():
     bpy.context.scene["amx_twin_schema"] = "1.0"
     bpy.context.scene["amx_twin_id"] = "facility-cell-01"
     bpy.ops.wm.save_as_mainfile(filepath=str(blend_path))
+
+    # Keep the full PBR node graph in the editable .blend, but bind the same
+    # maps from cacheable public URLs in Three.js. Embedded GLB blob textures
+    # are rejected by some hardened hosted browser contexts.
+    for item in (dark, panel, floor):
+        for node in list(item.node_tree.nodes):
+            if node.type in {"TEX_IMAGE", "NORMAL_MAP"}:
+                item.node_tree.nodes.remove(node)
     bpy.ops.export_scene.gltf(filepath=str(glb_path), export_format="GLB", export_apply=True, export_extras=True, export_lights=True)
     print(f"Generated {blend_path}")
     print(f"Generated {glb_path}")
