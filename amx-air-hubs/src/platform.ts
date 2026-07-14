@@ -1,5 +1,6 @@
 import type { Mission, Role } from "./data";
 import { getActiveTenant, queueOffline } from "./operations";
+import { getTenantRecord } from "./tenant-management";
 
 export interface ProofRecord {
   id: string;
@@ -13,11 +14,12 @@ export interface ProofRecord {
   agentId: string;
   missionId: string;
   device: string;
-  report: { completedSteps: string[]; score: number; xp: number; durationSeconds: number };
-  certificate: { badge: string; issued: boolean; status: "ready" | "pending" };
+  report: { completedSteps: string[]; score: number; xp: number; durationSeconds: number; template?: string };
+  certificate: { badge: string; issued: boolean; status: "ready" | "pending"; issuer?: string; sponsor?: string; color?: string };
   sponsorTag?: string;
   mediaProofUrl?: string;
   status: "in_progress" | "complete";
+  issuerSignature?: string;
   signature: string;
   timestamp: string;
   syncStatus: "local" | "synced" | "queued";
@@ -47,6 +49,10 @@ function isLocalHost() {
   return ["localhost", "127.0.0.1"].includes(location.hostname);
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character] || character);
+}
+
 function proofForServer(proof: ProofRecord) {
   if (!proof.mediaProofUrl?.startsWith("data:") || JSON.stringify(proof).length < 850_000) return proof;
   const { mediaProofUrl: _mediaProofUrl, ...bounded } = proof;
@@ -74,8 +80,8 @@ export function trackEvent(eventName: string, payload: Omit<AnalyticsEvent, "id"
   else if (!["localhost", "127.0.0.1"].includes(location.hostname)) void fetch("/api/analytics/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(event) }).catch(() => undefined);
 }
 
-function proofSignature(proof: Pick<ProofRecord, "id" | "tenantId" | "learnerId" | "missionId" | "timestamp">) {
-  const source = `${proof.id}:${proof.tenantId}:${proof.learnerId}:${proof.missionId}:${proof.timestamp}:amx-v1`;
+function proofSignature(proof: Pick<ProofRecord, "id" | "tenantId" | "learnerId" | "missionId" | "timestamp" | "issuerSignature">) {
+  const source = `${proof.id}:${proof.tenantId}:${proof.learnerId}:${proof.missionId}:${proof.timestamp}:${proof.issuerSignature || "amx-v1"}`;
   let hash = 2166136261;
   for (let index = 0; index < source.length; index += 1) {
     hash ^= source.charCodeAt(index);
@@ -86,14 +92,15 @@ function proofSignature(proof: Pick<ProofRecord, "id" | "tenantId" | "learnerId"
 
 export function startProofRecord(mission: Mission, role: Role): ProofRecord {
   const timestamp = new Date().toISOString();
+  const tenant = getTenantRecord(getActiveTenant());
   const base = {
-    id: `opprrc-${crypto.randomUUID().slice(0, 8)}`, org: "Tech At Nite", program: "AMX AIR HUB",
-    project: mission.title, resource: "AMX WebXR Mission", tenantId: getActiveTenant(), learnerId: "guest-user",
+    id: `opprrc-${crypto.randomUUID().slice(0, 8)}`, org: tenant.certificateName, program: "AMX AIR HUB",
+    project: mission.title, resource: "AMX WebXR Mission", tenantId: tenant.proofScope, learnerId: "guest-user",
     role, agentId: mission.agentId, missionId: mission.id,
     device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile-web" : "desktop-web",
-    report: { completedSteps: ["pre"], score: 0, xp: 0, durationSeconds: 0 },
-    certificate: { badge: mission.badge, issued: false, status: "pending" as const },
-    sponsorTag: mission.access.sponsorId, status: "in_progress" as const, timestamp,
+    report: { completedSteps: ["pre"], score: 0, xp: 0, durationSeconds: 0, template: tenant.reportTemplate },
+    certificate: { badge: mission.badge, issued: false, status: "pending" as const, issuer: tenant.certificateName, sponsor: tenant.certificateSponsor, color: tenant.color },
+    sponsorTag: tenant.certificateSponsor || mission.access.sponsorId, issuerSignature: tenant.proofSignature, status: "in_progress" as const, timestamp,
     syncStatus: navigator.onLine ? "local" as const : "queued" as const,
   };
   const proof: ProofRecord = { ...base, signature: proofSignature(base) };
@@ -143,11 +150,12 @@ export function getAnalytics() {
 export function createProofRecord(mission: Mission, role: Role, xp: number, startedAt: number): ProofRecord {
   const existingId = localStorage.getItem("amx_active_proof");
   const existing = getProofs().find((item) => item.id === existingId && item.missionId === mission.id);
-  const timestamp = existing?.timestamp || new Date().toISOString();
+  const source = existing || startProofRecord(mission, role);
+  const timestamp = source.timestamp;
   const base = {
-    ...(existing || startProofRecord(mission, role)),
-    report: { completedSteps: ["pre", "pro", "post"], score: 92, xp, durationSeconds: Math.max(60, Math.round((Date.now() - startedAt) / 1000)) },
-    certificate: { badge: mission.badge, issued: true, status: "ready" as const },
+    ...source,
+    report: { completedSteps: ["pre", "pro", "post"], score: 92, xp, durationSeconds: Math.max(60, Math.round((Date.now() - startedAt) / 1000)), template: source.report.template },
+    certificate: { ...source.certificate, badge: mission.badge, issued: true, status: "ready" as const },
     status: "complete" as const, timestamp, syncStatus: navigator.onLine ? "synced" as const : "queued" as const,
   };
   const proof: ProofRecord = { ...base, signature: proofSignature(base) };
@@ -185,12 +193,15 @@ export function speak(text: string, enabled = true) {
 }
 
 export async function shareCertificate(proof: ProofRecord) {
-  const text = `AMX AIR Hubs Certificate\n\n${proof.certificate.badge}\nIssued to ${proof.learnerId}\nProof: ${proof.id}\n${new Date(proof.timestamp).toLocaleDateString()}`;
+  const issuer = proof.certificate.issuer || proof.org || "AMX AIR Hubs";
+  const text = `${issuer} Certificate\n\n${proof.certificate.badge}\nIssued to ${proof.learnerId}\nProof: ${proof.id}\n${new Date(proof.timestamp).toLocaleDateString()}`;
   if (navigator.share) {
     await navigator.share({ title: `${proof.certificate.badge} Certificate`, text });
     return;
   }
-  const blob = new Blob([`<!doctype html><title>AMX Certificate</title><style>body{font-family:system-ui;background:#071017;color:white;display:grid;place-items:center;min-height:100vh}.c{border:2px solid #55e6ff;padding:64px;text-align:center}h1{color:#f4c96b}</style><div class="c"><p>AMX AIR HUBS</p><h1>${proof.certificate.badge}</h1><p>Issued to ${proof.learnerId}</p><p>${proof.id}</p></div>`], { type: "text/html" });
+  const color = /^#[0-9a-f]{6}$/i.test(proof.certificate.color || "") ? proof.certificate.color : "#55e6ff";
+  const sponsor = proof.certificate.sponsor ? `<p>Sponsored by ${escapeHtml(proof.certificate.sponsor)}</p>` : "";
+  const blob = new Blob([`<!doctype html><title>AMX Certificate</title><style>body{font-family:system-ui;background:#071017;color:white;display:grid;place-items:center;min-height:100vh}.c{border:2px solid ${color};padding:64px;text-align:center}h1{color:${color}}</style><div class="c"><p>${escapeHtml(issuer)}</p><h1>${escapeHtml(proof.certificate.badge)}</h1><p>Issued to ${escapeHtml(proof.learnerId)}</p>${sponsor}<p>${escapeHtml(proof.id)}</p></div>`], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url; anchor.download = `${proof.missionId}-certificate.html`; anchor.click();

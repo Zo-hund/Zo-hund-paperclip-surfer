@@ -11,15 +11,16 @@ import { agents, marketplaceOffers, missions, podTypes, roles, sponsorConfig, te
 import { getAnalytics, getBadges, getProofs, shareCertificate, trackEvent, validateProof } from "../platform";
 import { useAMX } from "../AppContext";
 import { ControlCard, EmptyState, Metric, PageHeader, ProofStatus, QRCodeCard, StatusPill, XPBar } from "../components";
-import { canAccess, getMissionDrafts, getPods, joinPod, recordCampaignEvent, saveMissionDraft, savePod, updateMissionDraft, updatePod, type SkillPod } from "../operations";
+import { canAccess, getActiveTenant, getMissionDrafts, getPods, joinPod, recordCampaignEvent, saveMissionDraft, savePod, updateMissionDraft, updatePod, type SkillPod } from "../operations";
 import { useRealtimeRoom } from "../realtime";
+import { getTenantRecord } from "../tenant-management";
 
 const LiveKitPod = lazy(() => import("../LiveKitPod").then((module) => ({ default: module.LiveKitPod })));
 
 export function WalletPage() {
-  const {xp}=useAMX();const proofs=getProofs();const badges=getBadges();const [tab,setTab]=useState<"proofs"|"badges"|"certificates">("proofs");
+  const {xp}=useAMX();const proofs=getProofs();const badges=getBadges();const tenant=getTenantRecord(getActiveTenant());const [tab,setTab]=useState<"proofs"|"badges"|"certificates">("proofs");
   return <div className="page section-wrap"><PageHeader eyebrow="PORTABLE PROOF" title="Proof wallet" description="Your verified runs, badges, reports, and certificates stay connected." actions={<button className="button secondary"><Share2/>Share profile</button>}/>
-    <section className="wallet-header"><div><span className="eyebrow">RUNWAY ID</span><h2>guest-user</h2><p>Tech At Nite / Learner credential path</p></div><XPBar value={xp}/><div className="wallet-totals"><div><b>{badges.length}</b><span>BADGES</span></div><div><b>{proofs.length}</b><span>PROOFS</span></div><div><b>{proofs.filter((p)=>p.certificate.issued).length}</b><span>CERTIFICATES</span></div></div></section>
+    <section className="wallet-header"><div><span className="eyebrow">RUNWAY ID</span><h2>guest-user</h2><p>{tenant.certificateName} / Learner credential path</p></div><XPBar value={xp}/><div className="wallet-totals"><div><b>{badges.length}</b><span>BADGES</span></div><div><b>{proofs.length}</b><span>PROOFS</span></div><div><b>{proofs.filter((p)=>p.certificate.issued).length}</b><span>CERTIFICATES</span></div></div></section>
     <div className="tab-row">{(["proofs","badges","certificates"] as const).map((item)=><button className={tab===item?"active":""} onClick={()=>setTab(item)} key={item}>{item}</button>)}</div>
     {tab==="proofs"&&(proofs.length?<div className="proof-list">{proofs.map((proof)=><article className="proof-card" key={proof.id}>{proof.mediaProofUrl&&<img className="proof-thumb" src={proof.mediaProofUrl} alt="Captured spatial mission proof"/>}<div className="proof-icon"><ShieldCheck/></div><div><span className="eyebrow">{proof.program}</span><h3>{proof.project}</h3><p>{new Date(proof.timestamp).toLocaleString()} / {proof.role} / {proof.report.score}%</p><code>{proof.id} / {proof.signature}</code></div><div className="proof-card-status"><ProofStatus status={proof.status==="in_progress"?"In progress":proof.syncStatus==="queued"?"Queued":validateProof(proof)?"Signature valid":"Review required"}/><button className="icon-button" aria-label="Copy proof id" onClick={()=>navigator.clipboard.writeText(proof.id)}><Copy/></button></div></article>)}</div>:<EmptyState icon={ShieldCheck} title="No proof records yet" body="Complete your first mission to create a portable OPPRRC record." action={<Link to="/missions" className="button primary">Find a mission</Link>}/>)}
     {tab==="badges"&&<div className="badge-grid">{badges.map((badge,index)=><article className="wallet-badge" key={badge}><div className="mini-badge"><Trophy/></div><StatusPill tone={index===0?"gold":"cyan"}>{index===0?"NEWEST":"EARNED"}</StatusPill><h3>{badge}</h3><p>AMX AIR Hubs verified credential</p></article>)}</div>}
@@ -28,11 +29,11 @@ export function WalletPage() {
 }
 
 export function MarketplacePage() {
-  const [filter,setFilter]=useState("All");const types=["All",...new Set(marketplaceOffers.map((offer)=>offer.type))];const visible=marketplaceOffers.filter((offer)=>filter==="All"||offer.type===filter);
-  return <div className="page marketplace-page section-wrap"><PageHeader eyebrow="POST RUN MARKETPLACE" title="Turn proof into opportunity" description="Continue learning, join a cohort, deploy an agent, or fund the next verified outcome."/>
+  const [filter,setFilter]=useState("All");const tenant=getTenantRecord(getActiveTenant());const scopedOffers=marketplaceOffers.filter((offer)=>tenant.marketplaceOfferIds.includes(offer.id));const types=["All",...new Set(scopedOffers.map((offer)=>offer.type))];const visible=scopedOffers.filter((offer)=>filter==="All"||offer.type===filter);
+  return <div className="page marketplace-page section-wrap"><PageHeader eyebrow={`${tenant.name.toUpperCase()} MARKETPLACE`} title="Turn proof into opportunity" description="Continue learning, join a cohort, deploy an agent, or fund the next verified outcome."/>
     <div className="market-spotlight"><div><StatusPill tone="gold">RECOMMENDED NEXT</StatusPill><span className="eyebrow">PROJECT OPERATIONS</span><h2>Project Checklist with TAZ</h2><p>Use your XRT foundation to scope and sequence a real project run.</p><Link to="/mission/project-checklist/pre" className="button primary">Open next mission<ArrowRight/></Link></div><div className="market-signal"><BriefcaseBusiness/><span>+160 XP</span><b>TAZ</b></div></div>
     <div className="filter-row">{types.map((type)=><button key={type} className={filter===type?"active":""} onClick={()=>setFilter(type)}>{type}</button>)}</div>
-    <div className="offer-grid">{visible.map((offer,index)=><article key={offer.id}><div className="offer-number">{String(index+1).padStart(2,"0")}</div><span className="eyebrow">{offer.type}</span><h3>{offer.title}</h3><p>{offer.detail}</p><button className="button ghost full" onClick={()=>trackEvent("marketplace_click")}>{offer.cta}<ChevronRight/></button></article>)}</div>
+    <div className="offer-grid">{visible.length ? visible.map((offer,index)=><article key={offer.id}><div className="offer-number">{String(index+1).padStart(2,"0")}</div><span className="eyebrow">{offer.type}</span><h3>{offer.title}</h3><p>{offer.detail}</p><button className="button ghost full" onClick={()=>trackEvent("marketplace_click",{tenantId:tenant.id})}>{offer.cta}<ChevronRight/></button></article>) : <EmptyState icon={ShoppingBag} title="No offers enabled" body="This organization has not enabled marketplace offers." action={<Link className="button secondary" to="/tenants">Configure organization</Link>}/>}</div>
   </div>;
 }
 

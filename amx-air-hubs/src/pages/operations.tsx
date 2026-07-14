@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Activity, ArrowRight, BadgeCheck, Bot, Building2, Check, CircleDollarSign, Copy, FileBadge,
-  GraduationCap, KeyRound, MapPin, Megaphone, Plus, QrCode, Radio, Rocket, School,
-  ShieldCheck, Sparkles, Target, Trophy, Users, WalletCards, Zap,
+  Activity, ArrowRight, BadgeCheck, Bot, CircleDollarSign, Copy,
+  GraduationCap, KeyRound, MapPin, Megaphone, QrCode, Rocket,
+  ShieldCheck, Sparkles, Target, Trophy, Users, Zap,
 } from "lucide-react";
-import { agents, missions, roleExperienceMap, roles, tenants, type Role } from "../data";
+import { agents, missions, roleExperienceMap, roles, type Role } from "../data";
 import { useAMX } from "../AppContext";
 import { getAnalytics, getBadges, getProofs, trackEvent } from "../platform";
-import { getActiveTenant, getCampaigns, saveCampaign, setActiveTenant, type QRCampaign } from "../operations";
+import { getCampaigns, saveCampaign, type QRCampaign } from "../operations";
 import { Metric, PageHeader, QRCodeCard, StatusPill, XPBar } from "../components";
 
 const roleConfig: Record<Role, { icon: typeof GraduationCap; headline: string; summary: string; actions: Array<{ label: string; to: string }> }> = {
@@ -82,17 +82,5 @@ export function QRStudioPage() {
       <aside>{latest ? <QRCodeCard route={latest.route} title={latest.name}/> : <div className="qr-preview-empty"><QrCode/><h3>QR preview</h3><p>Configure a launch route, then generate its campaign code.</p></div>}</aside>
     </div>
     <section className="campaign-table"><div className="table-head"><span>CAMPAIGN</span><span>TYPE</span><span>LOCATION</span><span>SCANS</span><span>COMPLETIONS</span></div>{campaigns.map((campaign)=><div className="table-row" key={campaign.id}><div><b>{campaign.name}</b><small>{campaign.route}</small></div><StatusPill tone={campaign.type==="sponsor"?"gold":"cyan"}>{campaign.type}</StatusPill><span><MapPin/> {campaign.locationTag}</span><b>{campaign.scans}</b><b>{campaign.completions}</b></div>)}</section>
-  </div>;
-}
-
-export function TenantConsolePage() {
-  const [active, setActive] = useState(getActiveTenant);
-  const current = tenants.find((tenant)=>tenant.id===active) || tenants[0];
-  const choose = (id:string) => { setActiveTenant(id); setActive(id); trackEvent("tenant_switched"); };
-  return <div className="page section-wrap">
-    <PageHeader eyebrow="TENANT / ORGANIZATION SYSTEM" title="Organization console" description="Switch the active mission catalog, agent roster, proof scope, and partner identity." actions={<button className="button primary"><Plus/>Add tenant</button>}/>
-    <div className="tenant-console-layout"><section className="tenant-list">{tenants.map((tenant)=><button key={tenant.id} className={tenant.id===active?"selected":""} onClick={()=>choose(tenant.id)}><span className="tenant-symbol" style={{borderColor:tenant.color,color:tenant.color}}>{tenant.name.slice(0,2).toUpperCase()}</span><div><h3>{tenant.name}</h3><p>{tenant.type}</p></div>{tenant.id===active&&<Check/>}</button>)}</section>
-    <aside className="tenant-detail" style={{"--tenant":current.color} as React.CSSProperties}><span className="eyebrow">ACTIVE TENANT</span><h2>{current.name}</h2><StatusPill tone="green">Scoped</StatusPill><div className="tenant-facts"><span><Building2/>ORGANIZATION<b>{current.type}</b></span><span><Radio/>MISSIONS<b>{current.missionIds.length} enabled</b></span><span><Bot/>AGENTS<b>{current.agentIds.join(" / ").toUpperCase()}</b></span><span><ShieldCheck/>PROOF SCOPE<b>{current.id}</b></span></div><button className="button secondary full">Edit tenant configuration</button></aside></div>
-    <div className="tenant-feature-grid"><article><School/><h3>Report template</h3><p>{current.name} completion and cohort outcome report.</p></article><article><FileBadge/><h3>Certificate identity</h3><p>Tenant name, colors, sponsor, and proof signature.</p></article><article><WalletCards/><h3>Marketplace offers</h3><p>Organization-specific missions, workshops, and pathways.</p></article></div>
   </div>;
 }
