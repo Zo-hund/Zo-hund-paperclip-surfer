@@ -43,6 +43,7 @@ pnpm --filter @amx/air-hubs verify
 - [Deployment](docs/DEPLOYMENT.md)
 - [Operations Runbook](docs/OPERATIONS.md)
 - [Security Model](docs/SECURITY.md)
+- [Mini Data Center Tenant Pod](docs/MINI_DATA_CENTER_POD.md)
 
 ## Production Readiness
 

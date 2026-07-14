@@ -5,6 +5,8 @@ import { sendAgentRequest } from "./agent-runtime";
 import { twinScenarios, useDigitalTwin, type TwinScenarioId } from "./digital-twin";
 import { Metric, StatusPill } from "./components";
 import { runSimulationSkill, simulationSkills, type SimulationSkillId, type SimulationSkillRun } from "./simulation-skills";
+import { DataCenterPod } from "./DataCenterPod";
+import { buildDataCenterSnapshot, dataCenterAgentContext, tenantProfiles, type DataCenterScenarioId } from "./data-center-twin";
 
 const DigitalTwinScene = lazy(async () => ({ default: (await import("./DigitalTwinScene")).DigitalTwinScene }));
 
@@ -21,13 +23,17 @@ export function DigitalTwinLab({ roomCode, reducedMotion, onBackend }: Props) {
   const [asking, setAsking] = useState(false);
   const [runningSkill, setRunningSkill] = useState<SimulationSkillId | null>(null);
   const [skillRun, setSkillRun] = useState<SimulationSkillRun | null>(null);
+  const [tenantId, setTenantId] = useState(tenantProfiles[0].id);
+  const [dataCenterScenario, setDataCenterScenario] = useState<DataCenterScenarioId>("normal-operations");
   const scenario = useMemo(() => twinScenarios.find((item) => item.id === twin.scenario) || twinScenarios[0], [twin.scenario]);
+  const tenant = useMemo(() => tenantProfiles.find((item) => item.id === tenantId) || tenantProfiles[0], [tenantId]);
+  const dataCenter = useMemo(() => buildDataCenterSnapshot(twin.telemetry, tenant, dataCenterScenario), [dataCenterScenario, tenant, twin.telemetry]);
 
   const askTwin = async () => {
     const prompt = question.trim();
     if (!prompt || asking) return;
     setAsking(true);
-    const context = `Digital twin ${roomCode}. Provenance: ${twin.telemetry.source}. Telemetry: ${JSON.stringify(twin.telemetry)}. Forecast: ${JSON.stringify(twin.forecast)}. Active scenario: ${scenario.label}. Question: ${prompt}`;
+    const context = `Digital twin ${roomCode}. Provenance: ${twin.telemetry.source}. Telemetry: ${JSON.stringify(twin.telemetry)}. Forecast: ${JSON.stringify(twin.forecast)}. Active scenario: ${scenario.label}. Tenant data-center context: ${JSON.stringify(dataCenterAgentContext(dataCenter))}. Question: ${prompt}`;
     const response = await sendAgentRequest(agents[0], context, [], "text");
     setAnswer(response.text);
     setQuestion("");
@@ -56,6 +62,7 @@ export function DigitalTwinLab({ roomCode, reducedMotion, onBackend }: Props) {
         <Metric label="Vibration" value={`${twin.telemetry.vibrationMmS.toFixed(2)}`} delta="mm/s RMS" icon={Waves}/>
         <Metric label="Energy" value={`${twin.telemetry.energyKw.toFixed(1)} kW`} delta={`${twin.telemetry.utilizationPercent}% utilization`} icon={Zap}/>
       </div>
+      <DataCenterPod roomCode={roomCode} snapshot={dataCenter} tenantId={tenantId} scenario={dataCenterScenario} onTenantChange={setTenantId} onScenarioChange={setDataCenterScenario}/>
       <div className="twin-forecast"><AlertTriangle/><div><b>{twin.forecast.failureWindowHours ? `Potential intervention in ${twin.forecast.failureWindowHours}h` : "No predicted failure window"}</b><p>{twin.forecast.recommendation}</p></div></div>
       <div className="twin-scenarios"><span className="eyebrow">WHAT-IF SANDBOX</span><div>{twinScenarios.map((item) => <button key={item.id} className={twin.scenario === item.id ? "active" : ""} onClick={() => twin.runScenario(item.id as TwinScenarioId)}><b>{item.label}</b><span>{item.detail}</span></button>)}</div></div>
       <div className="twin-skill-studio"><div><span className="eyebrow">REALITY RECONSTRUCTION SKILLS</span><StatusPill tone="cyan">PBR PIPELINE</StatusPill></div><div>{simulationSkills.map((skill) => <button key={skill.id} disabled={Boolean(runningSkill)} className={skillRun?.skillId === skill.id ? "active" : ""} onClick={() => void executeSkill(skill.id)}><Boxes/><span><b>{skill.label}</b><small>{skill.detail}</small></span>{runningSkill === skill.id ? <i>RUNNING</i> : <i>RUN</i>}</button>)}</div>{skillRun && <div className="twin-skill-result"><Sparkles/><span><b>{skillRun.confidence}% reconstruction confidence</b><small>{skillRun.summary}</small><code>{skillRun.artifacts.join(" / ")}</code></span></div>}</div>

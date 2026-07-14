@@ -18,6 +18,11 @@ const AGENT_TOOLS = [
   { name: "mission.context", description: "Read the active mission context", source: "skill", available: true },
   { name: "proof.latest", description: "Read the latest proof record", source: "runtime", available: true },
   { name: "spatial.capabilities", description: "Inspect browser XR and GPU support", source: "runtime", available: true },
+  { name: "dcim.inspect", description: "Inspect the active tenant pod telemetry", source: "skill", available: true },
+  { name: "rack.thermal-map", description: "Diagnose rack inlet temperature and airflow risk", source: "skill", available: true },
+  { name: "tenant.capacity-plan", description: "Calculate tenant power and compute headroom", source: "skill", available: true },
+  { name: "incident.runbook", description: "Build a guarded response plan for the active scenario", source: "skill", available: true },
+  { name: "workshop.brief", description: "Generate a facilitator brief from the twin state", source: "skill", available: true },
 ];
 
 class HttpError extends Error {
@@ -607,6 +612,34 @@ async function invokeBuiltInTool(toolName, context, env) {
     const result = await env.DB.prepare("SELECT payload FROM proof_records ORDER BY created_at DESC LIMIT 1").first();
     return result?.payload ? JSON.parse(result.payload) : { status: "No proof records" };
   }
+  const tenant = isPlainObject(context.tenant) ? context.tenant : {};
+  const pod = isPlainObject(context.pod) ? context.pod : {};
+  const racks = Array.isArray(context.racks) ? context.racks.filter(isPlainObject).slice(0, 24) : [];
+  const alarms = Array.isArray(context.alarms) ? context.alarms.map((alarm) => safeLabel(alarm)).filter(Boolean).slice(0, 24) : [];
+  if (toolName === "dcim.inspect") return {
+    tenant: safeLabel(tenant.name, "Active tenant"), source: safeLabel(context.provenance, "unknown"), scenario: safeId(context.scenario, "normal-operations"),
+    itLoadKw: safeNumber(pod.itLoadKw), pue: safeNumber(pod.pue), networkGbps: safeNumber(pod.networkGbps), availabilityPercent: safeNumber(pod.availabilityPercent), alarms,
+  };
+  if (toolName === "rack.thermal-map") return {
+    tenant: safeLabel(tenant.name, "Active tenant"),
+    racks: racks.map((rack) => ({ label: safeLabel(rack.label), inletC: safeNumber(rack.inletC), capacityPercent: safeNumber(rack.capacityPercent), health: ["nominal", "watch", "critical"].includes(rack.health) ? rack.health : "unknown" })),
+    recommendation: alarms.length ? "Inspect the highest-temperature inlet, verify airflow containment, and simulate load movement before operator approval." : "Thermal envelope is nominal; preserve the current airflow configuration.",
+  };
+  if (toolName === "tenant.capacity-plan") return {
+    tenant: safeLabel(tenant.name, "Active tenant"),
+    rackHeadroom: racks.map((rack) => ({ label: safeLabel(rack.label), headroomPercent: Math.max(0, 100 - safeNumber(rack.capacityPercent)) })),
+    guardrail: "Keep at least 15% rack headroom and validate power, cooling, and SLA impact before workload admission.",
+  };
+  if (toolName === "incident.runbook") return {
+    scenario: safeId(context.scenario, "normal-operations"), alarms,
+    steps: ["Confirm tenant and telemetry provenance", "Identify affected racks and SLA impact", "Simulate a reversible response", "Request authorized operator approval", "Execute through the approved control plane", "Verify recovery and record proof"],
+    physicalActuation: "locked",
+  };
+  if (toolName === "workshop.brief") return {
+    tenant: safeLabel(tenant.name, "Active tenant"), scenario: safeId(context.scenario, "normal-operations"),
+    objective: "Use the twin to observe, diagnose, simulate, request approval, and explain the evidence behind the decision.",
+    deliverables: ["risk statement", "rack evidence", "scenario comparison", "human approval decision", "post-action verification"],
+  };
   throw new Error("Unknown built-in tool");
 }
 

@@ -194,6 +194,28 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.match(body.output, /Unknown built-in tool/);
   });
 
+  test("runs a tenant-scoped DCIM inspection tool", async () => {
+    const response = await worker.fetch(jsonRequest("/api/agents/tools/invoke", {
+      toolName: "dcim.inspect",
+      agentId: "naz",
+      context: {
+        tenant: { id: "northstar-ai", name: "Northstar AI" },
+        provenance: "training simulation",
+        scenario: "tenant-burst",
+        pod: { itLoadKw: 73.4, pue: 1.31, networkGbps: 24.6, availabilityPercent: 99.98 },
+        alarms: ["R03 capacity exceeds reserved envelope"],
+      },
+    }), env);
+    const body = await response.json();
+    const output = JSON.parse(body.output);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.trace.status, "complete");
+    assert.equal(output.tenant, "Northstar AI");
+    assert.equal(output.itLoadKw, 73.4);
+    assert.deepEqual(output.alarms, ["R03 capacity exceeds reserved envelope"]);
+  });
+
   test("validates and accepts analytics in stateless mode", async () => {
     const response = await worker.fetch(jsonRequest("/api/analytics/events", { id: "event-1", eventName: "mission_completed", tenantId: "tenant-1", timestamp: new Date().toISOString() }), env);
     const body = await response.json();
