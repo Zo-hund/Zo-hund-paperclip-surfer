@@ -272,6 +272,46 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.match(body.error, /pod.pue/);
   });
 
+  test("persists Know Do Be project state from completed tool evidence", async () => {
+    const database = memoryDatabase();
+    env.DB = database;
+    const timestamp = new Date().toISOString();
+    const toolRuns = ["dcim.inspect", "rack.thermal-map", "incident.runbook"].map((name) => ({
+      id: crypto.randomUUID(), name, source: "skill", status: "complete", detail: "Evidence captured", timestamp,
+    }));
+    const response = await worker.fetch(jsonRequest("/api/learning/projects/state", {
+      version: 1,
+      projectId: "mini-dc-thermal-response",
+      tenantId: "northstar-ai",
+      learnerId: "learner-1",
+      stage: "be",
+      knowledgeConfirmed: true,
+      toolRuns,
+      reflection: "I verify provenance and require human approval before any physical action.",
+      status: "complete",
+      updatedAt: timestamp,
+    }, "PUT"), env);
+    const body = await response.json();
+    const insert = database.writes.find((write) => write.sql.includes("INSERT OR REPLACE INTO project_learning_state"));
+
+    assert.equal(response.status, 200);
+    assert.equal(body.item.status, "complete");
+    assert.equal(body.item.toolRuns.length, 3);
+    assert.ok(insert);
+  });
+
+  test("does not accept project completion without required evidence", async () => {
+    env.DB = memoryDatabase();
+    const response = await worker.fetch(jsonRequest("/api/learning/projects/state", {
+      projectId: "mini-dc-thermal-response", tenantId: "northstar-ai", learnerId: "learner-1", stage: "be",
+      knowledgeConfirmed: true, toolRuns: [], reflection: "I completed the project without running tools.", status: "complete",
+    }, "PUT"), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.item.status, "in_progress");
+  });
+
   test("validates and accepts analytics in stateless mode", async () => {
     const response = await worker.fetch(jsonRequest("/api/analytics/events", { id: "event-1", eventName: "mission_completed", tenantId: "tenant-1", timestamp: new Date().toISOString() }), env);
     const body = await response.json();

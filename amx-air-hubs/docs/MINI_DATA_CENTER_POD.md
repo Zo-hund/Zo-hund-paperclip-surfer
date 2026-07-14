@@ -38,6 +38,18 @@ Scenario outputs are advisory. Physical actuation remains locked until an author
 
 Every tool receives a context packet containing the tenant, source, active scenario, pod KPIs, racks, alarms, timestamp, and a no-actuation guardrail. Hosted tool runs are written to digital-twin provenance as `skill` events.
 
+The toolbelt also exposes `mission.context`, `mcp.tools`, and `plugin.catalog`. Runtime, MCP, plugin, and skill sources remain visible in the interface and in each tool trace. MCP and plugin calls report `blocked` until their server-side gateways are configured; they never simulate a successful remote call.
+
+## Know Do Be mini course
+
+The thermal response project is a persistent three-stage learning state machine:
+
+1. **Know:** confirm telemetry provenance, tenant SLA, and the operating model. Confirmation activates the hot-aisle training condition.
+2. **Do:** create real tool evidence by completing `dcim.inspect`, `rack.thermal-map`, and `incident.runbook` calls.
+3. **Be:** record the human principle governing the recommendation and issue project proof.
+
+State is written immediately to device storage and synchronized to `project_learning_state` in D1. The server revalidates the evidence before accepting `complete`; a client cannot complete the project without the required successful tool traces and a meaningful reflection. Completion also enters the existing proof pipeline using the `mini-dc-thermal-response` mission ID.
+
 ## Mapping real data
 
 Set the server-only `DCIM_INGEST_TOKEN`, then have a trusted Redfish, SNMP, Modbus, or DCIM gateway send normalized snapshots to `POST /api/telemetry/data-center` with `Authorization: Bearer <token>`. Browser clients never receive this token.

@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Activity, BookOpenCheck, Bot, Cable, CheckCircle2, Gauge, Network, Server, Thermometer, Wrench, Zap } from "lucide-react";
+import { Activity, BookOpenCheck, Bot, Braces, Cable, CheckCircle2, Gauge, Network, PlugZap, Route, Server, Thermometer, Wrench, Zap } from "lucide-react";
 import { invokeAgentTool } from "./agent-runtime";
 import { dataCenterAgentContext, dataCenterScenarios, tenantProfiles, type DataCenterScenarioId, type DataCenterSnapshot } from "./data-center-twin";
 import { StatusPill } from "./components";
+import { ProjectCourse } from "./ProjectCourse";
+import { useProjectLearning } from "./project-learning";
 
 interface Props {
   roomCode: string;
@@ -14,11 +16,14 @@ interface Props {
 }
 
 const operationsTools = [
-  { id: "dcim.inspect", label: "Inspect pod", icon: Server },
-  { id: "rack.thermal-map", label: "Thermal map", icon: Thermometer },
-  { id: "tenant.capacity-plan", label: "Capacity plan", icon: Gauge },
-  { id: "incident.runbook", label: "Incident plan", icon: Wrench },
-  { id: "workshop.brief", label: "Workshop brief", icon: BookOpenCheck },
+  { id: "dcim.inspect", label: "Inspect pod", source: "SKILL", icon: Server },
+  { id: "rack.thermal-map", label: "Thermal map", source: "SKILL", icon: Thermometer },
+  { id: "tenant.capacity-plan", label: "Capacity plan", source: "SKILL", icon: Gauge },
+  { id: "incident.runbook", label: "Incident plan", source: "SKILL", icon: Wrench },
+  { id: "workshop.brief", label: "Workshop brief", source: "SKILL", icon: BookOpenCheck },
+  { id: "mission.context", label: "Mission state", source: "RUNTIME", icon: Route },
+  { id: "mcp.tools", label: "MCP catalog", source: "MCP", icon: Braces },
+  { id: "plugin.catalog", label: "Plugin catalog", source: "PLUGIN", icon: PlugZap },
 ];
 
 function toneForHealth(health: "nominal" | "watch" | "critical") {
@@ -28,12 +33,14 @@ function toneForHealth(health: "nominal" | "watch" | "critical") {
 export function DataCenterPod({ roomCode, snapshot, tenantId, scenario, onTenantChange, onScenarioChange }: Props) {
   const [runningTool, setRunningTool] = useState("");
   const [toolResult, setToolResult] = useState<{ name: string; output: string } | null>(null);
+  const project = useProjectLearning(tenantId);
   const activeScenario = dataCenterScenarios.find((item) => item.id === scenario) || dataCenterScenarios[0];
 
   const runTool = async (toolName: string) => {
     if (runningTool) return;
     setRunningTool(toolName);
     const result = await invokeAgentTool(toolName, "naz", dataCenterAgentContext(snapshot));
+    project.recordTool(result.trace);
     setToolResult({ name: toolName, output: result.output });
     setRunningTool("");
     if (!["localhost", "127.0.0.1"].includes(location.hostname)) {
@@ -112,8 +119,17 @@ export function DataCenterPod({ roomCode, snapshot, tenantId, scenario, onTenant
 
     <div className="dc-toolbelt">
       <div className="dc-panel-title"><span><Bot/>Agent toolbelt</span><small>context-bound / human governed</small></div>
-      <div>{operationsTools.map((tool) => { const Icon = tool.icon; return <button key={tool.id} disabled={Boolean(runningTool)} onClick={() => void runTool(tool.id)}><Icon/><span>{tool.label}</span>{runningTool === tool.id && <i/>}</button>; })}</div>
+      <div>{operationsTools.map((tool) => { const Icon = tool.icon; return <button key={tool.id} disabled={Boolean(runningTool)} onClick={() => void runTool(tool.id)}><Icon/><span>{tool.label}</span><small>{tool.source}</small>{runningTool === tool.id && <i/>}</button>; })}</div>
       {toolResult && <output><Wrench/><span><b>{toolResult.name}</b><small>{toolResult.output}</small></span></output>}
     </div>
+    <ProjectCourse
+      state={project.state}
+      progress={project.progress}
+      completedTools={project.completedTools}
+      onConfirmKnow={() => { onScenarioChange("hot-aisle"); project.confirmKnow(); }}
+      onRunTool={(toolName) => void runTool(toolName)}
+      onReflection={project.setReflection}
+      onComplete={project.complete}
+    />
   </section>;
 }

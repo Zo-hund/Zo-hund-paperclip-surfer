@@ -563,6 +563,30 @@ function authorizedTelemetryIngest(request, env) {
   return difference === 0;
 }
 
+function validateProjectLearningState(body) {
+  const tenantId = safeId(body.tenantId);
+  const learnerId = safeId(body.learnerId);
+  const projectId = safeId(body.projectId);
+  if (!tenantId || !learnerId || !projectId) throw new HttpError(400, "tenantId, learnerId, and projectId are required");
+  const stage = ["know", "do", "be"].includes(body.stage) ? body.stage : "know";
+  const toolRuns = normalizeRemoteTools(body.toolRuns);
+  const reflection = safeLabel(body.reflection).slice(0, 600);
+  const requiredTools = ["dcim.inspect", "rack.thermal-map", "incident.runbook"];
+  const eligible = Boolean(body.knowledgeConfirmed) && reflection.length >= 20 && requiredTools.every((name) => toolRuns.some((run) => run.name === name && run.status === "complete"));
+  return {
+    version: 1,
+    projectId,
+    tenantId,
+    learnerId,
+    stage: eligible ? "be" : stage,
+    knowledgeConfirmed: Boolean(body.knowledgeConfirmed),
+    toolRuns,
+    reflection,
+    status: body.status === "complete" && eligible ? "complete" : "in_progress",
+    updatedAt: validTimestamp(body.updatedAt) ? body.updatedAt : new Date().toISOString(),
+  };
+}
+
 function validateProofPayload(body) {
   if (!isPlainObject(body)) throw new HttpError(400, "Proof payload is required");
   const proof = {
@@ -630,6 +654,14 @@ async function persistDataCenterTelemetry(env, item) {
   await initialize(env.DB);
   await env.DB.prepare("INSERT OR REPLACE INTO data_center_telemetry (id, tenant_id, adapter, source_system, observed_at, received_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .bind(item.id, item.tenantId, item.adapter, item.sourceSystem, item.timestamp, item.receivedAt, JSON.stringify(item)).run();
+}
+
+async function persistProjectLearningState(env, item) {
+  if (!env.DB) return;
+  await initialize(env.DB);
+  const id = `${item.tenantId}_${item.projectId}_${item.learnerId}`;
+  await env.DB.prepare("INSERT OR REPLACE INTO project_learning_state (id, tenant_id, project_id, learner_id, status, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, item.tenantId, item.projectId, item.learnerId, item.status, JSON.stringify(item), item.updatedAt).run();
 }
 
 async function persistProof(env, proof) {
@@ -774,6 +806,8 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS digital_twin_room_idx ON digital_twin_events (tenant_id, room_code, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS data_center_telemetry (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, adapter TEXT NOT NULL, source_system TEXT NOT NULL, observed_at TEXT NOT NULL, received_at TEXT NOT NULL, payload TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS data_center_telemetry_tenant_idx ON data_center_telemetry (tenant_id, observed_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS project_learning_state (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL, learner_id TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS project_learning_lookup_idx ON project_learning_state (tenant_id, project_id, learner_id, updated_at)"),
   ]).catch((error) => {
     databaseInitialization = undefined;
     throw error;
@@ -810,6 +844,22 @@ async function handleApi(request, env, url, requestId) {
     await persistDataCenterTelemetry(env, item);
     logEvent("info", "telemetry.ingested", { requestId, tenantId: item.tenantId, adapter: item.adapter, rackCount: item.racks.length });
     return reply({ item: { ...item, stale: false }, persisted: true, requestId }, 201);
+  }
+  if (request.method === "GET" && url.pathname === "/api/learning/projects/state") {
+    const tenantId = safeId(url.searchParams.get("tenantId"));
+    const projectId = safeId(url.searchParams.get("projectId"));
+    const learnerId = safeId(url.searchParams.get("learnerId"));
+    if (!tenantId || !projectId || !learnerId) return reply({ error: "tenantId, projectId, and learnerId are required", requestId }, 400);
+    if (!env.DB) return reply({ item: null, persisted: false, requestId });
+    await initialize(env.DB);
+    const row = await env.DB.prepare("SELECT payload FROM project_learning_state WHERE tenant_id = ? AND project_id = ? AND learner_id = ? ORDER BY updated_at DESC LIMIT 1")
+      .bind(tenantId, projectId, learnerId).first();
+    return reply({ item: row?.payload ? JSON.parse(row.payload) : null, persisted: true, requestId });
+  }
+  if (request.method === "PUT" && url.pathname === "/api/learning/projects/state") {
+    const item = validateProjectLearningState(await readJson(request, 256 * 1024));
+    await persistProjectLearningState(env, item);
+    return reply({ item, persisted: Boolean(env.DB), requestId });
   }
   if (request.method === "POST" && url.pathname === "/api/agents/respond") {
     const payload = sanitizeAgentPayload(await readJson(request, MAX_AGENT_BODY_BYTES));
