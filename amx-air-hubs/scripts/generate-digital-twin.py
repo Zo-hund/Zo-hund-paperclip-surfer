@@ -6,16 +6,72 @@ from pathlib import Path
 import bpy
 
 
-def material(name, color, metallic=0.2, roughness=0.35, emission=None, emission_strength=0.0):
+def write_texture(path, kind, size=256):
+    image = bpy.data.images.new(path.stem, width=size, height=size, alpha=True)
+    pixels = []
+    for y in range(size):
+        for x in range(size):
+            u, v = x / size, y / size
+            grain = math.sin(x * 0.37 + math.sin(y * 0.11) * 3.0) * 0.5 + 0.5
+            broad = math.sin(u * math.pi * 18) * math.sin(v * math.pi * 13) * 0.5 + 0.5
+            seam = 0.45 if x % 64 < 2 or y % 64 < 2 else 0.0
+            if kind == "metal_base":
+                value = 0.12 + grain * 0.08 + broad * 0.04
+                rgba = (value * 0.58, value * 0.92, value, 1.0)
+            elif kind == "concrete_base":
+                value = 0.22 + grain * 0.07 + broad * 0.05 - seam * 0.12
+                rgba = (value * 0.86, value * 0.94, value, 1.0)
+            elif kind.endswith("roughness"):
+                value = (0.38 if kind.startswith("metal") else 0.68) + (grain - 0.5) * 0.18
+                rgba = (value, value, value, 1.0)
+            else:
+                nx = 0.5 + math.sin(x * 0.31) * 0.035
+                ny = 0.5 + math.cos(y * 0.27) * 0.035
+                rgba = (nx, ny, 1.0, 1.0)
+            pixels.extend(rgba)
+    image.pixels = pixels
+    image.filepath_raw = str(path)
+    image.file_format = "PNG"
+    image.save()
+    return path
+
+
+def texture_set(folder, prefix):
+    return {
+        "base": write_texture(folder / f"{prefix}-basecolor.png", f"{prefix}_base"),
+        "roughness": write_texture(folder / f"{prefix}-roughness.png", f"{prefix}_roughness"),
+        "normal": write_texture(folder / f"{prefix}-normal.png", f"{prefix}_normal"),
+    }
+
+
+def material(name, color, metallic=0.2, roughness=0.35, emission=None, emission_strength=0.0, textures=None):
     item = bpy.data.materials.new(name)
     item.diffuse_color = (*color, 1.0)
     item.metallic = metallic
     item.roughness = roughness
+    item.use_nodes = True
+    node = item.node_tree.nodes.get("Principled BSDF")
+    node.inputs["Base Color"].default_value = (*color, 1.0)
+    node.inputs["Metallic"].default_value = metallic
+    node.inputs["Roughness"].default_value = roughness
     if emission:
-        item.use_nodes = True
-        node = item.node_tree.nodes.get("Principled BSDF")
         node.inputs["Emission Color"].default_value = (*emission, 1.0)
         node.inputs["Emission Strength"].default_value = emission_strength
+    if textures:
+        base = item.node_tree.nodes.new("ShaderNodeTexImage")
+        base.image = bpy.data.images.load(str(textures["base"]), check_existing=True)
+        item.node_tree.links.new(base.outputs["Color"], node.inputs["Base Color"])
+        rough = item.node_tree.nodes.new("ShaderNodeTexImage")
+        rough.image = bpy.data.images.load(str(textures["roughness"]), check_existing=True)
+        rough.image.colorspace_settings.name = "Non-Color"
+        item.node_tree.links.new(rough.outputs["Color"], node.inputs["Roughness"])
+        normal_texture = item.node_tree.nodes.new("ShaderNodeTexImage")
+        normal_texture.image = bpy.data.images.load(str(textures["normal"]), check_existing=True)
+        normal_texture.image.colorspace_settings.name = "Non-Color"
+        normal = item.node_tree.nodes.new("ShaderNodeNormalMap")
+        normal.inputs["Strength"].default_value = 0.42
+        item.node_tree.links.new(normal_texture.outputs["Color"], normal.inputs["Color"])
+        item.node_tree.links.new(normal.outputs["Normal"], node.inputs["Normal"])
     return item
 
 
@@ -53,24 +109,29 @@ def main():
     parser.add_argument("--project-root", required=True)
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     args = parser.parse_args(argv)
-    root = Path(args.project_root)
+    root = Path(args.project_root).resolve()
     blend_path = root / "assets" / "blender" / "amx-digital-twin.blend"
     glb_path = root / "public" / "models" / "amx-digital-twin.glb"
     blend_path.parent.mkdir(parents=True, exist_ok=True)
     glb_path.parent.mkdir(parents=True, exist_ok=True)
+    texture_dir = root / "public" / "textures" / "generated"
+    texture_dir.mkdir(parents=True, exist_ok=True)
 
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
 
-    dark = material("AMX_DarkMetal", (0.07, 0.15, 0.2), 0.48, 0.34)
-    panel = material("AMX_Panel", (0.1, 0.28, 0.34), 0.38, 0.36)
+    industrial_textures = texture_set(texture_dir, "metal")
+    concrete_textures = texture_set(texture_dir, "concrete")
+    dark = material("AMX_DarkMetal", (0.07, 0.15, 0.2), 0.48, 0.34, textures=industrial_textures)
+    panel = material("AMX_Panel", (0.1, 0.28, 0.34), 0.38, 0.36, textures=industrial_textures)
+    floor = material("AMX_ConcreteFloor", (0.18, 0.24, 0.27), 0.08, 0.72, textures=concrete_textures)
     cyan = material("AMX_Cyan", (0.02, 0.5, 0.72), 0.35, 0.2, (0.12, 0.85, 1.0), 3.0)
     magenta = material("AMX_Magenta", (0.45, 0.03, 0.55), 0.35, 0.2, (1.0, 0.1, 0.85), 2.4)
     green = material("AMX_Green", (0.02, 0.34, 0.18), 0.25, 0.25, (0.2, 1.0, 0.52), 2.0)
     gold = material("AMX_Gold", (0.62, 0.42, 0.08), 0.45, 0.25, (1.0, 0.68, 0.18), 1.8)
     glass = material("AMX_Glass", (0.1, 0.34, 0.42), 0.05, 0.28, (0.08, 0.65, 0.8), 1.1)
 
-    cube("Twin_Floor", (0, -0.18, 0), (4.4, 0.18, 3.5), dark, 0.04)
+    cube("Twin_Floor", (0, -0.18, 0), (4.4, 0.18, 3.5), floor, 0.04)
     for index in range(-4, 5):
         cube(f"Floor_Line_X_{index}", (index, 0.015, 0), (0.012, 0.01, 3.35), cyan, 0.005)
     for index in range(-3, 4):

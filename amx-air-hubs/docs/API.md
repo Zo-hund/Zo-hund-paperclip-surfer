@@ -94,8 +94,8 @@ Removes a durable anchor for the active tenant.
 
 ### GET /api/twins/events?room={ROOM}
 
-Returns recent scenario and approval audit events.
+Returns recent scenario, approval, telemetry, and reconstruction-skill audit events.
 
 ### POST /api/twins/events
 
-Records a validated scenario, approval, or telemetry event. The browser currently persists scenario and approval events; high-frequency telemetry remains on the realtime channel.
+Records a validated scenario, approval, telemetry, or `skill` event. The browser persists scenario, approval, and reconstruction-skill provenance; high-frequency telemetry remains on the realtime channel.

@@ -486,7 +486,7 @@ function validateTwinEvent(body) {
   const id = safeId(body.id);
   const twinId = safeId(body.twinId);
   const roomCode = safeId(body.roomCode).toUpperCase().slice(0, 64);
-  const eventType = ["scenario", "approval", "telemetry"].includes(body.eventType) ? body.eventType : "";
+  const eventType = ["scenario", "approval", "telemetry", "skill"].includes(body.eventType) ? body.eventType : "";
   if (!id || !twinId || !roomCode || !eventType) throw new HttpError(400, "Twin id, roomCode, and supported eventType are required");
   return {
     id,

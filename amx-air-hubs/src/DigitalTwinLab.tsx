@@ -1,9 +1,10 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { Activity, AlertTriangle, Bot, CheckCircle2, Gauge, Send, ShieldCheck, Thermometer, Waves, Zap } from "lucide-react";
+import { Activity, AlertTriangle, Bot, Boxes, CheckCircle2, Gauge, Send, ShieldCheck, Sparkles, Thermometer, Waves, Zap } from "lucide-react";
 import { agents } from "./data";
 import { sendAgentRequest } from "./agent-runtime";
 import { twinScenarios, useDigitalTwin, type TwinScenarioId } from "./digital-twin";
 import { Metric, StatusPill } from "./components";
+import { runSimulationSkill, simulationSkills, type SimulationSkillId, type SimulationSkillRun } from "./simulation-skills";
 
 const DigitalTwinScene = lazy(async () => ({ default: (await import("./DigitalTwinScene")).DigitalTwinScene }));
 
@@ -18,6 +19,8 @@ export function DigitalTwinLab({ roomCode, reducedMotion, onBackend }: Props) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("Ask the twin about health, risk, maintenance, or a scenario comparison.");
   const [asking, setAsking] = useState(false);
+  const [runningSkill, setRunningSkill] = useState<SimulationSkillId | null>(null);
+  const [skillRun, setSkillRun] = useState<SimulationSkillRun | null>(null);
   const scenario = useMemo(() => twinScenarios.find((item) => item.id === twin.scenario) || twinScenarios[0], [twin.scenario]);
 
   const askTwin = async () => {
@@ -29,6 +32,13 @@ export function DigitalTwinLab({ roomCode, reducedMotion, onBackend }: Props) {
     setAnswer(response.text);
     setQuestion("");
     setAsking(false);
+  };
+
+  const executeSkill = async (skillId: SimulationSkillId) => {
+    if (runningSkill) return;
+    setRunningSkill(skillId);
+    setSkillRun(await runSimulationSkill(skillId, roomCode));
+    setRunningSkill(null);
   };
 
   return <div className="section-wrap digital-twin-layout">
@@ -48,6 +58,7 @@ export function DigitalTwinLab({ roomCode, reducedMotion, onBackend }: Props) {
       </div>
       <div className="twin-forecast"><AlertTriangle/><div><b>{twin.forecast.failureWindowHours ? `Potential intervention in ${twin.forecast.failureWindowHours}h` : "No predicted failure window"}</b><p>{twin.forecast.recommendation}</p></div></div>
       <div className="twin-scenarios"><span className="eyebrow">WHAT-IF SANDBOX</span><div>{twinScenarios.map((item) => <button key={item.id} className={twin.scenario === item.id ? "active" : ""} onClick={() => twin.runScenario(item.id as TwinScenarioId)}><b>{item.label}</b><span>{item.detail}</span></button>)}</div></div>
+      <div className="twin-skill-studio"><div><span className="eyebrow">REALITY RECONSTRUCTION SKILLS</span><StatusPill tone="cyan">PBR PIPELINE</StatusPill></div><div>{simulationSkills.map((skill) => <button key={skill.id} disabled={Boolean(runningSkill)} className={skillRun?.skillId === skill.id ? "active" : ""} onClick={() => void executeSkill(skill.id)}><Boxes/><span><b>{skill.label}</b><small>{skill.detail}</small></span>{runningSkill === skill.id ? <i>RUNNING</i> : <i>RUN</i>}</button>)}</div>{skillRun && <div className="twin-skill-result"><Sparkles/><span><b>{skillRun.confidence}% reconstruction confidence</b><small>{skillRun.summary}</small><code>{skillRun.artifacts.join(" / ")}</code></span></div>}</div>
       {twin.result && <div className="twin-result"><div><Activity/><span><b>{twin.result.projected.healthPercent}% projected health</b><small>{twin.result.projected.riskPercent - twin.result.baseline.riskPercent >= 0 ? "+" : ""}{twin.result.projected.riskPercent - twin.result.baseline.riskPercent}% risk delta</small></span></div><p>{twin.result.recommendation}</p><button className="button secondary full" disabled={twin.result.approved} onClick={twin.approveResult}>{twin.result.approved ? <CheckCircle2/> : <Gauge/>}{twin.result.approved ? "Plan approved for operator handoff" : "Approve sandbox plan"}</button><small>Approval records intent only. No physical actuator is connected.</small></div>}
       <div className="twin-copilot"><div><Bot/><span><b>Ask the twin</b><small>NAZ / contextual analysis</small></span></div><p>{answer}</p><div><input value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void askTwin(); }} placeholder="What changes under peak load?"/><button type="button" aria-label="Send question to the digital twin" title="Send question to the digital twin" disabled={!question.trim() || asking} onClick={() => void askTwin()}><Send/></button></div></div>
       <div className="twin-provenance"><span><i className="live-dot"/>{twin.transport}</span><span>{twin.telemetry.source === "sensor" ? "Physical telemetry" : "Synthetic telemetry"}</span><time>{new Date(twin.telemetry.timestamp).toLocaleTimeString()}</time></div>

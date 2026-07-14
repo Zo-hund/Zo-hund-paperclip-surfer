@@ -41,7 +41,7 @@ Custom glTF extras identify `amx_role`, `metric`, `control`, and `twin_id` value
 
 - Supabase Broadcast channel: `amx-twin-{ROOM}`.
 - Local development fallback: `BroadcastChannel` with the same room scope.
-- Scenario and approval audit: `POST /api/twins/events`.
+- Scenario, approval, and reconstruction-skill audit: `POST /api/twins/events`.
 - Audit retrieval: `GET /api/twins/events?room={ROOM}`.
 - Spatial anchor persistence: `/api/anchors`.
 

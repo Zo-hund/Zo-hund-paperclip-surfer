@@ -320,6 +320,24 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(body.item.eventType, "scenario");
     assert.ok(insert);
   });
+  test("records reality reconstruction skill provenance", async () => {
+    const database = memoryDatabase();
+    env.DB = database;
+    const response = await worker.fetch(jsonRequest("/api/twins/events", {
+      id: "skill-run-1",
+      tenantId: "tenant-1",
+      twinId: "facility-cell-01",
+      roomCode: "NEXUS1",
+      eventType: "skill",
+      payload: { skillId: "materials", confidence: 94, artifacts: ["basecolor.png", "normal.png", "roughness.png"] },
+      createdAt: new Date().toISOString(),
+    }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 201);
+    assert.equal(body.persisted, true);
+    assert.equal(body.item.eventType, "skill");
+  });
   test("adds a nonce-based content security policy to SPA fallbacks", async () => {
     const response = await worker.fetch(request("/agents/naz/workspace"), env);
     const csp = response.headers.get("Content-Security-Policy") || "";

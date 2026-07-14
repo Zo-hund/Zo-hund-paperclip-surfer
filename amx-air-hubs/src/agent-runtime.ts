@@ -66,6 +66,12 @@ export const builtInSkills = [
   "Mission planning",
   "Proof packaging",
   "Human escalation",
+  "Spatial environment capture",
+  "Semantic scene reconstruction",
+  "PBR material calibration",
+  "Lighting and reflection matching",
+  "Geospatial anchor alignment",
+  "Reality validation",
 ];
 
 const fallbackTools: AgentRuntimeStatus["tools"] = [
