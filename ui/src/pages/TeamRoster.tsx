@@ -5,7 +5,7 @@ import {
   CheckCircle2, Lock, TrendingUp, Star, Plus, ChevronRight, X,
   Sparkles, ArrowRight, Layers, Medal, Activity, Heart, Trophy,
   AlertTriangle, Target, Clock, Flame, BarChart2, Globe,
-  CreditCard, Minus, Loader2, Armchair
+  CreditCard, Minus, Loader2, Armchair, Info
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/context/CompanyContext";
@@ -259,9 +259,9 @@ function MemberCard({ member, teams, onUpdate }: {
           {/* XP + Health row */}
           <div className="flex items-center gap-3 mb-4">
             <XpBar xp={member.xp} />
-            <div className="shrink-0 relative flex items-center justify-center">
+            <div className="shrink-0 relative flex items-center justify-center" title={`Health ${member.health}% — operational readiness. SIM needs ≥30%, LIVE needs ≥70%.`}>
               <HealthRing pct={member.health} size={44} />
-              <span className="absolute text-[9px] font-black text-foreground rotate-90">{member.health}%</span>
+              <span className="absolute text-[10px] font-black text-foreground leading-none">{member.health}<span className="text-[7px]">%</span></span>
             </div>
           </div>
 
@@ -363,7 +363,7 @@ function TeamColumn({ team, members, onUpdate }: {
   const simCount  = members.filter((m) => m.status === "sim_active").length;
 
   return (
-    <div className={`rounded-2xl border bg-gradient-to-b ${gradient} ${border} overflow-hidden`}>
+    <div className={`w-[320px] shrink-0 rounded-2xl border bg-gradient-to-b ${gradient} ${border} overflow-hidden`}>
       <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users className={`h-4 w-4 ${accent}`} />
@@ -377,9 +377,10 @@ function TeamColumn({ team, members, onUpdate }: {
       </div>
       <div className="p-3 space-y-3">
         {members.length === 0 ? (
-          <div className="py-8 flex flex-col items-center text-center opacity-40 gap-2">
-            <Users className="h-6 w-6 text-muted-foreground" />
-            <p className="text-[11px] font-bold text-muted-foreground">No members yet</p>
+          <div className="py-10 flex flex-col items-center text-center gap-1.5 rounded-xl border border-dashed border-border/40 bg-card/20">
+            <Users className="h-5 w-5 text-muted-foreground/50" />
+            <p className="text-[11px] font-bold text-muted-foreground/70">No members yet</p>
+            <p className="text-[10px] text-muted-foreground/50">Use “Assign to Team” on a member card</p>
           </div>
         ) : (
           members.map((m) => <MemberCard key={m.id} member={m} teams={DEFAULT_TEAMS} onUpdate={onUpdate} />)
@@ -520,9 +521,15 @@ function TeamSeatsCard({ companyId, userId }: { companyId: string; userId: strin
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/40 flex items-center gap-2">
-        <Armchair className="h-4 w-4 text-primary" />
-        <h3 className="text-[12px] font-black uppercase tracking-widest">Team Seats</h3>
+      <div className="px-5 py-4 border-b border-border/40">
+        <div className="flex items-center gap-2">
+          <Armchair className="h-4 w-4 text-primary" />
+          <h3 className="text-[12px] font-black uppercase tracking-widest">Team Seats</h3>
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+          Each human teammate you invite needs a paid seat. The company owner and AI agents don’t use one —
+          you only pay for the people who collaborate with you.
+        </p>
       </div>
       <div className="p-5">
         {seatsQuery.isLoading ? (
@@ -696,14 +703,14 @@ export function TeamRoster() {
           {/* Stats bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: "LIVE Active",  value: liveCount,     color: "text-emerald-400", bg: "bg-emerald-400/10", border: "border-emerald-400/20", icon: Play },
-              { label: "SIM Running",  value: simCount,      color: "text-violet-400",  bg: "bg-violet-400/10",  border: "border-violet-400/20",  icon: Cpu },
-              { label: "Ready",        value: readyCount,    color: "text-amber-400",   bg: "bg-amber-400/10",   border: "border-amber-400/20",   icon: Target },
-              { label: "In Training",  value: trainingCount, color: "text-slate-400",   bg: "bg-slate-400/10",   border: "border-slate-400/20",   icon: Trophy },
+              { label: "LIVE Active",  value: liveCount,     color: "text-emerald-400", bg: "bg-emerald-400/10", border: "border-emerald-400/20", icon: Play,   hint: "Members running live, production work right now." },
+              { label: "SIM Running",  value: simCount,      color: "text-violet-400",  bg: "bg-violet-400/10",  border: "border-violet-400/20",  icon: Cpu,    hint: "Members currently in a practice simulation run." },
+              { label: "Ready",        value: readyCount,    color: "text-amber-400",   bg: "bg-amber-400/10",   border: "border-amber-400/20",   icon: Target, hint: "Cleared to activate — idle and waiting for work." },
+              { label: "In Training",  value: trainingCount, color: "text-slate-400",   bg: "bg-slate-400/10",   border: "border-slate-400/20",   icon: Trophy, hint: "Still onboarding — not yet cleared for SIM." },
             ].map((s) => {
               const Icon = s.icon;
               return (
-                <div key={s.label} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${s.bg} ${s.border}`}>
+                <div key={s.label} title={s.hint} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${s.bg} ${s.border} cursor-help`}>
                   <Icon className={`h-4 w-4 ${s.color}`} />
                   <div>
                     <div className={`text-xl font-black ${s.color}`}>{s.value}</div>
@@ -727,8 +734,14 @@ export function TeamRoster() {
 
       {/* XP Gate Legend */}
       <div className="px-4 md:px-8 py-4 border-b border-border/20 bg-accent/5">
-        <div className="max-w-7xl mx-auto flex items-center gap-4 flex-wrap">
-          <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Activation Gates:</span>
+        <div className="max-w-7xl mx-auto flex items-center gap-x-4 gap-y-2 flex-wrap">
+          <span
+            className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground cursor-help"
+            title="Every teammate starts in Training, earns XP through practice Simulation (SIM) runs, then unlocks Live production work once they clear the level and health gates below."
+          >
+            <Info className="h-3.5 w-3.5 text-muted-foreground/70" />
+            Members train, then unlock <span className="font-black text-blue-400">SIM</span>, then <span className="font-black text-emerald-400">LIVE</span>:
+          </span>
           <div className="flex items-center gap-1.5">
             <Cpu className="h-3 w-3 text-blue-400" />
             <span className="text-[10px] font-black text-blue-400">SIM</span>
@@ -755,15 +768,17 @@ export function TeamRoster() {
       <main className="px-4 md:px-8 py-6 flex-1">
         <div className="max-w-7xl mx-auto">
           {view === "board" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+            <div className="flex gap-5 overflow-x-auto pb-4 -mx-1 px-1 scrollbar-auto-hide snap-x">
               {/* Unassigned Internal column */}
-              <TeamColumn
-                team={null}
-                members={displayed.filter((m) => !m.teamId && m.origin === "internal")}
-                onUpdate={updateMember}
-              />
+              <div className="snap-start">
+                <TeamColumn
+                  team={null}
+                  members={displayed.filter((m) => !m.teamId && m.origin === "internal")}
+                  onUpdate={updateMember}
+                />
+              </div>
               {/* Network Dashers column */}
-              <div className="rounded-2xl border bg-gradient-to-b from-primary/10 to-transparent border-primary/30 overflow-hidden">
+              <div className="w-[320px] shrink-0 snap-start rounded-2xl border bg-gradient-to-b from-primary/10 to-transparent border-primary/30 overflow-hidden">
                 <div className="px-4 py-3 border-b border-primary/20 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Zap className="h-4 w-4 text-primary" />
@@ -778,20 +793,22 @@ export function TeamRoster() {
                     <MemberCard key={m.id} member={m} teams={DEFAULT_TEAMS} onUpdate={updateMember} />
                   ))}
                   {displayed.filter((m) => m.origin === "network").length === 0 && (
-                    <div className="py-8 flex flex-col items-center text-center opacity-40 gap-2">
-                      <Zap className="h-6 w-6 text-muted-foreground" />
-                      <p className="text-[11px] font-bold text-muted-foreground">No active dashes</p>
+                    <div className="py-10 flex flex-col items-center text-center gap-1.5 rounded-xl border border-dashed border-border/40 bg-card/20">
+                      <Zap className="h-5 w-5 text-muted-foreground/50" />
+                      <p className="text-[11px] font-bold text-muted-foreground/70">No active dashes</p>
+                      <p className="text-[10px] text-muted-foreground/50">On-demand network talent lands here</p>
                     </div>
                   )}
                 </div>
               </div>
               {DEFAULT_TEAMS.map((team) => (
-                <TeamColumn
-                  key={team.id}
-                  team={team}
-                  members={displayed.filter((m) => m.teamId === team.id)}
-                  onUpdate={updateMember}
-                />
+                <div key={team.id} className="snap-start">
+                  <TeamColumn
+                    team={team}
+                    members={displayed.filter((m) => m.teamId === team.id)}
+                    onUpdate={updateMember}
+                  />
+                </div>
               ))}
             </div>
           ) : (
@@ -816,9 +833,9 @@ export function TeamRoster() {
                     <div className="hidden sm:flex items-center gap-2 shrink-0">
                       <XpBar xp={member.xp} />
                     </div>
-                    <div className="shrink-0 relative flex items-center justify-center">
+                    <div className="shrink-0 relative flex items-center justify-center" title={`Health ${member.health}%`}>
                       <HealthRing pct={member.health} size={36} />
-                      <span className="absolute text-[8px] font-black text-foreground rotate-90">{member.health}%</span>
+                      <span className="absolute text-[8px] font-black text-foreground leading-none">{member.health}<span className="text-[6px]">%</span></span>
                     </div>
                     <span className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black border ${statusCfg.bg} ${statusCfg.color} ${statusCfg.border}`}>{statusCfg.label}</span>
                     {team && <span className={`shrink-0 text-[10px] font-black ${team.accent}`}>{team.name}</span>}
