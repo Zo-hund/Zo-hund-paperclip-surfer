@@ -62,13 +62,13 @@ def main():
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
 
-    dark = material("AMX_DarkMetal", (0.018, 0.045, 0.058), 0.72, 0.22)
-    panel = material("AMX_Panel", (0.045, 0.12, 0.145), 0.5, 0.3)
+    dark = material("AMX_DarkMetal", (0.07, 0.15, 0.2), 0.48, 0.34)
+    panel = material("AMX_Panel", (0.1, 0.28, 0.34), 0.38, 0.36)
     cyan = material("AMX_Cyan", (0.02, 0.5, 0.72), 0.35, 0.2, (0.12, 0.85, 1.0), 3.0)
     magenta = material("AMX_Magenta", (0.45, 0.03, 0.55), 0.35, 0.2, (1.0, 0.1, 0.85), 2.4)
     green = material("AMX_Green", (0.02, 0.34, 0.18), 0.25, 0.25, (0.2, 1.0, 0.52), 2.0)
     gold = material("AMX_Gold", (0.62, 0.42, 0.08), 0.45, 0.25, (1.0, 0.68, 0.18), 1.8)
-    glass = material("AMX_Glass", (0.04, 0.2, 0.24), 0.05, 0.12, (0.08, 0.55, 0.68), 0.65)
+    glass = material("AMX_Glass", (0.1, 0.34, 0.42), 0.05, 0.28, (0.08, 0.65, 0.8), 1.1)
 
     cube("Twin_Floor", (0, -0.18, 0), (4.4, 0.18, 3.5), dark, 0.04)
     for index in range(-4, 5):
@@ -133,6 +133,15 @@ def main():
     camera.data.lens = 48
     camera.rotation_euler = ((core.location - camera.location).to_track_quat("-Z", "Y")).to_euler()
     bpy.context.scene.camera = camera
+
+    # The procedural layout uses Y as its vertical design axis. Rotate the
+    # complete authored scene into Blender/glTF Z-up space before export.
+    root = bpy.data.objects.new("AMX_Digital_Twin_Root", None)
+    bpy.context.collection.objects.link(root)
+    for obj in list(bpy.context.scene.objects):
+        if obj != root:
+            obj.parent = root
+    root.rotation_euler.x = math.pi / 2
 
     bpy.context.scene["amx_twin_schema"] = "1.0"
     bpy.context.scene["amx_twin_id"] = "facility-cell-01"

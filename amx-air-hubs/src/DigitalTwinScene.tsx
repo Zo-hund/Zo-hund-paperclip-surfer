@@ -25,8 +25,7 @@ export function DigitalTwinScene({ telemetry, forecast, reducedMotion, onBackend
     const host = hostRef.current;
     if (!host) return;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x030b12);
-    scene.fog = new THREE.FogExp2(0x030b12, 0.018);
+    scene.background = new THREE.Color(0x091924);
     const camera = new THREE.PerspectiveCamera(40, host.clientWidth / host.clientHeight, 0.05, 80);
     camera.position.set(7.8, 5.4, 9.6);
     const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: "high-performance", forceWebGL: forceWebGLDiagnostic() });
@@ -34,7 +33,7 @@ export function DigitalTwinScene({ telemetry, forecast, reducedMotion, onBackend
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.55;
+    renderer.toneMappingExposure = 1.25;
     host.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 1.45, 0);
@@ -44,18 +43,39 @@ export function DigitalTwinScene({ telemetry, forecast, reducedMotion, onBackend
     controls.minDistance = 5.5;
     controls.maxDistance = 16;
     controls.maxPolarAngle = Math.PI * 0.52;
-    scene.add(new THREE.AmbientLight(0xdaf8ff, 1.4));
-    scene.add(new THREE.HemisphereLight(0x8cecff, 0x07111a, 2.2));
-    const key = new THREE.DirectionalLight(0xc6f5ff, 5.2);
+    scene.add(new THREE.AmbientLight(0xe8fbff, 0.9));
+    scene.add(new THREE.HemisphereLight(0xb8f2ff, 0x183044, 1.8));
+    const key = new THREE.DirectionalLight(0xffffff, 3.8);
     key.position.set(-5, 8, 6);
     scene.add(key);
-    const fill = new THREE.PointLight(0xff4fea, 55, 24, 1.2);
+    const fill = new THREE.PointLight(0x8cecff, 42, 30, 1.1);
     fill.position.set(5, 4, 4);
     scene.add(fill);
+    const rim = new THREE.PointLight(0xff72ed, 34, 28, 1.1);
+    rim.position.set(-5, 3, -4);
+    scene.add(rim);
+    const overhead = new THREE.PointLight(0xffffff, 36, 26, 1.05);
+    overhead.position.set(0, 9, 0);
+    scene.add(overhead);
     let model: THREE.Object3D | null = null;
     new GLTFLoader().load("/models/amx-digital-twin.glb", (gltf) => {
       model = gltf.scene;
       modelRef.current = model;
+      const tunedMaterials = new Set<THREE.Material>();
+      model.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        for (const material of materials) {
+          if (!(material instanceof THREE.MeshStandardMaterial) || tunedMaterials.has(material)) continue;
+          tunedMaterials.add(material);
+          const hsl = { h: 0, s: 0, l: 0 };
+          material.color.getHSL(hsl);
+          material.color.setHSL(hsl.h, Math.max(hsl.s, 0.3), Math.max(hsl.l, 0.16));
+          material.metalness = Math.min(material.metalness, 0.5);
+          material.roughness = Math.max(material.roughness, 0.32);
+          material.needsUpdate = true;
+        }
+      });
       scene.add(model);
       const bounds = new THREE.Box3().setFromObject(model);
       const size = bounds.getSize(new THREE.Vector3());
