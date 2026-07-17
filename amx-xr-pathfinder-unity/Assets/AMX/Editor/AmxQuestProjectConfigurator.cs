@@ -1,15 +1,23 @@
 using System.Linq;
 using AMX.XR.Configuration;
+using AMX.XR.Integrations;
 using AMX.XR.Missions;
 using AMX.XR.Proof;
 using AMX.XR.Realtime;
 using AMX.XR.Spatial;
+using Meta.XR.MRUtilityKit;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.SceneManagement;
+using UnityEditor.XR.Management;
+using UnityEditor.XR.Management.Metadata;
+using UnityEditor.XR.OpenXR.Features;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
+using UnityEngine.XR.Management;
+using UnityEngine.XR.OpenXR;
+using UnityEngine.XR.OpenXR.Features.MetaQuestSupport;
 
 namespace AMX.XR.Editor
 {
@@ -20,6 +28,8 @@ namespace AMX.XR.Editor
         private const string MissionPath = "Assets/StreamingAssets/amx/missions/xrt-green-mode.json";
         private const string MissionAssetPath = "Assets/AMX/Configuration/XRT Green Mode Mission.asset";
         private const string ScenePath = "Assets/AMX/Scenes/QuestStarter.unity";
+        private const string XrSettingsPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
+        private const string MetaCameraRigPath = "Packages/com.meta.xr.sdk.core/Prefabs/OVRCameraRig.prefab";
 
         [MenuItem(MenuPath)]
         public static void Configure()
@@ -37,6 +47,7 @@ namespace AMX.XR.Editor
             PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.Vulkan });
             PlayerSettings.Android.forceInternetPermission = true;
             PlayerSettings.Android.forceSDCardPermission = false;
+            ConfigureOpenXr();
 
             var symbols = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.Android).Split(';').Where(value => !string.IsNullOrWhiteSpace(value)).ToHashSet();
             symbols.Add("AMX_QUEST");
@@ -44,7 +55,7 @@ namespace AMX.XR.Editor
 
             EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android);
             AssetDatabase.SaveAssets();
-            Debug.Log("AMX Quest settings applied. Finish OpenXR validation and install Meta XR All-in-One before building.");
+            Debug.Log("AMX Quest settings applied with Android OpenXR and Meta Quest support.");
         }
 
         [MenuItem("AMX XR/Create Quest Starter Scene")]
@@ -73,13 +84,29 @@ namespace AMX.XR.Editor
             var runtime = new GameObject("AMX Runtime");
             Assign(runtime.AddComponent<AmxMissionRuntime>(), "environment", environment, "missionJson", mission);
             Assign(runtime.AddComponent<AmxProofSyncService>(), "environment", environment);
-            Assign(runtime.AddComponent<AmxLiveKitRoomBridge>(), "environment", environment);
 
             var station = GameObject.CreatePrimitive(PrimitiveType.Cube);
             station.name = "Learning Station Anchor";
             station.transform.SetPositionAndRotation(new Vector3(0f, 1.1f, 2.5f), Quaternion.identity);
             station.transform.localScale = new Vector3(1.8f, 1.2f, 0.12f);
-            Assign(station.AddComponent<AmxSpatialAnchorBridge>(), "environment", environment, "anchorTarget", station.transform);
+            var anchorProvider = station.AddComponent<AmxMetaSpatialAnchorProvider>();
+            Assign(station.AddComponent<AmxSpatialAnchorBridge>(), "environment", environment, "anchorTarget", station.transform,
+                "providerComponent", anchorProvider);
+
+            var liveKitConnector = runtime.AddComponent<AmxLiveKitConnector>();
+            Assign(liveKitConnector, "videoSurface", station.GetComponent<Renderer>());
+            Assign(runtime.AddComponent<AmxLiveKitRoomBridge>(), "environment", environment,
+                "connectorComponent", liveKitConnector);
+
+            var roomUnderstanding = new GameObject("MRUK Room Understanding");
+            var mruk = roomUnderstanding.AddComponent<MRUK>();
+            mruk.SceneSettings = new MRUK.MRUKSettings
+            {
+                DataSource = MRUK.SceneDataSource.Device,
+                LoadSceneOnStartup = true
+            };
+
+            CreateMetaCameraRig();
 
             var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
             floor.name = "Room Preview Floor";
@@ -93,7 +120,7 @@ namespace AMX.XR.Editor
             lightObject.transform.rotation = Quaternion.Euler(42f, -32f, 0f);
 
             var cameraObject = new GameObject("Preview Camera");
-            cameraObject.tag = "MainCamera";
+            cameraObject.tag = "EditorOnly";
             var camera = cameraObject.AddComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.025f, 0.04f, 0.075f);
@@ -104,7 +131,63 @@ namespace AMX.XR.Editor
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
             Selection.activeGameObject = runtime;
-            Debug.Log($"AMX Quest starter scene created at {ScenePath}. Replace Preview Camera with the Meta Interaction SDK rig after importing Meta XR.");
+            Debug.Log($"AMX Quest starter scene created at {ScenePath} with Meta camera tracking and passthrough.");
+        }
+
+        private static void ConfigureOpenXr()
+        {
+            EnsureFolder("Assets", "XR");
+            var settingsPerTarget = AssetDatabase.LoadAssetAtPath<XRGeneralSettingsPerBuildTarget>(XrSettingsPath);
+            if (!settingsPerTarget)
+            {
+                settingsPerTarget = ScriptableObject.CreateInstance<XRGeneralSettingsPerBuildTarget>();
+                AssetDatabase.CreateAsset(settingsPerTarget, XrSettingsPath);
+            }
+
+            if (!settingsPerTarget.HasManagerSettingsForBuildTarget(BuildTargetGroup.Android))
+            {
+                settingsPerTarget.CreateDefaultManagerSettingsForBuildTarget(BuildTargetGroup.Android);
+            }
+
+            EditorBuildSettings.AddConfigObject(XRGeneralSettings.k_SettingsKey, settingsPerTarget, true);
+            var manager = settingsPerTarget.ManagerSettingsForBuildTarget(BuildTargetGroup.Android);
+            if (!XRPackageMetadataStore.AssignLoader(manager, typeof(OpenXRLoader).FullName, BuildTargetGroup.Android))
+            {
+                throw new System.InvalidOperationException("Could not assign the Android OpenXR loader.");
+            }
+
+            FeatureHelpers.RefreshFeatures(BuildTargetGroup.Android);
+            var openXrSettings = OpenXRSettings.GetSettingsForBuildTargetGroup(BuildTargetGroup.Android);
+            var metaQuestFeature = openXrSettings ? openXrSettings.GetFeature<MetaQuestFeature>() : null;
+            if (!metaQuestFeature)
+            {
+                throw new System.InvalidOperationException("Meta Quest OpenXR support is unavailable.");
+            }
+
+            metaQuestFeature.enabled = true;
+            EditorUtility.SetDirty(metaQuestFeature);
+            EditorUtility.SetDirty(settingsPerTarget);
+        }
+
+        private static void CreateMetaCameraRig()
+        {
+            var cameraRigPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(MetaCameraRigPath);
+            if (!cameraRigPrefab)
+            {
+                throw new System.IO.FileNotFoundException("The Meta XR camera rig prefab is missing.", MetaCameraRigPath);
+            }
+
+            var cameraRig = (GameObject)PrefabUtility.InstantiatePrefab(cameraRigPrefab);
+            cameraRig.name = "Meta XR Rig";
+            var manager = cameraRig.GetComponent<OVRManager>() ?? cameraRig.AddComponent<OVRManager>();
+            manager.isInsightPassthroughEnabled = true;
+            if (!cameraRig.GetComponent<OVRPassthroughLayer>()) cameraRig.AddComponent<OVRPassthroughLayer>();
+
+            foreach (var camera in cameraRig.GetComponentsInChildren<Camera>(true))
+            {
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = Color.clear;
+            }
         }
 
         private static void EnsureFolder(string parent, string child)

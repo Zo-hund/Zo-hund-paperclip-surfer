@@ -10,7 +10,7 @@ The headset never receives LiveKit API secrets, proof-signing secrets, MCP gatew
 
 ## Meta installation
 
-Use Unity `6000.0.66f2` or a later Unity 6 editor explicitly supported by the current Meta XR SDK. Install Meta XR All-in-One SDK through Meta's Unity Package Manager wrapper. Do not commit imported vendor packages.
+Use Unity `6000.0.66f2` or a later Unity 6 editor explicitly supported by the current Meta XR SDK. The Unity project pins Meta XR Core, Interaction, OVR Interaction, and MR Utility Kit `203.0.0` through Meta's UPM registry; imported package caches are not committed.
 
 In Android OpenXR settings enable:
 
@@ -20,28 +20,27 @@ In Android OpenXR settings enable:
 - Oculus Touch Controller Profile
 - Meta Quest Touch Pro Controller Profile when required
 
-Use Interaction SDK Quick Actions to create the Unity XR interaction rig. Install MR Utility Kit and add its room bootstrap before enabling anchor publication.
+Run `AMX XR > Configure Quest Project` to assign the Android OpenXR loader and enable Meta Quest Support. The scene generator adds the tracked Meta camera rig, passthrough layer, and MRUK device-room bootstrap.
 
 ## Starter scene
 
 Run `AMX XR > Create Quest Starter Scene` to generate `Assets/AMX/Scenes/QuestStarter.unity` with these objects:
 
-1. `XR Origin` from Interaction SDK Quick Actions.
-2. `AMX Runtime` with `AmxMissionRuntime`.
-3. `AMX LiveKit` with `AmxLiveKitRoomBridge`.
-4. `AMX Proof Sync` with `AmxProofSyncService`.
-5. `Learning Station Anchor` with `AmxSpatialAnchorBridge`.
-6. A world-space status panel bound to each component's `statusChanged` event.
+1. `Meta XR Rig` with headset tracking and passthrough.
+2. `AMX Runtime` with mission, proof, LiveKit room, and native LiveKit connector components.
+3. `MRUK Room Understanding` configured to load the device room at startup.
+4. `Learning Station Anchor` with the AMX bridge and native Meta spatial-anchor provider.
+5. Bright preview lighting, a room floor, and an `EditorOnly` preview camera.
 
-The command also creates an `AMX Environment` asset with the staging HTTPS URL, serializes the canonical StreamingAssets mission JSON into an assignable Unity asset, adds bright preview lighting, and places the scene in Build Settings. Replace its preview camera with the Interaction SDK rig after importing Meta XR. Update the environment's tenant and learner identity before a shared test.
+The command also creates an `AMX Environment` asset with the staging HTTPS URL, serializes the canonical StreamingAssets mission JSON into an assignable Unity asset, and places the scene in Build Settings. Update the environment's tenant and learner identity before a shared test.
 
 ## LiveKit
 
-`AmxLiveKitRoomBridge` requests a short-lived participant token from `POST /api/livekit/token`. It intentionally does not claim a room connection until a native Unity LiveKit adapter implementing `IAmxLiveKitConnector` is installed and assigned.
+`AmxLiveKitRoomBridge` requests a short-lived participant token from `POST /api/livekit/token`. `AmxLiveKitConnector` uses the pinned LiveKit Unity SDK to connect, render remote video on the learning-station surface, and create spatialized audio sources for remote users and agents.
 
 The official SDK can be installed from `https://github.com/livekit/client-sdk-unity.git#v1.4.0`. As of this integration it is labeled Developer Preview by LiveKit, so pin the version and complete the Quest device release gate before production use.
 
-The adapter must:
+The connector:
 
 - Connect only with the server URL and participant token returned by AMX.
 - Publish microphone/camera only after explicit user permission.

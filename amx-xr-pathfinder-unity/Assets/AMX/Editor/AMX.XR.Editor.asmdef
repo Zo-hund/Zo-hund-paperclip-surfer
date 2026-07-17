@@ -1,7 +1,17 @@
 {
   "name": "AMX.XR.Editor",
   "rootNamespace": "AMX.XR.Editor",
-  "references": ["AMX.XR.Runtime"],
+  "references": [
+    "AMX.XR.Runtime",
+    "AMX.XR.Integrations",
+    "meta.xr.mrutilitykit",
+    "Oculus.VR",
+    "Unity.XR.Management",
+    "Unity.XR.Management.Editor",
+    "Unity.XR.OpenXR",
+    "Unity.XR.OpenXR.Editor",
+    "Unity.XR.OpenXR.Features.MetaQuestSupport"
+  ],
   "includePlatforms": ["Editor"],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
