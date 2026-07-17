@@ -31,6 +31,7 @@ namespace AMX.XR.Missions
         private void Awake()
         {
             if (!environment) throw new InvalidOperationException("Assign an AMX Environment asset.");
+            if (!environment.IsValid(out var environmentError)) throw new InvalidOperationException(environmentError);
             if (!missionJson) throw new InvalidOperationException("Assign an AMX mission JSON asset.");
 
             Mission = JsonUtility.FromJson<AmxMissionDefinition>(missionJson.text);

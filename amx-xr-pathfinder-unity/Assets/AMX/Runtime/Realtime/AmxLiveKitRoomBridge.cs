@@ -35,6 +35,18 @@ namespace AMX.XR.Realtime
 
         public async void JoinRoom()
         {
+            if (!environment)
+            {
+                statusChanged?.Invoke("LiveKit requires an AMX Environment asset.");
+                return;
+            }
+
+            if (!environment.IsValid(out var environmentError))
+            {
+                statusChanged?.Invoke(environmentError);
+                return;
+            }
+
             if (connector == null)
             {
                 statusChanged?.Invoke("LiveKit connector is not installed. Import a native Unity LiveKit adapter.");

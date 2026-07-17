@@ -33,6 +33,18 @@ namespace AMX.XR.Spatial
 
         public async void PublishAnchor()
         {
+            if (!environment)
+            {
+                statusChanged?.Invoke("Spatial anchors require an AMX Environment asset.");
+                return;
+            }
+
+            if (!environment.IsValid(out var environmentError))
+            {
+                statusChanged?.Invoke(environmentError);
+                return;
+            }
+
             if (provider == null)
             {
                 statusChanged?.Invoke("Spatial anchor provider is not configured. Install MRUK and assign its adapter.");

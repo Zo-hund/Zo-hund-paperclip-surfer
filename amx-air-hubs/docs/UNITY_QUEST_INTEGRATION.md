@@ -24,7 +24,7 @@ Use Interaction SDK Quick Actions to create the Unity XR interaction rig. Instal
 
 ## Starter scene
 
-Create a scene with these objects:
+Run `AMX XR > Create Quest Starter Scene` to generate `Assets/AMX/Scenes/QuestStarter.unity` with these objects:
 
 1. `XR Origin` from Interaction SDK Quick Actions.
 2. `AMX Runtime` with `AmxMissionRuntime`.
@@ -33,11 +33,13 @@ Create a scene with these objects:
 5. `Learning Station Anchor` with `AmxSpatialAnchorBridge`.
 6. A world-space status panel bound to each component's `statusChanged` event.
 
-Create an `AMX Environment` asset through Create > AMX XR > Environment. Assign the staging HTTPS URL and tenant identity. Assign `Assets/StreamingAssets/amx/missions/xrt-green-mode.json` to `AmxMissionRuntime` as a TextAsset.
+The command also creates an `AMX Environment` asset with the staging HTTPS URL, serializes the canonical StreamingAssets mission JSON into an assignable Unity asset, adds bright preview lighting, and places the scene in Build Settings. Replace its preview camera with the Interaction SDK rig after importing Meta XR. Update the environment's tenant and learner identity before a shared test.
 
 ## LiveKit
 
 `AmxLiveKitRoomBridge` requests a short-lived participant token from `POST /api/livekit/token`. It intentionally does not claim a room connection until a native Unity LiveKit adapter implementing `IAmxLiveKitConnector` is installed and assigned.
+
+The official SDK can be installed from `https://github.com/livekit/client-sdk-unity.git#v1.4.0`. As of this integration it is labeled Developer Preview by LiveKit, so pin the version and complete the Quest device release gate before production use.
 
 The adapter must:
 
