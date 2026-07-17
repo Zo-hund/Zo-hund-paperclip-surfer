@@ -6,6 +6,7 @@
     "AMX.XR.Integrations",
     "meta.xr.mrutilitykit",
     "Oculus.VR",
+    "Oculus.VR.Editor",
     "Unity.XR.Management",
     "Unity.XR.Management.Editor",
     "Unity.XR.OpenXR",

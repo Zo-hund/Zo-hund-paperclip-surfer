@@ -8,6 +8,7 @@ using AMX.XR.Spatial;
 using Meta.XR.MRUtilityKit;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEditor.XR.Management;
 using UnityEditor.XR.Management.Metadata;
@@ -30,6 +31,17 @@ namespace AMX.XR.Editor
         private const string ScenePath = "Assets/AMX/Scenes/QuestStarter.unity";
         private const string XrSettingsPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
         private const string MetaCameraRigPath = "Packages/com.meta.xr.sdk.core/Prefabs/OVRCameraRig.prefab";
+        private const string DevelopmentApkPath = "Builds/Quest/AMX-XR-Path-Finder-development.apk";
+        private static readonly string[] RequiredOpenXrFeatureIds =
+        {
+            "com.meta.openxr.feature.metaxr",
+            "com.unity.openxr.feature.input.oculustouch",
+            "com.unity.openxr.feature.input.metaquestplus",
+            "com.unity.openxr.feature.input.metaquestpro",
+            "com.unity.openxr.feature.input.handtracking",
+            "com.unity.openxr.feature.input.metahandtrackingaim",
+            "com.unity.openxr.feature.compositionlayers"
+        };
 
         [MenuItem(MenuPath)]
         public static void Configure()
@@ -39,8 +51,9 @@ namespace AMX.XR.Editor
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "cc.amxairhubs.pathfinder");
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
-            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel29;
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel32;
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
+            PlayerSettings.Android.applicationEntry = AndroidApplicationEntry.GameActivity;
             PlayerSettings.colorSpace = ColorSpace.Linear;
             PlayerSettings.MTRendering = true;
             PlayerSettings.stereoRenderingPath = StereoRenderingPath.Instancing;
@@ -48,6 +61,7 @@ namespace AMX.XR.Editor
             PlayerSettings.Android.forceInternetPermission = true;
             PlayerSettings.Android.forceSDCardPermission = false;
             ConfigureOpenXr();
+            ConfigureMetaCapabilities();
 
             var symbols = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.Android).Split(';').Where(value => !string.IsNullOrWhiteSpace(value)).ToHashSet();
             symbols.Add("AMX_QUEST");
@@ -134,6 +148,31 @@ namespace AMX.XR.Editor
             Debug.Log($"AMX Quest starter scene created at {ScenePath} with Meta camera tracking and passthrough.");
         }
 
+        [MenuItem("AMX XR/Build Quest Development APK")]
+        public static void BuildQuestDevelopmentApk()
+        {
+            Configure();
+            if (!System.IO.File.Exists(ScenePath)) CreateStarterScene();
+
+            var outputPath = System.IO.Path.GetFullPath(DevelopmentApkPath);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = new[] { ScenePath },
+                locationPathName = outputPath,
+                target = BuildTarget.Android,
+                targetGroup = BuildTargetGroup.Android,
+                options = BuildOptions.Development | BuildOptions.AllowDebugging
+            });
+
+            if (report.summary.result != BuildResult.Succeeded)
+            {
+                throw new BuildFailedException($"Quest APK build failed with {report.summary.totalErrors} errors.");
+            }
+
+            Debug.Log($"AMX Quest development APK created at {outputPath} ({report.summary.totalSize} bytes).");
+        }
+
         private static void ConfigureOpenXr()
         {
             EnsureFolder("Assets", "XR");
@@ -166,7 +205,32 @@ namespace AMX.XR.Editor
 
             metaQuestFeature.enabled = true;
             EditorUtility.SetDirty(metaQuestFeature);
+            foreach (var featureId in RequiredOpenXrFeatureIds)
+            {
+                var feature = FeatureHelpers.GetFeatureWithIdForBuildTarget(BuildTargetGroup.Android, featureId);
+                if (!feature)
+                {
+                    throw new System.InvalidOperationException($"Required OpenXR feature is unavailable: {featureId}");
+                }
+
+                feature.enabled = true;
+                EditorUtility.SetDirty(feature);
+            }
+
             EditorUtility.SetDirty(settingsPerTarget);
+        }
+
+        private static void ConfigureMetaCapabilities()
+        {
+            var config = OVRProjectConfig.CachedProjectConfig;
+            config.handTrackingSupport = OVRProjectConfig.HandTrackingSupport.ControllersAndHands;
+            config.anchorSupport = OVRProjectConfig.AnchorSupport.Enabled;
+            config.sharedAnchorSupport = OVRProjectConfig.FeatureSupport.Required;
+            config.colocationSessionSupport = OVRProjectConfig.FeatureSupport.Supported;
+            config.sceneSupport = OVRProjectConfig.FeatureSupport.Required;
+            config.insightPassthroughSupport = OVRProjectConfig.FeatureSupport.Required;
+            config.isPassthroughCameraAccessEnabled = true;
+            OVRProjectConfig.CommitProjectConfig(config);
         }
 
         private static void CreateMetaCameraRig()

@@ -13,3 +13,10 @@ Recordings/
 *.apk
 *.aab
 *.keystore
+.utmp/
+Assets/Resources/OVRBuildConfig.asset*
+Assets/Resources/PerformanceTestRun*.json*
+Assets/XR/Resources*
+Assets/XR/Settings/OpenXR Editor Settings.asset*
+Assets/XR/Temp*
+Assets/XR/UserSimulationSettings*

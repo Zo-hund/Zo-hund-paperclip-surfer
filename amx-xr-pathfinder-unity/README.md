@@ -22,6 +22,8 @@ Unity 6 companion client for AMX AIR Hubs learning missions on Meta Quest.
 6. Enable the hand-tracking and controller profiles required by the mission.
 7. Run OpenXR Project Validation and resolve any device-specific required issues.
 
+Build a development APK with `AMX XR > Build Quest Development APK`. For automation, invoke Unity with `-executeMethod AMX.XR.Editor.AmxQuestProjectConfigurator.BuildQuestDevelopmentApk`; output is written to `Builds/Quest/AMX-XR-Path-Finder-development.apk`.
+
 See `../amx-air-hubs/docs/UNITY_QUEST_INTEGRATION.md` for scene wiring, LiveKit, MRUK, proof, and build guidance.
 
 The starter scene contains a validated staging environment, mission runtime, proof replay service, a native LiveKit connector, MRUK device room loading, persistent Meta spatial anchors, bright preview lighting, a Meta XR camera rig with passthrough, and an `EditorOnly` preview camera.
