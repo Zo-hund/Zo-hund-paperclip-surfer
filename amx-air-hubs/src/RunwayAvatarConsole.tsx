@@ -199,9 +199,9 @@ export function RunwayAvatarConsole({ roomCode, agentId, onWorldCamera, onMoveNp
     </AvatarCall>}
     <div className="runway-toolbelt">
       <div className="runway-toolbelt-title"><span><Wrench/>AMX toolbelt</span><small><ShieldCheck/>client actions / governed skills</small></div>
+      <output className={`runway-tool-trace ${trace.status}`}>{trace.status === "running" ? <LoaderCircle className="spin"/> : trace.status === "complete" ? <CheckCircle2/> : <Bot/>}<span><b>{trace.name}</b><small>{trace.detail}</small></span></output>
       <div className="runway-tool-grid">{MANUAL_TOOLS.map(([id, label]) => <button key={id} disabled={trace.status === "running"} onClick={() => void runTool(id, "manual")}><Sparkles/><span>{label}</span></button>)}</div>
       <div className="runway-tool-capabilities"><span>CAMERAS</span><span>WAYPOINTS</span><span>ACTIONS</span><span>PANELS</span><span>SKILLS</span></div>
-      <output className={`runway-tool-trace ${trace.status}`}>{trace.status === "running" ? <LoaderCircle className="spin"/> : trace.status === "complete" ? <CheckCircle2/> : <Bot/>}<span><b>{trace.name}</b><small>{trace.detail}</small></span></output>
     </div>
   </section>;
 }
