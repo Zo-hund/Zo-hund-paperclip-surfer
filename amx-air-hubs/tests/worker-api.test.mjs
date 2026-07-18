@@ -462,6 +462,7 @@ describe("AMX AIR Hubs Worker API", () => {
 
     assert.equal(response.status, 200);
     assert.match(csp, /script-src 'self' 'nonce-/);
+    assert.match(csp, /'wasm-unsafe-eval'/);
     assert.match(csp, /frame-ancestors 'none'/);
   });
 });
