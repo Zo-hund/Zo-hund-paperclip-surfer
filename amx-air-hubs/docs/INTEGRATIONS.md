@@ -138,6 +138,14 @@ The Nexus Content Deck accepts HTTPS HLS (`.m3u8`), MP4, WebM, and local video f
 
 External manifests, segments, and media files must permit cross-origin browser requests from the deployment origin. Local files remain browser-local object URLs and are revoked when the player unmounts.
 
+## Nexus Production Switcher
+
+The Media console exposes three independent program buses mapped to the Blender meshes `Screen_User`, `Screen_Agent_Left`, and `Screen_Agent_Right`. Each bus can take LiveKit camera 1-3, the media deck, Google location context, the Runway participant, AMX AIR HUBS.CC, AMX Labs, or black. Unavailable live inputs remain disabled in preview and resolve to an honest branded fallback if a stream disappears after it is on program.
+
+`Cut` commits immediately. `Dip`, `AIR`, and `LABS` first render a synchronized canvas stinger on the selected targets, then commit the new source. Showcase, Collab, Context, and Brand layouts take all three buses together. The last committed program is stored as a browser-local operator preference; credentials, media URLs, and room tokens are never stored with it.
+
+The screen switcher depends on those exact GLB mesh names. After a Blender export, verify all three names, front-facing UV orientation, and visible 16:9-ish display bounds in `/nexus` before release. The renderer writes `data-screen-programs` and `data-screen-stinger` on the scene host for automated release checks.
+
 ## Google Maps
 
 Set `GOOGLE_MAPS_BROWSER_KEY` in the deployed Worker environment. `/api/maps/config` intentionally returns this browser-public key to the Google Maps JavaScript loader. In Google Cloud, restrict the key to the Maps JavaScript API and HTTPS referrers for the exact staging and production origins. Use a separate key for other platforms.

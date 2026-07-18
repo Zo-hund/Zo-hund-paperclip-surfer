@@ -6,7 +6,10 @@ import {
 import { agents } from "../data";
 import { useGeoAnchors, type GeoAnchor } from "../geospatial";
 
-import type { LightPreset, LocationPanelData, VideoFit, WorldCameraCapture, WorldCameraId } from "../NexusRoomScene";
+import type {
+  LightPreset, LocationPanelData, ProductionScreenId, ScreenProgram, ScreenSourceId,
+  ScreenStinger, ScreenTransitionStyle, VideoFit, WorldCameraCapture, WorldCameraId,
+} from "../NexusRoomScene";
 import type { MapLocationSelection } from "../GoogleLocationPanel";
 import { Metric, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
@@ -18,11 +21,30 @@ const NexusRoomScene = lazy(async () => ({ default: (await import("../NexusRoomS
 const SpatialPresenceConsole = lazy(async () => ({ default: (await import("../SpatialPresenceConsole")).SpatialPresenceConsole }));
 const DigitalTwinLab = lazy(async () => ({ default: (await import("../DigitalTwinLab")).DigitalTwinLab }));
 const NexusMediaPlayer = lazy(async () => ({ default: (await import("../NexusMediaPlayer")).NexusMediaPlayer }));
+const NexusProductionSwitcher = lazy(async () => ({ default: (await import("../NexusProductionSwitcher")).NexusProductionSwitcher }));
 const GoogleLocationPanel = lazy(async () => ({ default: (await import("../GoogleLocationPanel")).GoogleLocationPanel }));
 const RunwayAvatarConsole = lazy(async () => ({ default: (await import("../RunwayAvatarConsole")).RunwayAvatarConsole }));
 
 type NexusTab = "room" | "twin" | "anchors" | "fleet" | "factory";
 type RoomConsoleView = "npc" | "pod" | "media" | "vision" | "runway";
+
+const SCREEN_IDS: ProductionScreenId[] = ["Screen_User", "Screen_Agent_Left", "Screen_Agent_Right"];
+const SOURCE_IDS: ScreenSourceId[] = ["camera-1", "camera-2", "camera-3", "media", "map", "runway", "amx-air", "amx-labs", "black"];
+const DEFAULT_SCREEN_PROGRAM: ScreenProgram = {
+  Screen_User: "amx-air",
+  Screen_Agent_Left: "amx-labs",
+  Screen_Agent_Right: "amx-air",
+};
+
+function savedScreenProgram(): ScreenProgram {
+  try {
+    const saved = JSON.parse(localStorage.getItem("amx_nexus_screen_program") || "null") as Partial<ScreenProgram> | null;
+    if (saved && SCREEN_IDS.every((screen) => SOURCE_IDS.includes(saved[screen] as ScreenSourceId))) return saved as ScreenProgram;
+  } catch {
+    // A corrupt operator preference should never prevent the room from loading.
+  }
+  return DEFAULT_SCREEN_PROGRAM;
+}
 
 function useNexusTelemetry() {
   const [tick, setTick] = useState(0);
@@ -57,7 +79,10 @@ export function NexusPage() {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [sceneStreams, setSceneStreams] = useState<MediaStream[]>([]);
   const [mediaElement, setMediaElement] = useState<HTMLVideoElement | null>(null);
+  const [runwayElement, setRunwayElement] = useState<HTMLVideoElement | null>(null);
   const [mediaFit, setMediaFit] = useState<VideoFit>("contain");
+  const [screenProgram, setScreenProgram] = useState<ScreenProgram>(savedScreenProgram);
+  const [screenStinger, setScreenStinger] = useState<ScreenStinger | null>(null);
   const [mapLocation, setMapLocation] = useState<MapLocationSelection | null>(null);
   const [activeWorldCamera, setActiveWorldCamera] = useState<WorldCameraId>("overview");
   const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem("amx_ready_player_me_avatar") || DEFAULT_NEXUS_AVATAR_URL);
@@ -65,7 +90,8 @@ export function NexusPage() {
   const [npcCommand, setNpcCommand] = useState<NpcCommand | null>(null);
   const [npcState, setNpcState] = useState<NpcRuntimeState>(DEFAULT_NPC_STATE);
   const worldCaptureRef = useRef<WorldCameraCapture | null>(null);
-  const runwayVideoRef = useRef<HTMLVideoElement | null>(null);
+  const stingerTimerRef = useRef<number | null>(null);
+  const stingerSequence = useRef(0);
   const runwayCommandSequence = useRef(0);
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
   const [selectedAnchor, setSelectedAnchor] = useState<GeoAnchor | null>(null);
@@ -79,15 +105,10 @@ export function NexusPage() {
     setMediaFit(fit);
   }, []);
   const bindRunwayVideo = useCallback((video: HTMLVideoElement | null) => {
-    if (video) {
-      runwayVideoRef.current = video;
-      setMediaElement(video);
-      setMediaFit("contain");
-      return;
-    }
-    const previous = runwayVideoRef.current;
-    runwayVideoRef.current = null;
-    setMediaElement((current) => current === previous ? null : current);
+    setRunwayElement(video);
+  }, []);
+  useEffect(() => () => {
+    if (stingerTimerRef.current !== null) window.clearTimeout(stingerTimerRef.current);
   }, []);
   const updateAvatar = useCallback((url: string) => {
     setAvatarUrl(url);
@@ -118,6 +139,42 @@ export function NexusPage() {
     ...mapLocation,
     roomCode,
   } : null, [mapLocation, roomCode]);
+  const screenSourcesAvailable = useMemo<Partial<Record<ScreenSourceId, boolean>>>(() => ({
+    "camera-1": Boolean(sceneStreams[0] || localStream),
+    "camera-2": Boolean(sceneStreams[1]),
+    "camera-3": Boolean(sceneStreams[2]),
+    media: Boolean(mediaElement),
+    map: Boolean(locationPanel),
+    runway: Boolean(runwayElement),
+    "amx-air": true,
+    "amx-labs": true,
+    black: true,
+  }), [localStream, locationPanel, mediaElement, runwayElement, sceneStreams]);
+  const takeScreenProgram = useCallback((next: ScreenProgram, transition: ScreenTransitionStyle, targets: ProductionScreenId[]) => {
+    if (stingerTimerRef.current !== null) window.clearTimeout(stingerTimerRef.current);
+    if (transition === "cut" || settings.reducedMotion) {
+      setScreenProgram(next);
+      setScreenStinger(null);
+      localStorage.setItem("amx_nexus_screen_program", JSON.stringify(next));
+      return;
+    }
+    setScreenStinger({
+      id: ++stingerSequence.current,
+      targets,
+      brand: transition === "dip" ? "dip" : transition,
+    });
+    stingerTimerRef.current = window.setTimeout(() => {
+      setScreenProgram(next);
+      setScreenStinger(null);
+      localStorage.setItem("amx_nexus_screen_program", JSON.stringify(next));
+      stingerTimerRef.current = null;
+    }, transition === "dip" ? 360 : 920);
+  }, [settings.reducedMotion]);
+  const takeScreen = useCallback((targets: ProductionScreenId[], source: ScreenSourceId, transition: ScreenTransitionStyle) => {
+    const next = { ...screenProgram };
+    targets.forEach((target) => { next[target] = source; });
+    takeScreenProgram(next, transition, targets);
+  }, [screenProgram, takeScreenProgram]);
   const addAnchor = () => {
     if (geo.locationStatus !== "ready") geo.requestLocation();
     const index = geo.anchors.length;
@@ -140,7 +197,7 @@ export function NexusPage() {
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} mediaFit={mediaFit} locationPanel={locationPanel} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} runwayElement={runwayElement} mediaFit={mediaFit} locationPanel={locationPanel} screenProgram={screenProgram} screenStinger={screenStinger} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
         <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>{activeWorldCamera === "overview" ? "NEXUS CONTROL ROOM" : `${activeWorldCamera.toUpperCase()} CAMERA / LIVE`}</b>{avatarState !== "idle" && <small className={`scene-avatar-state ${avatarState}`}>AVATAR {avatarState.toUpperCase()} / NPC {npcState.action.toUpperCase()}</small>}</div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">
@@ -156,7 +213,8 @@ export function NexusPage() {
             <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream} onSceneStreams={setSceneStreams}/></Suspense>
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "media"}>
-            <div className="nexus-content-deck"><div className="content-deck-title"><span className="eyebrow">WORLD CONTENT DECK</span><b>Live panel routing</b></div>
+            <div className="nexus-content-deck"><div className="content-deck-title"><span className="eyebrow">WORLD CONTENT DECK</span><b>Production routing</b></div>
+              <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing production switcher</span></div>}><NexusProductionSwitcher program={screenProgram} available={screenSourcesAvailable} transitioning={Boolean(screenStinger)} onTake={takeScreen} onTakeLayout={(next, transition) => takeScreenProgram(next, transition, SCREEN_IDS)}/></Suspense>
               <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing media player</span></div>}><NexusMediaPlayer onPanelVideo={bindPanelVideo}/></Suspense>
               <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing location map</span></div>}><GoogleLocationPanel agent={crew[0]} roomCode={roomCode} onSelection={setMapLocation} onPublishAnchor={publishMapAnchor}/></Suspense>
             </div>
