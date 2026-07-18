@@ -110,36 +110,6 @@ function bindStream(mesh: THREE.Mesh, stream: MediaStream) {
   };
 }
 
-async function applyZohundTextures(root: THREE.Object3D) {
-  const loader = new THREE.TextureLoader();
-  const [baseColor, metallicRoughness, normal] = await Promise.all([
-    loader.loadAsync("/textures/zohund/base-color.png"),
-    loader.loadAsync("/textures/zohund/metallic-roughness.png"),
-    loader.loadAsync("/textures/zohund/normal.png"),
-  ]);
-  baseColor.colorSpace = THREE.SRGBColorSpace;
-  [baseColor, metallicRoughness, normal].forEach((texture) => {
-    texture.flipY = false;
-    texture.needsUpdate = true;
-  });
-  const materials = new Set<THREE.MeshStandardMaterial>();
-  root.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
-    const meshMaterials = Array.isArray(child.material) ? child.material : [child.material];
-    meshMaterials.forEach((material) => {
-      if (material instanceof THREE.MeshStandardMaterial) materials.add(material);
-    });
-  });
-  materials.forEach((material) => {
-    material.map = baseColor;
-    material.normalMap = normal;
-    material.roughnessMap = metallicRoughness;
-    material.metalnessMap = metallicRoughness;
-    material.needsUpdate = true;
-  });
-  return materials.size;
-}
-
 function disposeObject(root: THREE.Object3D) {
   const textures = new Set<THREE.Texture>();
   const materials = new Set<THREE.Material>();
@@ -296,13 +266,15 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, l
     scene.add(crane);
 
     let hostAvatar: THREE.Object3D | null = null;
-    new GLTFLoader().load("/models/zohund-avatar.glb", async (gltf) => {
+    new GLTFLoader().load("/models/zohund-stage/avatar.gltf", (gltf) => {
       hostAvatar = gltf.scene;
-      try {
-        host.dataset.hostAvatarMaterials = String(await applyZohundTextures(hostAvatar));
-      } catch {
-        host.dataset.hostAvatarMaterials = "0";
-      }
+      const avatarMaterials = new Set<THREE.Material>();
+      hostAvatar.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        const meshMaterials = Array.isArray(object.material) ? object.material : [object.material];
+        meshMaterials.forEach((material) => avatarMaterials.add(material));
+      });
+      host.dataset.hostAvatarMaterials = String(avatarMaterials.size);
       if (disposed || !hostAvatar) {
         disposeObject(gltf.scene);
         hostAvatar = null;
