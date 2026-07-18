@@ -10,7 +10,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Camera-based AR, LiveKit room media with verified mic/playback diagnostics, and local self-view fallback.
 - LiveKit screen sharing plus participant video routed into Blender-authored world displays.
 - Three-bus Nexus production switcher with independent preview/program routing, whole-room layouts, persistent cues, and AMX Labs / AMX AIR HUBS.CC stingers.
-- AMX XR Stage with WebGPU venue cameras, animated camera-operator NPCs, in-person/online/metaverse modes, LiveKit cast media, synchronized Pod cue buses, audience/VIP seating, and governed sponsor slates.
+- AMX XR Stage with WebGPU venue cameras, routable LiveKit multicamera feeds, animated camera-operator NPCs, in-person/online/metaverse modes, synchronized Pod cue buses, audience/VIP seating, and governed sponsor slates.
 - HLS/MP4/WebM media playback composited onto dedicated in-world Three.js display meshes with Fit and Fill modes.
 - Google Maps search, selection, shared geo anchors, and agent location context.
 - Selectable Three.js world cameras, consent-gated live vision scans, four Blender-prepared built-in avatars, and archived Ready Player Me GLB loading.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type { LiveVideoFeed } from "./LiveKitPod";
 import type { SponsorCreative, StageMode, StageShot } from "./stage-production";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
@@ -11,7 +12,7 @@ interface Props {
   generalSeats: number;
   vipSeats: number;
   live: boolean;
-  streams?: MediaStream[];
+  programFeed?: LiveVideoFeed | null;
   reducedMotion?: boolean;
   onBackend?: (backend: RendererBackend) => void;
 }
@@ -128,7 +129,7 @@ function disposeObject(root: THREE.Object3D) {
   materials.forEach((material) => material.dispose());
 }
 
-export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, live, streams = [], reducedMotion, onBackend }: Props) {
+export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, live, programFeed, reducedMotion, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ mode, shot, sponsor, generalSeats, vipSeats, live });
   const programScreenRef = useRef<THREE.Mesh | null>(null);
@@ -138,11 +139,17 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, l
   useEffect(() => { stateRef.current = { mode, shot, sponsor, generalSeats, vipSeats, live }; }, [generalSeats, live, mode, shot, sponsor, vipSeats]);
 
   useEffect(() => {
+    const host = hostRef.current;
     const screen = programScreenRef.current;
-    const stream = streams[0];
-    if (!screen || !stream) return;
-    return bindStream(screen, stream);
-  }, [sceneGeneration, streams]);
+    if (host) {
+      host.dataset.programFeed = programFeed?.name || "virtual";
+      host.dataset.programFeedId = programFeed?.id || "none";
+      host.dataset.programFeedSource = programFeed?.source || "virtual";
+      host.dataset.programFeedLive = String(Boolean(programFeed && !programFeed.muted));
+    }
+    if (!screen || !programFeed || programFeed.muted) return;
+    return bindStream(screen, programFeed.stream);
+  }, [programFeed, sceneGeneration]);
 
   useEffect(() => {
     const host = hostRef.current;

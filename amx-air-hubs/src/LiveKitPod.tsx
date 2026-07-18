@@ -9,11 +9,21 @@ import type { Agent } from "./data";
 type PodStatus = "idle" | "connecting" | "livekit" | "local" | "error";
 type CaptureState = "off" | "requesting" | "published" | "muted" | "blocked";
 type PlaybackState = "off" | "ready" | "blocked";
+export type LiveVideoFeed = {
+  id: string;
+  name: string;
+  local: boolean;
+  source: "camera" | "screen";
+  stream: MediaStream;
+  muted: boolean;
+};
+
 type VideoSurface = {
   id: string;
   name: string;
   local: boolean;
   source: "camera" | "screen";
+  muted?: boolean;
   track?: LocalVideoTrack | RemoteVideoTrack;
   stream?: MediaStream;
 };
@@ -23,6 +33,7 @@ interface Props {
   agents: Agent[];
   onLocalStream?: (stream: MediaStream | null) => void;
   onSceneStreams?: (streams: MediaStream[]) => void;
+  onVideoFeeds?: (feeds: LiveVideoFeed[]) => void;
   compact?: boolean;
 }
 
@@ -41,10 +52,10 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
       if (!surface.track) element.srcObject = null;
     };
   }, [surface]);
-  return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}</span></div>;
+  return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const [status, setStatus] = useState<PodStatus>("idle");
@@ -62,17 +73,28 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, co
   const audioHostRef = useRef<HTMLDivElement>(null);
   const onLocalStreamRef = useRef(onLocalStream);
   const onSceneStreamsRef = useRef(onSceneStreams);
+  const onVideoFeedsRef = useRef(onVideoFeeds);
   useEffect(() => { onLocalStreamRef.current = onLocalStream; }, [onLocalStream]);
   useEffect(() => { onSceneStreamsRef.current = onSceneStreams; }, [onSceneStreams]);
+  useEffect(() => { onVideoFeedsRef.current = onVideoFeeds; }, [onVideoFeeds]);
   useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
 
   useEffect(() => {
-    const streams = surfaces.slice().sort((left, right) => Number(right.source === "screen") - Number(left.source === "screen")).map((surface) => surface.stream || (surface.track ? new MediaStream([surface.track.mediaStreamTrack]) : null)).filter((stream): stream is MediaStream => Boolean(stream));
-    onSceneStreamsRef.current?.(streams);
+    const feeds = surfaces.map((surface) => {
+      const stream = surface.stream || (surface.track ? new MediaStream([surface.track.mediaStreamTrack]) : null);
+      return stream ? { id: surface.id, name: surface.name, local: surface.local, source: surface.source, stream, muted: Boolean(surface.muted) } satisfies LiveVideoFeed : null;
+    }).filter((feed): feed is LiveVideoFeed => Boolean(feed));
+    onSceneStreamsRef.current?.(feeds.slice().sort((left, right) => Number(right.source === "screen") - Number(left.source === "screen")).map((feed) => feed.stream));
+    onVideoFeedsRef.current?.(feeds);
   }, [surfaces]);
 
   const addVideoTrack = useCallback((track: LocalVideoTrack | RemoteVideoTrack, id: string, name: string, local: boolean, source: "camera" | "screen" = "camera") => {
-    setSurfaces((current) => [...current.filter((surface) => surface.id !== id), { id, name, local, source, track }]);
+    setSurfaces((current) => {
+      const next = { id, name, local, source, track, muted: track.isMuted };
+      const index = current.findIndex((surface) => surface.id === id);
+      if (index < 0) return [...current, next];
+      return current.map((surface, surfaceIndex) => surfaceIndex === index ? next : surface);
+    });
   }, []);
 
   const disconnect = useCallback(() => {
@@ -92,6 +114,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, co
     setMessage("Camera and room media are off");
     onLocalStreamRef.current?.(null);
     onSceneStreamsRef.current?.([]);
+    onVideoFeedsRef.current?.([]);
   }, []);
 
   useEffect(() => disconnect, [disconnect]);
@@ -155,6 +178,12 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, co
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
         track.detach().forEach((element) => element.remove());
         setSurfaces((current) => current.filter((surface) => surface.track !== track));
+      });
+      room.on(RoomEvent.TrackMuted, (publication) => {
+        setSurfaces((current) => current.map((surface) => surface.track === publication.track ? { ...surface, muted: true } : surface));
+      });
+      room.on(RoomEvent.TrackUnmuted, (publication) => {
+        setSurfaces((current) => current.map((surface) => surface.track === publication.track ? { ...surface, muted: false } : surface));
       });
       room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
         if (publication.source !== Track.Source.ScreenShare) return;

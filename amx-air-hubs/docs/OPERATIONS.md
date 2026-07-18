@@ -14,6 +14,8 @@
 10. Open `/stage`, take all four cameras, start/end a show, change a sponsor, adjust VIP/general seating, and confirm the renderer health attributes remain nonzero.
 11. For remote Pod tests, confirm the Stage transport reads `websocket`, open the linked Pod code on a second device, and verify camera, cue, sponsor, and seating changes arrive in order.
 12. Join the LiveKit stage room only after camera/microphone permission is approved; verify participant media separately from the production cue bus.
+13. Join two camera-team participants, route their named tracks to separate Stage camera channels, take each channel, and confirm `data-program-feed-id` and `data-program-feed-live` change on the 3D scene host.
+14. Mute or disconnect the on-program participant and confirm the channel reports muted/offline and the program mesh returns to its governed sponsor fallback.
 
 ## Observability
 

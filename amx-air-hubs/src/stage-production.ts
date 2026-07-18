@@ -19,6 +19,7 @@ export interface StageProductionState {
   shot: StageShot;
   cue: StageCue;
   sponsor: SponsorCreative;
+  cameraRoutes: Record<StageShot, string>;
   generalSeats: number;
   vipSeats: number;
   connectedPods: string[];
@@ -38,6 +39,13 @@ export const DEFAULT_SPONSORS: SponsorCreative[] = [
   { id: "tech-at-nite", name: "TECH AT NITE", headline: "Skills, community, and creative technology", cta: "JOIN THE NEXT COHORT", accent: "#79eea8" },
 ];
 
+export const DEFAULT_CAMERA_ROUTES: Record<StageShot, string> = {
+  wide: "auto",
+  host: "auto",
+  audience: "auto",
+  crane: "auto",
+};
+
 function localHost() {
   return ["localhost", "127.0.0.1"].includes(location.hostname);
 }
@@ -50,6 +58,7 @@ function initialState(operatorId: string): StageProductionState {
     shot: "wide",
     cue: "standby",
     sponsor: DEFAULT_SPONSORS[0],
+    cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
     generalSeats: 24,
     vipSeats: 6,
     connectedPods: ["AMX-MAIN"],
@@ -64,7 +73,7 @@ function storedState(room: string, operatorId: string) {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
     if (!saved) return initialState(operatorId);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...saved, revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
     return initialState(operatorId);
   }
@@ -97,7 +106,7 @@ export function useStageProduction(roomCode: string) {
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;

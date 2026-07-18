@@ -94,6 +94,8 @@ The room UI reports camera publication, microphone publication/mute state, brows
 
 The pod also publishes browser screen sharing through LiveKit. The share picker opens only after the user selects the monitor button. Camera and screen-share video tracks are routed into the Blender-authored `Screen_User` and agent display meshes. Browser tab audio is not requested by the current share control.
 
+LiveKit video surfaces retain their participant name, stable track ID, camera/screen source, local/remote ownership, and mute state. The AMX XR Stage uses this metadata for its ISO camera router instead of treating tracks as anonymous streams.
+
 If LiveKit is absent or fails, the component opens a private local camera preview and labels it `LOCAL VIDEO`.
 
 ## Runway Characters
@@ -139,6 +141,10 @@ Without Supabase, room messages use BroadcastChannel and work only between tabs 
 The Stage host is exported from `assets/blender/zohund-avatar.blend` as a separate glTF package at `public/models/zohund-stage/`. Its first-party texture files avoid protected-origin `blob:` image loading. Regenerate it with `scripts/export-zohund-stage-avatar.py` after changing the Blender source.
 
 Stage show state is separate from room media. LiveKit owns participant camera, microphone, screen, and agent tracks for the active stage room. Supabase Realtime owns production cues, live status, camera, venue mode, sponsor creative, seating, and linked-Pod state. Every update carries a monotonic revision so an older network packet cannot replace a newer operator cue.
+
+The four Stage camera channels can route `AUTO INPUT`, `VIRTUAL SHOT`, or an explicit LiveKit participant camera/screen feed. AUTO assigns available feeds in stable arrival order. Explicit assignments persist and synchronize with the show state; if a track leaves, the channel remains assigned and reports `FEED OFFLINE` until that exact feed returns or the operator reroutes it. Taking a channel changes the 3D production viewpoint and maps its selected live feed onto the center program mesh. Side screens and the ribbon remain available for sponsor creative. A muted or missing track never reports itself as live.
+
+Camera-team workflow: all operators join the same Stage LiveKit room, publish camera or screen tracks, then the director selects each participant from the CAM 1-3 or CRANE route menu. The browser requests camera/microphone permission only when each participant selects Join Pod. LiveKit transports the media; Supabase synchronizes which channel is on program.
 
 Each Pod code linked in the Pods console receives the same production packet on its `amx-stage-{POD}` cue bus. A Stage page using that Pod code can therefore follow the show state. This is production-state distribution, not automatic LiveKit room federation; participants who need shared audio/video must join the same configured LiveKit room or use a separate media bridge.
 
