@@ -149,6 +149,37 @@ function disposeObject(root: THREE.Object3D) {
   });
 }
 
+async function applyZohundTextures(root: THREE.Object3D) {
+  const loader = new THREE.TextureLoader();
+  const [baseColor, metallicRoughness, normal] = await Promise.all([
+    loader.loadAsync("/textures/zohund/base-color.png"),
+    loader.loadAsync("/textures/zohund/metallic-roughness.png"),
+    loader.loadAsync("/textures/zohund/normal.png"),
+  ]);
+  baseColor.colorSpace = THREE.SRGBColorSpace;
+  [baseColor, metallicRoughness, normal].forEach((texture) => {
+    texture.flipY = false;
+    texture.needsUpdate = true;
+  });
+  const materials = new Set<THREE.MeshStandardMaterial>();
+  root.traverse((child) => {
+    if (!(child as THREE.Mesh).isMesh) return;
+    const mesh = child as THREE.Mesh;
+    const meshMaterials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    meshMaterials.forEach((material) => {
+      if ((material as THREE.MeshStandardMaterial).isMeshStandardMaterial) materials.add(material as THREE.MeshStandardMaterial);
+    });
+  });
+  materials.forEach((material) => {
+    material.map = baseColor;
+    material.normalMap = normal;
+    material.roughnessMap = metallicRoughness;
+    material.metalnessMap = metallicRoughness;
+    material.needsUpdate = true;
+  });
+  return materials.size;
+}
+
 function addWorldCamera(scene: THREE.Scene, id: Exclude<WorldCameraId, "overview">, position: THREE.Vector3, target: THREE.Vector3) {
   const camera = new THREE.PerspectiveCamera(54, 16 / 9, 0.08, 40);
   camera.name = `WorldCamera_${id}`;
@@ -403,13 +434,21 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
     let cancelled = false;
     onAvatarStateRef.current?.("loading");
     const loader = new GLTFLoader();
-    loader.load(avatarUrl, (gltf) => {
+    loader.load(avatarUrl, async (gltf) => {
       if (cancelled || !sceneRef.current) {
         disposeObject(gltf.scene);
         return;
       }
       const avatar = gltf.scene;
       avatar.name = "ZOHUND_Avatar";
+      let externalMaterialCount = 0;
+      if (avatarUrl === "/models/zohund-avatar.glb") {
+        try { externalMaterialCount = await applyZohundTextures(avatar); } catch { externalMaterialCount = 0; }
+      }
+      if (cancelled || !sceneRef.current) {
+        disposeObject(avatar);
+        return;
+      }
       const bounds = new THREE.Box3().setFromObject(avatar);
       const size = bounds.getSize(new THREE.Vector3());
       const scale = size.y > 0 ? 1.78 / size.y : 1;
@@ -423,6 +462,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
       if (hostRef.current) {
         hostRef.current.dataset.avatar = "ready";
         hostRef.current.dataset.avatarBounds = `${scaledSize.x.toFixed(2)}x${scaledSize.y.toFixed(2)}x${scaledSize.z.toFixed(2)}`;
+        hostRef.current.dataset.avatarMaterials = String(externalMaterialCount);
       }
       onAvatarStateRef.current?.("ready");
     }, undefined, () => {

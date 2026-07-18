@@ -15,6 +15,8 @@ if len(arguments) != 3:
 source_path, runtime_path, blend_path = (Path(value).resolve() for value in arguments)
 runtime_path.parent.mkdir(parents=True, exist_ok=True)
 blend_path.parent.mkdir(parents=True, exist_ok=True)
+texture_path = runtime_path.parent.parent / "textures" / "zohund"
+texture_path.mkdir(parents=True, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 result = bpy.ops.import_scene.gltf(filepath=str(source_path))
@@ -41,6 +43,22 @@ if not avatar_meshes or not armatures:
 for obj in avatar_meshes:
     obj.data.name = f"ZOHUND_{obj.data.name}"
 bpy.context.scene.name = "ZOHUND_Avatar"
+
+texture_names = {
+    "BASE_COLOR_TEXTURE_ALPHA": "base-color.png",
+    "METALLIC_ROUGHNESS_TEXTURE_ALPHA": "metallic-roughness.png",
+    "NORMAL_TEXTURE_ALPHA": "normal.png",
+}
+exported_textures = []
+for image_name, file_name in texture_names.items():
+    image = bpy.data.images.get(image_name)
+    if image is None:
+        raise SystemExit(f"Missing required avatar texture: {image_name}")
+    image.filepath_raw = str(texture_path / file_name)
+    image.file_format = "PNG"
+    image.save()
+    exported_textures.append(str(texture_path / file_name))
+
 bpy.ops.object.select_all(action="DESELECT")
 for obj in [*armatures, *avatar_meshes]:
     obj.select_set(True)
@@ -63,6 +81,7 @@ report = {
     "runtime": str(runtime_path),
     "blend": str(blend_path),
     "removedHelpers": removed_helpers,
+    "textures": exported_textures,
     "meshes": [{"name": obj.name, "vertices": len(obj.data.vertices)} for obj in avatar_meshes],
     "armatures": [obj.name for obj in armatures],
 }
