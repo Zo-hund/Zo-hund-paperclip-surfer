@@ -44,6 +44,7 @@ interface InviteResponse {
 }
 
 const OWNER_KEYS = "amx_pod_invite_owner_keys";
+const OWNED_INVITES = "amx_owned_pod_invites";
 
 function ownerKeys(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(OWNER_KEYS) || "{}"); }
@@ -52,6 +53,20 @@ function ownerKeys(): Record<string, string> {
 
 function rememberOwnerToken(token: string, ownerToken: string) {
   localStorage.setItem(OWNER_KEYS, JSON.stringify({ ...ownerKeys(), [token]: ownerToken }));
+}
+
+function ownedInvites(): Record<string, PodInvite> {
+  try { return JSON.parse(localStorage.getItem(OWNED_INVITES) || "{}"); }
+  catch { return {}; }
+}
+
+export function storeOwnedPodInvite(invite: PodInvite) {
+  localStorage.setItem(OWNED_INVITES, JSON.stringify({ ...ownedInvites(), [invite.podId]: invite }));
+  return invite;
+}
+
+export function getOwnedPodInvite(podId: string) {
+  return ownedInvites()[podId];
 }
 
 async function parseResponse(response: Response): Promise<InviteResponse> {
@@ -67,7 +82,7 @@ export async function createPodInvite(input: CreatePodInviteInput) {
     body: JSON.stringify(input),
   }));
   if (body.ownerToken) rememberOwnerToken(body.invite.token, body.ownerToken);
-  return body.invite;
+  return storeOwnedPodInvite(body.invite);
 }
 
 export async function resolvePodInvite(token: string) {
@@ -93,6 +108,9 @@ export async function revokePodInvite(token: string) {
     const body = await response.json() as { error?: string };
     throw new Error(body.error || `Invite revocation failed (${response.status})`);
   }
+  const stored=ownedInvites();
+  const match=Object.values(stored).find((invite)=>invite.token===token);
+  if(match)storeOwnedPodInvite({...match,status:"revoked"});
 }
 
 export function absoluteInviteUrl(invite: Pick<PodInvite, "joinPath">) {

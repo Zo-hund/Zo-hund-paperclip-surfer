@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarClock, Copy, Link2, QrCode, Send, ShieldCheck, Trash2, Users } from "lucide-react";
 import { QRCodeCard, StatusPill } from "./components";
-import { absoluteInviteUrl, createPodInvite, revokePodInvite, type PodInvite, type PodInviteRole } from "./pod-invites";
+import { absoluteInviteUrl, createPodInvite, getOwnedPodInvite, resolvePodInvite, revokePodInvite, storeOwnedPodInvite, type PodInvite, type PodInviteRole } from "./pod-invites";
 import type { TenantRecord } from "./tenant-management";
 
 interface PodInvitePanelProps {
@@ -15,9 +15,10 @@ export function PodInvitePanel({pod,tenant,compact=false}:PodInvitePanelProps) {
   const [expiresInHours,setExpires]=useState(24);
   const [maxUses,setMaxUses]=useState(12);
   const [description,setDescription]=useState("Join this guided AMX showcase, meet the agents, and explore the live Skill Pod together.");
-  const [invite,setInvite]=useState<PodInvite>();
+  const [invite,setInvite]=useState<PodInvite>(()=>getOwnedPodInvite(pod.id));
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState("");
+  useEffect(()=>{const stored=getOwnedPodInvite(pod.id);setInvite(stored);if(stored?.status==="active")void resolvePodInvite(stored.token).then((current)=>{storeOwnedPodInvite(current);setInvite(current)}).catch(()=>{})},[pod.id]);
 
   const create=async()=>{
     setBusy(true);setNotice("");
