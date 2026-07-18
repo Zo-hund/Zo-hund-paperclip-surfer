@@ -144,6 +144,34 @@ def main():
     for y in (0.55, 1.35, 2.15):
         torus(f"Core_Energy_Ring_{y}", (0, y, 0), 1.52, 0.035, cyan, (math.pi / 2, 0, 0))
 
+    # A compact four-rack tenant pod gives the Unity runtime individually
+    # addressable equipment for thermal, power, and network simulations.
+    for rack_index, rack_x in enumerate((-3.0, -1.0, 1.0, 3.0), start=1):
+        rack_name = f"Rack_{rack_index:02d}"
+        frame = cube(f"{rack_name}_Frame", (rack_x, 1.3, -2.35), (0.72, 1.3, 0.58), dark, 0.08)
+        frame["amx_role"] = "rack"
+        frame["rack_id"] = rack_name.lower()
+        cube(f"{rack_name}_Header", (rack_x, 2.42, -1.73), (0.58, 0.1, 0.025), panel, 0.025)
+        status = cube(f"{rack_name}_Status", (rack_x + 0.53, 2.42, -1.69), (0.035, 0.035, 0.035), green, 0.012)
+        status["amx_role"] = "status_indicator"
+        status["metric"] = "health"
+        for slot_index in range(10):
+            slot_y = 0.32 + slot_index * 0.205
+            blade = cube(
+                f"{rack_name}_Server_{slot_index + 1:02d}",
+                (rack_x, slot_y, -1.735),
+                (0.56, 0.075, 0.045),
+                panel if slot_index % 3 else dark,
+                0.018,
+            )
+            blade["amx_role"] = "server_blade"
+            blade["rack_id"] = rack_name.lower()
+        cube(f"{rack_name}_Cold_Aisle", (rack_x, 0.025, -1.25), (0.58, 0.018, 0.025), cyan, 0.008)
+
+    cube("Pod_Containment_Header", (0, 2.92, -2.35), (4.05, 0.12, 0.12), panel, 0.04)
+    for rack_x in (-3.85, 3.85):
+        cube(f"Pod_Containment_Post_{rack_x}", (rack_x, 1.48, -2.35), (0.1, 1.45, 0.1), dark, 0.035)
+
     thermal = cylinder("Sensor_Temperature", (-1.95, 1.1, 0.65), 0.13, 0.85, magenta)
     thermal["amx_role"] = "sensor"
     thermal["metric"] = "temperatureC"

@@ -15,6 +15,7 @@ import { useGeoAnchors } from "../geospatial";
 
 const ARScene = lazy(() => import("../ARScene").then((module) => ({ default: module.ARScene })));
 const ImmersiveWorld = lazy(() => import("../ImmersiveWorld").then((module) => ({ default: module.ImmersiveWorld })));
+const IwsdkWorld = lazy(() => import("../IwsdkWorld").then((module) => ({ default: module.IwsdkWorld })));
 import {
   beginImmersiveRun, completeQuestObjective, ensureRoom, experienceModes, getComfort,
   getContinuity, getLevel, getQuest, getRoom, getRunTimeline, humanProfile, modeRoute,
@@ -161,7 +162,7 @@ export function ModeExperiencePage({ mode }: { mode: ExperienceMode }) {
     <main className="immersive-stage">
       {mode === "2d" ? <Cockpit2D mission={mission} quest={quest} onInteract={addEvent}/> : mode === "ar" ?
         <div className="immersive-ar-host"><Suspense fallback={<div className="scene-loading" aria-label="Loading AR scene"/>}><ARScene agent={crew[0]||agents[0]} onPlaced={()=>addEvent("Agent anchored in AR")} onSessionStart={geo.requestLocation} anchors={geo.projectedAnchors} onAnchorPlaced={(placement)=>geo.publishAnchor({label:`${(crew[0]||agents[0]).name} spatial anchor`,...placement,source:placement.source})} textOnly={settings.textOnlyMode}/></Suspense></div> :
-        <Suspense fallback={<div className="scene-loading" aria-label="Loading immersive scene"/>}><ImmersiveWorld mode={mode} comfort={comfort} reducedMotion={settings.reducedMotion} onInteract={addEvent} onFallback={recover}/></Suspense>
+        <Suspense fallback={<div className="scene-loading" aria-label="Loading immersive scene"/>}>{mode === "vr" ? <IwsdkWorld comfort={comfort} onInteract={addEvent} onFallback={recover}/> : <ImmersiveWorld mode={mode} comfort={comfort} reducedMotion={settings.reducedMotion} onInteract={addEvent} onFallback={recover}/>}</Suspense>
       }
       <aside className="live-objective-panel">
         <div className="objective-head"><div><span className="eyebrow">QUEST OBJECTIVE</span><small>{continuity.socialMode.toUpperCase()} / STEP {Math.min(continuity.currentStep+1,mission.steps.length)}</small></div><strong>{String(Math.min(continuity.currentStep+1,mission.steps.length)).padStart(2,"0")}</strong></div>

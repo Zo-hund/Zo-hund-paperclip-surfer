@@ -1,9 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { iwsdkDev } from "@iwsdk/vite-plugin-dev";
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    iwsdkDev({
+      emulator: { device: "metaQuest3" },
+      ai: { mode: "agent" },
+    }),
+  ],
   resolve: {
-    alias: [{ find: /^three$/, replacement: "three/webgpu" }],
+    dedupe: ["three"],
+  },
+  optimizeDeps: {
+    // Havok resolves its WASM beside the ESM module at runtime. Prebundling the
+    // module moves that URL into .vite/deps without copying the binary.
+    exclude: ["@babylonjs/havok"],
   },
   build: {
     target: "es2022",

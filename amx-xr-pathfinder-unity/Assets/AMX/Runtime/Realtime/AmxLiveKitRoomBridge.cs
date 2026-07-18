@@ -20,49 +20,69 @@ namespace AMX.XR.Realtime
     {
         [SerializeField] private AmxEnvironment environment;
         [SerializeField] private string roomCode = "AMX-QUEST";
+        [SerializeField] private bool joinOnStart = true;
         [SerializeField] private MonoBehaviour connectorComponent;
         [SerializeField] private UnityEvent<string> statusChanged;
 
         private IAmxLiveKitConnector connector;
         private CancellationTokenSource lifetime;
 
+        public string Status { get; private set; } = "Initializing room";
+        public event Action<string> StatusUpdated;
+
         private void Awake()
         {
             connector = connectorComponent as IAmxLiveKitConnector;
             connector ??= GetComponents<MonoBehaviour>().OfType<IAmxLiveKitConnector>().FirstOrDefault();
             lifetime = new CancellationTokenSource();
+            ReportStatus(environment ? $"Room {roomCode} ready" : "AMX environment is unavailable");
+        }
+
+        private void Start()
+        {
+            if (joinOnStart) JoinRoom();
         }
 
         public async void JoinRoom()
         {
             if (!environment)
             {
-                statusChanged?.Invoke("LiveKit requires an AMX Environment asset.");
+                ReportStatus("LiveKit requires an AMX Environment asset.");
                 return;
             }
 
             if (!environment.IsValid(out var environmentError))
             {
-                statusChanged?.Invoke(environmentError);
+                ReportStatus(environmentError);
                 return;
             }
 
             if (connector == null)
             {
-                statusChanged?.Invoke("LiveKit connector is not installed. Import a native Unity LiveKit adapter.");
+                ReportStatus("LiveKit connector is not installed.");
+                return;
+            }
+
+            if (connector.IsConnected)
+            {
+                ReportStatus($"Connected to {roomCode}");
                 return;
             }
 
             try
             {
+                ReportStatus($"Joining {roomCode}");
                 var api = new AmxApiClient(environment);
                 var token = await api.RequestLiveKitTokenAsync(roomCode, lifetime.Token);
                 await connector.ConnectAsync(token.serverUrl, token.participantToken, lifetime.Token);
-                statusChanged?.Invoke($"Connected to {token.room}");
+                ReportStatus($"Connected to {token.room}");
             }
             catch (Exception error)
             {
-                statusChanged?.Invoke($"LiveKit connection blocked: {error.Message}");
+                var message = error is AmxApiException { StatusCode: 401 }
+                    ? "Private stage authentication required"
+                    : $"LiveKit blocked: {error.Message}";
+                ReportStatus(message);
             }
         }
 
@@ -70,7 +90,15 @@ namespace AMX.XR.Realtime
         {
             if (connector == null || !connector.IsConnected) return;
             await connector.DisconnectAsync();
-            statusChanged?.Invoke("LiveKit room disconnected");
+            ReportStatus("LiveKit room disconnected");
+        }
+
+        private void ReportStatus(string message)
+        {
+            Status = message;
+            Debug.Log($"AMX LiveKit: {message}", this);
+            statusChanged?.Invoke(message);
+            StatusUpdated?.Invoke(message);
         }
 
         private void OnDestroy()

@@ -18,6 +18,11 @@ namespace AMX.XR.Integrations
 
         public bool IsConnected => room != null && room.IsConnected;
 
+        private void Awake()
+        {
+            SetVideoSurfaceVisible(false);
+        }
+
         public async Task ConnectAsync(string serverUrl, string participantToken, CancellationToken cancellationToken)
         {
             if (IsConnected) return;
@@ -58,7 +63,9 @@ namespace AMX.XR.Integrations
                 var stream = new VideoStream(videoTrack);
                 stream.TextureReceived += texture =>
                 {
-                    if (videoSurface) videoSurface.material.mainTexture = texture;
+                    if (!videoSurface) return;
+                    videoSurface.material.mainTexture = texture;
+                    SetVideoSurfaceVisible(true);
                 };
                 stream.Start();
                 bindings.Add(new RemoteMediaBinding
@@ -95,6 +102,7 @@ namespace AMX.XR.Integrations
                 if (binding.audioObject) Destroy(binding.audioObject);
             }
             bindings.Clear();
+            SetVideoSurfaceVisible(false);
 
             if (room != null)
             {
@@ -102,6 +110,13 @@ namespace AMX.XR.Integrations
                 room.Dispose();
                 room = null;
             }
+        }
+
+        private void SetVideoSurfaceVisible(bool visible)
+        {
+            if (!videoSurface) return;
+            videoSurface.enabled = visible;
+            if (!visible && videoSurface.material) videoSurface.material.mainTexture = null;
         }
 
         private void OnDestroy()

@@ -6,6 +6,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 
 - React 19 and Vite client with responsive desktop/mobile navigation.
 - Three.js WebGPU renderer with WebGL fallback and WebXR session support.
+- Meta IWSDK Quest runtime with ECS inspection, IWER controller emulation, locomotion, grabbing, and Havok physics.
 - Camera-based AR, LiveKit room media, and local self-view fallback.
 - Governed AI digital twin with Blender node bindings, predictive risk, sandbox scenarios, approvals, and durable audit events.
 - Reality reconstruction skills for spatial capture, semantic meshing, generated PBR textures, light matching, anchor alignment, and validation artifacts.
@@ -27,7 +28,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @amx/air-hubs dev
 ```
 
-Open `http://127.0.0.1:5173`. Vite development uses browser-local fallbacks because the Cloudflare Worker bindings are available only in the Worker runtime.
+Run `pnpm --filter @amx/air-hubs dev:status` and open the reported runtime URL. IWSDK manages the development browser and port; Vite development uses browser-local fallbacks because the Cloudflare Worker bindings are available only in the Worker runtime.
 
 Run the complete local verification:
 
@@ -44,6 +45,8 @@ pnpm --filter @amx/air-hubs verify
 - [Operations Runbook](docs/OPERATIONS.md)
 - [Security Model](docs/SECURITY.md)
 - [Mini Data Center Tenant Pod](docs/MINI_DATA_CENTER_POD.md)
+- [IWSDK Quest WebXR Runtime](docs/IWSDK_QUEST_WEBXR.md)
+- [Unity Quest Integration](docs/UNITY_QUEST_INTEGRATION.md)
 
 ## Production Readiness
 

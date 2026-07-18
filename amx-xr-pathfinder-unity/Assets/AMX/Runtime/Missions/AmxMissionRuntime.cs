@@ -60,19 +60,25 @@ namespace AMX.XR.Missions
         {
             try
             {
-                var response = await api.RespondAsync(new AmxAgentRequest
-                {
-                    agentId = Mission.agentId,
-                    agentName = Mission.agentId.ToUpperInvariant(),
-                    text = prompt,
-                    contentKind = "text"
-                });
-                agentResponded?.Invoke(response.text);
+                await AskAgentAsync(prompt);
             }
             catch (Exception error)
             {
                 statusChanged?.Invoke($"Agent unavailable: {error.Message}");
             }
+        }
+
+        public async Task<string> AskAgentAsync(string prompt)
+        {
+            var response = await api.RespondAsync(new AmxAgentRequest
+            {
+                agentId = Mission.agentId,
+                agentName = Mission.agentId.ToUpperInvariant(),
+                text = prompt,
+                contentKind = "text"
+            });
+            agentResponded?.Invoke(response.text);
+            return response.text;
         }
 
         public async Task<AmxToolResponse> InvokeToolAsync(string toolName)

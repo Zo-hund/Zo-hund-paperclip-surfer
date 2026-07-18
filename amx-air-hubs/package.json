@@ -4,7 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "iwsdk dev up --foreground",
+    "dev:runtime": "vite --host 0.0.0.0",
+    "dev:down": "iwsdk dev down",
+    "dev:status": "iwsdk dev status",
+    "xr:status": "iwsdk xr status",
+    "reference:status": "iwsdk reference status",
+    "reference:warmup": "iwsdk reference warmup",
     "build": "tsc -b && vite build && node scripts/build-worker.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc -b",
@@ -12,6 +18,8 @@
     "verify": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@babylonjs/havok": "1.3.13",
+    "@iwsdk/core": "0.4.2",
     "@supabase/supabase-js": "2.110.3",
     "livekit-client": "2.20.1",
     "lucide-react": "^0.574.0",
@@ -19,15 +27,18 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.5",
-    "three": "^0.176.0"
+    "three": "npm:super-three@^0.181.0"
   },
   "devDependencies": {
+    "@iwsdk/cli": "0.4.2",
+    "@iwsdk/reference": "0.4.2",
+    "@iwsdk/vite-plugin-dev": "0.4.2",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
-    "@types/three": "^0.176.0",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@types/three": "^0.181.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "typescript": "^5.7.3",
-    "vite": "^6.1.0"
+    "vite": "^7.3.1"
   }
 }

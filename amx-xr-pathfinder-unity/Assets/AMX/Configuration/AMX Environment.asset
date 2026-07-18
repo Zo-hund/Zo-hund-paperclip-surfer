@@ -16,6 +16,6 @@ MonoBehaviour:
   tenantId: tech-at-nite
   learnerId: guest-user
   participantName: AMX Explorer
-  defaultMissionId: xrt-green-mode
+  defaultMissionId: data-center-operator
   defaultAgentId: jaz
   allowInsecureLocalhost: 0

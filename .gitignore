@@ -9,6 +9,7 @@ deploy/keys/
 *.tsbuildinfo
 drizzle/meta/
 .vite/
+.iwsdk/
 coverage/
 .DS_Store
 data/
@@ -47,6 +48,7 @@ tmp/
 
 # Editor / tool temp files
 *.tmp
+*.blend1
 .vscode/
 .claude/settings.local.json
 .paperclip-local/

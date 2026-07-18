@@ -92,10 +92,19 @@ namespace AMX.XR.Networking
             if (request.result != UnityWebRequest.Result.Success)
             {
                 var message = request.error;
-                if (!string.IsNullOrWhiteSpace(request.downloadHandler.text))
+                var contentType = request.GetResponseHeader("Content-Type");
+                if (!string.IsNullOrWhiteSpace(request.downloadHandler.text) &&
+                    contentType?.IndexOf("json", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    var apiError = JsonUtility.FromJson<AmxApiError>(request.downloadHandler.text);
-                    if (apiError != null && !string.IsNullOrWhiteSpace(apiError.error)) message = apiError.error;
+                    try
+                    {
+                        var apiError = JsonUtility.FromJson<AmxApiError>(request.downloadHandler.text);
+                        if (apiError != null && !string.IsNullOrWhiteSpace(apiError.error)) message = apiError.error;
+                    }
+                    catch (ArgumentException)
+                    {
+                        // Preserve the HTTP status when an upstream gateway returns malformed JSON.
+                    }
                 }
                 throw new AmxApiException(message, request.responseCode);
             }
