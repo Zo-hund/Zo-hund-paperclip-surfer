@@ -242,6 +242,25 @@ export function getRoom(roomId: string) {
   return read<Room[]>(ROOMS_KEY, []).find((room) => room.id === roomId);
 }
 
+export function joinImmersiveRoomFromInvite(invite: { podId:string; roomCode:string; missionId:string; maxUses:number }, role:Role) {
+  const current=getContinuity(invite.missionId);
+  const runId=`run-invite-${invite.roomCode.toLowerCase()}`;
+  const socialMode:SocialMode=invite.maxUses>4?"team":"co-op";
+  const nextContinuity=updateContinuity({runId,missionId:invite.missionId,roomId:invite.podId,socialMode,activeMode:"3d",previousMode:current.activeMode,currentStep:0,completedObjectives:[],proofStatus:"not_started"});
+  const rooms=read<Room[]>(ROOMS_KEY,[]);
+  const existing=rooms.find((room)=>room.id===invite.podId);
+  const participant=buildHumanParticipant(role,0);
+  const room:Room=existing?{
+    ...existing,
+    participants:existing.participants.some((item)=>item.id===participant.id)?existing.participants:[participant,...existing.participants],
+  }:{
+    id:invite.podId,code:invite.roomCode,missionId:invite.missionId,runId,access:"invite",socialMode,
+    maxParticipants:Math.max(1,invite.maxUses),participants:[participant],readyParticipantIds:[],voiceRoomId:`voice-${invite.roomCode}`,status:"waiting",
+  };
+  write(ROOMS_KEY,[room,...rooms.filter((item)=>item.id!==room.id)]);
+  return {room,continuity:nextContinuity};
+}
+
 export function updateRoom(roomId: string, patch: Partial<Room>) {
   const rooms = read<Room[]>(ROOMS_KEY, []);
   const room = rooms.find((item) => item.id === roomId);

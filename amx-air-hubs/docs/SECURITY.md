@@ -13,6 +13,8 @@
 - Request IDs and structured logs without payloads or secrets.
 - Server-side HMAC proof attestation.
 - Private, non-cached media responses.
+- Opaque pod invite tokens with bounded expiry and capacity.
+- Separate creator-only invite owner capabilities, stored as SHA-256 hashes and required for revocation.
 
 ## Trust Boundaries
 
@@ -23,6 +25,8 @@ Remote Agent, MCP, and Plugin systems are separate trust domains. Give each a sc
 ## Known Release Boundary
 
 Owner-only Sites access is appropriate for private staging and a single owner. It is not a substitute for application-level multi-user authorization.
+
+Pod invitation capabilities govern access to a specific showcase link inside the private stage. They do not prove a human identity and do not replace application sessions, tenant membership checks, or LiveKit participant authorization for a public release.
 
 Before a shared/public launch, implement:
 

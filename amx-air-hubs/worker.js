@@ -129,6 +129,68 @@ function safeLabel(value, fallback = "") {
   return String(value || fallback).replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 180);
 }
 
+function safeHexColor(value, fallback = "#55e6ff") {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
+}
+
+async function sha256(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function podInviteStatus(row, now = Date.now()) {
+  if (row.status === "revoked") return "revoked";
+  if (Date.parse(row.expires_at) <= now) return "expired";
+  if (Number(row.use_count) >= Number(row.max_uses)) return "full";
+  return "active";
+}
+
+function publicPodInvite(row) {
+  return {
+    id: row.id,
+    token: row.token,
+    tenantId: row.tenant_id,
+    tenantName: row.tenant_name,
+    tenantColor: row.tenant_color,
+    podId: row.pod_id,
+    roomCode: row.room_code,
+    missionId: row.mission_id,
+    title: row.title,
+    description: row.description,
+    hostName: row.host_name,
+    role: row.guest_role,
+    maxUses: Number(row.max_uses),
+    useCount: Number(row.use_count),
+    status: podInviteStatus(row),
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    joinPath: `/join/${row.token}`,
+  };
+}
+
+function validatePodInvite(body) {
+  const roles = new Set(["viewer", "participant", "presenter"]);
+  const tenantId = safeId(body.tenantId, "tech-at-nite");
+  const podId = safeId(body.podId);
+  const roomCode = safeId(body.roomCode).toUpperCase().slice(0, 64);
+  const missionId = safeId(body.missionId, "xrt-green-mode");
+  const role = safeId(body.role, "participant").toLowerCase();
+  const maxUses = Math.round(Number(body.maxUses));
+  const expiresInHours = Number(body.expiresInHours);
+  if (!tenantId || !podId || !roomCode) throw new HttpError(400, "tenantId, podId, and roomCode are required");
+  if (!roles.has(role)) throw new HttpError(400, "role must be viewer, participant, or presenter");
+  if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 100) throw new HttpError(400, "maxUses must be between 1 and 100");
+  if (!Number.isFinite(expiresInHours) || expiresInHours < 1 || expiresInHours > 168) throw new HttpError(400, "expiresInHours must be between 1 and 168");
+  return {
+    tenantId, podId, roomCode, missionId, role, maxUses, expiresInHours,
+    tenantName: safeLabel(body.tenantName, tenantId).slice(0, 100),
+    tenantColor: safeHexColor(body.tenantColor),
+    title: safeLabel(body.title, "AMX Skill Pod showcase").slice(0, 140),
+    description: safeLabel(body.description, "Join this AMX Skill Pod showcase.").slice(0, 500),
+    hostName: safeLabel(body.hostName, "AMX Host").slice(0, 100),
+  };
+}
+
 function validTimestamp(value) {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
@@ -911,6 +973,9 @@ async function initialize(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS analytics_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, event_name TEXT NOT NULL, mission_id TEXT, campaign_id TEXT, location_tag TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS analytics_tenant_idx ON analytics_events (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS skill_pods (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL UNIQUE, payload TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS pod_invites (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, owner_token_hash TEXT NOT NULL, tenant_id TEXT NOT NULL, tenant_name TEXT NOT NULL, tenant_color TEXT NOT NULL, pod_id TEXT NOT NULL, room_code TEXT NOT NULL, mission_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, host_name TEXT NOT NULL, guest_role TEXT NOT NULL, max_uses INTEGER NOT NULL, use_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS pod_invites_lookup_idx ON pod_invites (token, status, expires_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS pod_invites_pod_idx ON pod_invites (tenant_id, pod_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS media_objects (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, file_name TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, object_key TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS media_tenant_idx ON media_objects (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL, transport TEXT NOT NULL, content_kind TEXT NOT NULL, attachment_count INTEGER NOT NULL, status TEXT NOT NULL, request_id TEXT NOT NULL, created_at TEXT NOT NULL)"),
@@ -962,6 +1027,54 @@ async function handleApi(request, env, url, requestId) {
   if (request.method === "GET" && url.pathname === "/api/maps/config") {
     const apiKey = String(env.GOOGLE_MAPS_BROWSER_KEY || "").trim();
     return reply({ configured: Boolean(apiKey), ...(apiKey ? { apiKey } : {}) });
+  }
+  if (request.method === "POST" && url.pathname === "/api/pod-invites") {
+    if (!env.DB) return reply({ error: "Durable invite storage is not configured", requestId }, 503);
+    const input = validatePodInvite(await readJson(request, 32 * 1024));
+    await initialize(env.DB);
+    const id = `invite-${crypto.randomUUID()}`;
+    const token = base64Url(crypto.getRandomValues(new Uint8Array(24)));
+    const ownerToken = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
+    const ownerTokenHash = await sha256(ownerToken);
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000).toISOString();
+    await env.DB.prepare("INSERT INTO pod_invites (id, token, owner_token_hash, tenant_id, tenant_name, tenant_color, pod_id, room_code, mission_id, title, description, host_name, guest_role, max_uses, use_count, status, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?, ?)")
+      .bind(id, token, ownerTokenHash, input.tenantId, input.tenantName, input.tenantColor, input.podId, input.roomCode, input.missionId, input.title, input.description, input.hostName, input.role, input.maxUses, expiresAt, createdAt, createdAt).run();
+    const invite = publicPodInvite({ id, token, tenant_id: input.tenantId, tenant_name: input.tenantName, tenant_color: input.tenantColor, pod_id: input.podId, room_code: input.roomCode, mission_id: input.missionId, title: input.title, description: input.description, host_name: input.hostName, guest_role: input.role, max_uses: input.maxUses, use_count: 0, status: "active", expires_at: expiresAt, created_at: createdAt });
+    logEvent("info", "pod_invite.created", { requestId, inviteId: id, tenantId: input.tenantId, podId: input.podId, role: input.role, maxUses: input.maxUses });
+    return reply({ invite, ownerToken, requestId }, 201);
+  }
+  if (url.pathname.startsWith("/api/pod-invites/")) {
+    if (!env.DB) return reply({ error: "Durable invite storage is not configured", requestId }, 503);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const token = safeId(segments[2]);
+    const action = segments[3] || "";
+    if (!token) return reply({ error: "Invite token is required", requestId }, 400);
+    await initialize(env.DB);
+    const row = await env.DB.prepare("SELECT * FROM pod_invites WHERE token = ? LIMIT 1").bind(token).first();
+    if (!row) return reply({ error: "Showcase invite not found", requestId }, 404);
+    if (request.method === "GET" && !action) return reply({ invite: publicPodInvite(row), requestId });
+    if (request.method === "POST" && action === "accept") {
+      const status = podInviteStatus(row);
+      if (status !== "active") return reply({ error: `Showcase invite is ${status}`, invite: publicPodInvite(row), requestId }, 410);
+      const updatedAt = new Date().toISOString();
+      const result = await env.DB.prepare("UPDATE pod_invites SET use_count = use_count + 1, updated_at = ? WHERE token = ? AND status = 'active' AND expires_at > ? AND use_count < max_uses")
+        .bind(updatedAt, token, updatedAt).run();
+      if (result?.meta && Number(result.meta.changes) === 0) return reply({ error: "Showcase invite is no longer available", requestId }, 409);
+      const accepted = { ...row, use_count: Number(row.use_count) + 1, updated_at: updatedAt };
+      logEvent("info", "pod_invite.accepted", { requestId, inviteId: row.id, podId: row.pod_id, useCount: accepted.use_count });
+      return reply({ invite: publicPodInvite(accepted), requestId });
+    }
+    if (request.method === "DELETE" && !action) {
+      const authorization = request.headers.get("Authorization") || "";
+      const ownerToken = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+      if (!ownerToken || await sha256(ownerToken) !== row.owner_token_hash) return reply({ error: "Invite owner authorization failed", requestId }, 403);
+      const updatedAt = new Date().toISOString();
+      await env.DB.prepare("UPDATE pod_invites SET status = 'revoked', updated_at = ? WHERE token = ?").bind(updatedAt, token).run();
+      logEvent("info", "pod_invite.revoked", { requestId, inviteId: row.id, podId: row.pod_id });
+      return new Response(null, { status: 204, headers: capabilityHeaders({ "Cache-Control": "no-store", "X-Request-ID": requestId }) });
+    }
+    return reply({ error: "Not found", requestId }, 404);
   }
   if (request.method === "GET" && url.pathname === "/api/telemetry/data-center") {
     const tenantId = safeId(url.searchParams.get("tenantId"));

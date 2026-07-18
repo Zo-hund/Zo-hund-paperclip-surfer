@@ -14,6 +14,8 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Selectable Three.js world cameras, consent-gated live vision scans, four Blender-prepared built-in avatars, and archived Ready Player Me GLB loading.
 - NPC avatar direction with named room waypoints, D-pad and focused keyboard movement, double-click navigation, speed control, procedural actions, patrol behavior, and assigned-agent cues.
 - Runway Characters realtime avatars with microphone, camera, screen context, transcripts, in-world screen routing, and an AMX client-action toolbelt.
+- Tenant-branded 3D digital membership cards with profile QR verification and native sharing.
+- Durable Skill Pod showcase invitations with guest roles, expiry, capacity, QR links, acceptance lobbies, and owner-key revocation.
 - Above-the-fold Nexus workspace with a persistent 3D world, task-scoped NPC/Avatar/Pod/Media/Vision rail, pinned action feedback, and independent mobile control scrolling.
 - Governed AI digital twin with Blender node bindings, predictive risk, sandbox scenarios, approvals, and durable audit events.
 - Reality reconstruction skills for spatial capture, semantic meshing, generated PBR textures, light matching, anchor alignment, and validation artifacts.
@@ -67,7 +69,7 @@ The private stage can run in `degraded` mode while optional Agent, MCP, Plugin, 
 | --- | --- |
 | `src/` | React application, XR runtime, agents, realtime, and operations |
 | `worker.js` | Cloudflare Worker API, gateways, storage, readiness, and security |
-| `db/schema.sql` | Canonical D1 schema |
+| `db/schema.sql` | Canonical D1 schema, including pod showcase invitations |
 | `drizzle/` | Deployment migration copied into the Sites archive |
 | `tests/` | Worker API contract suite |
 | `public/` | PWA manifest, service worker, brand, and GLB assets |

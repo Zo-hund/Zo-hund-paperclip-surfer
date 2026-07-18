@@ -58,6 +58,35 @@ function memoryDatabase() {
   };
 }
 
+function podInviteDatabase(row) {
+  const writes = [];
+  return {
+    writes,
+    prepare(sql) {
+      return {
+        bind(...values) {
+          return {
+            async run() { writes.push({ sql, values }); return { success: true, meta: { changes: 1 } }; },
+            async all() { return { results: [] }; },
+            async first() { return sql.includes("SELECT * FROM pod_invites") ? row : { ok: 1 }; },
+          };
+        },
+        async run() { return { success: true }; },
+        async first() { return { ok: 1 }; },
+      };
+    },
+    async batch(statements) {
+      for (const statement of statements) if (typeof statement.run === "function") await statement.run();
+      return [];
+    },
+  };
+}
+
+async function hash(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 describe("AMX AIR Hubs Worker API", () => {
   let env;
 
@@ -273,6 +302,64 @@ describe("AMX AIR Hubs Worker API", () => {
     body = await response.json();
     assert.equal(body.configured, true);
     assert.equal(body.apiKey, "restricted-browser-key");
+  });
+
+  test("creates a durable pod showcase invite with a separate owner capability", async () => {
+    const database = memoryDatabase();
+    env.DB = database;
+    const response = await worker.fetch(jsonRequest("/api/pod-invites", {
+      tenantId: "tech-at-nite", tenantName: "Tech At Nite", tenantColor: "#55e6ff",
+      podId: "pod-showcase", roomCode: "AIR123", missionId: "webxr-creator",
+      title: "WebXR Creator showcase", description: "Join the room", hostName: "AMX Host",
+      role: "presenter", maxUses: 8, expiresInHours: 24,
+    }), env);
+    const body = await response.json();
+    const insert = database.writes.find((write) => write.sql.includes("INSERT INTO pod_invites"));
+
+    assert.equal(response.status, 201);
+    assert.equal(body.invite.role, "presenter");
+    assert.equal(body.invite.maxUses, 8);
+    assert.match(body.invite.joinPath, /^\/join\/[A-Za-z0-9_-]+$/);
+    assert.ok(body.ownerToken.length > 60);
+    assert.equal(JSON.stringify(body.invite).includes("ownerToken"), false);
+    assert.ok(insert);
+    assert.notEqual(insert.values[2], body.ownerToken);
+  });
+
+  test("accepts an active pod invite once and reports capacity truthfully", async () => {
+    const row = {
+      id: "invite-1", token: "invite-token", owner_token_hash: "unused", tenant_id: "tech-at-nite",
+      tenant_name: "Tech At Nite", tenant_color: "#55e6ff", pod_id: "pod-1", room_code: "AIR123",
+      mission_id: "webxr-creator", title: "Creator showcase", description: "Join us", host_name: "AMX Host",
+      guest_role: "participant", max_uses: 1, use_count: 0, status: "active",
+      expires_at: new Date(Date.now() + 60_000).toISOString(), created_at: new Date().toISOString(),
+    };
+    env.DB = podInviteDatabase(row);
+    const response = await worker.fetch(jsonRequest("/api/pod-invites/invite-token/accept", {}), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.invite.useCount, 1);
+    assert.equal(body.invite.status, "full");
+    assert.ok(env.DB.writes.some((write) => write.sql.includes("use_count = use_count + 1")));
+  });
+
+  test("requires the private owner capability to revoke a pod invite", async () => {
+    const ownerToken = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
+    const row = {
+      id: "invite-2", token: "owner-invite", owner_token_hash: await hash(ownerToken), tenant_id: "tech-at-nite",
+      tenant_name: "Tech At Nite", tenant_color: "#55e6ff", pod_id: "pod-2", room_code: "AIR456",
+      mission_id: "xrt-green-mode", title: "Team showcase", description: "Join us", host_name: "AMX Host",
+      guest_role: "viewer", max_uses: 10, use_count: 0, status: "active",
+      expires_at: new Date(Date.now() + 60_000).toISOString(), created_at: new Date().toISOString(),
+    };
+    env.DB = podInviteDatabase(row);
+    let response = await worker.fetch(request("/api/pod-invites/owner-invite", { method: "DELETE", headers: { Authorization: "Bearer wrong" } }), env);
+    assert.equal(response.status, 403);
+
+    response = await worker.fetch(request("/api/pod-invites/owner-invite", { method: "DELETE", headers: { Authorization: `Bearer ${ownerToken}` } }), env);
+    assert.equal(response.status, 204);
+    assert.ok(env.DB.writes.some((write) => write.sql.includes("status = 'revoked'")));
   });
 
   test("runs a tenant-scoped DCIM inspection tool", async () => {

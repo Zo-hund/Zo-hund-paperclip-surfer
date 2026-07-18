@@ -7,6 +7,7 @@ import { TenantConsolePage } from "./TenantConsole";
 import { NexusPage } from "./pages/nexus";
 import { AgentWorkbenchPage } from "./pages/agent-workbench";
 import { RuntimeStatusPage } from "./pages/runtime-status";
+import { PodInvitePage } from "./pages/invites";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
   ModeExperiencePage, ReplayPage, RoomLobbyPage, TeamMonitorPage, TeamProfilePage,
@@ -44,6 +45,7 @@ function ShellRoutes() {
     <Route path="/teams/:teamId/rewards" element={<TeamProfilePage/>}/>
     <Route path="/rooms/:roomId/lobby" element={<RoomLobbyPage/>}/>
     <Route path="/rooms/:roomId/toolbelt" element={<ToolbeltPage/>}/>
+    <Route path="/join/:token" element={<PodInvitePage/>}/>
     <Route path="/runs/team/:runId" element={<TeamMonitorPage/>}/>
     <Route path="/runs/:runId/replay" element={<ReplayPage/>}/>
     <Route path="*" element={<HomePage/>}/>

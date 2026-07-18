@@ -92,6 +92,26 @@ Returns up to 100 recent proof payloads for the sanitized tenant ID.
 
 Requires a WebSocket upgrade. A Durable Object binding is preferred. The in-isolate ephemeral fallback is suitable only for local/degraded operation and does not provide cross-isolate durability.
 
+## Pod showcase invitations
+
+### `POST /api/pod-invites`
+
+Creates a durable invitation for a Skill Pod. The request includes tenant and pod identity, room code, mission, guest role (`viewer`, `participant`, or `presenter`), capacity from 1 to 100, and expiry from 1 to 168 hours.
+
+Returns the public invite plus a one-time `ownerToken`. The browser stores that owner capability only on the creator device; it is never included when an invite is resolved.
+
+### `GET /api/pod-invites/:token`
+
+Resolves sanitized public showcase details and the current `active`, `expired`, `full`, or `revoked` state.
+
+### `POST /api/pod-invites/:token/accept`
+
+Atomically consumes one capacity slot while the invite is active and unexpired. The client creates the invited immersive room locally and opens its pre-flight lobby.
+
+### `DELETE /api/pod-invites/:token`
+
+Revokes the invite. Requires `Authorization: Bearer {ownerToken}`. Only a SHA-256 hash of the owner capability is persisted in D1.
+
 ## Spatial anchors and digital twins
 
 ### GET /api/anchors?room={ROOM}
