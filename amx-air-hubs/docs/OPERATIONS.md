@@ -11,6 +11,9 @@
 7. Confirm `GET /api/ready` returns `200` for the configured readiness policy.
 8. Check `/control/runtime` at desktop and phone widths.
 9. Exercise one mission, one agent request, one built-in tool, and one media upload.
+10. Open `/stage`, take all four cameras, start/end a show, change a sponsor, adjust VIP/general seating, and confirm the renderer health attributes remain nonzero.
+11. For remote Pod tests, confirm the Stage transport reads `websocket`, open the linked Pod code on a second device, and verify camera, cue, sponsor, and seating changes arrive in order.
+12. Join the LiveKit stage room only after camera/microphone permission is approved; verify participant media separately from the production cue bus.
 
 ## Observability
 

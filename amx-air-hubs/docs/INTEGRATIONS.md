@@ -132,6 +132,18 @@ Ready Player Me hosted services were discontinued on January 31, 2026. The room 
 
 Without Supabase, room messages use BroadcastChannel and work only between tabs on one device.
 
+## AMX XR Stage
+
+`/stage` is the live production workspace. Its WebGPU venue exposes four program shots, three animated camera-operator NPCs, a camera crane, one stage host, 36 general seats, and 8 VIP/sponsor seats. GO LIVE starts the opening cue on CAM 1 wide; later camera takes remain operator controlled.
+
+Stage show state is separate from room media. LiveKit owns participant camera, microphone, screen, and agent tracks for the active stage room. Supabase Realtime owns production cues, live status, camera, venue mode, sponsor creative, seating, and linked-Pod state. Every update carries a monotonic revision so an older network packet cannot replace a newer operator cue.
+
+Each Pod code linked in the Pods console receives the same production packet on its `amx-stage-{POD}` cue bus. A Stage page using that Pod code can therefore follow the show state. This is production-state distribution, not automatic LiveKit room federation; participants who need shared audio/video must join the same configured LiveKit room or use a separate media bridge.
+
+Without Supabase, the cue bus uses BroadcastChannel and reaches only tabs on the same device. The console labels this transport `local mesh`; it does not claim remote Pod synchronization.
+
+Sponsor slates are first-party CanvasTextures rendered onto the center screen, side screens, and venue ribbon. Custom creative remains in browser-local storage. Sponsor selections emit campaign and stage-room metadata through the existing analytics endpoint; the Stage does not load a third-party ad tracker.
+
 ## Live Media Panels
 
 The Nexus Content Deck accepts HTTPS HLS (`.m3u8`), MP4, WebM, and local video files. HLS.js supplies adaptive playback on Media Source Extensions browsers; Safari can use native HLS. A loaded player is bound to a dedicated front-facing Blender display plane through a frame-synchronized, tone-map-neutral Three.js canvas texture; `Fit` preserves the full frame and `Fill` center-crops without stretching.
