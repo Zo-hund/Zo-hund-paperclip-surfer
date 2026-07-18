@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Camera, CameraOff, Mic, MicOff, Radio, Users, Video, Volume2, VolumeX, Wifi } from "lucide-react";
+import { Bot, Camera, CameraOff, Mic, MicOff, MonitorUp, Radio, Users, Video, Volume2, VolumeX, Wifi } from "lucide-react";
 import {
   LocalVideoTrack, RemoteVideoTrack, Room, RoomEvent, Track,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
@@ -13,6 +13,7 @@ type VideoSurface = {
   id: string;
   name: string;
   local: boolean;
+  source: "camera" | "screen";
   track?: LocalVideoTrack | RemoteVideoTrack;
   stream?: MediaStream;
 };
@@ -21,6 +22,7 @@ interface Props {
   roomCode: string;
   agents: Agent[];
   onLocalStream?: (stream: MediaStream | null) => void;
+  onSceneStreams?: (streams: MediaStream[]) => void;
   compact?: boolean;
 }
 
@@ -39,10 +41,10 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
       if (!surface.track) element.srcObject = null;
     };
   }, [surface]);
-  return <div className={`pod-video-tile ${surface.local ? "local" : "remote"}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.local ? "YOU" : surface.name}</span></div>;
+  return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const [status, setStatus] = useState<PodStatus>("idle");
@@ -51,6 +53,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
   const [participantCount, setParticipantCount] = useState(1);
   const [cameraState, setCameraState] = useState<CaptureState>("off");
   const [microphoneState, setMicrophoneState] = useState<CaptureState>("off");
+  const [screenShareState, setScreenShareState] = useState<CaptureState>("off");
   const [playbackState, setPlaybackState] = useState<PlaybackState>("off");
   const [connectionQuality, setConnectionQuality] = useState("unknown");
   const [activeSpeaker, setActiveSpeaker] = useState("");
@@ -58,11 +61,18 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
   const onLocalStreamRef = useRef(onLocalStream);
+  const onSceneStreamsRef = useRef(onSceneStreams);
   useEffect(() => { onLocalStreamRef.current = onLocalStream; }, [onLocalStream]);
+  useEffect(() => { onSceneStreamsRef.current = onSceneStreams; }, [onSceneStreams]);
   useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
 
-  const addVideoTrack = useCallback((track: LocalVideoTrack | RemoteVideoTrack, id: string, name: string, local: boolean) => {
-    setSurfaces((current) => [...current.filter((surface) => surface.id !== id), { id, name, local, track }]);
+  useEffect(() => {
+    const streams = surfaces.slice().sort((left, right) => Number(right.source === "screen") - Number(left.source === "screen")).map((surface) => surface.stream || (surface.track ? new MediaStream([surface.track.mediaStreamTrack]) : null)).filter((stream): stream is MediaStream => Boolean(stream));
+    onSceneStreamsRef.current?.(streams);
+  }, [surfaces]);
+
+  const addVideoTrack = useCallback((track: LocalVideoTrack | RemoteVideoTrack, id: string, name: string, local: boolean, source: "camera" | "screen" = "camera") => {
+    setSurfaces((current) => [...current.filter((surface) => surface.id !== id), { id, name, local, source, track }]);
   }, []);
 
   const disconnect = useCallback(() => {
@@ -74,12 +84,14 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
     setParticipantCount(1);
     setCameraState("off");
     setMicrophoneState("off");
+    setScreenShareState("off");
     setPlaybackState("off");
     setConnectionQuality("unknown");
     setActiveSpeaker("");
     setStatus("idle");
     setMessage("Camera and room media are off");
     onLocalStreamRef.current?.(null);
+    onSceneStreamsRef.current?.([]);
   }, []);
 
   useEffect(() => disconnect, [disconnect]);
@@ -98,7 +110,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
         audio: false,
       });
       fallbackStreamRef.current = stream;
-      setSurfaces([{ id: identity, name: "You", local: true, stream }]);
+      setSurfaces([{ id: identity, name: "You", local: true, source: "camera", stream }]);
       setStatus("local");
       setCameraState("published");
       setMicrophoneState("off");
@@ -133,13 +145,21 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
       const updateCount = () => setParticipantCount(room.remoteParticipants.size + 1);
       room.on(RoomEvent.ParticipantConnected, updateCount);
       room.on(RoomEvent.ParticipantDisconnected, updateCount);
-      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-        if (track.kind === Track.Kind.Video) addVideoTrack(track as RemoteVideoTrack, `${participant.identity}-${track.sid}`, participant.name || participant.identity, false);
+      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Video) {
+          const screen = publication.source === Track.Source.ScreenShare;
+          addVideoTrack(track as RemoteVideoTrack, `${participant.identity}-${track.sid}`, screen ? `${participant.name || participant.identity} / screen` : participant.name || participant.identity, false, screen ? "screen" : "camera");
+        }
         if (track.kind === Track.Kind.Audio && audioHostRef.current) audioHostRef.current.appendChild(track.attach());
       });
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
         track.detach().forEach((element) => element.remove());
         setSurfaces((current) => current.filter((surface) => surface.track !== track));
+      });
+      room.on(RoomEvent.LocalTrackUnpublished, (publication) => {
+        if (publication.source !== Track.Source.ScreenShare) return;
+        setSurfaces((current) => current.filter((surface) => surface.source !== "screen" || !surface.local));
+        setScreenShareState("off");
       });
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         setActiveSpeaker(speakers[0]?.name || speakers[0]?.identity || "");
@@ -165,6 +185,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
         setSurfaces([]);
         setCameraState("off");
         setMicrophoneState("off");
+        setScreenShareState("off");
         setPlaybackState("off");
         onLocalStreamRef.current?.(null);
       });
@@ -183,7 +204,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
         const localTrack = publication?.videoTrack as LocalVideoTrack | undefined;
         if (localTrack) {
           cameraReady = true;
-          addVideoTrack(localTrack, identity, "You", true);
+          addVideoTrack(localTrack, identity, "You", true, "camera");
           onLocalStreamRef.current?.(new MediaStream([localTrack.mediaStreamTrack]));
         }
       } catch { cameraReady = false; }
@@ -225,7 +246,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
     try {
       await room.localParticipant.setCameraEnabled(shouldEnable);
       if (!shouldEnable) {
-        setSurfaces((current) => current.filter((surface) => !surface.local));
+        setSurfaces((current) => current.filter((surface) => !surface.local || surface.source !== "camera"));
         onLocalStreamRef.current?.(null);
         setCameraState("muted");
         return;
@@ -233,11 +254,35 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
       const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
       const track = publication?.videoTrack as LocalVideoTrack | undefined;
       if (!track) throw new Error("Camera track was not published");
-      addVideoTrack(track, identity, "You", true);
+      addVideoTrack(track, identity, "You", true, "camera");
       onLocalStreamRef.current?.(new MediaStream([track.mediaStreamTrack]));
       setCameraState("published");
     } catch { setCameraState("blocked"); }
   }, [addVideoTrack, cameraState, identity, status]);
+
+  const toggleScreenShare = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room || status !== "livekit") return;
+    const shouldEnable = screenShareState !== "published";
+    setScreenShareState("requesting");
+    try {
+      await room.localParticipant.setScreenShareEnabled(shouldEnable);
+      if (!shouldEnable) {
+        setSurfaces((current) => current.filter((surface) => surface.source !== "screen" || !surface.local));
+        setScreenShareState("off");
+        return;
+      }
+      const publication = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+      const track = publication?.videoTrack as LocalVideoTrack | undefined;
+      if (!track) throw new Error("Screen-share track was not published");
+      addVideoTrack(track, `${identity}-screen`, "Your screen", true, "screen");
+      setScreenShareState("published");
+      setMessage("Screen share is live in the pod and routed to a Blender panel");
+    } catch (error) {
+      setScreenShareState("blocked");
+      setMessage(error instanceof Error ? error.message : "Screen sharing is unavailable on this browser");
+    }
+  }, [addVideoTrack, identity, screenShareState, status]);
 
   const resumeAudio = useCallback(async () => {
     const room = roomRef.current;
@@ -254,7 +299,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, compact }: Props) 
       {agents.slice(0, compact ? 2 : 3).map((agent) => <div className="pod-agent-screen" key={agent.id} style={{ "--agent-screen": agent.color } as React.CSSProperties}><span><Bot/></span><b>{agent.name}</b><small>{agent.role}</small><i>AGENT READY</i></div>)}
     </div>
     <div ref={audioHostRef} className="pod-audio-host"/>
-    <div className="livekit-pod-foot"><div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "voice published" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>{live ? <div className="pod-media-actions">{status === "livekit" && <><button onClick={() => void toggleCamera()} aria-label={cameraState === "published" ? "Turn camera off" : "Turn camera on"} title={cameraState === "published" ? "Turn camera off" : "Turn camera on"}>{cameraState === "published" ? <Camera/> : <CameraOff/>}</button><button onClick={() => void toggleMicrophone()} aria-label={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"} title={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"}>{microphoneState === "published" ? <Mic/> : <MicOff/>}</button>{playbackState === "blocked" && <button onClick={() => void resumeAudio()} aria-label="Resume room audio" title="Resume room audio"><Volume2/></button>}</>}<button className="button secondary" onClick={disconnect}><CameraOff/>Leave</button></div> : <button className="button primary" disabled={status === "connecting"} onClick={join}>{status === "connecting" ? <Radio/> : <Video/>}{status === "connecting" ? "Connecting" : "Join pod"}</button>}</div>
+    <div className="livekit-pod-foot"><div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "voice published" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{screenShareState === "published" && <span className="media-ready"><MonitorUp/>screen live</span>}{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>{live ? <div className="pod-media-actions">{status === "livekit" && <><button onClick={() => void toggleCamera()} aria-label={cameraState === "published" ? "Turn camera off" : "Turn camera on"} title={cameraState === "published" ? "Turn camera off" : "Turn camera on"}>{cameraState === "published" ? <Camera/> : <CameraOff/>}</button><button onClick={() => void toggleMicrophone()} aria-label={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"} title={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"}>{microphoneState === "published" ? <Mic/> : <MicOff/>}</button><button onClick={() => void toggleScreenShare()} aria-label={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} title={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} className={screenShareState === "published" ? "active" : ""}><MonitorUp/></button>{playbackState === "blocked" && <button onClick={() => void resumeAudio()} aria-label="Resume room audio" title="Resume room audio"><Volume2/></button>}</>}<button className="button secondary" onClick={disconnect}><CameraOff/>Leave</button></div> : <button className="button primary" disabled={status === "connecting"} onClick={join}>{status === "connecting" ? <Radio/> : <Video/>}{status === "connecting" ? "Connecting" : "Join pod"}</button>}</div>
     <p className="pod-status-message">{message}</p>
   </section>;
 }

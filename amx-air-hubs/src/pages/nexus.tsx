@@ -6,7 +6,8 @@ import {
 import { agents } from "../data";
 import { useGeoAnchors, type GeoAnchor } from "../geospatial";
 
-import type { LightPreset, WorldCameraCapture, WorldCameraId } from "../NexusRoomScene";
+import type { LightPreset, LocationPanelData, WorldCameraCapture, WorldCameraId } from "../NexusRoomScene";
+import type { MapLocationSelection } from "../GoogleLocationPanel";
 import { Metric, PageHeader, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
 
@@ -14,6 +15,8 @@ const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).
 const NexusRoomScene = lazy(async () => ({ default: (await import("../NexusRoomScene")).NexusRoomScene }));
 const SpatialPresenceConsole = lazy(async () => ({ default: (await import("../SpatialPresenceConsole")).SpatialPresenceConsole }));
 const DigitalTwinLab = lazy(async () => ({ default: (await import("../DigitalTwinLab")).DigitalTwinLab }));
+const NexusMediaPlayer = lazy(async () => ({ default: (await import("../NexusMediaPlayer")).NexusMediaPlayer }));
+const GoogleLocationPanel = lazy(async () => ({ default: (await import("../GoogleLocationPanel")).GoogleLocationPanel }));
 
 type NexusTab = "room" | "twin" | "anchors" | "fleet" | "factory";
 
@@ -47,6 +50,9 @@ export function NexusPage() {
   const [roomCode, setRoomCode] = useState(() => localStorage.getItem("amx_nexus_room") || "NEXUS1");
   const [lightPreset, setLightPreset] = useState<LightPreset>("mission");
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [sceneStreams, setSceneStreams] = useState<MediaStream[]>([]);
+  const [mediaElement, setMediaElement] = useState<HTMLVideoElement | null>(null);
+  const [mapLocation, setMapLocation] = useState<MapLocationSelection | null>(null);
   const [activeWorldCamera, setActiveWorldCamera] = useState<WorldCameraId>("overview");
   const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem("amx_ready_player_me_avatar") || "");
   const [avatarState, setAvatarState] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -70,6 +76,21 @@ export function NexusPage() {
     setRoomCode(safe);
     localStorage.setItem("amx_nexus_room", safe);
   };
+  const publishMapAnchor = (location: MapLocationSelection) => {
+    const anchor = geo.publishAnchor({
+      label: location.label,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: 5,
+      localPosition: [0, 0, -2],
+      source: "map",
+    });
+    setSelectedAnchor(anchor);
+  };
+  const locationPanel = useMemo<LocationPanelData | null>(() => mapLocation ? {
+    ...mapLocation,
+    roomCode,
+  } : null, [mapLocation, roomCode]);
   const addAnchor = () => {
     if (geo.locationStatus !== "ready") geo.requestLocation();
     const index = geo.anchors.length;
@@ -90,12 +111,16 @@ export function NexusPage() {
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} activeWorldCamera={activeWorldCamera} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onReady={() => setSceneReady(true)} onBackend={setRendererBackend}/></Suspense>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} locationPanel={locationPanel} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} activeWorldCamera={activeWorldCamera} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onReady={() => setSceneReady(true)} onBackend={setRendererBackend}/></Suspense>
         <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>{activeWorldCamera === "overview" ? "NEXUS CONTROL ROOM" : `${activeWorldCamera.toUpperCase()} CAMERA / LIVE`}</b>{avatarState !== "idle" && <small className={`scene-avatar-state ${avatarState}`}>AVATAR {avatarState.toUpperCase()}</small>}</div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">
         <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>
-        <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream}/></Suspense>
+        <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream} onSceneStreams={setSceneStreams}/></Suspense>
+        <div className="nexus-content-deck"><div className="content-deck-title"><span className="eyebrow">WORLD CONTENT DECK</span><b>Live panel routing</b></div>
+          <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing media player</span></div>}><NexusMediaPlayer onPanelVideo={setMediaElement}/></Suspense>
+          <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing location map</span></div>}><GoogleLocationPanel agent={crew[0]} roomCode={roomCode} onSelection={setMapLocation} onPublishAnchor={publishMapAnchor}/></Suspense>
+        </div>
         <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial presence tools</span></div>}><SpatialPresenceConsole agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} captureWorld={captureWorld} avatarUrl={avatarUrl} onAvatarUrl={updateAvatar}/></Suspense>
       </aside>
     </div>}

@@ -92,6 +92,8 @@ The participant grant permits room join, publish, subscribe, and data publish fo
 
 The room UI reports camera publication, microphone publication/mute state, browser audio playback permission, local connection quality, and active speakers. `voice published` means a microphone track exists in LiveKit; `audio ready` means the browser can play subscribed room audio. Both are required before the UI describes voice as ready.
 
+The pod also publishes browser screen sharing through LiveKit. The share picker opens only after the user selects the monitor button. Camera and screen-share video tracks are routed into the Blender-authored `Screen_User` and agent display meshes. Browser tab audio is not requested by the current share control.
+
 If LiveKit is absent or fails, the component opens a private local camera preview and labels it `LOCAL VIDEO`.
 
 ## Spatial Cameras and Vision
@@ -111,6 +113,20 @@ Ready Player Me hosted services were discontinued on January 31, 2026. The Nexus
 `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are safe browser configuration values. They provide room broadcast and presence. Configure restrictive Realtime authorization policies in the Supabase project before multi-user release.
 
 Without Supabase, room messages use BroadcastChannel and work only between tabs on one device.
+
+## Live Media Panels
+
+The Nexus Content Deck accepts HTTPS HLS (`.m3u8`), MP4, WebM, and local video files. HLS.js supplies adaptive playback on Media Source Extensions browsers; Safari can use native HLS. A loaded player is also bound to the left Blender display through a Three.js `VideoTexture`.
+
+External manifests, segments, and media files must permit cross-origin browser requests from the deployment origin. Local files remain browser-local object URLs and are revoked when the player unmounts.
+
+## Google Maps
+
+Set `GOOGLE_MAPS_BROWSER_KEY` in the deployed Worker environment. `/api/maps/config` intentionally returns this browser-public key to the Google Maps JavaScript loader. In Google Cloud, restrict the key to the Maps JavaScript API and HTTPS referrers for the exact staging and production origins. Use a separate key for other platforms.
+
+For local Vite development, `VITE_GOOGLE_MAPS_API_KEY` is supported as a build-time fallback. The map is honest about setup state when neither value exists.
+
+Map search, map clicks, and device geolocation create a location selection. The selected address and coordinates feed the right Blender display, can be published as a shared Nexus geo anchor, and can be sent to the active agent for a grounded training and digital-twin context brief. Google map tiles are rendered only by the Maps API; the Three.js panel displays derived selection data rather than copying map imagery.
 
 ## Blender and GLB
 

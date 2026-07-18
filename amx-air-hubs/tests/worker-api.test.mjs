@@ -197,6 +197,20 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.match(body.output, /Unknown built-in tool/);
   });
 
+  test("returns browser-public Google Maps configuration without inventing readiness", async () => {
+    let response = await worker.fetch(request("/api/maps/config"), env);
+    let body = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.configured, false);
+    assert.equal("apiKey" in body, false);
+
+    env.GOOGLE_MAPS_BROWSER_KEY = "restricted-browser-key";
+    response = await worker.fetch(request("/api/maps/config"), env);
+    body = await response.json();
+    assert.equal(body.configured, true);
+    assert.equal(body.apiKey, "restricted-browser-key");
+  });
+
   test("runs a tenant-scoped DCIM inspection tool", async () => {
     const response = await worker.fetch(jsonRequest("/api/agents/tools/invoke", {
       toolName: "dcim.inspect",
@@ -466,7 +480,10 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(response.status, 200);
     assert.match(csp, /script-src 'self' 'nonce-/);
     assert.match(csp, /'wasm-unsafe-eval'/);
+    assert.match(csp, /https:\/\/maps\.googleapis\.com/);
+    assert.match(csp, /media-src 'self' blob: https:/);
     assert.match(csp, /frame-src https:\/\/\*\.readyplayer\.me/);
     assert.match(csp, /frame-ancestors 'none'/);
+    assert.match(response.headers.get("Permissions-Policy") || "", /display-capture=\(self\)/);
   });
 });

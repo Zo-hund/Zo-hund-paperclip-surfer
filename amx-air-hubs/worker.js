@@ -2,7 +2,7 @@ const rateBuckets = new Map();
 const ephemeralRooms = new Map();
 let databaseInitialization;
 const APP_HTML = "__AMX_APP_HTML__";
-const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), fullscreen=(self), xr-spatial-tracking=(self)";
+const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), display-capture=(self), fullscreen=(self), xr-spatial-tracking=(self)";
 const SERVICE_VERSION = "1.1.0";
 const MAX_AGENT_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
@@ -51,11 +51,11 @@ function htmlHeaders(nonce) {
     "Cache-Control": "no-cache",
     "Content-Security-Policy": [
       "default-src 'self'",
-      `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`,
+      `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com`,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
-      "media-src 'self' blob:",
-      "font-src 'self' data:",
+      "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://*.googleapis.com https://*.ggpht.com",
+      "media-src 'self' blob: https:",
+      "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https: wss:",
       "frame-src https://*.readyplayer.me",
       "worker-src 'self' blob:",
@@ -834,6 +834,10 @@ async function handleApi(request, env, url, requestId) {
     return reply({ ...readiness, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, readiness.ready ? 200 : 503);
   }
   if (request.method === "GET" && url.pathname === "/api/agents/capabilities") return reply(agentCapabilities(env));
+  if (request.method === "GET" && url.pathname === "/api/maps/config") {
+    const apiKey = String(env.GOOGLE_MAPS_BROWSER_KEY || "").trim();
+    return reply({ configured: Boolean(apiKey), ...(apiKey ? { apiKey } : {}) });
+  }
   if (request.method === "GET" && url.pathname === "/api/telemetry/data-center") {
     const tenantId = safeId(url.searchParams.get("tenantId"));
     if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);

@@ -8,6 +8,16 @@ import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "
 export type LightPreset = "mission" | "focus" | "standby";
 export type WorldCameraId = "overview" | "entry" | "rack" | "briefing";
 export type WorldCameraCapture = (camera?: WorldCameraId) => Promise<Blob | null>;
+export interface LocationPanelData {
+  label: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  roomCode: string;
+  selectedAt: string;
+  agentContext?: string;
+  agentTransport?: "local" | "remote";
+}
 
 export const WORLD_CAMERAS: Array<{ id: WorldCameraId; label: string; detail: string }> = [
   { id: "overview", label: "Overview", detail: "Operator orbit camera" },
@@ -18,6 +28,9 @@ export const WORLD_CAMERAS: Array<{ id: WorldCameraId; label: string; detail: st
 
 interface Props {
   localStream: MediaStream | null;
+  sceneStreams?: MediaStream[];
+  mediaElement?: HTMLVideoElement | null;
+  locationPanel?: LocationPanelData | null;
   anchors: GeoAnchor[];
   lightPreset: LightPreset;
   reducedMotion?: boolean;
@@ -27,6 +40,99 @@ interface Props {
   onBackend?: (backend: RendererBackend) => void;
   onCaptureReady?: (capture: WorldCameraCapture | null) => void;
   onAvatarState?: (state: "idle" | "loading" | "ready" | "error") => void;
+}
+
+type ScreenName = "Screen_User" | "Screen_Agent_Left" | "Screen_Agent_Right";
+
+function screenMaterial(texture: THREE.Texture) {
+  return new THREE.MeshStandardMaterial({ map: texture, emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: 0.38, roughness: 0.25, metalness: 0.05 });
+}
+
+function bindVideoElement(mesh: THREE.Mesh, video: HTMLVideoElement, mirror = false, owned = false) {
+  const texture = new THREE.VideoTexture(video);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = false;
+  texture.minFilter = THREE.LinearFilter;
+  if (mirror) {
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.repeat.x = -1;
+    texture.offset.x = 1;
+  }
+  const previous = mesh.material;
+  const material = screenMaterial(texture);
+  mesh.material = material;
+  void video.play().catch(() => undefined);
+  return () => {
+    if (owned) {
+      video.pause();
+      video.srcObject = null;
+    }
+    texture.dispose();
+    material.dispose();
+    if (mesh.material === material) mesh.material = previous;
+  };
+}
+
+function bindStream(mesh: THREE.Mesh, stream: MediaStream, mirror = false) {
+  const video = document.createElement("video");
+  video.srcObject = stream;
+  video.muted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  return bindVideoElement(mesh, video, mirror, true);
+}
+
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, x: number, y: number, width: number, lineHeight: number, maxLines: number) {
+  const words = text.replace(/\s+/g, " ").trim().split(" ");
+  let line = "";
+  let row = 0;
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (context.measureText(candidate).width > width && line) {
+      context.fillText(line, x, y + row * lineHeight);
+      line = word;
+      row += 1;
+      if (row >= maxLines) return;
+    } else line = candidate;
+  }
+  if (line && row < maxLines) context.fillText(line, x, y + row * lineHeight);
+}
+
+function drawLocationPanel(canvas: HTMLCanvasElement, data: LocationPanelData) {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const width = canvas.width;
+  context.fillStyle = "#030b10";
+  context.fillRect(0, 0, width, canvas.height);
+  context.fillStyle = "#0b222b";
+  context.fillRect(0, 0, width, 92);
+  context.fillStyle = "#55e6ff";
+  context.fillRect(0, 0, 12, canvas.height);
+  context.font = "700 28px Arial";
+  context.fillText("GOOGLE LOCATION / LIVE CONTEXT", 38, 56);
+  context.fillStyle = "#f4c96b";
+  context.font = "700 50px Arial";
+  wrapCanvasText(context, data.label.toUpperCase(), 38, 145, width - 76, 56, 2);
+  context.fillStyle = "#b9d0d5";
+  context.font = "28px Arial";
+  wrapCanvasText(context, data.address, 38, 260, width - 76, 36, 3);
+  context.strokeStyle = "#315762";
+  context.beginPath();
+  context.moveTo(38, 382);
+  context.lineTo(width - 38, 382);
+  context.stroke();
+  context.fillStyle = "#55e6ff";
+  context.font = "700 26px monospace";
+  context.fillText(`${data.latitude.toFixed(6)} / ${data.longitude.toFixed(6)}`, 38, 430);
+  context.fillStyle = "#718b91";
+  context.font = "22px Arial";
+  context.fillText(`ROOM ${data.roomCode}  |  ${new Date().toLocaleTimeString()}`, 38, 472);
+  context.fillStyle = "#ff63de";
+  context.font = "700 23px Arial";
+  context.fillText(`AGENT CONTEXT / ${(data.agentTransport || "pending").toUpperCase()}`, 38, 528);
+  context.fillStyle = "#d2e1e4";
+  context.font = "24px Arial";
+  wrapCanvasText(context, data.agentContext || "Select ASK AGENT to build a grounded workshop and digital-twin brief for this location.", 38, 574, width - 76, 34, 6);
 }
 
 function disposeObject(root: THREE.Object3D) {
@@ -87,16 +193,14 @@ function anchorBeacon(anchor: GeoAnchor) {
   return group;
 }
 
-export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotion, avatarUrl, activeWorldCamera = "overview", onReady, onBackend, onCaptureReady, onAvatarState }: Props) {
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, activeWorldCamera = "overview", onReady, onBackend, onCaptureReady, onAvatarState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const screenRef = useRef<THREE.Mesh | null>(null);
+  const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
   const lightRefs = useRef<THREE.Light[]>([]);
   const anchorLayerRef = useRef<THREE.Group | null>(null);
   const avatarRef = useRef<THREE.Object3D | null>(null);
   const activeCameraRef = useRef<WorldCameraId>(activeWorldCamera);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const textureRef = useRef<THREE.VideoTexture | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const onReadyRef = useRef(onReady);
@@ -137,8 +241,7 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
     controls.minDistance = 4.8;
     controls.maxDistance = 16;
     controls.maxPolarAngle = Math.PI * 0.52;
-    controls.autoRotate = !reducedMotion;
-    controls.autoRotateSpeed = 0.32;
+    controls.autoRotate = false;
     const worldCameras = new Map<WorldCameraId, THREE.PerspectiveCamera>();
     worldCameras.set("entry", addWorldCamera(scene, "entry", new THREE.Vector3(-4.35, 3.25, 4.35), new THREE.Vector3(0.3, 1.35, -2.25)));
     worldCameras.set("rack", addWorldCamera(scene, "rack", new THREE.Vector3(4.45, 2.85, 3.25), new THREE.Vector3(-2.5, 1.25, -1.5)));
@@ -161,7 +264,7 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          if (mesh.name === "Screen_User") screenRef.current = mesh;
+          if (mesh.name in screenRefs.current) screenRefs.current[mesh.name as ScreenName] = mesh;
           const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
           materials.forEach((material) => {
             const lit = material as THREE.MeshStandardMaterial;
@@ -179,7 +282,10 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
       scene.add(model);
       const bounds = new THREE.Box3().setFromObject(model);
       const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
       host.dataset.modelBounds = `${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`;
+      host.dataset.modelCenter = `${center.x.toFixed(2)},${center.y.toFixed(2)},${center.z.toFixed(2)}`;
+      host.dataset.modelRange = `${bounds.min.z.toFixed(2)}:${bounds.max.z.toFixed(2)}`;
       setLoading(false);
       onReadyRef.current?.();
     }, undefined, (loadError) => {
@@ -201,7 +307,7 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
           camera.position.set(0, 4.15, 9.4);
           controls.target.set(0, 1.55, -1.2);
           controls.enabled = true;
-          controls.autoRotate = !reducedMotion;
+          controls.autoRotate = false;
         } else {
           const selected = worldCameras.get(selectedCamera);
           if (selected) {
@@ -266,14 +372,12 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
       window.removeEventListener("resize", resize);
       controls.dispose();
       void renderer.dispose();
-      textureRef.current?.dispose();
-      videoRef.current?.pause();
       onCaptureReadyRef.current?.(null);
       if (avatarRef.current) disposeObject(avatarRef.current);
       avatarRef.current = null;
       sceneRef.current = null;
       anchorLayerRef.current = null;
-      screenRef.current = null;
+      screenRefs.current = { Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null };
       lightRefs.current = [];
       if (host.contains(renderer.domElement)) host.removeChild(renderer.domElement);
     };
@@ -336,38 +440,47 @@ export function NexusRoomScene({ localStream, anchors, lightPreset, reducedMotio
   }, [anchors, loading]);
 
   useEffect(() => {
-    textureRef.current?.dispose();
-    textureRef.current = null;
-    videoRef.current?.pause();
-    videoRef.current = null;
-    if (!localStream || !screenRef.current) return;
-    const video = document.createElement("video");
-    video.srcObject = localStream;
-    video.muted = true;
-    video.autoplay = true;
-    video.playsInline = true;
-    void video.play().catch(() => undefined);
-    const texture = new THREE.VideoTexture(video);
+    const mesh = screenRefs.current.Screen_User;
+    const stream = sceneStreams[0] || localStream;
+    if (!mesh || !stream) return;
+    return bindStream(mesh, stream, true);
+  }, [localStream, loading, sceneStreams]);
+
+  useEffect(() => {
+    const mesh = screenRefs.current.Screen_Agent_Left;
+    if (!mesh) return;
+    if (mediaElement) return bindVideoElement(mesh, mediaElement);
+    if (sceneStreams[1]) return bindStream(mesh, sceneStreams[1]);
+  }, [loading, mediaElement, sceneStreams]);
+
+  useEffect(() => {
+    const mesh = screenRefs.current.Screen_Agent_Right;
+    if (!mesh) return;
+    if (!locationPanel) {
+      if (sceneStreams[2]) return bindStream(mesh, sceneStreams[2]);
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = 1024;
+    canvas.height = 768;
+    drawLocationPanel(canvas, locationPanel);
+    const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.flipY = false;
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.repeat.x = -1;
-    texture.offset.x = 1;
-    texture.minFilter = THREE.LinearFilter;
-    const mesh = screenRef.current;
     const previous = mesh.material;
-    const material = new THREE.MeshStandardMaterial({ map: texture, emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: 0.38, roughness: 0.25, metalness: 0.05 });
+    const material = screenMaterial(texture);
     mesh.material = material;
-    videoRef.current = video;
-    textureRef.current = texture;
+    const timer = window.setInterval(() => {
+      drawLocationPanel(canvas, locationPanel);
+      texture.needsUpdate = true;
+    }, 1_000);
     return () => {
-      video.pause();
-      video.srcObject = null;
+      window.clearInterval(timer);
       texture.dispose();
       material.dispose();
-      if (screenRef.current === mesh) mesh.material = previous;
+      if (mesh.material === material) mesh.material = previous;
     };
-  }, [localStream, loading]);
+  }, [loading, locationPanel, sceneStreams]);
 
   return <div className="nexus-room-scene" ref={hostRef} aria-label="Interactive Three.js Nexus control room">
     {loading && <div className="nexus-scene-loading"><span/><b>Loading Blender control room</b></div>}
