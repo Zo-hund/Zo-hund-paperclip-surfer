@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, Bot, Box, BrainCircuit, Camera, Cpu, Crosshair, Database, Gauge, Lightbulb,
   LocateFixed, MapPin, Radio, RefreshCw, Router, Satellite, Server, Sun, Users, Wifi, Zap,
@@ -6,12 +6,13 @@ import {
 import { agents } from "../data";
 import { useGeoAnchors, type GeoAnchor } from "../geospatial";
 
-import type { LightPreset } from "../NexusRoomScene";
+import type { LightPreset, WorldCameraCapture, WorldCameraId } from "../NexusRoomScene";
 import { Metric, PageHeader, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
 
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
 const NexusRoomScene = lazy(async () => ({ default: (await import("../NexusRoomScene")).NexusRoomScene }));
+const SpatialPresenceConsole = lazy(async () => ({ default: (await import("../SpatialPresenceConsole")).SpatialPresenceConsole }));
 const DigitalTwinLab = lazy(async () => ({ default: (await import("../DigitalTwinLab")).DigitalTwinLab }));
 
 type NexusTab = "room" | "twin" | "anchors" | "fleet" | "factory";
@@ -46,6 +47,10 @@ export function NexusPage() {
   const [roomCode, setRoomCode] = useState(() => localStorage.getItem("amx_nexus_room") || "NEXUS1");
   const [lightPreset, setLightPreset] = useState<LightPreset>("mission");
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [activeWorldCamera, setActiveWorldCamera] = useState<WorldCameraId>("overview");
+  const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem("amx_ready_player_me_avatar") || "");
+  const [avatarState, setAvatarState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const worldCaptureRef = useRef<WorldCameraCapture | null>(null);
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
   const [selectedAnchor, setSelectedAnchor] = useState<GeoAnchor | null>(null);
   const [sceneReady, setSceneReady] = useState(false);
@@ -53,6 +58,12 @@ export function NexusPage() {
   const geo = useGeoAnchors(roomCode);
   const telemetry = useNexusTelemetry();
   const crew = agents.slice(0, 4);
+  const captureWorld = useCallback<WorldCameraCapture>((camera) => worldCaptureRef.current?.(camera) || Promise.resolve(null), []);
+  const updateAvatar = useCallback((url: string) => {
+    setAvatarUrl(url);
+    if (url && !url.startsWith("blob:")) localStorage.setItem("amx_ready_player_me_avatar", url);
+    else localStorage.removeItem("amx_ready_player_me_avatar");
+  }, []);
 
   const updateRoom = (value: string) => {
     const safe = value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 12);
@@ -79,12 +90,13 @@ export function NexusPage() {
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} onReady={() => setSceneReady(true)} onBackend={setRendererBackend}/></Suspense>
-        <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>NEXUS CONTROL ROOM</b></div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} activeWorldCamera={activeWorldCamera} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onReady={() => setSceneReady(true)} onBackend={setRendererBackend}/></Suspense>
+        <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>{activeWorldCamera === "overview" ? "NEXUS CONTROL ROOM" : `${activeWorldCamera.toUpperCase()} CAMERA / LIVE`}</b>{avatarState !== "idle" && <small className={`scene-avatar-state ${avatarState}`}>AVATAR {avatarState.toUpperCase()}</small>}</div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">
         <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>
         <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream}/></Suspense>
+        <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial presence tools</span></div>}><SpatialPresenceConsole agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} captureWorld={captureWorld} avatarUrl={avatarUrl} onAvatarUrl={updateAvatar}/></Suspense>
       </aside>
     </div>}
 

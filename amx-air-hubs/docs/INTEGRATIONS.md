@@ -88,9 +88,23 @@ Built-in tools such as `system.health`, `proof.latest`, and `spatial.capabilitie
 
 Configure `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`. The browser requests a participant token from `/api/livekit/token`; the secret never enters the client configuration.
 
-The participant grant permits room join, publish, subscribe, and data publish for one room. Tokens expire after 15 minutes. Camera and microphone permission is requested only when the user selects Join Pod.
+The participant grant permits room join, publish, subscribe, and data publish for one room. Tokens expire after 15 minutes. Camera and microphone permission is requested only when the user selects Join Pod. Set `LIVEKIT_AGENT_NAME` to dispatch a registered voice-agent worker when the first participant joins.
+
+The room UI reports camera publication, microphone publication/mute state, browser audio playback permission, local connection quality, and active speakers. `voice published` means a microphone track exists in LiveKit; `audio ready` means the browser can play subscribed room audio. Both are required before the UI describes voice as ready.
 
 If LiveKit is absent or fails, the component opens a private local camera preview and labels it `LOCAL VIDEO`.
+
+## Spatial Cameras and Vision
+
+The Nexus room provides overview, entry, rack, and briefing cameras. A world-camera frame is rendered from the active Three.js camera. A live-camera frame comes from the local LiveKit or private preview stream.
+
+Visual analysis is off by default. The user must enable `Allow visual analysis` before a frame can leave the browser. Manual scans send one JPEG; live scan mode sends one JPEG every 12 seconds and stops immediately when consent is disabled. The Worker maps inline image data to an OpenAI Responses API `input_image` item or forwards the same attachment contract to `AGENT_RUNTIME_URL`.
+
+## Ready Player Me Compatibility
+
+Ready Player Me hosted services were discontinued on January 31, 2026. The Nexus room therefore supports archived Ready Player Me `.glb` files through local import and legacy HTTPS avatar URLs. Local object URLs are session-only and are never persisted or uploaded.
+
+`VITE_READY_PLAYER_ME_CREATOR_URL` is optional for organizations that retain a private compatible creator endpoint. Leave it empty for normal deployments; the retired public creator remains disabled.
 
 ## Supabase Realtime
 

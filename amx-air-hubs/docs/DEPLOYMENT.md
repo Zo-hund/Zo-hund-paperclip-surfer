@@ -51,6 +51,8 @@ Do not change the site to shared or public until an application identity provide
 4. Verify AR camera compositing, WebXR session entry, and placement on the physical device.
 5. Open `/agents/naz/workspace`; send text and attach an image. Confirm the execution trace and R2 upload.
 6. Join a Skill Pod and confirm either `LIVEKIT` or the explicitly labeled `LOCAL VIDEO` fallback.
+7. For LiveKit, confirm `voice published` and `audio ready`; a token response alone is not a voice test.
+8. Enable visual analysis, capture one world-camera frame, verify an agent response, then disable consent.
 
 WebXR device support cannot be fully validated in desktop browser emulation. Keep at least one supported Android/Chrome device in the release matrix.
 

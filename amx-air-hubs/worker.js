@@ -57,6 +57,7 @@ function htmlHeaders(nonce) {
       "media-src 'self' blob:",
       "font-src 'self' data:",
       "connect-src 'self' https: wss:",
+      "frame-src https://*.readyplayer.me",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
       "object-src 'none'",
@@ -313,6 +314,13 @@ async function openAIResponse(env, payload, requestId) {
   const attachmentSummary = payload.attachments.length
     ? `\nAttachments: ${payload.attachments.map((attachment) => `${attachment.kind}:${attachment.name}`).join(", ")}`
     : "";
+  const inputContent = [
+    { type: "input_text", text: `${payload.text || "Review the supplied content."}${attachmentSummary}` },
+    ...payload.attachments
+      .filter((attachment) => attachment.kind === "image" && typeof attachment.dataUrl === "string" && attachment.dataUrl.startsWith("data:image/"))
+      .slice(0, 4)
+      .map((attachment) => ({ type: "input_image", image_url: attachment.dataUrl })),
+  ];
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -326,7 +334,7 @@ async function openAIResponse(env, payload, requestId) {
         store: false,
         max_output_tokens: 700,
         instructions: "You are an AMX AIR Hubs digital-twin operator. Explain telemetry and simulations clearly. Never claim a physical action occurred. Treat approved actions as recorded intent until a verified physical adapter reports completion.",
-        input: `${payload.text || "Review the supplied content."}${attachmentSummary}`,
+        input: [{ role: "user", content: inputContent }],
       }),
       signal: controller.signal,
     });

@@ -172,8 +172,8 @@ describe("AMX AIR Hubs Worker API", () => {
       agentId: "twin-operator",
       agentName: "Twin Operator",
       text: "Explain the cooling forecast",
-      contentKind: "text",
-      attachments: [],
+      contentKind: "image",
+      attachments: [{ id: "vision-frame", kind: "image", name: "rack.jpg", mimeType: "image/jpeg", size: 4, transfer: "inline", dataUrl: "data:image/jpeg;base64,AQIDBA==" }],
     }), env);
     const body = await response.json();
 
@@ -182,6 +182,9 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(body.text, "The cooling trend is stable.");
     assert.equal(requestBody.store, false);
     assert.equal(requestBody.model, "gpt-5-mini");
+    assert.equal(requestBody.input[0].role, "user");
+    assert.equal(requestBody.input[0].content[0].type, "input_text");
+    assert.deepEqual(requestBody.input[0].content[1], { type: "input_image", image_url: "data:image/jpeg;base64,AQIDBA==" });
     assert.ok(body.tools.some((tool) => tool.name === "openai.responses"));
   });
 
@@ -463,6 +466,7 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(response.status, 200);
     assert.match(csp, /script-src 'self' 'nonce-/);
     assert.match(csp, /'wasm-unsafe-eval'/);
+    assert.match(csp, /frame-src https:\/\/\*\.readyplayer\.me/);
     assert.match(csp, /frame-ancestors 'none'/);
   });
 });

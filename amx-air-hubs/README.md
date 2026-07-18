@@ -7,7 +7,8 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - React 19 and Vite client with responsive desktop/mobile navigation.
 - Three.js WebGPU renderer with WebGL fallback and WebXR session support.
 - Meta IWSDK Quest runtime with ECS inspection, IWER controller emulation, locomotion, grabbing, and Havok physics.
-- Camera-based AR, LiveKit room media, and local self-view fallback.
+- Camera-based AR, LiveKit room media with verified mic/playback diagnostics, and local self-view fallback.
+- Selectable Three.js world cameras, consent-gated live vision scans, and archived Ready Player Me GLB avatar loading.
 - Governed AI digital twin with Blender node bindings, predictive risk, sandbox scenarios, approvals, and durable audit events.
 - Reality reconstruction skills for spatial capture, semantic meshing, generated PBR textures, light matching, anchor alignment, and validation artifacts.
 - Supabase Realtime room messaging with local BroadcastChannel fallback.
