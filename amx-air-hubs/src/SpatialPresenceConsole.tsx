@@ -10,6 +10,7 @@ type VisionSource = "live" | "world";
 type VisionState = "idle" | "capturing" | "analyzing" | "complete" | "error";
 
 interface Props {
+  view: "npc" | "vision";
   agents: Agent[];
   localStream: MediaStream | null;
   activeCamera: WorldCameraId;
@@ -54,7 +55,7 @@ function normalizeAvatarUrl(value: string) {
   }
 }
 
-export function SpatialPresenceConsole({ agents, localStream, activeCamera, onActiveCamera, captureWorld, avatarUrl, onAvatarUrl, npcState, onNpcCommand }: Props) {
+export function SpatialPresenceConsole({ view, agents, localStream, activeCamera, onActiveCamera, captureWorld, avatarUrl, onAvatarUrl, npcState, onNpcCommand }: Props) {
   const liveVideoRef = useRef<HTMLVideoElement>(null);
   const scanBusyRef = useRef(false);
   const avatarObjectUrlRef = useRef("");
@@ -158,6 +159,17 @@ export function SpatialPresenceConsole({ agents, localStream, activeCamera, onAc
   const nextNpcCommandId = () => `${Date.now()}-${++npcCommandSequence.current}`;
   const issueNpcCommand = (command: Omit<NpcCommand, "id" | "agentId">) => {
     onNpcCommand({ ...command, id: nextNpcCommandId(), agentId: npcAgentId });
+    const agentName = agents.find((agent) => agent.id === npcAgentId)?.name || "NPC";
+    const waypoint = command.waypoint ? NPC_WAYPOINTS.find((item) => item.id === command.waypoint) : undefined;
+    const feedback = command.kind === "action" ? `${agentName} is performing ${command.action || "the requested action"}.`
+      : command.kind === "move" ? `${agentName} is navigating to ${waypoint?.label || "the selected destination"}.`
+        : command.kind === "behavior" ? `${agentName} switched to ${command.behavior || "hold"} behavior.`
+          : command.kind === "stop" ? `${agentName} stopped and is holding position.`
+            : command.kind === "nudge" ? `${agentName} moved ${command.direction || "to the next position"}.` : "";
+    if (feedback) {
+      setNpcCueState("complete");
+      setNpcCueResult(feedback);
+    }
   };
   const nudgeNpc = (direction: NpcDirection) => issueNpcCommand({ kind: "nudge", direction });
   const assignNpcAgent = (agentId: string) => {
@@ -193,37 +205,8 @@ export function SpatialPresenceConsole({ agents, localStream, activeCamera, onAc
   const activePreset = AVATAR_PRESETS.find((preset) => preset.url === avatarUrl);
 
   return <section className="spatial-presence-console">
-    <div className="spatial-console-section">
-      <div className="spatial-console-head"><div><span className="eyebrow">WORLD CAMERAS</span><h3>Capture viewpoints</h3></div><Cctv/></div>
-      <div className="world-camera-selector" role="tablist" aria-label="World camera viewpoint">
-        {WORLD_CAMERAS.map((camera) => <button key={camera.id} className={activeCamera === camera.id ? "active" : ""} onClick={() => onActiveCamera(camera.id)} title={camera.detail}><Camera/><span>{camera.label}</span></button>)}
-      </div>
-    </div>
-
-    <div className="spatial-console-section vision-console">
-      <div className="spatial-console-head"><div><span className="eyebrow">REALTIME VISION</span><h3>Agent scene scan</h3></div><ScanLine className={continuousVision ? "scanning" : ""}/></div>
-      <div className="vision-source-control" role="tablist" aria-label="Vision source">
-        <button className={visionSource === "world" ? "active" : ""} onClick={() => setVisionSource("world")}><Cctv/>World</button>
-        <button className={visionSource === "live" ? "active" : ""} onClick={() => setVisionSource("live")} disabled={!liveReady}><Camera/>Live</button>
-      </div>
-      <label className="vision-consent"><input type="checkbox" checked={visionConsent} onChange={(event) => { setVisionConsent(event.target.checked); if (!event.target.checked) setContinuousVision(false); }}/><span><b>Allow visual analysis</b><small>Frames are sent only after this consent is enabled.</small></span></label>
-      <div className="vision-actions">
-        <button className="button secondary" disabled={!visionConsent || busy || (visionSource === "live" && !liveReady)} onClick={() => void analyzeFrame()}>{busy ? <LoaderCircle className="spin"/> : <Eye/>}{busy ? "Analyzing" : "Analyze frame"}</button>
-        <button className={`vision-live-toggle ${continuousVision ? "active" : ""}`} role="switch" aria-checked={continuousVision} disabled={!visionConsent || (visionSource === "live" && !liveReady)} onClick={() => setContinuousVision((value) => !value)}><i/><span>12s live scan</span></button>
-      </div>
-      <output className={`vision-result ${visionState}`}><span><Bot/>{visionTimestamp || "VISION IDLE"}</span><p>{visionResult}</p></output>
-      <video ref={liveVideoRef} className="vision-frame-source" muted playsInline/>
-    </div>
-
-    <div className="spatial-console-section avatar-console">
-      <div className="spatial-console-head"><div><span className="eyebrow">BUILT-IN / GLB AVATARS</span><h3>Room avatar</h3></div><UserRound/></div>
-      <label className="avatar-preset-control"><span>Built-in avatar</span><select value={activePreset?.url || ""} onChange={(event) => { const url = event.target.value; if (url) onAvatarUrl(url); }}><option value="" disabled>Custom avatar</option>{AVATAR_PRESETS.map((preset) => <option key={preset.id} value={preset.url}>{preset.label}</option>)}</select></label>
-      <div className="avatar-url-row"><input aria-label="Ready Player Me GLB URL" placeholder="https://models.readyplayer.me/...glb" value={avatarInput} onChange={(event) => setAvatarInput(event.target.value)}/><button onClick={applyAvatarUrl} disabled={!normalizeAvatarUrl(avatarInput)}>Load</button></div>
-      <div className="avatar-import-actions"><label className="button secondary"><Upload/>Import exported GLB<input type="file" accept=".glb,model/gltf-binary" onChange={(event) => { importAvatar(event.target.files?.[0]); event.target.value = ""; }}/></label><button className="button secondary" disabled={!creatorUrl} onClick={() => setCreatorOpen(true)}><UserRound/>{creatorUrl ? "Open private creator" : "Creator retired"}</button></div>
-      {avatarUrl && <p className="avatar-active"><i/>{activePreset ? `${activePreset.label} loaded into the Blender room` : "Custom avatar loaded into the Blender room"}</p>}
-    </div>
-
-    <div className="spatial-console-section npc-director">
+    {view === "npc" && <>
+      <div className="spatial-console-section npc-director">
       <div className="spatial-console-head"><div><span className="eyebrow">NPC DIRECTOR / AGENT CONTROL</span><h3>Avatar behavior</h3></div><Bot/></div>
       <label className="npc-agent-control"><span>Assigned agent</span><select value={npcAgentId} onChange={(event) => assignNpcAgent(event.target.value)}>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} / {agent.specialty}</option>)}</select></label>
       <output className="npc-runtime-status"><span className={npcState.moving ? "moving" : ""}><i/>{npcState.action}</span><code>{npcState.position[0].toFixed(1)} / {npcState.position[2].toFixed(1)}</code><b>{npcState.behavior}</b></output>
@@ -247,7 +230,40 @@ export function SpatialPresenceConsole({ agents, localStream, activeCamera, onAc
       <div className="npc-actions"><button onClick={() => issueNpcCommand({ kind: "action", action: "wave" })}><Hand/>Wave</button><button onClick={() => issueNpcCommand({ kind: "action", action: "talk" })}><MessageCircle/>Talk</button><button onClick={() => issueNpcCommand({ kind: "action", action: "inspect" })}><ScanSearch/>Inspect</button></div>
       <form className="npc-agent-cue" onSubmit={(event) => { event.preventDefault(); void runNpcCue(); }}><input aria-label="NPC agent cue" value={npcCue} onChange={(event) => setNpcCue(event.target.value)} placeholder="Send JAZ to inspect the media wall"/><button aria-label="Run NPC agent cue" title="Run cue" disabled={!npcCue.trim() || npcCueState === "running"}>{npcCueState === "running" ? <LoaderCircle className="spin"/> : <Send/>}</button></form>
       <output className={`npc-cue-result ${npcCueState}`}><Bot/><p>{npcCueResult}</p></output>
-    </div>
+      </div>
+
+      <div className="spatial-console-section avatar-console">
+        <div className="spatial-console-head"><div><span className="eyebrow">BUILT-IN / GLB AVATARS</span><h3>Room avatar</h3></div><UserRound/></div>
+        <label className="avatar-preset-control"><span>Built-in avatar</span><select value={activePreset?.url || ""} onChange={(event) => { const url = event.target.value; if (url) onAvatarUrl(url); }}><option value="" disabled>Custom avatar</option>{AVATAR_PRESETS.map((preset) => <option key={preset.id} value={preset.url}>{preset.label}</option>)}</select></label>
+        <div className="avatar-url-row"><input aria-label="Ready Player Me GLB URL" placeholder="https://models.readyplayer.me/...glb" value={avatarInput} onChange={(event) => setAvatarInput(event.target.value)}/><button onClick={applyAvatarUrl} disabled={!normalizeAvatarUrl(avatarInput)}>Load</button></div>
+        <div className="avatar-import-actions"><label className="button secondary"><Upload/>Import exported GLB<input type="file" accept=".glb,model/gltf-binary" onChange={(event) => { importAvatar(event.target.files?.[0]); event.target.value = ""; }}/></label><button className="button secondary" disabled={!creatorUrl} onClick={() => setCreatorOpen(true)}><UserRound/>{creatorUrl ? "Open private creator" : "Creator retired"}</button></div>
+        {avatarUrl && <p className="avatar-active"><i/>{activePreset ? `${activePreset.label} loaded into the Blender room` : "Custom avatar loaded into the Blender room"}</p>}
+      </div>
+    </>}
+
+    {view === "vision" && <>
+      <div className="spatial-console-section">
+        <div className="spatial-console-head"><div><span className="eyebrow">WORLD CAMERAS</span><h3>Capture viewpoints</h3></div><Cctv/></div>
+        <div className="world-camera-selector" role="tablist" aria-label="World camera viewpoint">
+          {WORLD_CAMERAS.map((camera) => <button key={camera.id} className={activeCamera === camera.id ? "active" : ""} onClick={() => onActiveCamera(camera.id)} title={camera.detail}><Camera/><span>{camera.label}</span></button>)}
+        </div>
+      </div>
+
+      <div className="spatial-console-section vision-console">
+        <div className="spatial-console-head"><div><span className="eyebrow">REALTIME VISION</span><h3>Agent scene scan</h3></div><ScanLine className={continuousVision ? "scanning" : ""}/></div>
+        <div className="vision-source-control" role="tablist" aria-label="Vision source">
+          <button className={visionSource === "world" ? "active" : ""} onClick={() => setVisionSource("world")}><Cctv/>World</button>
+          <button className={visionSource === "live" ? "active" : ""} onClick={() => setVisionSource("live")} disabled={!liveReady}><Camera/>Live</button>
+        </div>
+        <label className="vision-consent"><input type="checkbox" checked={visionConsent} onChange={(event) => { setVisionConsent(event.target.checked); if (!event.target.checked) setContinuousVision(false); }}/><span><b>Allow visual analysis</b><small>Frames are sent only after this consent is enabled.</small></span></label>
+        <div className="vision-actions">
+          <button className="button secondary" disabled={!visionConsent || busy || (visionSource === "live" && !liveReady)} onClick={() => void analyzeFrame()}>{busy ? <LoaderCircle className="spin"/> : <Eye/>}{busy ? "Analyzing" : "Analyze frame"}</button>
+          <button className={`vision-live-toggle ${continuousVision ? "active" : ""}`} role="switch" aria-checked={continuousVision} disabled={!visionConsent || (visionSource === "live" && !liveReady)} onClick={() => setContinuousVision((value) => !value)}><i/><span>12s live scan</span></button>
+        </div>
+        <output className={`vision-result ${visionState}`}><span><Bot/>{visionTimestamp || "VISION IDLE"}</span><p>{visionResult}</p></output>
+        <video ref={liveVideoRef} className="vision-frame-source" muted playsInline/>
+      </div>
+    </>}
 
     {creatorOpen && <div className="rpm-modal" role="dialog" aria-modal="true" aria-label="Ready Player Me avatar creator">
       <div className="rpm-modal-head"><div><span className="eyebrow">READY PLAYER ME</span><b>Build your room avatar</b></div><button onClick={() => setCreatorOpen(false)} aria-label="Close avatar creator" title="Close"><X/></button></div>

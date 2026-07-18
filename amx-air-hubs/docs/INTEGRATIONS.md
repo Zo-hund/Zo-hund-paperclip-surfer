@@ -110,6 +110,8 @@ The built-in roster also includes Mario MXBC, Actor One, and Mr Lamont. Their ed
 
 The Nexus NPC Director treats the active avatar as an embodied room agent. Operators can send it to Entry, Stage, Media Wall, Rack Aisle, or Briefing; nudge it with the on-screen D-pad; adjust movement speed; stop or patrol; and trigger Wave, Talk, or Inspect poses. A focused world canvas also accepts WASD/arrow keys, and a double-click on the walk plane creates a bounded custom destination. Agent cues are converted into deterministic spatial commands in `src/npc-controller.ts`, then sent through the normal agent runtime for a role-aware acknowledgment and context response.
 
+The room route uses a viewport-bound command layout rather than a document-length dashboard. The Three.js scene and right control rail share the available space below the application and workspace bars. NPC, Pod, Media, and Vision are task tabs whose components remain mounted so room media and NPC responses survive view changes. At phone widths, the viewport splits vertically; the scene remains visible while the console body scrolls independently, and NPC feedback is pinned inside that control surface.
+
 Ready Player Me hosted services were discontinued on January 31, 2026. The room still supports archived Ready Player Me `.glb` files through local import and legacy HTTPS avatar URLs. Local object URLs are session-only and are never persisted or uploaded. Select `Use ZOHUND` to restore the built-in character after loading a custom avatar.
 
 `VITE_READY_PLAYER_ME_CREATOR_URL` is optional for organizations that retain a private compatible creator endpoint. Leave it empty for normal deployments; the retired public creator remains disabled.
