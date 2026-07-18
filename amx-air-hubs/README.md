@@ -13,7 +13,8 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Google Maps search, selection, shared geo anchors, and agent location context.
 - Selectable Three.js world cameras, consent-gated live vision scans, four Blender-prepared built-in avatars, and archived Ready Player Me GLB loading.
 - NPC avatar direction with named room waypoints, D-pad and focused keyboard movement, double-click navigation, speed control, procedural actions, patrol behavior, and assigned-agent cues.
-- Above-the-fold Nexus workspace with a persistent 3D world, task-scoped NPC/Pod/Media/Vision rail, pinned action feedback, and independent mobile control scrolling.
+- Runway Characters realtime avatars with microphone, camera, screen context, transcripts, in-world screen routing, and an AMX client-action toolbelt.
+- Above-the-fold Nexus workspace with a persistent 3D world, task-scoped NPC/Avatar/Pod/Media/Vision rail, pinned action feedback, and independent mobile control scrolling.
 - Governed AI digital twin with Blender node bindings, predictive risk, sandbox scenarios, approvals, and durable audit events.
 - Reality reconstruction skills for spatial capture, semantic meshing, generated PBR textures, light matching, anchor alignment, and validation artifacts.
 - Supabase Realtime room messaging with local BroadcastChannel fallback.
@@ -58,7 +59,7 @@ pnpm --filter @amx/air-hubs verify
 
 `GET /api/health` is the liveness probe. `GET /api/ready` evaluates the services listed in `REQUIRED_SERVICES`. The Control Center exposes the same state at `/control/runtime`.
 
-The private stage can run in `degraded` mode while optional Agent, MCP, Plugin, Supabase, and LiveKit integrations are absent. Configure them and add their names to `REQUIRED_SERVICES` when the deployment must fail closed without them.
+The private stage can run in `degraded` mode while optional Agent, MCP, Plugin, Supabase, LiveKit, and Runway integrations are absent. Configure them and add their names to `REQUIRED_SERVICES` when the deployment must fail closed without them.
 
 ## Source Layout
 

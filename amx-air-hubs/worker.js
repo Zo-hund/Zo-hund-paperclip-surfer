@@ -8,7 +8,7 @@ const MAX_AGENT_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const MAX_GATEWAY_RESPONSE_BYTES = 2 * 1024 * 1024;
-const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "proof-signing", "telemetry"]);
+const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "runway", "proof-signing", "telemetry"]);
 const DATA_CENTER_ADAPTERS = new Set(["redfish", "snmp", "modbus", "dcim"]);
 const MEDIA_TYPES = new Set([
   "application/json", "application/octet-stream", "application/pdf", "model/gltf+json", "model/gltf-binary",
@@ -24,6 +24,27 @@ const AGENT_TOOLS = [
   { name: "tenant.capacity-plan", description: "Calculate tenant power and compute headroom", source: "skill", available: true },
   { name: "incident.runbook", description: "Build a guarded response plan for the active scenario", source: "skill", available: true },
   { name: "workshop.brief", description: "Generate a facilitator brief from the twin state", source: "skill", available: true },
+];
+const RUNWAY_API_BASE = "https://api.dev.runwayml.com";
+const RUNWAY_API_VERSION = "2024-11-06";
+const RUNWAY_PRESETS = [
+  { id: "human-resource", name: "Human Resource", type: "preset", status: "READY" },
+  { id: "tennis-coach", name: "Tennis Coach", type: "preset", status: "READY" },
+  { id: "cooking-teacher", name: "Cooking Teacher", type: "preset", status: "READY" },
+  { id: "fashion-designer", name: "Fashion Designer", type: "preset", status: "READY" },
+  { id: "game-character", name: "Game Character", type: "preset", status: "READY" },
+  { id: "game-character-man", name: "Game Character Man", type: "preset", status: "READY" },
+  { id: "music-superstar", name: "Music Superstar", type: "preset", status: "READY" },
+  { id: "influencer", name: "Influencer", type: "preset", status: "READY" },
+  { id: "cat-character", name: "Cat Character", type: "preset", status: "READY" },
+];
+const RUNWAY_PRESET_IDS = new Set(RUNWAY_PRESETS.map((avatar) => avatar.id));
+const RUNWAY_CLIENT_TOOLS = [
+  { type: "client_event", name: "set_world_camera", description: "Switch the Nexus 3D world camera when the user asks to inspect a room viewpoint.", parameters: [{ name: "camera", type: "string", description: "Camera viewpoint", enum: ["overview", "entry", "rack", "briefing"] }] },
+  { type: "client_event", name: "move_room_avatar", description: "Move the embodied GLB room avatar to a named Nexus waypoint when the user asks it to go somewhere.", parameters: [{ name: "destination", type: "string", description: "Room waypoint", enum: ["entry", "stage", "media", "rack", "briefing"] }] },
+  { type: "client_event", name: "perform_room_action", description: "Trigger a visible action on the embodied GLB room avatar when the user asks it to wave, talk, or inspect.", parameters: [{ name: "action", type: "string", description: "Visible avatar action", enum: ["wave", "talk", "inspect"] }] },
+  { type: "client_event", name: "open_nexus_panel", description: "Open a Nexus console panel when it is useful to show NPC controls, the LiveKit pod, media, vision, or the Runway avatar.", parameters: [{ name: "panel", type: "string", description: "Nexus console panel", enum: ["npc", "pod", "media", "vision", "runway"] }] },
+  { type: "client_event", name: "invoke_amx_tool", description: "Run a governed AMX read-only skill when the user asks for mission context, pod inspection, a thermal map, or an incident plan.", parameters: [{ name: "tool", type: "string", description: "Governed AMX skill name", enum: ["mission.context", "dcim.inspect", "rack.thermal-map", "incident.runbook"] }] },
 ];
 
 class HttpError extends Error {
@@ -133,6 +154,7 @@ function runtimeReadiness(env) {
     mcp: serviceUrlConfigured(env.MCP_GATEWAY_URL, ["https:", "http:"]),
     plugins: serviceUrlConfigured(env.PLUGIN_GATEWAY_URL, ["https:", "http:"]),
     livekit: serviceUrlConfigured(env.LIVEKIT_URL, ["wss:", "ws:"]) && Boolean(env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET),
+    runway: Boolean(String(env.RUNWAYML_API_SECRET || "").trim()),
     "proof-signing": Boolean(env.PROOF_SIGNING_SECRET),
     telemetry: Boolean(env.DB && env.DCIM_INGEST_TOKEN),
   };
@@ -356,6 +378,90 @@ async function openAIResponse(env, payload, requestId) {
   }
 }
 
+async function runwayRequest(env, path, options = {}, bearerToken) {
+  const token = String(bearerToken || env.RUNWAYML_API_SECRET || "").trim();
+  if (!token) throw new HttpError(503, "Runway Characters is not configured on this stage");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(`${RUNWAY_API_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "X-Runway-Version": RUNWAY_API_VERSION,
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...(options.headers || {}),
+      },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_GATEWAY_RESPONSE_BYTES) throw new Error("Runway response is too large");
+    let result = {};
+    try { result = text ? JSON.parse(text) : {}; }
+    catch { throw new Error("Runway returned an invalid response"); }
+    if (!response.ok) {
+      const detail = safeLabel(result?.error || result?.message || `Runway API returned ${response.status}`, "Runway request failed");
+      throw new HttpError(response.status === 401 || response.status === 403 ? 503 : 502, detail);
+    }
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeRunwayAvatars(payload) {
+  const items = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : [];
+  return items.filter(isPlainObject).slice(0, 50).map((avatar) => ({
+    id: safeId(avatar.id),
+    name: safeLabel(avatar.name, "Runway Character").slice(0, 80),
+    type: "custom",
+    status: ["PROCESSING", "READY", "FAILED"].includes(avatar.status) ? avatar.status : "PROCESSING",
+    imageUrl: typeof avatar.processedImageUri === "string" && avatar.processedImageUri.startsWith("https://") ? avatar.processedImageUri
+      : typeof avatar.referenceImageUri === "string" && avatar.referenceImageUri.startsWith("https://") ? avatar.referenceImageUri : undefined,
+  })).filter((avatar) => avatar.id);
+}
+
+async function createRunwaySession(env, body) {
+  const avatarId = safeId(body.avatarId).slice(0, 96);
+  const avatarType = body.avatarType === "custom" ? "custom" : "preset";
+  if (!avatarId) throw new HttpError(400, "avatarId is required");
+  if (avatarType === "preset" && !RUNWAY_PRESET_IDS.has(avatarId)) throw new HttpError(400, "Unknown Runway preset avatar");
+  const roomCode = safeId(body.roomCode, "NEXUS1").toUpperCase().slice(0, 64);
+  const personality = String(body.personality || "").trim().slice(0, 4_000);
+  const startScript = String(body.startScript || "").trim().slice(0, 800);
+  const created = await runwayRequest(env, "/v1/realtime_sessions", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gwm1_avatars",
+      avatar: avatarType === "custom" ? { type: "custom", avatarId } : { type: "runway-preset", presetId: avatarId },
+      maxDuration: 300,
+      ...(personality ? { personality } : {}),
+      ...(startScript ? { startScript } : {}),
+      tools: RUNWAY_CLIENT_TOOLS,
+    }),
+  });
+  const sessionId = safeId(created?.id).slice(0, 96);
+  if (!sessionId) throw new Error("Runway did not return a session ID");
+
+  let sessionKey = "";
+  for (let attempt = 0; attempt < 28; attempt += 1) {
+    const session = await runwayRequest(env, `/v1/realtime_sessions/${sessionId}`);
+    if (session.status === "READY" && typeof session.sessionKey === "string") {
+      sessionKey = session.sessionKey;
+      break;
+    }
+    if (["FAILED", "CANCELLED", "COMPLETED"].includes(session.status)) throw new HttpError(502, safeLabel(session.failure, `Runway session ${session.status.toLowerCase()}`));
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  if (!sessionKey) throw new HttpError(504, "Runway session provisioning timed out");
+  const credentials = await runwayRequest(env, `/v1/realtime_sessions/${sessionId}/consume`, { method: "POST" }, sessionKey);
+  const serverUrl = typeof credentials.url === "string" ? credentials.url : credentials.serverUrl;
+  const token = typeof credentials.token === "string" ? credentials.token : "";
+  const roomName = safeLabel(credentials.roomName, roomCode);
+  if (!serverUrl || !token || !roomName) throw new Error("Runway returned incomplete session credentials");
+  return { sessionId, serverUrl, token, roomName };
+}
+
 function agentCapabilities(env) {
   const readiness = runtimeReadiness(env);
   const mcpGatewayConfigured = readiness.components.mcp;
@@ -366,6 +472,7 @@ function agentCapabilities(env) {
     mcpGatewayConfigured,
     pluginGatewayConfigured,
     livekitConfigured: readiness.components.livekit,
+    runwayConfigured: readiness.components.runway,
     persistenceConfigured: readiness.components.database,
     mediaStorageConfigured: readiness.components.media,
     roomTransport: readiness.roomTransport,
@@ -834,6 +941,24 @@ async function handleApi(request, env, url, requestId) {
     return reply({ ...readiness, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, readiness.ready ? 200 : 503);
   }
   if (request.method === "GET" && url.pathname === "/api/agents/capabilities") return reply(agentCapabilities(env));
+  if (request.method === "GET" && url.pathname === "/api/runway/avatars") {
+    const configured = Boolean(String(env.RUNWAYML_API_SECRET || "").trim());
+    if (!configured) return reply({ configured: false, presets: RUNWAY_PRESETS, avatars: [] });
+    const catalog = await runwayRequest(env, "/v1/avatars?limit=50");
+    return reply({ configured: true, presets: RUNWAY_PRESETS, avatars: normalizeRunwayAvatars(catalog) });
+  }
+  if (request.method === "POST" && url.pathname === "/api/runway/sessions") {
+    if (!String(env.RUNWAYML_API_SECRET || "").trim()) return reply({ error: "Runway Characters is not configured on this stage", configured: false, requestId }, 503);
+    const session = await createRunwaySession(env, await readJson(request, 32 * 1024));
+    logEvent("info", "runway.session_created", { requestId, sessionId: session.sessionId, roomName: session.roomName });
+    return reply({ ...session, requestId }, 201);
+  }
+  if (request.method === "DELETE" && url.pathname.startsWith("/api/runway/sessions/")) {
+    const sessionId = safeId(url.pathname.split("/").pop()).slice(0, 96);
+    if (!sessionId) return reply({ error: "sessionId is required", requestId }, 400);
+    await runwayRequest(env, `/v1/realtime_sessions/${sessionId}`, { method: "DELETE" });
+    return new Response(null, { status: 204, headers: capabilityHeaders({ "Cache-Control": "no-store", "X-Request-ID": requestId }) });
+  }
   if (request.method === "GET" && url.pathname === "/api/maps/config") {
     const apiKey = String(env.GOOGLE_MAPS_BROWSER_KEY || "").trim();
     return reply({ configured: Boolean(apiKey), ...(apiKey ? { apiKey } : {}) });

@@ -46,6 +46,12 @@ importers:
       '@iwsdk/core':
         specifier: 0.4.2
         version: 0.4.2(@types/react@19.2.14)(react@19.2.4)
+      '@runwayml/avatars-react':
+        specifier: ^0.17.0
+        version: 0.17.0(@types/dom-mediacapture-record@1.0.22)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(tslib@2.8.1)
+      '@runwayml/sdk':
+        specifier: ^4.10.0
+        version: 4.10.0
       '@supabase/supabase-js':
         specifier: 2.110.3
         version: 2.110.3
@@ -73,13 +79,16 @@ importers:
       three:
         specifier: npm:super-three@^0.181.0
         version: super-three@0.181.0
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       '@iwsdk/cli':
         specifier: 0.4.2
         version: 0.4.2
       '@iwsdk/reference':
         specifier: 0.4.2
-        version: 0.4.2(zod@4.4.3)
+        version: 0.4.2(zod@3.25.76)
       '@iwsdk/vite-plugin-dev':
         specifier: 0.4.2
         version: 0.4.2(@types/react@19.2.14)(use-sync-external-store@1.6.0(react@19.2.4))(vite@7.3.1(@types/node@25.2.3)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0))
@@ -3454,6 +3463,19 @@ packages:
     resolution: {integrity: sha512-X+zaP2x+j4RXGfbp/seSoRHWnPxzApilDszisZxbYH5C/jTxFhCtDNdPGZb9lJyYPs24wGxruPF7Y+sIXt9Gzw==}
     cpu: [x64]
     os: [win32]
+
+  '@runwayml/avatars-react@0.17.0':
+    resolution: {integrity: sha512-EWszgk20mYk+++JqmJbOAlU2y2f8d2AqBg/mN2e+oXejFJVNnx0stZD3nmVJtz4enVNzXWsjqVFSP/RbbbH+TQ==}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
+
+  '@runwayml/avatars@0.17.0':
+    resolution: {integrity: sha512-jbi1pITBtzSak6hlS7cGTjK/dgLKGnmx4qmcWOpljPh5whnWBgTKTb+03Kjx5CHE/L4EklAN5S1G35E6ZqJUzw==}
+
+  '@runwayml/sdk@4.10.0':
+    resolution: {integrity: sha512-8VgOhx0PSBU9zOkARi3lCBzUQNLhsBmvhfpcuvhprnFVB9t+ZC3Vx0qJbLALbfvvNY8roTpbJfFD/q8PO0jKtg==}
+    hasBin: true
 
   '@smithy/abort-controller@4.2.8':
     resolution: {integrity: sha512-peuVfkYHAmS5ybKxWcfraK7WBBP0J+rkfUcbHJJKQ4ir3UAUNQI+Y4Vt/PqSzGqgloJ5O1dk7+WzNL8wcCSXbw==}
@@ -7390,9 +7412,6 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
-
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -8076,11 +8095,11 @@ snapshots:
       '@better-fetch/fetch': 1.1.21
       '@opentelemetry/semantic-conventions': 1.42.0
       '@standard-schema/spec': 1.1.0
-      better-call: 1.3.5(zod@4.3.6)
+      better-call: 1.3.5(zod@4.4.3)
       jose: 6.1.3
       kysely: 0.29.2
       nanostores: 1.4.0
-      zod: 4.3.6
+      zod: 4.4.3
 
   '@better-auth/drizzle-adapter@1.6.11(@better-auth/core@1.6.11(@better-auth/utils@0.4.0)(@better-fetch/fetch@1.1.21)(better-call@1.3.5(zod@3.25.76))(jose@6.1.3)(kysely@0.29.2)(nanostores@1.4.0))(@better-auth/utils@0.4.0)(drizzle-orm@0.38.4(@electric-sql/pglite@0.3.15)(@types/react@19.2.14)(better-sqlite3@12.8.0)(kysely@0.29.2)(pg@8.18.0)(postgres@3.4.8)(react@19.2.7))':
     dependencies:
@@ -9068,10 +9087,10 @@ snapshots:
       three: 0.176.0
       three-mesh-bvh: 0.9.11(three@0.176.0)
 
-  '@iwsdk/reference@0.4.2(zod@4.4.3)':
+  '@iwsdk/reference@0.4.2(zod@3.25.76)':
     dependencies:
       '@huggingface/transformers': 3.8.1
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
+      '@modelcontextprotocol/sdk': 1.29.0(zod@3.25.76)
       tar: 7.5.20
     transitivePeerDependencies:
       - '@cfworker/json-schema'
@@ -9368,6 +9387,14 @@ snapshots:
       rxjs: 7.8.2
       tslib: 2.8.1
 
+  '@livekit/components-core@0.12.13(livekit-client@2.20.1(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)':
+    dependencies:
+      '@floating-ui/dom': 1.7.4
+      livekit-client: 2.20.1(@types/dom-mediacapture-record@1.0.22)
+      loglevel: 1.9.1
+      rxjs: 7.8.2
+      tslib: 2.8.1
+
   '@livekit/components-react@2.9.21(livekit-client@2.19.1(@types/dom-mediacapture-record@1.0.22))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(tslib@2.8.1)':
     dependencies:
       '@livekit/components-core': 0.12.13(livekit-client@2.19.1(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)
@@ -9375,6 +9402,18 @@ snapshots:
       events: 3.3.0
       jose: 6.1.3
       livekit-client: 2.19.1(@types/dom-mediacapture-record@1.0.22)
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+      tslib: 2.8.1
+      usehooks-ts: 3.1.1(react@19.2.4)
+
+  '@livekit/components-react@2.9.21(livekit-client@2.20.1(@types/dom-mediacapture-record@1.0.22))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(tslib@2.8.1)':
+    dependencies:
+      '@livekit/components-core': 0.12.13(livekit-client@2.20.1(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)
+      clsx: 2.1.1
+      events: 3.3.0
+      jose: 6.1.3
+      livekit-client: 2.20.1(@types/dom-mediacapture-record@1.0.22)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
       tslib: 2.8.1
@@ -9492,28 +9531,6 @@ snapshots:
       raw-body: 3.0.2
       zod: 3.25.76
       zod-to-json-schema: 3.25.2(zod@3.25.76)
-    transitivePeerDependencies:
-      - supports-color
-
-  '@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)':
-    dependencies:
-      '@hono/node-server': 1.19.12(hono@4.12.9)
-      ajv: 8.18.0
-      ajv-formats: 3.0.1(ajv@8.18.0)
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.0.6
-      express: 5.2.1
-      express-rate-limit: 8.3.2(express@5.2.1)
-      hono: 4.12.9
-      jose: 6.1.3
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.2
-      zod: 4.4.3
-      zod-to-json-schema: 3.25.2(zod@4.4.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -10485,6 +10502,26 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.61.1':
     optional: true
 
+  '@runwayml/avatars-react@0.17.0(@types/dom-mediacapture-record@1.0.22)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(tslib@2.8.1)':
+    dependencies:
+      '@livekit/components-react': 2.9.21(livekit-client@2.20.1(@types/dom-mediacapture-record@1.0.22))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(tslib@2.8.1)
+      '@runwayml/avatars': 0.17.0(@types/dom-mediacapture-record@1.0.22)
+      livekit-client: 2.20.1(@types/dom-mediacapture-record@1.0.22)
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+    transitivePeerDependencies:
+      - '@livekit/krisp-noise-filter'
+      - '@types/dom-mediacapture-record'
+      - tslib
+
+  '@runwayml/avatars@0.17.0(@types/dom-mediacapture-record@1.0.22)':
+    dependencies:
+      livekit-client: 2.20.1(@types/dom-mediacapture-record@1.0.22)
+    transitivePeerDependencies:
+      - '@types/dom-mediacapture-record'
+
+  '@runwayml/sdk@4.10.0': {}
+
   '@smithy/abort-controller@4.2.8':
     dependencies:
       '@smithy/types': 4.12.0
@@ -11437,12 +11474,12 @@ snapshots:
       '@better-fetch/fetch': 1.1.21
       '@noble/ciphers': 2.1.1
       '@noble/hashes': 2.0.1
-      better-call: 1.3.5(zod@4.3.6)
+      better-call: 1.3.5(zod@4.4.3)
       defu: 6.1.4
       jose: 6.1.3
       kysely: 0.29.2
       nanostores: 1.4.0
-      zod: 4.3.6
+      zod: 4.4.3
     optionalDependencies:
       better-sqlite3: 12.8.0
       drizzle-kit: 0.31.9
@@ -11455,14 +11492,14 @@ snapshots:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
 
-  better-call@1.3.5(zod@4.3.6):
+  better-call@1.3.5(zod@4.4.3):
     dependencies:
       '@better-auth/utils': 0.4.0
       '@better-fetch/fetch': 1.1.21
       rou3: 0.7.12
       set-cookie-parser: 3.1.1
     optionalDependencies:
-      zod: 4.3.6
+      zod: 4.4.3
 
   better-sqlite3@12.8.0:
     dependencies:
@@ -15191,13 +15228,7 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  zod-to-json-schema@3.25.2(zod@4.4.3):
-    dependencies:
-      zod: 4.4.3
-
   zod@3.25.76: {}
-
-  zod@4.3.6: {}
 
   zod@4.4.3: {}
 

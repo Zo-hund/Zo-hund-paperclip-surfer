@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, Bot, Box, BrainCircuit, Camera, Cpu, Crosshair, Database, Gauge, Lightbulb,
-  LocateFixed, MapPin, MonitorPlay, Radio, RefreshCw, Router, Satellite, ScanLine, Server, Sun, Users, Wifi, Zap,
+  LocateFixed, MapPin, MonitorPlay, Radio, RefreshCw, Router, Satellite, ScanLine, Server, Sun, Users, Video, Wifi, Zap,
 } from "lucide-react";
 import { agents } from "../data";
 import { useGeoAnchors, type GeoAnchor } from "../geospatial";
@@ -19,9 +19,10 @@ const SpatialPresenceConsole = lazy(async () => ({ default: (await import("../Sp
 const DigitalTwinLab = lazy(async () => ({ default: (await import("../DigitalTwinLab")).DigitalTwinLab }));
 const NexusMediaPlayer = lazy(async () => ({ default: (await import("../NexusMediaPlayer")).NexusMediaPlayer }));
 const GoogleLocationPanel = lazy(async () => ({ default: (await import("../GoogleLocationPanel")).GoogleLocationPanel }));
+const RunwayAvatarConsole = lazy(async () => ({ default: (await import("../RunwayAvatarConsole")).RunwayAvatarConsole }));
 
 type NexusTab = "room" | "twin" | "anchors" | "fleet" | "factory";
-type RoomConsoleView = "npc" | "pod" | "media" | "vision";
+type RoomConsoleView = "npc" | "pod" | "media" | "vision" | "runway";
 
 function useNexusTelemetry() {
   const [tick, setTick] = useState(0);
@@ -64,6 +65,8 @@ export function NexusPage() {
   const [npcCommand, setNpcCommand] = useState<NpcCommand | null>(null);
   const [npcState, setNpcState] = useState<NpcRuntimeState>(DEFAULT_NPC_STATE);
   const worldCaptureRef = useRef<WorldCameraCapture | null>(null);
+  const runwayVideoRef = useRef<HTMLVideoElement | null>(null);
+  const runwayCommandSequence = useRef(0);
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
   const [selectedAnchor, setSelectedAnchor] = useState<GeoAnchor | null>(null);
   const [rendererBackend, setRendererBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
@@ -75,6 +78,17 @@ export function NexusPage() {
     setMediaElement(video);
     setMediaFit(fit);
   }, []);
+  const bindRunwayVideo = useCallback((video: HTMLVideoElement | null) => {
+    if (video) {
+      runwayVideoRef.current = video;
+      setMediaElement(video);
+      setMediaFit("contain");
+      return;
+    }
+    const previous = runwayVideoRef.current;
+    runwayVideoRef.current = null;
+    setMediaElement((current) => current === previous ? null : current);
+  }, []);
   const updateAvatar = useCallback((url: string) => {
     setAvatarUrl(url);
     if (url && !url.startsWith("blob:")) localStorage.setItem("amx_ready_player_me_avatar", url);
@@ -85,6 +99,9 @@ export function NexusPage() {
     const safe = value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 12);
     setRoomCode(safe);
     localStorage.setItem("amx_nexus_room", safe);
+  };
+  const issueRunwayNpcCommand = (command: Omit<NpcCommand, "id" | "agentId">) => {
+    setNpcCommand({ ...command, id: `runway-${Date.now()}-${++runwayCommandSequence.current}`, agentId: npcState.agentId || crew[0].id });
   };
   const publishMapAnchor = (location: MapLocationSelection) => {
     const anchor = geo.publishAnchor({
@@ -128,7 +145,7 @@ export function NexusPage() {
       </section>
       <aside className="nexus-room-console">
         <div className="nexus-console-tabs" role="tablist" aria-label="Room console view">{([
-          ["npc", "NPC", Bot], ["pod", "Pod", Radio], ["media", "Media", MonitorPlay], ["vision", "Vision", ScanLine],
+          ["npc", "NPC", Bot], ["runway", "Avatar", Video], ["pod", "Pod", Radio], ["media", "Media", MonitorPlay], ["vision", "Vision", ScanLine],
         ] as const).map(([id, label, Icon]) => <button key={id} className={roomConsoleView === id ? "active" : ""} onClick={() => setRoomConsoleView(id)}><Icon/><span>{label}</span>{id === "npc" && <i className={npcState.moving ? "moving" : ""}/>}</button>)}</div>
         <div className="nexus-console-body">
           <div className="nexus-console-view" hidden={roomConsoleView !== "npc" && roomConsoleView !== "vision"}>
@@ -143,6 +160,9 @@ export function NexusPage() {
               <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing media player</span></div>}><NexusMediaPlayer onPanelVideo={bindPanelVideo}/></Suspense>
               <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing location map</span></div>}><GoogleLocationPanel agent={crew[0]} roomCode={roomCode} onSelection={setMapLocation} onPublishAnchor={publishMapAnchor}/></Suspense>
             </div>
+          </div>
+          <div className="nexus-console-view" hidden={roomConsoleView !== "runway"}>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing Runway Characters</span></div>}><RunwayAvatarConsole roomCode={roomCode} agentId={npcState.agentId || crew[0].id} onWorldCamera={setActiveWorldCamera} onMoveNpc={(waypoint) => issueRunwayNpcCommand({ kind: "move", waypoint })} onNpcAction={(action) => issueRunwayNpcCommand({ kind: "action", action })} onOpenPanel={setRoomConsoleView} onPanelVideo={bindRunwayVideo}/></Suspense>
           </div>
         </div>
       </aside>

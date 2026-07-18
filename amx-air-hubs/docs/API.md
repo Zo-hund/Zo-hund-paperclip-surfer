@@ -12,7 +12,7 @@ Liveness probe. Returns `200` while the Worker can serve requests.
 
 Readiness probe. Returns `200` when all names in `REQUIRED_SERVICES` are configured, otherwise `503`.
 
-Supported names: `database`, `media`, `realtime`, `rooms`, `agent`, `mcp`, `plugins`, `livekit`, and `proof-signing`.
+Supported names: `database`, `media`, `realtime`, `rooms`, `agent`, `mcp`, `plugins`, `livekit`, `runway`, `proof-signing`, and `telemetry`.
 
 ## Agents
 
@@ -57,6 +57,20 @@ Request:
 ```
 
 Returns `serverUrl`, `participantToken`, `room`, and `expiresIn`. Returns `503` when LiveKit is not configured.
+
+## Runway Characters
+
+### `GET /api/runway/avatars`
+
+Returns the supported Runway preset catalog and, when `RUNWAYML_API_SECRET` is configured, a sanitized list of the organization's custom avatars. Personality prompts, documents, and credentials are not returned.
+
+### `POST /api/runway/sessions`
+
+Creates a `gwm1_avatars` realtime session, attaches the AMX client-action toolbelt, waits for `READY`, consumes the one-time session key, and returns browser-safe WebRTC credentials. Sessions are capped at five minutes.
+
+### `DELETE /api/runway/sessions/:id`
+
+Cancels an active Runway session. The Nexus client calls this when the operator ends the avatar call.
 
 ## Proof and Analytics
 

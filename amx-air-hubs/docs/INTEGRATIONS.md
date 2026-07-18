@@ -1,6 +1,6 @@
 # Integration Contracts
 
-All secrets are Worker-only. Never use a `VITE_` prefix for Agent Runtime, MCP, Plugin, LiveKit secret, or proof-signing values.
+All secrets are Worker-only. Never use a `VITE_` prefix for Agent Runtime, MCP, Plugin, LiveKit secret, Runway, or proof-signing values.
 
 ## Agent Runtime
 
@@ -96,6 +96,16 @@ The pod also publishes browser screen sharing through LiveKit. The share picker 
 
 If LiveKit is absent or fails, the component opens a private local camera preview and labels it `LOCAL VIDEO`.
 
+## Runway Characters
+
+Configure `RUNWAYML_API_SECRET` as a Worker-only secret. The Nexus Avatar tab reads the sanitized catalog from `GET /api/runway/avatars`; the key never enters HTML, runtime configuration, logs, or browser JavaScript.
+
+Starting a call sends `POST /api/runway/sessions`. The Worker creates a `gwm1_avatars` session, attaches five client-event tools, polls with bounded timeouts, consumes the one-time session key, and returns only the WebRTC URL, participant token, room name, and session ID. Calls are capped at five minutes and explicitly cancelled when the operator ends them. Runway bills active realtime sessions, so do not leave unattended calls running.
+
+The Runway video participant is routed to the Blender room screens and remains mounted when the operator changes Nexus panels. Its toolbelt can switch world cameras, move or pose the GLB NPC, open Nexus panels, and invoke the allowlisted `mission.context`, `dcim.inspect`, `rack.thermal-map`, and `incident.runbook` skills. These are browser client events: Nexus executes them and displays a governed trace, but their result is not silently represented as a physical-world action.
+
+Runway Characters are realtime video personas, not rigged GLB assets. Blender/GLB avatars continue to own 3D locomotion and mesh animation; Runway owns conversational video, voice, and lip sync.
+
 ## Spatial Cameras and Vision
 
 The Nexus room provides overview, entry, rack, and briefing cameras. A world-camera frame is rendered from the active Three.js camera. A live-camera frame comes from the local LiveKit or private preview stream.
@@ -110,7 +120,7 @@ The built-in roster also includes Mario MXBC, Actor One, and Mr Lamont. Their ed
 
 The Nexus NPC Director treats the active avatar as an embodied room agent. Operators can send it to Entry, Stage, Media Wall, Rack Aisle, or Briefing; nudge it with the on-screen D-pad; adjust movement speed; stop or patrol; and trigger Wave, Talk, or Inspect poses. A focused world canvas also accepts WASD/arrow keys, and a double-click on the walk plane creates a bounded custom destination. Agent cues are converted into deterministic spatial commands in `src/npc-controller.ts`, then sent through the normal agent runtime for a role-aware acknowledgment and context response.
 
-The room route uses a viewport-bound command layout rather than a document-length dashboard. The Three.js scene and right control rail share the available space below the application and workspace bars. NPC, Pod, Media, and Vision are task tabs whose components remain mounted so room media and NPC responses survive view changes. At phone widths, the viewport splits vertically; the scene remains visible while the console body scrolls independently, and NPC feedback is pinned inside that control surface.
+The room route uses a viewport-bound command layout rather than a document-length dashboard. The Three.js scene and right control rail share the available space below the application and workspace bars. NPC, Avatar, Pod, Media, and Vision are task tabs whose components remain mounted so room media, avatar calls, and NPC responses survive view changes. At phone widths, the viewport splits vertically; the scene remains visible while the console body scrolls independently, and active feedback stays inside that control surface.
 
 Ready Player Me hosted services were discontinued on January 31, 2026. The room still supports archived Ready Player Me `.glb` files through local import and legacy HTTPS avatar URLs. Local object URLs are session-only and are never persisted or uploaded. Select `Use ZOHUND` to restore the built-in character after loading a custom avatar.
 

@@ -114,6 +114,70 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(text.includes("secret-mcp-token"), false);
   });
 
+  test("reports the Runway preset catalog truthfully when no server key is configured", async () => {
+    const response = await worker.fetch(request("/api/runway/avatars"), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.configured, false);
+    assert.ok(body.presets.some((avatar) => avatar.id === "human-resource"));
+    assert.deepEqual(body.avatars, []);
+  });
+
+  test("proxies a bounded Runway custom avatar catalog without exposing its key", async (context) => {
+    env.RUNWAYML_API_SECRET = "secret-runway-key";
+    context.mock.method(globalThis, "fetch", async (url, init) => {
+      assert.match(String(url), /\/v1\/avatars\?limit=50$/);
+      assert.equal(init.headers.Authorization, "Bearer secret-runway-key");
+      return new Response(JSON.stringify({ data: [{ id: "avatar-1", name: "JAZ Live", status: "READY", processedImageUri: "https://cdn.example.com/jaz.jpg", personality: "private" }] }), { headers: { "Content-Type": "application/json" } });
+    });
+    const response = await worker.fetch(request("/api/runway/avatars"), env);
+    const text = await response.text();
+    const body = JSON.parse(text);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.configured, true);
+    assert.deepEqual(body.avatars[0], { id: "avatar-1", name: "JAZ Live", type: "custom", status: "READY", imageUrl: "https://cdn.example.com/jaz.jpg" });
+    assert.equal(text.includes("secret-runway-key"), false);
+    assert.equal(text.includes("private"), false);
+  });
+
+  test("creates and consumes a Runway realtime avatar session with the AMX client toolbelt", async (context) => {
+    env.RUNWAYML_API_SECRET = "secret-runway-key";
+    const calls = [];
+    context.mock.method(globalThis, "fetch", async (url, init = {}) => {
+      calls.push({ url: String(url), init });
+      if (String(url).endsWith("/v1/realtime_sessions") && init.method === "POST") return new Response(JSON.stringify({ id: "session-1" }), { headers: { "Content-Type": "application/json" } });
+      if (String(url).endsWith("/v1/realtime_sessions/session-1/consume")) {
+        assert.equal(init.headers.Authorization, "Bearer session-key-1");
+        return new Response(JSON.stringify({ url: "wss://runway-live.example.com", token: "participant-token", roomName: "runway-room-1" }), { headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ id: "session-1", status: "READY", sessionKey: "session-key-1" }), { headers: { "Content-Type": "application/json" } });
+    });
+    const response = await worker.fetch(jsonRequest("/api/runway/sessions", {
+      avatarId: "human-resource", avatarType: "preset", roomCode: "NEXUS1", personality: "Training guide", startScript: "Welcome",
+    }), env);
+    const body = await response.json();
+    const createPayload = JSON.parse(calls[0].init.body);
+
+    assert.equal(response.status, 201);
+    assert.equal(body.sessionId, "session-1");
+    assert.equal(body.serverUrl, "wss://runway-live.example.com");
+    assert.equal(body.token, "participant-token");
+    assert.equal(createPayload.model, "gwm1_avatars");
+    assert.deepEqual(createPayload.avatar, { type: "runway-preset", presetId: "human-resource" });
+    assert.ok(createPayload.tools.some((tool) => tool.name === "invoke_amx_tool"));
+    assert.ok(createPayload.tools.some((tool) => tool.name === "move_room_avatar"));
+  });
+
+  test("requires server-side Runway configuration before creating a billable session", async () => {
+    const response = await worker.fetch(jsonRequest("/api/runway/sessions", { avatarId: "human-resource", avatarType: "preset" }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.match(body.error, /Runway Characters is not configured/);
+  });
+
   test("rejects malformed JSON with a bounded client error", async () => {
     const response = await worker.fetch(request("/api/agents/respond", { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": crypto.randomUUID() }, body: "{" }), env);
     const body = await response.json();
