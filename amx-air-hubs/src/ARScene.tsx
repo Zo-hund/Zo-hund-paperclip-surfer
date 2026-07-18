@@ -73,6 +73,27 @@ function buildAnchorMarker(color: number) {
   return marker;
 }
 
+function buildBrandMark(color: string) {
+  const mark = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.8, metalness: 0.58, roughness: 0.24 });
+  const segments: Array<[number, number, number]> = [
+    [-0.32, -0.18, -Math.PI / 3],
+    [0.32, -0.18, Math.PI / 3],
+    [0, 0.38, 0],
+  ];
+  for (const [x, y, rotation] of segments) {
+    const segment = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.78, 0.12), material);
+    segment.position.set(x, y, 0);
+    segment.rotation.z = rotation;
+    mark.add(segment);
+  }
+  mark.add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 10), material));
+  mark.scale.setScalar(0.52);
+  mark.position.set(0, 2.45, -0.45);
+  mark.visible = false;
+  return mark;
+}
+
 function cameraErrorMessage(error: unknown) {
   const name = error instanceof DOMException ? error.name : "";
   if (name === "NotAllowedError") return "Camera permission is blocked. Allow camera access in this site's browser settings, then retry.";
@@ -137,16 +158,8 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
     scene.add(anchorLayer);
     const remoteMarkers = new Map<string, THREE.Group>();
 
-    let brandMark: THREE.Object3D | null = null;
-    import("three/examples/jsm/loaders/GLTFLoader.js").then(({ GLTFLoader }) => {
-      new GLTFLoader().load("/models/amx-mark.bin", (gltf) => {
-        brandMark = gltf.scene;
-        brandMark.scale.setScalar(0.28);
-        brandMark.position.set(0, 2.45, -0.45);
-        brandMark.visible = false;
-        scene.add(brandMark);
-      });
-    });
+    const brandMark = buildBrandMark(agent.color);
+    scene.add(brandMark);
 
     const reticle = new THREE.Mesh(
       new THREE.RingGeometry(0.13, 0.18, 40).rotateX(-Math.PI / 2),
@@ -168,7 +181,7 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
       placedRef.current = true;
       setScenePlaced(true);
       agentGroup.visible = true;
-      if (brandMark) brandMark.visible = true;
+      brandMark.visible = true;
       agentGroup.position.copy(position);
       agentGroup.quaternion.copy(quaternion);
       onPlacedRef.current();
@@ -329,7 +342,7 @@ export function ARScene({ agent, onPlaced, onSessionStart, onAnchorPlaced, ancho
         if (!nativeAnchor) agentGroup.position.y += Math.sin(clock.elapsedTime * 2) * 0.0008;
         if (modeRef.current === "preview") agentGroup.rotation.y = Math.sin(clock.elapsedTime * 0.55) * 0.22;
       }
-      if (brandMark?.visible) brandMark.rotation.y = clock.elapsedTime * 0.35;
+      if (brandMark.visible) brandMark.rotation.y = clock.elapsedTime * 0.35;
       renderer.render(scene, camera);
     };
     let animationFrame = 0;

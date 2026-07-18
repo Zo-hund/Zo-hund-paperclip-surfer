@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Accessibility, Activity, ArrowRight, BadgeCheck, Bot, Box, BriefcaseBusiness, Camera,
@@ -117,6 +117,32 @@ function Cockpit2D({ mission, quest, onInteract }: { mission: Mission; quest: Qu
   </div>;
 }
 
+function AdaptiveARExperience({ comfort, onInteract, onFallback, cameraFallback }: {
+  comfort: ComfortSettings;
+  onInteract: (label: string) => void;
+  onFallback: (mode: ExperienceMode, reason: string) => void;
+  cameraFallback: ReactNode;
+}) {
+  const [runtime,setRuntime]=useState<"checking"|"camera"|"mr"|"vr">("checking");
+  useEffect(()=>{
+    let cancelled=false;
+    const detect=async()=>{
+      const xr=navigator.xr;
+      if(!xr){if(!cancelled)setRuntime("camera");return}
+      const [mr,vr]=await Promise.all([
+        xr.isSessionSupported("immersive-ar").catch(()=>false),
+        xr.isSessionSupported("immersive-vr").catch(()=>false),
+      ]);
+      if(!cancelled)setRuntime(mr?"mr":vr?"vr":"camera");
+    };
+    void detect();
+    return()=>{cancelled=true};
+  },[]);
+  if(runtime==="checking")return <div className="scene-loading" aria-label="Checking Quest XR support"/>;
+  if(runtime==="camera")return cameraFallback;
+  return <Suspense fallback={<div className="scene-loading" aria-label="Loading Quest world"/>}><IwsdkWorld key={`adaptive-${runtime}`} mode={runtime} comfort={comfort} onInteract={onInteract} onFallback={onFallback}/></Suspense>;
+}
+
 export function ModeExperiencePage({ mode }: { mode: ExperienceMode }) {
   const params = useParams();
   const stored = getContinuity();
@@ -161,8 +187,8 @@ export function ModeExperiencePage({ mode }: { mode: ExperienceMode }) {
     <div className="mode-switcher" aria-label="Experience mode">{experienceModes.map((item)=><button key={item.id} className={item.id===mode?"active":""} onClick={()=>switchMode(item.id)}>{item.short}</button>)}</div>
     <main className="immersive-stage">
       {mode === "2d" ? <Cockpit2D mission={mission} quest={quest} onInteract={addEvent}/> : mode === "ar" ?
-        <div className="immersive-ar-host"><Suspense fallback={<div className="scene-loading" aria-label="Loading AR scene"/>}><ARScene agent={crew[0]||agents[0]} onPlaced={()=>addEvent("Agent anchored in AR")} onSessionStart={geo.requestLocation} anchors={geo.projectedAnchors} onAnchorPlaced={(placement)=>geo.publishAnchor({label:`${(crew[0]||agents[0]).name} spatial anchor`,...placement,source:placement.source})} textOnly={settings.textOnlyMode}/></Suspense></div> :
-        <Suspense fallback={<div className="scene-loading" aria-label="Loading immersive scene"/>}>{mode === "vr" ? <IwsdkWorld comfort={comfort} onInteract={addEvent} onFallback={recover}/> : <ImmersiveWorld mode={mode} comfort={comfort} reducedMotion={settings.reducedMotion} onInteract={addEvent} onFallback={recover}/>}</Suspense>
+        <AdaptiveARExperience comfort={comfort} onInteract={addEvent} onFallback={recover} cameraFallback={<div className="immersive-ar-host"><Suspense fallback={<div className="scene-loading" aria-label="Loading AR scene"/>}><ARScene agent={crew[0]||agents[0]} onPlaced={()=>addEvent("Agent anchored in AR")} onSessionStart={geo.requestLocation} anchors={geo.projectedAnchors} onAnchorPlaced={(placement)=>geo.publishAnchor({label:`${(crew[0]||agents[0]).name} spatial anchor`,...placement,source:placement.source})} textOnly={settings.textOnlyMode}/></Suspense></div>}/> :
+        <Suspense fallback={<div className="scene-loading" aria-label="Loading immersive scene"/>}>{mode === "vr" || mode === "mr" ? <IwsdkWorld key={`iwsdk-${mode}`} mode={mode} comfort={comfort} onInteract={addEvent} onFallback={recover}/> : <ImmersiveWorld mode={mode} comfort={comfort} reducedMotion={settings.reducedMotion} onInteract={addEvent} onFallback={recover}/>}</Suspense>
       }
       <aside className="live-objective-panel">
         <div className="objective-head"><div><span className="eyebrow">QUEST OBJECTIVE</span><small>{continuity.socialMode.toUpperCase()} / STEP {Math.min(continuity.currentStep+1,mission.steps.length)}</small></div><strong>{String(Math.min(continuity.currentStep+1,mission.steps.length)).padStart(2,"0")}</strong></div>

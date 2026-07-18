@@ -46,6 +46,7 @@ export type IwsdkRuntimeEvent =
   | { kind: "session"; state: "live" | "ended" };
 
 interface RuntimeOptions {
+  mode: "vr" | "mr";
   turning: "snap" | "smooth";
   movementSpeed: number;
   turnSpeed: number;
@@ -299,13 +300,17 @@ function createDigitalTwinEntities(world: World) {
 
 export async function createAmxIwsdkRuntime(host: HTMLDivElement, options: RuntimeOptions): Promise<AmxIwsdkRuntime> {
   host.replaceChildren();
+  const sessionMode = options.mode === "mr" ? SessionMode.ImmersiveAR : SessionMode.ImmersiveVR;
+  const spatialFeatures = options.mode === "mr"
+    ? { handTracking: true, layers: true, anchors: true, hitTest: true, planeDetection: true, meshDetection: true, lightEstimation: true }
+    : { handTracking: true, layers: true };
   const world = await World.create(host, {
     assets,
     xr: {
-      sessionMode: SessionMode.ImmersiveVR,
+      sessionMode,
       referenceSpace: ReferenceSpaceType.LocalFloor,
       offer: "none",
-      features: { handTracking: true, layers: true },
+      features: spatialFeatures,
     },
     render: {
       fov: 66,
@@ -344,10 +349,11 @@ export async function createAmxIwsdkRuntime(host: HTMLDivElement, options: Runti
   world.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   world.renderer.toneMapping = ACESFilmicToneMapping;
   world.renderer.toneMappingExposure = 1.42;
-  world.scene.background = new Color(0x07131a);
-  world.scene.fog = new FogExp2(0x07131a, 0.006);
+  world.scene.background = options.mode === "mr" ? null : new Color(0x07131a);
+  world.scene.fog = options.mode === "mr" ? null : new FogExp2(0x07131a, 0.006);
   host.dataset.xrRuntime = "iwsdk-0.4.2";
   host.dataset.renderer = "webgl2-webxr";
+  host.dataset.sessionMode = sessionMode;
 
   const dataCenter = AssetManager.getGLTF("dataCenter")?.scene as Group | undefined;
   if (!dataCenter) throw new Error("The Blender data-center world could not be loaded.");
@@ -386,12 +392,12 @@ export async function createAmxIwsdkRuntime(host: HTMLDivElement, options: Runti
 
   const enterXR = async () => {
     if (!navigator.xr) throw new Error("WebXR is unavailable in this browser.");
-    const supported = await navigator.xr.isSessionSupported(SessionMode.ImmersiveVR);
-    if (!supported) throw new Error("Immersive VR is unavailable on this device.");
-    const session = await navigator.xr.requestSession(SessionMode.ImmersiveVR, buildSessionInit({
-      sessionMode: SessionMode.ImmersiveVR,
+    const supported = await navigator.xr.isSessionSupported(sessionMode);
+    if (!supported) throw new Error(`${options.mode === "mr" ? "Passthrough MR" : "Immersive VR"} is unavailable on this device.`);
+    const session = await navigator.xr.requestSession(sessionMode, buildSessionInit({
+      sessionMode,
       referenceSpace: ReferenceSpaceType.LocalFloor,
-      features: { handTracking: true, layers: true },
+      features: spatialFeatures,
     }));
     world.renderer.xr.setReferenceSpaceType(ReferenceSpaceType.LocalFloor);
     await world.renderer.xr.setSession(session);
@@ -405,8 +411,10 @@ export async function createAmxIwsdkRuntime(host: HTMLDivElement, options: Runti
 
   const dispose = async () => {
     observer.disconnect();
-    if (world.session) await world.session.end().catch(() => undefined);
     world.renderer.setAnimationLoop(null);
+    const activeSession = world.session;
+    world.session = undefined;
+    if (activeSession) await activeSession.end().catch(() => undefined);
     [...world.getSystems()].reverse().forEach((system) => system.destroy());
     world.input.destroy();
     world.renderer.dispose();

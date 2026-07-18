@@ -4,6 +4,7 @@ import type { ComfortSettings, ExperienceMode } from "./immersive";
 import { createAmxIwsdkRuntime, type AmxIwsdkRuntime, type IwsdkRuntimeEvent } from "./iwsdk-runtime";
 
 interface Props {
+  mode: "vr" | "mr";
   comfort: ComfortSettings;
   onInteract: (label: string) => void;
   onFallback: (mode: ExperienceMode, reason: string) => void;
@@ -11,7 +12,7 @@ interface Props {
 
 type RuntimeState = "loading" | "ready" | "entering" | "live" | "error";
 
-export function IwsdkWorld({ comfort, onInteract, onFallback }: Props) {
+export function IwsdkWorld({ mode, comfort, onInteract, onFallback }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<AmxIwsdkRuntime | null>(null);
   const onInteractRef = useRef(onInteract);
@@ -45,6 +46,7 @@ export function IwsdkWorld({ comfort, onInteract, onFallback }: Props) {
     // development-only Strict Mode setup/cleanup probe.
     const startTimer = window.setTimeout(() => {
       void createAmxIwsdkRuntime(host, {
+        mode,
         turning: comfort.turning,
         movementSpeed: comfort.movementSpeed,
         turnSpeed: comfort.turnSpeed,
@@ -72,7 +74,7 @@ export function IwsdkWorld({ comfort, onInteract, onFallback }: Props) {
       runtimeRef.current = null;
       if (runtime) void runtime.dispose();
     };
-  }, [comfort.movementSpeed, comfort.snapAngle, comfort.turning, comfort.turnSpeed, comfort.vignetteStrength]);
+  }, [comfort.movementSpeed, comfort.snapAngle, comfort.turning, comfort.turnSpeed, comfort.vignetteStrength, mode]);
 
   const enterXR = async () => {
     const runtime = runtimeRef.current;
@@ -85,20 +87,20 @@ export function IwsdkWorld({ comfort, onInteract, onFallback }: Props) {
       const reason = error instanceof Error ? error.message : "Quest WebXR session could not start";
       setRuntimeState("ready");
       setSelected(reason);
-      onFallbackRef.current("3d", reason);
+      onFallbackRef.current(mode === "mr" ? "vr" : "3d", reason);
     }
   };
 
-  return <div className="immersive-world mode-vr iwsdk-world">
+  return <div className={`immersive-world mode-${mode} iwsdk-world`}>
     <div ref={hostRef} className="immersive-world-host" aria-label="IWSDK Quest data-center training world"/>
     <div className="world-signal">
       <span className="live-dot"/>
-      <b>IWSDK Data Center Pod</b>
+      <b>{mode === "mr" ? "IWSDK Passthrough Data Center" : "IWSDK Data Center Pod"}</b>
       <small>{selected} / {runtimeState === "live" ? "immersive" : runtimeState}</small>
     </div>
     <button className="button primary compact xr-session-button" onClick={() => void enterXR()} disabled={runtimeState === "loading" || runtimeState === "entering" || runtimeState === "error"}>
       {runtimeState === "loading" || runtimeState === "entering" ? <LoaderCircle className="spin"/> : <Glasses/>}
-      {runtimeState === "live" ? "Quest session live" : runtimeState === "entering" ? "Opening Quest" : runtimeState === "loading" ? "Loading world" : "Enter Quest VR"}
+      {runtimeState === "live" ? "Quest session live" : runtimeState === "entering" ? "Opening Quest" : runtimeState === "loading" ? "Loading world" : `Enter Quest ${mode.toUpperCase()}`}
     </button>
     <div className="iwsdk-controller-status" aria-label="Quest controller status">
       <span className={controllers.left ? "connected" : ""}><Gamepad2/><b>L</b><i className={controllers.leftTrigger ? "pressed" : ""}/></span>
