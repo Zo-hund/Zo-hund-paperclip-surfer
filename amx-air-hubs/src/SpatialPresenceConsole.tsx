@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Camera, Cctv, Eye, LoaderCircle, ScanLine, Upload, UserRound, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, Camera, Cctv, CircleStop, Eye, Gauge, Hand, LoaderCircle, MapPin, MessageCircle, Route, ScanLine, ScanSearch, Send, Upload, UserRound, X } from "lucide-react";
 import type { Agent } from "./data";
 import { AVATAR_PRESETS } from "./avatar-presets";
 import { sendAgentRequest, type AgentAttachment } from "./agent-runtime";
 import { WORLD_CAMERAS, type WorldCameraCapture, type WorldCameraId } from "./NexusRoomScene";
+import { commandFromCue, NPC_WAYPOINTS, type NpcCommand, type NpcDirection, type NpcRuntimeState } from "./npc-controller";
 
 type VisionSource = "live" | "world";
 type VisionState = "idle" | "capturing" | "analyzing" | "complete" | "error";
@@ -16,6 +17,8 @@ interface Props {
   captureWorld: WorldCameraCapture;
   avatarUrl: string;
   onAvatarUrl: (url: string) => void;
+  npcState: NpcRuntimeState;
+  onNpcCommand: (command: NpcCommand) => void;
 }
 
 function readFrame(video: HTMLVideoElement) {
@@ -51,7 +54,7 @@ function normalizeAvatarUrl(value: string) {
   }
 }
 
-export function SpatialPresenceConsole({ agents, localStream, activeCamera, onActiveCamera, captureWorld, avatarUrl, onAvatarUrl }: Props) {
+export function SpatialPresenceConsole({ agents, localStream, activeCamera, onActiveCamera, captureWorld, avatarUrl, onAvatarUrl, npcState, onNpcCommand }: Props) {
   const liveVideoRef = useRef<HTMLVideoElement>(null);
   const scanBusyRef = useRef(false);
   const avatarObjectUrlRef = useRef("");
@@ -63,6 +66,11 @@ export function SpatialPresenceConsole({ agents, localStream, activeCamera, onAc
   const [visionTimestamp, setVisionTimestamp] = useState("");
   const [creatorOpen, setCreatorOpen] = useState(false);
   const [avatarInput, setAvatarInput] = useState(avatarUrl);
+  const [npcAgentId, setNpcAgentId] = useState(() => localStorage.getItem("amx_npc_agent") || agents[0]?.id || "jaz");
+  const [npcCue, setNpcCue] = useState("");
+  const [npcCueState, setNpcCueState] = useState<"idle" | "running" | "complete" | "error">("idle");
+  const [npcCueResult, setNpcCueResult] = useState("NPC ready for an operator or agent cue.");
+  const npcCommandSequence = useRef(0);
   const creatorUrl = String((import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_READY_PLAYER_ME_CREATOR_URL || "").trim();
 
   useEffect(() => { setAvatarInput(avatarUrl); }, [avatarUrl]);
@@ -147,6 +155,39 @@ export function SpatialPresenceConsole({ agents, localStream, activeCamera, onAc
     onAvatarUrl(objectUrl);
   };
 
+  const nextNpcCommandId = () => `${Date.now()}-${++npcCommandSequence.current}`;
+  const issueNpcCommand = (command: Omit<NpcCommand, "id" | "agentId">) => {
+    onNpcCommand({ ...command, id: nextNpcCommandId(), agentId: npcAgentId });
+  };
+  const nudgeNpc = (direction: NpcDirection) => issueNpcCommand({ kind: "nudge", direction });
+  const assignNpcAgent = (agentId: string) => {
+    setNpcAgentId(agentId);
+    localStorage.setItem("amx_npc_agent", agentId);
+    onNpcCommand({ id: nextNpcCommandId(), agentId, kind: "assign" });
+  };
+  const runNpcCue = async () => {
+    const cue = npcCue.trim();
+    const agent = agents.find((item) => item.id === npcAgentId) || agents[0];
+    if (!cue || !agent || npcCueState === "running") return;
+    const command = commandFromCue(cue, agent.id, nextNpcCommandId());
+    onNpcCommand(command);
+    setNpcCueState("running");
+    setNpcCueResult(`${agent.name} is executing the spatial cue.`);
+    try {
+      const response = await sendAgentRequest(
+        agent,
+        `You are embodied as the active Nexus room NPC. The operator issued this cue: "${cue}". Acknowledge the movement or behavior briefly and state what room context you will observe at the destination.`,
+        [],
+        "text",
+      );
+      setNpcCueResult(response.text);
+      setNpcCueState("complete");
+    } catch (error) {
+      setNpcCueResult(error instanceof Error ? error.message : "The NPC cue could not be completed");
+      setNpcCueState("error");
+    }
+  };
+
   const busy = visionState === "capturing" || visionState === "analyzing";
   const liveReady = Boolean(localStream?.getVideoTracks().some((track) => track.readyState === "live"));
   const activePreset = AVATAR_PRESETS.find((preset) => preset.url === avatarUrl);
@@ -180,6 +221,32 @@ export function SpatialPresenceConsole({ agents, localStream, activeCamera, onAc
       <div className="avatar-url-row"><input aria-label="Ready Player Me GLB URL" placeholder="https://models.readyplayer.me/...glb" value={avatarInput} onChange={(event) => setAvatarInput(event.target.value)}/><button onClick={applyAvatarUrl} disabled={!normalizeAvatarUrl(avatarInput)}>Load</button></div>
       <div className="avatar-import-actions"><label className="button secondary"><Upload/>Import exported GLB<input type="file" accept=".glb,model/gltf-binary" onChange={(event) => { importAvatar(event.target.files?.[0]); event.target.value = ""; }}/></label><button className="button secondary" disabled={!creatorUrl} onClick={() => setCreatorOpen(true)}><UserRound/>{creatorUrl ? "Open private creator" : "Creator retired"}</button></div>
       {avatarUrl && <p className="avatar-active"><i/>{activePreset ? `${activePreset.label} loaded into the Blender room` : "Custom avatar loaded into the Blender room"}</p>}
+    </div>
+
+    <div className="spatial-console-section npc-director">
+      <div className="spatial-console-head"><div><span className="eyebrow">NPC DIRECTOR / AGENT CONTROL</span><h3>Avatar behavior</h3></div><Bot/></div>
+      <label className="npc-agent-control"><span>Assigned agent</span><select value={npcAgentId} onChange={(event) => assignNpcAgent(event.target.value)}>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} / {agent.specialty}</option>)}</select></label>
+      <output className="npc-runtime-status"><span className={npcState.moving ? "moving" : ""}><i/>{npcState.action}</span><code>{npcState.position[0].toFixed(1)} / {npcState.position[2].toFixed(1)}</code><b>{npcState.behavior}</b></output>
+
+      <div className="npc-waypoints" aria-label="NPC destinations">{NPC_WAYPOINTS.map((waypoint) => <button key={waypoint.id} className={npcState.waypoint === waypoint.id ? "active" : ""} onClick={() => issueNpcCommand({ kind: "move", waypoint: waypoint.id })}><MapPin/><span>{waypoint.label}</span></button>)}</div>
+
+      <div className="npc-drive-row">
+        <div className="npc-dpad" aria-label="NPC movement controls">
+          <button className="up" aria-label="Move NPC forward" title="Move forward" onClick={() => nudgeNpc("forward")}><ArrowUp/></button>
+          <button className="left" aria-label="Move NPC left" title="Move left" onClick={() => nudgeNpc("left")}><ArrowLeft/></button>
+          <button className="stop" aria-label="Stop NPC" title="Stop" onClick={() => issueNpcCommand({ kind: "stop" })}><CircleStop/></button>
+          <button className="right" aria-label="Move NPC right" title="Move right" onClick={() => nudgeNpc("right")}><ArrowRight/></button>
+          <button className="down" aria-label="Move NPC back" title="Move back" onClick={() => nudgeNpc("back")}><ArrowDown/></button>
+        </div>
+        <div className="npc-mode-controls">
+          <div className="npc-behavior-control" role="tablist" aria-label="NPC behavior"><button className={npcState.behavior === "hold" ? "active" : ""} onClick={() => issueNpcCommand({ kind: "behavior", behavior: "hold" })}>Hold</button><button className={npcState.behavior === "patrol" ? "active" : ""} onClick={() => issueNpcCommand({ kind: "behavior", behavior: "patrol" })}><Route/>Patrol</button></div>
+          <label className="npc-speed-control"><span><Gauge/>Speed</span><b>{npcState.speed.toFixed(1)} m/s</b><input aria-label="NPC speed" type="range" min="0.5" max="2.2" step="0.1" value={npcState.speed} onChange={(event) => issueNpcCommand({ kind: "speed", speed: Number(event.target.value) })}/></label>
+        </div>
+      </div>
+
+      <div className="npc-actions"><button onClick={() => issueNpcCommand({ kind: "action", action: "wave" })}><Hand/>Wave</button><button onClick={() => issueNpcCommand({ kind: "action", action: "talk" })}><MessageCircle/>Talk</button><button onClick={() => issueNpcCommand({ kind: "action", action: "inspect" })}><ScanSearch/>Inspect</button></div>
+      <form className="npc-agent-cue" onSubmit={(event) => { event.preventDefault(); void runNpcCue(); }}><input aria-label="NPC agent cue" value={npcCue} onChange={(event) => setNpcCue(event.target.value)} placeholder="Send JAZ to inspect the media wall"/><button aria-label="Run NPC agent cue" title="Run cue" disabled={!npcCue.trim() || npcCueState === "running"}>{npcCueState === "running" ? <LoaderCircle className="spin"/> : <Send/>}</button></form>
+      <output className={`npc-cue-result ${npcCueState}`}><Bot/><p>{npcCueResult}</p></output>
     </div>
 
     {creatorOpen && <div className="rpm-modal" role="dialog" aria-modal="true" aria-label="Ready Player Me avatar creator">

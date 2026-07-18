@@ -3,6 +3,7 @@ import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { GeoAnchor } from "./geospatial";
+import { DEFAULT_NPC_STATE, NPC_WAYPOINTS, waypointFor, type NpcAction, type NpcCommand, type NpcDirection, type NpcRuntimeState, type NpcWaypointId } from "./npc-controller";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
 export type LightPreset = "mission" | "focus" | "standby";
@@ -37,11 +38,13 @@ interface Props {
   lightPreset: LightPreset;
   reducedMotion?: boolean;
   avatarUrl?: string;
+  npcCommand?: NpcCommand | null;
   activeWorldCamera?: WorldCameraId;
   onReady?: () => void;
   onBackend?: (backend: RendererBackend) => void;
   onCaptureReady?: (capture: WorldCameraCapture | null) => void;
   onAvatarState?: (state: "idle" | "loading" | "ready" | "error") => void;
+  onNpcState?: (state: NpcRuntimeState) => void;
 }
 
 type ScreenName = "Screen_User" | "Screen_Agent_Left" | "Screen_Agent_Right";
@@ -328,13 +331,136 @@ function anchorBeacon(anchor: GeoAnchor) {
   return group;
 }
 
-export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, mediaFit = "contain", locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, activeWorldCamera = "overview", onReady, onBackend, onCaptureReady, onAvatarState }: Props) {
+type NpcBoneName = "Head" | "Spine2" | "LeftArm" | "RightArm" | "LeftForeArm" | "RightForeArm";
+type NpcRig = Partial<Record<NpcBoneName, { bone: THREE.Object3D; base: THREE.Quaternion }>>;
+
+interface NpcSceneRuntime {
+  root: THREE.Object3D | null;
+  rig: NpcRig;
+  target: THREE.Vector3;
+  floorY: number;
+  agentId: string;
+  behavior: NpcRuntimeState["behavior"];
+  action: NpcAction;
+  actionUntil: number;
+  arrivalAction: Exclude<NpcAction, "idle" | "walk"> | null;
+  moving: boolean;
+  waypoint: NpcRuntimeState["waypoint"];
+  speed: number;
+  patrolIndex: number;
+  patrolResumeAt: number;
+  lastCommandId: string;
+  lastReportAt: number;
+  lastReportKey: string;
+}
+
+const NPC_PATROL: NpcWaypointId[] = ["entry", "stage", "media", "briefing", "rack"];
+
+function captureNpcRig(root: THREE.Object3D): NpcRig {
+  const rig: NpcRig = {};
+  (["Head", "Spine2", "LeftArm", "RightArm", "LeftForeArm", "RightForeArm"] as NpcBoneName[]).forEach((name) => {
+    const bone = root.getObjectByName(name);
+    if (bone) rig[name] = { bone, base: bone.quaternion.clone() };
+  });
+  return rig;
+}
+
+function poseNpcBone(rig: NpcRig, name: NpcBoneName, x = 0, y = 0, z = 0) {
+  const pose = rig[name];
+  if (!pose) return;
+  pose.bone.quaternion.copy(pose.base).multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z)));
+}
+
+function animateNpcRig(npc: NpcSceneRuntime, elapsed: number, reducedMotion = false) {
+  const root = npc.root;
+  if (!root) return;
+  const cycle = elapsed * 7.5;
+  const walkSwing = reducedMotion ? 0 : Math.sin(cycle) * 0.42;
+  root.position.y = npc.floorY + (npc.action === "walk" && !reducedMotion ? Math.abs(Math.sin(cycle)) * 0.025 : 0);
+  poseNpcBone(npc.rig, "Head");
+  poseNpcBone(npc.rig, "Spine2", reducedMotion ? 0 : Math.sin(elapsed * 1.8) * 0.012);
+  poseNpcBone(npc.rig, "LeftArm", npc.action === "walk" ? walkSwing : 0);
+  poseNpcBone(npc.rig, "RightArm", npc.action === "walk" ? -walkSwing : 0);
+  poseNpcBone(npc.rig, "LeftForeArm", npc.action === "walk" ? Math.max(0, -walkSwing) * 0.26 : 0);
+  poseNpcBone(npc.rig, "RightForeArm", npc.action === "walk" ? Math.max(0, walkSwing) * 0.26 : 0);
+  if (reducedMotion) return;
+  if (npc.action === "wave") {
+    poseNpcBone(npc.rig, "RightArm", -0.35, 0, -1.15);
+    poseNpcBone(npc.rig, "RightForeArm", -0.75 + Math.sin(elapsed * 8) * 0.28, 0, -0.18);
+  } else if (npc.action === "talk") {
+    poseNpcBone(npc.rig, "Head", 0, Math.sin(elapsed * 2.4) * 0.09);
+    poseNpcBone(npc.rig, "LeftForeArm", -0.32 + Math.sin(elapsed * 3.5) * 0.1, 0, -0.15);
+    poseNpcBone(npc.rig, "RightForeArm", -0.32 - Math.sin(elapsed * 3.5) * 0.1, 0, 0.15);
+  } else if (npc.action === "inspect") {
+    poseNpcBone(npc.rig, "Head", 0.23, Math.sin(elapsed * 1.5) * 0.16);
+    poseNpcBone(npc.rig, "Spine2", 0.11, Math.sin(elapsed * 1.5) * 0.06);
+  }
+}
+
+function clampNpcTarget(target: THREE.Vector3) {
+  target.x = THREE.MathUtils.clamp(target.x, -4.25, 4.25);
+  target.y = 0;
+  target.z = THREE.MathUtils.clamp(target.z, -3.65, 3.45);
+  return target;
+}
+
+function setNpcTarget(npc: NpcSceneRuntime, position: [number, number, number] | THREE.Vector3, waypoint: NpcRuntimeState["waypoint"] = "custom") {
+  npc.target.copy(position instanceof THREE.Vector3 ? position : new THREE.Vector3(...position));
+  clampNpcTarget(npc.target);
+  npc.waypoint = waypoint;
+  npc.actionUntil = 0;
+  npc.arrivalAction = null;
+}
+
+function nudgeNpc(npc: NpcSceneRuntime, direction: NpcDirection) {
+  const origin = npc.root?.position || npc.target;
+  const offset = direction === "forward" ? new THREE.Vector3(0, 0, -0.8)
+    : direction === "back" ? new THREE.Vector3(0, 0, 0.8)
+      : direction === "left" ? new THREE.Vector3(-0.8, 0, 0)
+        : new THREE.Vector3(0.8, 0, 0);
+  setNpcTarget(npc, origin.clone().add(offset), "custom");
+  npc.behavior = "hold";
+}
+
+function npcSnapshot(npc: NpcSceneRuntime): NpcRuntimeState {
+  const position = npc.root?.position || npc.target;
+  return {
+    agentId: npc.agentId,
+    behavior: npc.behavior,
+    action: npc.action,
+    moving: npc.moving,
+    waypoint: npc.waypoint,
+    position: [Number(position.x.toFixed(2)), 0, Number(position.z.toFixed(2))],
+    speed: Number(npc.speed.toFixed(1)),
+  };
+}
+
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, mediaFit = "contain", locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
   const lightRefs = useRef<THREE.Light[]>([]);
   const anchorLayerRef = useRef<THREE.Group | null>(null);
   const avatarRef = useRef<THREE.Object3D | null>(null);
+  const npcRuntimeRef = useRef<NpcSceneRuntime>({
+    root: null,
+    rig: {},
+    target: new THREE.Vector3(...DEFAULT_NPC_STATE.position),
+    floorY: 0,
+    agentId: DEFAULT_NPC_STATE.agentId,
+    behavior: DEFAULT_NPC_STATE.behavior,
+    action: DEFAULT_NPC_STATE.action,
+    actionUntil: 0,
+    arrivalAction: null,
+    moving: false,
+    waypoint: DEFAULT_NPC_STATE.waypoint,
+    speed: DEFAULT_NPC_STATE.speed,
+    patrolIndex: 0,
+    patrolResumeAt: 0,
+    lastCommandId: "",
+    lastReportAt: 0,
+    lastReportKey: "",
+  });
   const activeCameraRef = useRef<WorldCameraId>(activeWorldCamera);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -342,10 +468,12 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, m
   const onBackendRef = useRef(onBackend);
   const onCaptureReadyRef = useRef(onCaptureReady);
   const onAvatarStateRef = useRef(onAvatarState);
+  const onNpcStateRef = useRef(onNpcState);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   useEffect(() => { onBackendRef.current = onBackend; }, [onBackend]);
   useEffect(() => { onCaptureReadyRef.current = onCaptureReady; }, [onCaptureReady]);
   useEffect(() => { onAvatarStateRef.current = onAvatarState; }, [onAvatarState]);
+  useEffect(() => { onNpcStateRef.current = onNpcState; }, [onNpcState]);
   useEffect(() => { activeCameraRef.current = activeWorldCamera; }, [activeWorldCamera]);
 
   useEffect(() => {
@@ -437,10 +565,14 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, m
     const captureFrame = new URLSearchParams(window.location.search).get("capture") === "1";
     let frame = 0;
     let lastWorldCamera: WorldCameraId = "overview";
+    let previousElapsed = 0;
     const render = () => {
       const currentFrame = frame++;
       host.dataset.frames = String(currentFrame);
       const elapsed = clock.getElapsedTime();
+      const wallSeconds = performance.now() / 1000;
+      const delta = Math.min(0.05, Math.max(0.001, elapsed - previousElapsed));
+      previousElapsed = elapsed;
       const selectedCamera = activeCameraRef.current;
       if (selectedCamera !== lastWorldCamera) {
         if (selectedCamera === "overview") {
@@ -469,6 +601,55 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, m
           const orbit = model?.getObjectByName(name);
           if (orbit) orbit.rotation.z += 0.0015 * (index % 2 ? -1 : 1);
         });
+      }
+      const npc = npcRuntimeRef.current;
+      if (npc.root) {
+        const dx = npc.target.x - npc.root.position.x;
+        const dz = npc.target.z - npc.root.position.z;
+        const distance = Math.hypot(dx, dz);
+        const wasMoving = npc.moving;
+        npc.moving = distance > 0.04;
+        if (npc.moving) {
+          const step = Math.min(distance, npc.speed * delta);
+          npc.root.position.x += dx / distance * step;
+          npc.root.position.z += dz / distance * step;
+          const desiredYaw = Math.atan2(dx, dz);
+          const yawDelta = Math.atan2(Math.sin(desiredYaw - npc.root.rotation.y), Math.cos(desiredYaw - npc.root.rotation.y));
+          npc.root.rotation.y += yawDelta * Math.min(1, delta * 9);
+          npc.action = "walk";
+        } else {
+          if (wasMoving) {
+            npc.patrolResumeAt = elapsed + 1.35;
+            if (npc.arrivalAction) {
+              npc.action = npc.arrivalAction;
+              npc.actionUntil = wallSeconds + (npc.action === "talk" ? 4.5 : 3.2);
+              npc.arrivalAction = null;
+            }
+          }
+          if (npc.actionUntil > wallSeconds) {
+            // Keep the requested one-shot pose until its timer expires.
+          } else npc.action = "idle";
+          if (npc.behavior === "patrol" && npc.action === "idle" && elapsed >= npc.patrolResumeAt) {
+            npc.patrolIndex = (npc.patrolIndex + 1) % NPC_PATROL.length;
+            const nextWaypoint = waypointFor(NPC_PATROL[npc.patrolIndex]);
+            if (nextWaypoint) setNpcTarget(npc, nextWaypoint.position, nextWaypoint.id);
+          }
+        }
+        animateNpcRig(npc, elapsed, reducedMotion);
+        if (elapsed - npc.lastReportAt >= 0.35 || currentFrame < 3) {
+          npc.lastReportAt = elapsed;
+          const snapshot = npcSnapshot(npc);
+          host.dataset.npcAction = snapshot.action;
+          host.dataset.npcBehavior = snapshot.behavior;
+          host.dataset.npcMoving = String(snapshot.moving);
+          host.dataset.npcWaypoint = snapshot.waypoint || "none";
+          host.dataset.npcPosition = snapshot.position.join(",");
+          const reportKey = JSON.stringify(snapshot);
+          if (reportKey !== npc.lastReportKey) {
+            npc.lastReportKey = reportKey;
+            onNpcStateRef.current?.(snapshot);
+          }
+        }
       }
       renderer.render(scene, camera);
       if (captureFrame || currentFrame % 30 === 0) {
@@ -515,11 +696,42 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, m
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
     };
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const walkPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const walkTarget = new THREE.Vector3();
+    const moveNpcFromPointer = (event: MouseEvent) => {
+      if (!npcRuntimeRef.current.root) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      if (!raycaster.ray.intersectPlane(walkPlane, walkTarget)) return;
+      const npc = npcRuntimeRef.current;
+      npc.behavior = "hold";
+      setNpcTarget(npc, walkTarget, "custom");
+    };
+    const focusNpcControls = () => host.focus({ preventScroll: true });
+    const moveNpcFromKey = (event: KeyboardEvent) => {
+      const direction = event.key === "ArrowUp" || event.key.toLowerCase() === "w" ? "forward"
+        : event.key === "ArrowDown" || event.key.toLowerCase() === "s" ? "back"
+          : event.key === "ArrowLeft" || event.key.toLowerCase() === "a" ? "left"
+            : event.key === "ArrowRight" || event.key.toLowerCase() === "d" ? "right" : null;
+      if (!direction || !npcRuntimeRef.current.root) return;
+      event.preventDefault();
+      nudgeNpc(npcRuntimeRef.current, direction);
+    };
+    host.tabIndex = 0;
+    renderer.domElement.addEventListener("pointerdown", focusNpcControls);
+    renderer.domElement.addEventListener("dblclick", moveNpcFromPointer);
+    host.addEventListener("keydown", moveNpcFromKey);
     window.addEventListener("resize", resize);
     return () => {
       disposed = true;
       cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
+      renderer.domElement.removeEventListener("pointerdown", focusNpcControls);
+      renderer.domElement.removeEventListener("dblclick", moveNpcFromPointer);
+      host.removeEventListener("keydown", moveNpcFromKey);
       controls.dispose();
       void renderer.dispose();
       onCaptureReadyRef.current?.(null);
@@ -534,13 +746,65 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, m
   }, [reducedMotion]);
 
   useEffect(() => {
+    if (!npcCommand) return;
+    const npc = npcRuntimeRef.current;
+    if (npc.lastCommandId === npcCommand.id) return;
+    npc.lastCommandId = npcCommand.id;
+    npc.agentId = npcCommand.agentId || npc.agentId;
+    if (npcCommand.kind === "move") {
+      const waypoint = waypointFor(npcCommand.waypoint);
+      const position = npcCommand.position || waypoint?.position;
+      if (position) setNpcTarget(npc, position, waypoint?.id || "custom");
+      npc.arrivalAction = npcCommand.arrivalAction || null;
+      npc.behavior = "hold";
+    } else if (npcCommand.kind === "nudge" && npcCommand.direction) nudgeNpc(npc, npcCommand.direction);
+    else if (npcCommand.kind === "action") {
+      npc.behavior = "hold";
+      npc.target.copy(npc.root?.position || npc.target);
+      npc.action = npcCommand.action || "talk";
+      npc.arrivalAction = null;
+      npc.actionUntil = performance.now() / 1000 + (npc.action === "talk" ? 4.5 : 3.2);
+    } else if (npcCommand.kind === "behavior") {
+      npc.behavior = npcCommand.behavior || "hold";
+      npc.actionUntil = 0;
+      if (npc.behavior === "patrol") {
+        npc.patrolIndex = -1;
+        npc.patrolResumeAt = 0;
+      }
+    } else if (npcCommand.kind === "speed") npc.speed = THREE.MathUtils.clamp(npcCommand.speed || npc.speed, 0.5, 2.2);
+    else if (npcCommand.kind === "stop") {
+      npc.behavior = "hold";
+      npc.target.copy(npc.root?.position || npc.target);
+      npc.action = "idle";
+      npc.actionUntil = 0;
+      npc.arrivalAction = null;
+    } else if (npcCommand.kind === "reset") {
+      const stage = waypointFor("stage");
+      if (stage) setNpcTarget(npc, stage.position, stage.id);
+      npc.behavior = "hold";
+      npc.speed = DEFAULT_NPC_STATE.speed;
+    }
+    const snapshot = npcSnapshot(npc);
+    if (hostRef.current) {
+      hostRef.current.dataset.npcAction = snapshot.action;
+      hostRef.current.dataset.npcBehavior = snapshot.behavior;
+      hostRef.current.dataset.npcWaypoint = snapshot.waypoint || "none";
+    }
+    onNpcStateRef.current?.(snapshot);
+  }, [npcCommand]);
+
+  useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
+    const npc = npcRuntimeRef.current;
+    const previousPosition = avatarRef.current?.position.clone();
     if (avatarRef.current) {
       scene.remove(avatarRef.current);
       disposeObject(avatarRef.current);
       avatarRef.current = null;
     }
+    npc.root = null;
+    npc.rig = {};
     const host = hostRef.current;
     if (host) {
       host.dataset.avatar = avatarUrl ? "loading" : "idle";
@@ -574,15 +838,21 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, m
       avatar.scale.setScalar(scale);
       const scaledBounds = new THREE.Box3().setFromObject(avatar);
       const scaledSize = scaledBounds.getSize(new THREE.Vector3());
-      avatar.position.set(1.25, -scaledBounds.min.y, 0.65);
+      const start = previousPosition || npc.target;
+      npc.floorY = -scaledBounds.min.y;
+      avatar.position.set(start.x, npc.floorY, start.z);
       avatar.rotation.y = Math.PI;
       sceneRef.current.add(avatar);
       avatarRef.current = avatar;
+      npc.root = avatar;
+      npc.rig = captureNpcRig(avatar);
+      npc.moving = Math.hypot(npc.target.x - avatar.position.x, npc.target.z - avatar.position.z) > 0.04;
       if (hostRef.current) {
         hostRef.current.dataset.avatar = "ready";
         hostRef.current.dataset.avatarBounds = `${scaledSize.x.toFixed(2)}x${scaledSize.y.toFixed(2)}x${scaledSize.z.toFixed(2)}`;
         hostRef.current.dataset.avatarMaterials = String(externalMaterialCount);
       }
+      onNpcStateRef.current?.(npcSnapshot(npc));
       onAvatarStateRef.current?.("ready");
     }, undefined, () => {
       if (!cancelled) {

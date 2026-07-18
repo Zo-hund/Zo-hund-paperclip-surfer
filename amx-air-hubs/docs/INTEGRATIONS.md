@@ -108,6 +108,8 @@ The Nexus room loads the Blender-prepared ZOHUND character from `/models/zohund-
 
 The built-in roster also includes Mario MXBC, Actor One, and Mr Lamont. Their editable sources live in `assets/blender/avatars/`, while deployable glTF packages and first-party textures live in `public/models/avatars/`. Regenerate one with `scripts/prepare-built-in-avatar.py`; separate glTF textures avoid protected-origin embedded-image differences while preserving the source rig and materials.
 
+The Nexus NPC Director treats the active avatar as an embodied room agent. Operators can send it to Entry, Stage, Media Wall, Rack Aisle, or Briefing; nudge it with the on-screen D-pad; adjust movement speed; stop or patrol; and trigger Wave, Talk, or Inspect poses. A focused world canvas also accepts WASD/arrow keys, and a double-click on the walk plane creates a bounded custom destination. Agent cues are converted into deterministic spatial commands in `src/npc-controller.ts`, then sent through the normal agent runtime for a role-aware acknowledgment and context response.
+
 Ready Player Me hosted services were discontinued on January 31, 2026. The room still supports archived Ready Player Me `.glb` files through local import and legacy HTTPS avatar URLs. Local object URLs are session-only and are never persisted or uploaded. Select `Use ZOHUND` to restore the built-in character after loading a custom avatar.
 
 `VITE_READY_PLAYER_ME_CREATOR_URL` is optional for organizations that retain a private compatible creator endpoint. Leave it empty for normal deployments; the retired public creator remains disabled.

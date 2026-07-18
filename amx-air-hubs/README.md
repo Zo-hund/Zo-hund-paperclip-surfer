@@ -12,6 +12,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - HLS/MP4/WebM media playback composited onto dedicated in-world Three.js display meshes with Fit and Fill modes.
 - Google Maps search, selection, shared geo anchors, and agent location context.
 - Selectable Three.js world cameras, consent-gated live vision scans, four Blender-prepared built-in avatars, and archived Ready Player Me GLB loading.
+- NPC avatar direction with named room waypoints, D-pad and focused keyboard movement, double-click navigation, speed control, procedural actions, patrol behavior, and assigned-agent cues.
 - Governed AI digital twin with Blender node bindings, predictive risk, sandbox scenarios, approvals, and durable audit events.
 - Reality reconstruction skills for spatial capture, semantic meshing, generated PBR textures, light matching, anchor alignment, and validation artifacts.
 - Supabase Realtime room messaging with local BroadcastChannel fallback.
