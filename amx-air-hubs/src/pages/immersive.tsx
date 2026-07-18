@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Accessibility, Activity, ArrowRight, BadgeCheck, Bot, Box, BriefcaseBusiness, Camera,
   Check, CheckCircle2, ChevronLeft, ChevronRight, CircleUserRound, Clock3, Compass,
@@ -211,7 +211,7 @@ function PresenceRow({ participant }: { participant: Participant }) {
 }
 
 export function RoomLobbyPage() {
-  const { roomId }=useParams();const continuity=getContinuity();const mission=missionById(continuity.missionId);const {role}=useAMX();const navigate=useNavigate();
+  const { roomId }=useParams();const continuity=getContinuity();const mission=missionById(continuity.missionId);const {role}=useAMX();const navigate=useNavigate();const location=useLocation();const joinedByInvite=new URLSearchParams(location.search).has("invite");
   const crew=crewFor(mission,continuity.socialMode);
   const [room,setRoom]=useState(()=>getRoom(roomId||"")||ensureRoom(continuity,mission,role,crew));const [capabilities,setCapabilities]=useState(emptyCapabilities);const live=useRealtimeRoom(room.code);
   useEffect(()=>{void detectInputCapabilities().then(setCapabilities)},[]);
@@ -220,7 +220,7 @@ export function RoomLobbyPage() {
   return <div className="page room-lobby-page section-wrap"><PageHeader eyebrow="SHARED MISSION ROOM" title={`${mission.title} lobby`} description="Check the crew, role, voice, device, and comfort setup before entering together." actions={<StatusPill tone={live.transport==="websocket"?"green":"cyan"}>{live.transport}</StatusPill>}/>
     <div className="lobby-grid"><section className="lobby-main"><div className="lobby-brief"><div><span className="eyebrow">ROOM {room.code}</span><h2>{room.socialMode.toUpperCase()} SKILL POD</h2><p>{mission.objective}</p></div><QRCodeCard route={`/rooms/${room.id}/lobby`} title={`Room ${room.code}`}/></div><div className="section-heading"><div><span className="eyebrow">HUMAN + AGENT PRESENCE</span><h2>Flight crew</h2></div><span>{Math.max(room.participants.length,live.peers.length)} connected</span></div><div className="presence-list">{room.participants.map((participant)=><PresenceRow key={participant.id} participant={participant}/>)}</div></section>
       <aside className="lobby-checks"><span className="eyebrow">PRE-FLIGHT CHECK</span><h2>Ready state</h2>{[{icon:Mic,label:"Voice",value:capabilities.voice?"Ready":"Captions fallback"},{icon:Gamepad2,label:"Input",value:capabilities.methods.slice(0,3).join(" + ")},{icon:Headphones,label:"Headset",value:capabilities.immersiveVR?"Detected":"Browser mode"},{icon:Accessibility,label:"Comfort",value:`${getComfort().movement} / ${getComfort().posture}`}].map(({icon:Icon,label,value})=><div className="lobby-check" key={label}><Icon/><span>{label}<b>{value}</b></span><Check/></div>)}<Link className="button secondary full" to="/settings/comfort"><Settings2/>Adjust comfort</Link><button className={`button large full ${ready?"secondary":"primary"}`} onClick={toggleReady}>{ready?<><RotateCcw/>Not ready</>:<><CheckCircle2/>Ready</>}</button><button className="button primary large full" disabled={!ready} onClick={()=>navigate(modeRoute(continuity.activeMode,mission.id))}><Play/>Enter room</button></aside>
-    </div><PodInvitePanel compact pod={{id:room.id,code:room.code,name:`${mission.title} Skill Pod`,missionId:mission.id}} tenant={tenant}/>
+    </div>{!joinedByInvite&&<PodInvitePanel compact pod={{id:room.id,code:room.code,name:`${mission.title} Skill Pod`,missionId:mission.id}} tenant={tenant}/>}
   </div>;
 }
 
