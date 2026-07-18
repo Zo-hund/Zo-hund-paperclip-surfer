@@ -104,7 +104,9 @@ Visual analysis is off by default. The user must enable `Allow visual analysis` 
 
 ## Ready Player Me Compatibility
 
-Ready Player Me hosted services were discontinued on January 31, 2026. The Nexus room therefore supports archived Ready Player Me `.glb` files through local import and legacy HTTPS avatar URLs. Local object URLs are session-only and are never persisted or uploaded.
+The Nexus room loads the Blender-prepared ZOHUND character from `/models/zohund-avatar.glb` by default. Its editable source is `assets/blender/zohund-avatar.blend`; regenerate both assets from an archived export with `scripts/prepare-zohund-avatar.py`.
+
+Ready Player Me hosted services were discontinued on January 31, 2026. The room still supports archived Ready Player Me `.glb` files through local import and legacy HTTPS avatar URLs. Local object URLs are session-only and are never persisted or uploaded. Select `Use ZOHUND` to restore the built-in character after loading a custom avatar.
 
 `VITE_READY_PLAYER_ME_CREATOR_URL` is optional for organizations that retain a private compatible creator endpoint. Leave it empty for normal deployments; the retired public creator remains disabled.
 

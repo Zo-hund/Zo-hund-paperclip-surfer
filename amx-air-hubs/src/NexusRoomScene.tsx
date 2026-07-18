@@ -391,6 +391,11 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
       disposeObject(avatarRef.current);
       avatarRef.current = null;
     }
+    const host = hostRef.current;
+    if (host) {
+      host.dataset.avatar = avatarUrl ? "loading" : "idle";
+      delete host.dataset.avatarBounds;
+    }
     if (!avatarUrl) {
       onAvatarStateRef.current?.("idle");
       return;
@@ -404,19 +409,27 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
         return;
       }
       const avatar = gltf.scene;
-      avatar.name = "ReadyPlayerMe_Avatar";
+      avatar.name = "ZOHUND_Avatar";
       const bounds = new THREE.Box3().setFromObject(avatar);
       const size = bounds.getSize(new THREE.Vector3());
       const scale = size.y > 0 ? 1.78 / size.y : 1;
       avatar.scale.setScalar(scale);
       const scaledBounds = new THREE.Box3().setFromObject(avatar);
-      avatar.position.set(0.1, -scaledBounds.min.y, 0.7);
+      const scaledSize = scaledBounds.getSize(new THREE.Vector3());
+      avatar.position.set(1.25, -scaledBounds.min.y, 0.65);
       avatar.rotation.y = Math.PI;
       sceneRef.current.add(avatar);
       avatarRef.current = avatar;
+      if (hostRef.current) {
+        hostRef.current.dataset.avatar = "ready";
+        hostRef.current.dataset.avatarBounds = `${scaledSize.x.toFixed(2)}x${scaledSize.y.toFixed(2)}x${scaledSize.z.toFixed(2)}`;
+      }
       onAvatarStateRef.current?.("ready");
     }, undefined, () => {
-      if (!cancelled) onAvatarStateRef.current?.("error");
+      if (!cancelled) {
+        if (hostRef.current) hostRef.current.dataset.avatar = "error";
+        onAvatarStateRef.current?.("error");
+      }
     });
     return () => { cancelled = true; };
   }, [avatarUrl, loading]);

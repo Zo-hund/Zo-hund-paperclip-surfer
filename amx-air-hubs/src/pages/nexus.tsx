@@ -19,6 +19,7 @@ const NexusMediaPlayer = lazy(async () => ({ default: (await import("../NexusMed
 const GoogleLocationPanel = lazy(async () => ({ default: (await import("../GoogleLocationPanel")).GoogleLocationPanel }));
 
 type NexusTab = "room" | "twin" | "anchors" | "fleet" | "factory";
+const DEFAULT_NEXUS_AVATAR_URL = "/models/zohund-avatar.glb";
 
 function useNexusTelemetry() {
   const [tick, setTick] = useState(0);
@@ -54,7 +55,7 @@ export function NexusPage() {
   const [mediaElement, setMediaElement] = useState<HTMLVideoElement | null>(null);
   const [mapLocation, setMapLocation] = useState<MapLocationSelection | null>(null);
   const [activeWorldCamera, setActiveWorldCamera] = useState<WorldCameraId>("overview");
-  const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem("amx_ready_player_me_avatar") || "");
+  const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem("amx_ready_player_me_avatar") || DEFAULT_NEXUS_AVATAR_URL);
   const [avatarState, setAvatarState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const worldCaptureRef = useRef<WorldCameraCapture | null>(null);
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
@@ -121,7 +122,7 @@ export function NexusPage() {
           <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing media player</span></div>}><NexusMediaPlayer onPanelVideo={setMediaElement}/></Suspense>
           <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing location map</span></div>}><GoogleLocationPanel agent={crew[0]} roomCode={roomCode} onSelection={setMapLocation} onPublishAnchor={publishMapAnchor}/></Suspense>
         </div>
-        <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial presence tools</span></div>}><SpatialPresenceConsole agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} captureWorld={captureWorld} avatarUrl={avatarUrl} onAvatarUrl={updateAvatar}/></Suspense>
+        <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial presence tools</span></div>}><SpatialPresenceConsole agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} captureWorld={captureWorld} avatarUrl={avatarUrl} defaultAvatarUrl={DEFAULT_NEXUS_AVATAR_URL} onAvatarUrl={updateAvatar}/></Suspense>
       </aside>
     </div>}
 

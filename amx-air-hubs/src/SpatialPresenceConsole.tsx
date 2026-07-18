@@ -14,6 +14,7 @@ interface Props {
   onActiveCamera: (camera: WorldCameraId) => void;
   captureWorld: WorldCameraCapture;
   avatarUrl: string;
+  defaultAvatarUrl: string;
   onAvatarUrl: (url: string) => void;
 }
 
@@ -50,7 +51,7 @@ function normalizeAvatarUrl(value: string) {
   }
 }
 
-export function SpatialPresenceConsole({ agents, localStream, activeCamera, onActiveCamera, captureWorld, avatarUrl, onAvatarUrl }: Props) {
+export function SpatialPresenceConsole({ agents, localStream, activeCamera, onActiveCamera, captureWorld, avatarUrl, defaultAvatarUrl, onAvatarUrl }: Props) {
   const liveVideoRef = useRef<HTMLVideoElement>(null);
   const scanBusyRef = useRef(false);
   const avatarObjectUrlRef = useRef("");
@@ -173,10 +174,11 @@ export function SpatialPresenceConsole({ agents, localStream, activeCamera, onAc
     </div>
 
     <div className="spatial-console-section avatar-console">
-      <div className="spatial-console-head"><div><span className="eyebrow">READY PLAYER ME / LEGACY</span><h3>Room avatar</h3></div><UserRound/></div>
+      <div className="spatial-console-head"><div><span className="eyebrow">ZOHUND / GLB AVATAR</span><h3>Room avatar</h3></div><UserRound/></div>
+      <button className="button primary full avatar-default-action" disabled={avatarUrl === defaultAvatarUrl} onClick={() => onAvatarUrl(defaultAvatarUrl)}><UserRound/>{avatarUrl === defaultAvatarUrl ? "ZOHUND active" : "Use ZOHUND"}</button>
       <div className="avatar-url-row"><input aria-label="Ready Player Me GLB URL" placeholder="https://models.readyplayer.me/...glb" value={avatarInput} onChange={(event) => setAvatarInput(event.target.value)}/><button onClick={applyAvatarUrl} disabled={!normalizeAvatarUrl(avatarInput)}>Load</button></div>
       <div className="avatar-import-actions"><label className="button secondary"><Upload/>Import exported GLB<input type="file" accept=".glb,model/gltf-binary" onChange={(event) => { importAvatar(event.target.files?.[0]); event.target.value = ""; }}/></label><button className="button secondary" disabled={!creatorUrl} onClick={() => setCreatorOpen(true)}><UserRound/>{creatorUrl ? "Open private creator" : "Creator retired"}</button></div>
-      {avatarUrl && <p className="avatar-active"><i/>Avatar loaded into the Blender room</p>}
+      {avatarUrl && <p className="avatar-active"><i/>{avatarUrl === defaultAvatarUrl ? "ZOHUND loaded into the Blender room" : "Custom avatar loaded into the Blender room"}</p>}
     </div>
 
     {creatorOpen && <div className="rpm-modal" role="dialog" aria-modal="true" aria-label="Ready Player Me avatar creator">
