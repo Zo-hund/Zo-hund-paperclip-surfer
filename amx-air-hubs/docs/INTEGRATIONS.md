@@ -106,6 +106,8 @@ Visual analysis is off by default. The user must enable `Allow visual analysis` 
 
 The Nexus room loads the Blender-prepared ZOHUND character from `/models/zohund-avatar.glb` by default. Its editable source is `assets/blender/zohund-avatar.blend`; regenerate both assets and the deterministic first-party PBR texture set in `public/textures/zohund/` from an archived export with `scripts/prepare-zohund-avatar.py`.
 
+The built-in roster also includes Mario MXBC, Actor One, and Mr Lamont. Their editable sources live in `assets/blender/avatars/`, while deployable glTF packages and first-party textures live in `public/models/avatars/`. Regenerate one with `scripts/prepare-built-in-avatar.py`; separate glTF textures avoid protected-origin embedded-image differences while preserving the source rig and materials.
+
 Ready Player Me hosted services were discontinued on January 31, 2026. The room still supports archived Ready Player Me `.glb` files through local import and legacy HTTPS avatar URLs. Local object URLs are session-only and are never persisted or uploaded. Select `Use ZOHUND` to restore the built-in character after loading a custom avatar.
 
 `VITE_READY_PLAYER_ME_CREATOR_URL` is optional for organizations that retain a private compatible creator endpoint. Leave it empty for normal deployments; the retired public creator remains disabled.
@@ -118,7 +120,7 @@ Without Supabase, room messages use BroadcastChannel and work only between tabs 
 
 ## Live Media Panels
 
-The Nexus Content Deck accepts HTTPS HLS (`.m3u8`), MP4, WebM, and local video files. HLS.js supplies adaptive playback on Media Source Extensions browsers; Safari can use native HLS. A loaded player is also bound to the left Blender display through a Three.js `VideoTexture`.
+The Nexus Content Deck accepts HTTPS HLS (`.m3u8`), MP4, WebM, and local video files. HLS.js supplies adaptive playback on Media Source Extensions browsers; Safari can use native HLS. A loaded player is bound to a dedicated front-facing Blender display plane through a frame-synchronized, tone-map-neutral Three.js canvas texture; `Fit` preserves the full frame and `Fill` center-crops without stretching.
 
 External manifests, segments, and media files must permit cross-origin browser requests from the deployment origin. Local files remain browser-local object URLs and are revoked when the player unmounts.
 

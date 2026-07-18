@@ -6,6 +6,7 @@ import type { GeoAnchor } from "./geospatial";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
 export type LightPreset = "mission" | "focus" | "standby";
+export type VideoFit = "contain" | "cover";
 export type WorldCameraId = "overview" | "entry" | "rack" | "briefing";
 export type WorldCameraCapture = (camera?: WorldCameraId) => Promise<Blob | null>;
 export interface LocationPanelData {
@@ -30,6 +31,7 @@ interface Props {
   localStream: MediaStream | null;
   sceneStreams?: MediaStream[];
   mediaElement?: HTMLVideoElement | null;
+  mediaFit?: VideoFit;
   locationPanel?: LocationPanelData | null;
   anchors: GeoAnchor[];
   lightPreset: LightPreset;
@@ -45,24 +47,125 @@ interface Props {
 type ScreenName = "Screen_User" | "Screen_Agent_Left" | "Screen_Agent_Right";
 
 function screenMaterial(texture: THREE.Texture) {
-  return new THREE.MeshStandardMaterial({ map: texture, emissiveMap: texture, emissive: 0xffffff, emissiveIntensity: 0.38, roughness: 0.25, metalness: 0.05 });
+  return new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
 }
 
-function bindVideoElement(mesh: THREE.Mesh, video: HTMLVideoElement, mirror = false, owned = false) {
-  const texture = new THREE.VideoTexture(video);
+type ScaleAxis = "x" | "y" | "z";
+
+function mediaSurfaceDimensions(mesh: THREE.Mesh) {
+  const savedScale = mesh.userData.mediaBaseScale as [number, number, number] | undefined;
+  const baseScale = savedScale ? new THREE.Vector3(...savedScale) : mesh.scale.clone();
+  if (!savedScale) mesh.userData.mediaBaseScale = baseScale.toArray();
+  mesh.geometry.computeBoundingBox();
+  const size = mesh.geometry.boundingBox?.getSize(new THREE.Vector3()) || new THREE.Vector3(16, 9, 0);
+  size.set(Math.abs(size.x * baseScale.x), Math.abs(size.y * baseScale.y), Math.abs(size.z * baseScale.z));
+  const axes = (["x", "y", "z"] as ScaleAxis[]).sort((left, right) => size[right] - size[left]);
+  return { baseScale, size, widthAxis: axes[0], heightAxis: axes[1] };
+}
+
+function fitTextureToSurface(mesh: THREE.Mesh, texture: THREE.Texture, mediaAspect: number, fit: VideoFit, mirror = false) {
+  const { baseScale, size, widthAxis, heightAxis } = mediaSurfaceDimensions(mesh);
+  mesh.scale.copy(baseScale);
+  const displayAspect = Math.max(0.01, size[widthAxis] / Math.max(0.01, size[heightAxis]));
+  const safeMediaAspect = Math.max(0.01, mediaAspect || 16 / 9);
+  let repeatX = 1;
+  let repeatY = 1;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (fit === "contain") {
+    if (safeMediaAspect > displayAspect) mesh.scale[heightAxis] *= displayAspect / safeMediaAspect;
+    else mesh.scale[widthAxis] *= safeMediaAspect / displayAspect;
+  } else if (safeMediaAspect > displayAspect) {
+    repeatX = displayAspect / safeMediaAspect;
+    offsetX = (1 - repeatX) / 2;
+  } else {
+    repeatY = safeMediaAspect / displayAspect;
+    offsetY = (1 - repeatY) / 2;
+  }
+
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.repeat.set(mirror ? -repeatX : repeatX, repeatY);
+  texture.offset.set(mirror ? offsetX + repeatX : offsetX, offsetY);
+  texture.needsUpdate = true;
+  mesh.userData.mediaFit = fit;
+  mesh.userData.mediaAspect = safeMediaAspect.toFixed(3);
+  mesh.userData.displayAspect = displayAspect.toFixed(3);
+}
+
+function restoreMediaSurface(mesh: THREE.Mesh) {
+  const savedScale = mesh.userData.mediaBaseScale as [number, number, number] | undefined;
+  if (savedScale) mesh.scale.set(...savedScale);
+  delete mesh.userData.mediaFit;
+  delete mesh.userData.mediaAspect;
+  delete mesh.userData.displayAspect;
+}
+
+function bindVideoElement(mesh: THREE.Mesh, video: HTMLVideoElement, mirror = false, owned = false, fit: VideoFit = "cover") {
+  const { size, widthAxis, heightAxis } = mediaSurfaceDimensions(mesh);
+  const displayAspect = Math.max(0.01, size[widthAxis] / Math.max(0.01, size[heightAxis]));
+  const canvas = document.createElement("canvas");
+  canvas.width = 960;
+  canvas.height = Math.max(1, Math.round(canvas.width / displayAspect));
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("The video compositor is unavailable");
+  const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.flipY = false;
   texture.minFilter = THREE.LinearFilter;
-  if (mirror) {
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.repeat.x = -1;
-    texture.offset.x = 1;
-  }
+  texture.generateMipmaps = false;
   const previous = mesh.material;
   const material = screenMaterial(texture);
   mesh.material = material;
+  let stopped = false;
+  let videoFrame = 0;
+  let fallbackTimer = 0;
+  const paintFrame = () => {
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) return;
+    const mediaAspect = video.videoWidth / video.videoHeight;
+    let width = canvas.width;
+    let height = canvas.height;
+    if (fit === "contain") {
+      if (mediaAspect > displayAspect) height = width / mediaAspect;
+      else width = height * mediaAspect;
+    } else if (mediaAspect > displayAspect) width = height * mediaAspect;
+    else height = width / mediaAspect;
+    const x = (canvas.width - width) / 2;
+    const y = (canvas.height - height) / 2;
+    context.fillStyle = "#02070d";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.save();
+    if (mirror) {
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
+    }
+    context.drawImage(video, x, y, width, height);
+    context.restore();
+    texture.needsUpdate = true;
+    mesh.userData.mediaFit = fit;
+    mesh.userData.mediaAspect = mediaAspect.toFixed(3);
+    mesh.userData.displayAspect = displayAspect.toFixed(3);
+  };
+  const scheduleVideoFrame = () => {
+    if (stopped) return;
+    videoFrame = video.requestVideoFrameCallback(() => {
+      paintFrame();
+      scheduleVideoFrame();
+    });
+  };
+  if (typeof video.requestVideoFrameCallback === "function") scheduleVideoFrame();
+  else fallbackTimer = window.setInterval(paintFrame, 33);
+  video.addEventListener("loadedmetadata", paintFrame);
+  video.addEventListener("seeked", paintFrame);
+  paintFrame();
   void video.play().catch(() => undefined);
   return () => {
+    stopped = true;
+    if (videoFrame && typeof video.cancelVideoFrameCallback === "function") video.cancelVideoFrameCallback(videoFrame);
+    if (fallbackTimer) window.clearInterval(fallbackTimer);
+    video.removeEventListener("loadedmetadata", paintFrame);
+    video.removeEventListener("seeked", paintFrame);
     if (owned) {
       video.pause();
       video.srcObject = null;
@@ -70,6 +173,7 @@ function bindVideoElement(mesh: THREE.Mesh, video: HTMLVideoElement, mirror = fa
     texture.dispose();
     material.dispose();
     if (mesh.material === material) mesh.material = previous;
+    restoreMediaSurface(mesh);
   };
 }
 
@@ -224,7 +328,7 @@ function anchorBeacon(anchor: GeoAnchor) {
   return group;
 }
 
-export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, activeWorldCamera = "overview", onReady, onBackend, onCaptureReady, onAvatarState }: Props) {
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, mediaFit = "contain", locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, activeWorldCamera = "overview", onReady, onBackend, onCaptureReady, onAvatarState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
@@ -310,6 +414,10 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
           lightRefs.current.push(light);
         }
       });
+      (Object.keys(screenRefs.current) as ScreenName[]).forEach((name) => {
+        const target = model?.getObjectByName(name);
+        screenRefs.current[name] = target && (target as THREE.Mesh).isMesh ? target as THREE.Mesh : null;
+      });
       scene.add(model);
       const bounds = new THREE.Box3().setFromObject(model);
       const size = bounds.getSize(new THREE.Vector3());
@@ -317,6 +425,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
       host.dataset.modelBounds = `${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`;
       host.dataset.modelCenter = `${center.x.toFixed(2)},${center.y.toFixed(2)},${center.z.toFixed(2)}`;
       host.dataset.modelRange = `${bounds.min.z.toFixed(2)}:${bounds.max.z.toFixed(2)}`;
+      host.dataset.screenTargets = (Object.keys(screenRefs.current) as ScreenName[]).filter((name) => Boolean(screenRefs.current[name])).join(",");
       setLoading(false);
       onReadyRef.current?.();
     }, undefined, (loadError) => {
@@ -365,6 +474,16 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
       if (captureFrame || currentFrame % 30 === 0) {
         host.dataset.drawCalls = String(renderer.info.render.drawCalls);
         host.dataset.triangles = String(renderer.info.render.triangles);
+        const mediaScreen = screenRefs.current.Screen_Agent_Left;
+        if (mediaScreen?.userData.mediaFit) {
+          host.dataset.videoFit = String(mediaScreen.userData.mediaFit);
+          host.dataset.videoAspect = String(mediaScreen.userData.mediaAspect);
+          host.dataset.videoDisplayAspect = String(mediaScreen.userData.displayAspect);
+        } else {
+          delete host.dataset.videoFit;
+          delete host.dataset.videoAspect;
+          delete host.dataset.videoDisplayAspect;
+        }
       }
     };
     let animationFrame = 0;
@@ -501,10 +620,33 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
 
   useEffect(() => {
     const mesh = screenRefs.current.Screen_Agent_Left;
-    if (!mesh) return;
-    if (mediaElement) return bindVideoElement(mesh, mediaElement);
+    if (!mesh) {
+      if (hostRef.current) hostRef.current.dataset.videoEffect = "target-missing";
+      return;
+    }
+    if (mediaElement) {
+      if (hostRef.current) hostRef.current.dataset.videoEffect = "binding";
+      try {
+        const cleanup = bindVideoElement(mesh, mediaElement, false, false, mediaFit);
+        if (hostRef.current) {
+          hostRef.current.dataset.videoEffect = "bound";
+          hostRef.current.dataset.videoMaterial = Array.isArray(mesh.material) ? mesh.material.map((material) => material.type).join(",") : mesh.material.type;
+          hostRef.current.dataset.videoFit = String(mesh.userData.mediaFit || mediaFit);
+          hostRef.current.dataset.videoAspect = String(mesh.userData.mediaAspect || "pending");
+          hostRef.current.dataset.videoDisplayAspect = String(mesh.userData.displayAspect || "pending");
+          delete hostRef.current.dataset.videoError;
+        }
+        return cleanup;
+      } catch (bindError) {
+        if (hostRef.current) {
+          hostRef.current.dataset.videoEffect = "error";
+          hostRef.current.dataset.videoError = bindError instanceof Error ? bindError.message : "Video surface binding failed";
+        }
+        return;
+      }
+    }
     if (sceneStreams[1]) return bindStream(mesh, sceneStreams[1]);
-  }, [loading, mediaElement, sceneStreams]);
+  }, [loading, mediaElement, mediaFit, sceneStreams]);
 
   useEffect(() => {
     const mesh = screenRefs.current.Screen_Agent_Right;
@@ -523,6 +665,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
     const previous = mesh.material;
     const material = screenMaterial(texture);
     mesh.material = material;
+    fitTextureToSurface(mesh, texture, canvas.width / canvas.height, "contain");
     const timer = window.setInterval(() => {
       drawLocationPanel(canvas, locationPanel);
       texture.needsUpdate = true;
@@ -532,10 +675,11 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, l
       texture.dispose();
       material.dispose();
       if (mesh.material === material) mesh.material = previous;
+      restoreMediaSurface(mesh);
     };
   }, [loading, locationPanel, sceneStreams]);
 
-  return <div className="nexus-room-scene" ref={hostRef} aria-label="Interactive Three.js Nexus control room">
+  return <div className="nexus-room-scene" ref={hostRef} data-media-source={mediaElement ? "connected" : "idle"} aria-label="Interactive Three.js Nexus control room">
     {loading && <div className="nexus-scene-loading"><span/><b>Loading Blender control room</b></div>}
     {error && <div className="nexus-scene-error">{error}</div>}
   </div>;

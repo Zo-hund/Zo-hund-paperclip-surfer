@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type Hls from "hls.js";
 import { FileVideo, Link, Radio, Upload, Video } from "lucide-react";
+import type { VideoFit } from "./NexusRoomScene";
 
 type PlayerState = "idle" | "loading" | "ready" | "live" | "error";
 
 interface Props {
-  onPanelVideo?: (video: HTMLVideoElement | null) => void;
+  onPanelVideo?: (video: HTMLVideoElement | null, fit: VideoFit) => void;
 }
 
 const HLS_DEMO = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
@@ -25,6 +26,7 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
   const [activeSource, setActiveSource] = useState("");
   const [state, setState] = useState<PlayerState>("idle");
   const [message, setMessage] = useState("Load an HLS, MP4, WebM, or local video");
+  const [fit, setFit] = useState<VideoFit>("contain");
 
   const resetSource = useCallback(() => {
     hlsRef.current?.destroy();
@@ -35,13 +37,13 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
       video.removeAttribute("src");
       video.load();
     }
-    onPanelVideo?.(null);
-  }, [onPanelVideo]);
+    onPanelVideo?.(null, fit);
+  }, [fit, onPanelVideo]);
 
   useEffect(() => () => {
     hlsRef.current?.destroy();
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    onPanelVideo?.(null);
+    onPanelVideo?.(null, fit);
   }, [onPanelVideo]);
 
   const load = useCallback(async (rawSource = source) => {
@@ -72,7 +74,7 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
         hls.on(HlsEngine.Events.MANIFEST_PARSED, (_event, data) => {
           setState("ready");
           setMessage(`${data.levels.length || 1} adaptive level${data.levels.length === 1 ? "" : "s"} available`);
-          onPanelVideo?.(video);
+          onPanelVideo?.(video, fit);
           void video.play().catch(() => setMessage("Stream ready; press play to start"));
         });
         hls.on(HlsEngine.Events.LEVEL_LOADED, (_event, data) => {
@@ -85,7 +87,7 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
           if (!data.fatal) return;
           setState("error");
           setMessage(data.details || "The HLS stream could not be opened");
-          onPanelVideo?.(null);
+          onPanelVideo?.(null, fit);
         });
         hls.loadSource(url);
         hls.attachMedia(video);
@@ -98,7 +100,7 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "The media source is invalid");
     }
-  }, [onPanelVideo, resetSource, source]);
+  }, [fit, onPanelVideo, resetSource, source]);
 
   const importFile = (file?: File) => {
     if (!file) return;
@@ -106,6 +108,11 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
     objectUrlRef.current = URL.createObjectURL(file);
     setSource(file.name);
     void load(objectUrlRef.current);
+  };
+
+  const updateFit = (nextFit: VideoFit) => {
+    setFit(nextFit);
+    if (videoRef.current && (state === "ready" || state === "live")) onPanelVideo?.(videoRef.current, nextFit);
   };
 
   return <section className="nexus-content-module media-module">
@@ -121,13 +128,13 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
         if (!video || hlsRef.current) return;
         setState(video.duration === Infinity ? "live" : "ready");
         setMessage(video.duration === Infinity ? "Live stream connected" : "Media ready on Blender panel");
-        onPanelVideo?.(video);
+        onPanelVideo?.(video, fit);
       }}
       onError={() => {
         if (hlsRef.current) return;
         setState("error");
         setMessage("The browser could not decode this media source");
-        onPanelVideo?.(null);
+        onPanelVideo?.(null, fit);
       }}
     />
     <div className="media-source-row"><Link/><input aria-label="Media URL" value={source} onChange={(event) => setSource(event.target.value)} placeholder="https://.../stream.m3u8 or video.mp4"/><button onClick={() => void load()} disabled={!source.trim()} title="Load media"><Video/></button></div>
@@ -136,6 +143,7 @@ export function NexusMediaPlayer({ onPanelVideo }: Props) {
       <label><Upload/>Local video<input type="file" accept="video/*,.m3u8" onChange={(event) => importFile(event.target.files?.[0])}/></label>
       <span><FileVideo/>{activeSource ? "Panel linked" : "No source"}</span>
     </div>
+    <div className="media-fit-control" role="tablist" aria-label="In-world video fit"><button className={fit === "contain" ? "active" : ""} onClick={() => updateFit("contain")}>Fit</button><button className={fit === "cover" ? "active" : ""} onClick={() => updateFit("cover")}>Fill</button></div>
     <p>{message}</p>
   </section>;
 }

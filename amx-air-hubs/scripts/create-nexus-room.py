@@ -5,6 +5,7 @@ from mathutils import Vector
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT = os.path.join(ROOT, "public", "models", "nexus-control-room.glb")
+BLEND_OUTPUT = os.path.join(ROOT, "assets", "blender", "nexus-control-room.blend")
 
 bpy.ops.object.select_all(action="SELECT")
 bpy.ops.object.delete(use_global=False)
@@ -62,6 +63,20 @@ def torus(name, location, major, minor, mat, rotation=(0, 0, 0)):
     return obj
 
 
+def screen_surface(name, location, scale, mat):
+    bpy.ops.mesh.primitive_plane_add(
+        size=2,
+        location=(location[0], location[1] - 0.12, location[2]),
+        rotation=(math.pi / 2, 0, 0),
+    )
+    obj = bpy.context.object
+    obj.name = name
+    obj.scale = (scale[0] * 0.96, scale[2] * 0.96, 1)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    obj.data.materials.append(mat)
+    return obj
+
+
 box("Nexus_Floor", (0, 0, -0.18), (5.5, 5.6, 0.18), MAT_DARK, 0.04)
 box("Nexus_BackWall", (0, 5.25, 2.75), (5.5, 0.16, 2.9), MAT_DARK, 0.04)
 box("Nexus_LeftWall", (-5.35, 0.4, 2.5), (0.16, 4.8, 2.7), MAT_DARK, 0.04)
@@ -79,7 +94,8 @@ screen_specs = [
 ]
 for name, location, scale, screen_mat in screen_specs:
     box(f"{name}_Frame", (location[0], location[1] + 0.08, location[2]), (scale[0] + 0.12, 0.08, scale[2] + 0.12), MAT_PANEL, 0.09)
-    box(name, location, scale, screen_mat, 0.035)
+    box(f"{name}_Backplate", location, scale, screen_mat, 0.035)
+    screen_surface(name, location, scale, screen_mat)
     box(f"{name}_Signal", (location[0], location[1] - 0.08, location[2] - scale[2] - 0.18), (scale[0] * 0.72, 0.025, 0.025), MAT_CYAN, 0.01)
 
 for x in (-3.2, 3.2):
@@ -145,6 +161,8 @@ bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
 bpy.context.scene.render.resolution_x = 1600
 bpy.context.scene.render.resolution_y = 900
 os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
+os.makedirs(os.path.dirname(BLEND_OUTPUT), exist_ok=True)
+bpy.ops.wm.save_as_mainfile(filepath=BLEND_OUTPUT)
 bpy.ops.export_scene.gltf(
     filepath=OUTPUT,
     export_format="GLB",
