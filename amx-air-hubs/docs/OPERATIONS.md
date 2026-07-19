@@ -15,6 +15,7 @@
 11. For remote Pod tests, confirm the Stage transport reads `websocket`, open the linked Pod code on a second device, and verify camera, cue, sponsor, and seating changes arrive in order.
 12. Join the LiveKit stage room only after camera/microphone permission is approved; verify participant media separately from the production cue bus.
 13. Join two camera-team participants, route their named tracks to separate Stage camera channels, take each channel, and confirm `data-program-feed-id` and `data-program-feed-live` change on the 3D scene host.
+14. With no Stage feed connected, select `CONNECT CAMERA` in the Show console. Confirm the Pods console scrolls to an above-fold `Join pod` action on desktop and phone. After a denied permission, confirm `RETRY CAMERA` remains available and the displayed error identifies blocked, missing, busy, or unsupported media hardware.
 14. Mute or disconnect the on-program participant and confirm the channel reports muted/offline and the program mesh returns to its governed sponsor fallback.
 
 ## Observability

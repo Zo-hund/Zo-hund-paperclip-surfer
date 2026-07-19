@@ -146,6 +146,8 @@ The four Stage camera channels can route `AUTO INPUT`, `VIRTUAL SHOT`, or an exp
 
 Camera-team workflow: all operators join the same Stage LiveKit room, publish camera or screen tracks, then the director selects each participant from the CAM 1-3 or CRANE route menu. The browser requests camera/microphone permission only when each participant selects Join Pod. LiveKit transports the media; Supabase synchronizes which channel is on program.
 
+When no feed is connected, the Stage Show console exposes `CONNECT CAMERA`, opens the Pods media panel, and scrolls its compact controls into view. Capture failures preserve a retry action and report the browser's device category instead of collapsing every failure into a generic permission message. CAM 1-3 and CRANE remain production take controls; they do not request device permission themselves.
+
 Each Pod code linked in the Pods console receives the same production packet on its `amx-stage-{POD}` cue bus. A Stage page using that Pod code can therefore follow the show state. This is production-state distribution, not automatic LiveKit room federation; participants who need shared audio/video must join the same configured LiveKit room or use a separate media bridge.
 
 Without Supabase, the cue bus uses BroadcastChannel and reaches only tabs on the same device. The console labels this transport `local mesh`; it does not claim remote Pod synchronization.
