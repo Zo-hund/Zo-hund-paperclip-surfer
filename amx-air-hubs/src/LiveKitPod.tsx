@@ -331,7 +331,12 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     const shouldEnable = screenShareState !== "published";
     setScreenShareState("requesting");
     try {
-      await room.localParticipant.setScreenShareEnabled(shouldEnable);
+      await room.localParticipant.setScreenShareEnabled(shouldEnable, shouldEnable ? {
+        audio: true,
+        systemAudio: "include",
+        selfBrowserSurface: "include",
+        surfaceSwitching: "include",
+      } : undefined);
       if (!shouldEnable) {
         setSurfaces((current) => current.filter((surface) => surface.source !== "screen" || !surface.local));
         setScreenShareState("off");
@@ -342,7 +347,8 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       if (!track) throw new Error("Screen-share track was not published");
       addVideoTrack(track, `${identity}-screen`, "Your screen", true, "screen");
       setScreenShareState("published");
-      setMessage("Screen share is live in the pod and routed to a Blender panel");
+      const audioPublication = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
+      setMessage(`Screen share is live in the pod and routed to a Blender panel${audioPublication?.audioTrack ? " with shared audio" : "; enable tab or system audio in the share picker for the program mix"}`);
     } catch (error) {
       setScreenShareState("blocked");
       setMessage(error instanceof Error ? error.message : "Screen sharing is unavailable on this browser");

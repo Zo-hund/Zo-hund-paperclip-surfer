@@ -1,13 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Armchair, Bot, Camera, CameraOff, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2,
-  Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RefreshCw, Sparkles, Ticket, Users, Video, Volume2, Wifi,
+  Armchair, Bot, Camera, CameraOff, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2, LockKeyhole,
+  Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Sparkles, Ticket, Users, Video, Volume2, Wifi,
 } from "lucide-react";
 import type { CaptureState, LiveVideoFeed } from "../LiveKitPod";
 import { agents } from "../data";
 import { trackEvent } from "../platform";
 import { useAMX } from "../AppContext";
 import { useStageSoundscape } from "../StageSoundscape";
+import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
 import {
   DEFAULT_SPONSORS, useStageProduction, type SponsorCreative, type StageAudioFormat, type StageAudioState, type StageCue, type StageDeckTrack, type StageMode, type StageShot, type StageSoundscape,
 } from "../stage-production";
@@ -80,6 +81,10 @@ export function AMXXRStagePage() {
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
   const [cameraMediaState, setCameraMediaState] = useState<CaptureState>("off");
+  const [djControlToken, setDjControlToken] = useState("");
+  const [djBroadcast, setDjBroadcast] = useState<DjBroadcastState | null>(null);
+  const [djBroadcastBusy, setDjBroadcastBusy] = useState(false);
+  const [djBroadcastMessage, setDjBroadcastMessage] = useState("Enter the private control token to check the broadcast destination.");
   const consoleBodyRef = useRef<HTMLDivElement>(null);
   const [backend, setBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
   const [podDraft, setPodDraft] = useState("");
@@ -152,6 +157,25 @@ export function AMXXRStagePage() {
     });
     trackEvent(recording ? "stage_podcast_record_cued" : "stage_podcast_record_stopped", { locationTag: production.room });
   };
+  const runDjBroadcast = async (action: "status" | "start" | "stop") => {
+    if (!djControlToken.trim()) {
+      setDjBroadcastMessage("A private stream control token is required.");
+      return;
+    }
+    setDjBroadcastBusy(true);
+    setDjBroadcastMessage(action === "start" ? "Starting the LiveKit room stream..." : action === "stop" ? "Stopping the outbound stream..." : "Checking the LiveKit egress...");
+    try {
+      const result = await controlDjBroadcast(action, production.room, djControlToken.trim(), action === "stop" ? djBroadcast?.active?.id : undefined);
+      setDjBroadcast(result);
+      const live = Boolean(result.active);
+      setDjBroadcastMessage(live ? `LiveKit room mix is streaming to ${result.destinationCount} destination${result.destinationCount === 1 ? "" : "s"}.` : `Broadcast control ready for ${result.destinationCount} destination${result.destinationCount === 1 ? "" : "s"}.`);
+      trackEvent(action === "start" ? "stage_dj_broadcast_started" : action === "stop" ? "stage_dj_broadcast_stopped" : "stage_dj_broadcast_checked", { locationTag: production.room });
+    } catch (error) {
+      setDjBroadcastMessage(error instanceof Error ? error.message : "DJ broadcast control failed");
+    } finally {
+      setDjBroadcastBusy(false);
+    }
+  };
   const openCameraSetup = () => {
     setView("collab");
     window.requestAnimationFrame(() => {
@@ -212,6 +236,11 @@ export function AMXXRStagePage() {
     return () => window.clearInterval(timer);
   }, [production.state.audio.recording, production.state.audio.transport]);
 
+  useEffect(() => {
+    setDjBroadcast(null);
+    setDjBroadcastMessage("Enter the private control token to check the broadcast destination.");
+  }, [production.room]);
+
   const seatsTotal = production.state.generalSeats + production.state.vipSeats;
   return <div className="page amx-stage-page">
     <header className="stage-workspace-bar">
@@ -244,6 +273,8 @@ export function AMXXRStagePage() {
 
           <div className="stage-console-view stage-audio-console" hidden={view !== "audio"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">PROGRAM AUDIO</span><h2>Music and podcast runtime</h2></div><span className={`stage-sync-state ${production.state.audio.transport === "playing" ? "audio-live" : ""}`}><i/>{production.state.audio.transport}</span></header><div className="stage-audio-format">{(["show", "podcast", "dj"] as StageAudioFormat[]).map((format) => { const Icon = format === "podcast" ? Podcast : format === "dj" ? Disc3 : Music2; return <button key={format} className={production.state.audio.format === format ? "active" : ""} onClick={() => selectAudioFormat(format)}><Icon/><span>{format}</span></button>; })}</div><div className="stage-audio-transport"><button className={production.state.audio.transport === "playing" ? "active" : ""} onClick={() => void toggleAudioTransport()}>{production.state.audio.transport === "playing" ? <Pause/> : <Play/>}<span>{production.state.audio.transport === "playing" ? "STOP PROGRAM" : "START PROGRAM"}</span></button><button className={soundscapeRuntime.enabled ? "monitoring" : ""} onClick={() => void (soundscapeRuntime.enabled ? soundscapeRuntime.disable() : soundscapeRuntime.enable())}><Headphones/><span>{soundscapeRuntime.enabled ? "MONITOR ON" : "ENABLE MONITOR"}</span></button></div><div className="stage-audio-runtime"><span><Volume2/><b>{soundscapeRuntime.status.toUpperCase()}</b><small>LOCAL MONITOR</small></span><span><Wifi/><b>{production.transport.toUpperCase()}</b><small>PROGRAM SYNC</small></span><span><Music2/><b>{elapsedLabel(production.state.audio.startedAt, runtimeNow)}</b><small>RUNTIME</small></span></div></section>
+
+            <section className="stage-control-section stage-dj-live"><header><div><span className="eyebrow">DJ LIVE / RTMP</span><h2>Outbound broadcast</h2></div><span className={`stage-sync-state ${djBroadcast?.active ? "audio-live" : ""}`}><i/>{djBroadcast?.active ? "ON AIR" : djBroadcastBusy ? "WORKING" : "OFF AIR"}</span></header><div className="stage-dj-live-source"><RadioTower/><span><b>LIVEKIT ROOM MIX</b><small>{production.room} / camera, microphone and shared audio</small></span>{djBroadcast?.active && <code>{djBroadcast.active.id.slice(0, 12)}</code>}</div><label className="stage-dj-live-token"><LockKeyhole/><input type="password" autoComplete="off" value={djControlToken} onChange={(event) => setDjControlToken(event.target.value)} placeholder="STREAM CONTROL TOKEN" aria-label="DJ stream control token"/><button disabled={djBroadcastBusy || !djControlToken.trim()} onClick={() => void runDjBroadcast("status")} aria-label="Check DJ broadcast" title="Check DJ broadcast"><RefreshCw/></button></label><div className="stage-dj-live-actions"><button disabled={djBroadcastBusy || !djControlToken.trim() || Boolean(djBroadcast?.active)} onClick={() => void runDjBroadcast("start")}><RadioTower/>START DJ LIVE</button><button className="stop" disabled={djBroadcastBusy || !djBroadcast?.active} onClick={() => void runDjBroadcast("stop")}><CircleStop/>STOP STREAM</button></div><p>{djBroadcastMessage}</p></section>
 
             <section className="stage-control-section"><header><div><span className="eyebrow">DJ BOOTH / POD</span><h2>Deck mixer</h2></div><b className="stage-audio-bpm">{production.state.audio.bpm} BPM</b></header><div className="stage-deck-grid"><label><span>DECK A</span><select value={production.state.audio.deckA} onChange={(event) => updateAudio({ deckA: event.target.value as StageDeckTrack })}>{DECK_TRACKS.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label><label><span>DECK B</span><select value={production.state.audio.deckB} onChange={(event) => updateAudio({ deckB: event.target.value as StageDeckTrack })}>{DECK_TRACKS.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label></div><label className="stage-audio-slider"><span>CROSSFADER <b>{production.state.audio.crossfader}%</b></span><input type="range" min="0" max="100" value={production.state.audio.crossfader} onChange={(event) => updateAudio({ crossfader: Number(event.target.value) })}/></label><div className="stage-audio-levels"><label><span>MASTER <b>{production.state.audio.master}%</b></span><input type="range" min="0" max="100" value={production.state.audio.master} onChange={(event) => updateAudio({ master: Number(event.target.value) })}/></label><div className="stage-bpm-stepper"><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm - 1, 60, 160) })} aria-label="Decrease BPM"><Minus/></button><output>{production.state.audio.bpm}</output><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm + 1, 60, 160) })} aria-label="Increase BPM"><Plus/></button></div></div></section>
 

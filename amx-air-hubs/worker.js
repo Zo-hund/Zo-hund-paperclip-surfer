@@ -306,6 +306,93 @@ async function createLiveKitAdminToken(env, room) {
   return `${unsigned}.${base64Url(signature)}`;
 }
 
+async function createLiveKitEgressToken(env) {
+  const now = Math.floor(Date.now() / 1000);
+  const encodedHeader = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const encodedPayload = base64Url(JSON.stringify({
+    iss: env.LIVEKIT_API_KEY,
+    sub: "amx-air-hubs-egress",
+    identity: "amx-air-hubs-egress",
+    name: "AMX AIR Hubs Egress",
+    iat: now,
+    nbf: now - 5,
+    exp: now + 60,
+    jti: crypto.randomUUID(),
+    video: { roomRecord: true },
+  }));
+  const unsigned = `${encodedHeader}.${encodedPayload}`;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.LIVEKIT_API_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(unsigned));
+  return `${unsigned}.${base64Url(signature)}`;
+}
+
+function liveKitEgressDestinations(env) {
+  return String(env.DJ_RTMP_URLS || "")
+    .split(/[\n,]/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((value) => {
+      const parsed = new URL(value);
+      if (!["rtmp:", "rtmps:"].includes(parsed.protocol)) throw new Error("DJ stream destinations must use RTMP or RTMPS");
+      if (!parsed.hostname) throw new Error("DJ stream destination host is required");
+      return parsed.toString();
+    });
+}
+
+async function matchesSecret(provided, expected) {
+  if (!provided || !expected) return false;
+  const values = await Promise.all([provided, expected].map((value) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
+  const left = new Uint8Array(values[0]);
+  const right = new Uint8Array(values[1]);
+  let difference = left.length ^ right.length;
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) difference |= (left[index] || 0) ^ (right[index] || 0);
+  return difference === 0;
+}
+
+async function authorizeDjBroadcast(request, env) {
+  const authorization = request.headers.get("Authorization") || "";
+  const provided = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!await matchesSecret(provided, env.DJ_STREAM_CONTROL_TOKEN)) throw new HttpError(403, "DJ broadcast control token is invalid");
+}
+
+function liveKitApiUrl(env, method) {
+  const endpoint = new URL(env.LIVEKIT_URL);
+  endpoint.protocol = endpoint.protocol === "wss:" ? "https:" : "http:";
+  endpoint.pathname = `/twirp/livekit.Egress/${method}`;
+  endpoint.search = "";
+  endpoint.hash = "";
+  return endpoint;
+}
+
+async function callLiveKitEgress(env, method, body) {
+  const token = await createLiveKitEgressToken(env);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(liveKitApiUrl(env, method), {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new HttpError(response.status >= 500 ? 502 : response.status, safeLabel(result?.msg || result?.message || `LiveKit egress returned ${response.status}`, "LiveKit egress failed").slice(0, 240));
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function sanitizeEgress(info) {
+  const status = info?.status ?? "EGRESS_STARTING";
+  return {
+    id: safeId(info?.egress_id || info?.egressId).slice(0, 80),
+    room: safeId(info?.room_name || info?.roomName).toUpperCase().slice(0, 64),
+    status: typeof status === "number" ? ["EGRESS_STARTING", "EGRESS_ACTIVE", "EGRESS_ENDING", "EGRESS_COMPLETE", "EGRESS_FAILED", "EGRESS_ABORTED", "EGRESS_LIMIT_REACHED"][status] || "EGRESS_UNKNOWN" : safeId(status, "EGRESS_UNKNOWN").toUpperCase(),
+  };
+}
+
 async function ensureLiveKitAgentDispatch(env, room, requestId) {
   const agentName = safeId(env.LIVEKIT_AGENT_NAME);
   if (!agentName) return { configured: false, dispatched: false };
@@ -1242,6 +1329,49 @@ async function handleApi(request, env, url, requestId) {
     const participantToken = await createLiveKitToken(env, room, identity, name);
     const agentDispatch = await ensureLiveKitAgentDispatch(env, room, requestId);
     return reply({ serverUrl, participantToken, room, expiresIn: 900, agentDispatch, requestId });
+  }
+  if (request.method === "POST" && url.pathname.startsWith("/api/livekit/egress/dj/")) {
+    if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);
+    let destinations;
+    try { destinations = liveKitEgressDestinations(env); }
+    catch (error) { return reply({ error: error instanceof Error ? error.message : "Invalid DJ stream destination", configured: false, requestId }, 503); }
+    if (!destinations.length) return reply({ error: "DJ stream destinations are not configured", configured: false, requestId }, 503);
+    if (!env.DJ_STREAM_CONTROL_TOKEN) return reply({ error: "DJ broadcast control is not configured", configured: false, requestId }, 503);
+    await authorizeDjBroadcast(request, env);
+    const body = await readJson(request, 16 * 1024);
+    const room = safeId(body.room).toUpperCase().slice(0, 64);
+    if (!room) return reply({ error: "Room is required", requestId }, 400);
+    if (url.pathname === "/api/livekit/egress/dj/status") {
+      const result = await callLiveKitEgress(env, "ListEgress", { room_name: room, active: true });
+      const items = (Array.isArray(result.items) ? result.items : []).map(sanitizeEgress).filter((item) => item.id && item.room === room);
+      return reply({ configured: true, destinationCount: destinations.length, active: items[0] || null, requestId });
+    }
+    if (url.pathname === "/api/livekit/egress/dj/start") {
+      const listed = await callLiveKitEgress(env, "ListEgress", { room_name: room, active: true });
+      const existing = (Array.isArray(listed.items) ? listed.items : []).map(sanitizeEgress).find((item) => item.id && item.room === room);
+      if (existing) return reply({ configured: true, destinationCount: destinations.length, active: existing, alreadyActive: true, requestId });
+      const result = await callLiveKitEgress(env, "StartRoomCompositeEgress", {
+        room_name: room,
+        layout: "speaker",
+        stream_outputs: [{ protocol: 1, urls: destinations }],
+        preset: 0,
+      });
+      const active = sanitizeEgress(result);
+      logEvent("info", "livekit.dj_egress_started", { requestId, room, egressId: active.id, destinationCount: destinations.length });
+      return reply({ configured: true, destinationCount: destinations.length, active, requestId }, 201);
+    }
+    if (url.pathname === "/api/livekit/egress/dj/stop") {
+      const egressId = safeId(body.egressId).slice(0, 80);
+      if (!egressId) return reply({ error: "Egress id is required", requestId }, 400);
+      const listed = await callLiveKitEgress(env, "ListEgress", { room_name: room, active: true });
+      const active = (Array.isArray(listed.items) ? listed.items : []).map(sanitizeEgress).find((item) => item.id === egressId && item.room === room);
+      if (!active) return reply({ error: "Active DJ stream was not found in this room", requestId }, 404);
+      const result = await callLiveKitEgress(env, "StopEgress", { egress_id: egressId });
+      const stopped = sanitizeEgress(result);
+      logEvent("info", "livekit.dj_egress_stopped", { requestId, room, egressId: stopped.id || egressId });
+      return reply({ configured: true, destinationCount: destinations.length, active: null, stopped: { ...stopped, id: stopped.id || egressId }, requestId });
+    }
+    return reply({ error: "DJ broadcast action not found", requestId }, 404);
   }
   if (url.pathname.startsWith("/api/rooms/")) {
     if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return reply({ error: "WebSocket upgrade required", requestId }, 426);

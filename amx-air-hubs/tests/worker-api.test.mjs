@@ -558,6 +558,91 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(calls.length, 2);
     assert.match(calls[1].url, /CreateDispatch/);
   });
+
+  test("keeps DJ stream destinations server-only and requires complete broadcast configuration", async () => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+    });
+    const response = await worker.fetch(jsonRequest("/api/livekit/egress/dj/status", { room: "AMXSTAGE" }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.equal(body.configured, false);
+    assert.equal(body.error, "DJ stream destinations are not configured");
+  });
+
+  test("rejects an invalid DJ broadcast control token", async () => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      DJ_RTMP_URLS: "rtmps://stream.example.com/live/private-stream-key",
+      DJ_STREAM_CONTROL_TOKEN: "correct-control-token",
+    });
+    const response = await worker.fetch(request("/api/livekit/egress/dj/status", {
+      method: "POST",
+      headers: { "Authorization": "Bearer wrong-token", "Content-Type": "application/json", "CF-Connecting-IP": crypto.randomUUID() },
+      body: JSON.stringify({ room: "AMXSTAGE" }),
+    }), env);
+
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, "DJ broadcast control token is invalid");
+  });
+
+  test("starts, reports, and stops a protected LiveKit DJ egress without returning stream keys", async (context) => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      DJ_RTMP_URLS: "rtmps://stream.example.com/live/private-stream-key,rtmp://backup.example.com/live/backup-key",
+      DJ_STREAM_CONTROL_TOKEN: "correct-control-token",
+    });
+    const calls = [];
+    context.mock.method(globalThis, "fetch", async (url, init) => {
+      const payload = JSON.parse(init.body);
+      calls.push({ url: String(url), authorization: init.headers.Authorization, payload });
+      if (String(url).endsWith("/ListEgress")) return Response.json({ items: calls.filter((call) => call.url.endsWith("/StartRoomCompositeEgress")).length ? [{ egress_id: "EG_DJ123", room_name: "AMXSTAGE", status: "EGRESS_ACTIVE" }] : [] });
+      if (String(url).endsWith("/StartRoomCompositeEgress")) return Response.json({ egress_id: "EG_DJ123", room_name: "AMXSTAGE", status: "EGRESS_STARTING" });
+      if (String(url).endsWith("/StopEgress")) return Response.json({ egress_id: "EG_DJ123", room_name: "AMXSTAGE", status: "EGRESS_COMPLETE" });
+      return Response.json({ msg: "Unexpected egress method" }, { status: 404 });
+    });
+    const controlledRequest = (path, body) => request(path, {
+      method: "POST",
+      headers: { "Authorization": "Bearer correct-control-token", "Content-Type": "application/json", "CF-Connecting-IP": crypto.randomUUID() },
+      body: JSON.stringify(body),
+    });
+
+    const startResponse = await worker.fetch(controlledRequest("/api/livekit/egress/dj/start", { room: "AMXSTAGE" }), env);
+    const startText = await startResponse.text();
+    const start = JSON.parse(startText);
+    const stopResponse = await worker.fetch(controlledRequest("/api/livekit/egress/dj/stop", { room: "AMXSTAGE", egressId: "EG_DJ123" }), env);
+    const stop = await stopResponse.json();
+
+    assert.equal(startResponse.status, 201);
+    assert.equal(start.active.id, "EG_DJ123");
+    assert.equal(start.destinationCount, 2);
+    assert.equal(startText.includes("private-stream-key"), false);
+    assert.equal(startText.includes("backup-key"), false);
+    assert.equal(stopResponse.status, 200);
+    assert.equal(stop.active, null);
+    assert.equal(calls.length, 4);
+    assert.match(calls[0].url, /ListEgress$/);
+    assert.match(calls[1].url, /StartRoomCompositeEgress$/);
+    assert.deepEqual(calls[1].payload, {
+      room_name: "AMXSTAGE",
+      layout: "speaker",
+      stream_outputs: [{ protocol: 1, urls: ["rtmps://stream.example.com/live/private-stream-key", "rtmp://backup.example.com/live/backup-key"] }],
+      preset: 0,
+    });
+    assert.match(calls[1].authorization, /^Bearer [^.]+\.[^.]+\.[^.]+$/);
+    const tokenPayload = JSON.parse(Buffer.from(calls[1].authorization.slice(7).split(".")[1], "base64url").toString("utf8"));
+    assert.equal(tokenPayload.video.roomRecord, true);
+    assert.match(calls[2].url, /ListEgress$/);
+    assert.match(calls[3].url, /StopEgress$/);
+    assert.deepEqual(calls[3].payload, { egress_id: "EG_DJ123" });
+  });
   test("persists validated geospatial anchors", async () => {
     const database = memoryDatabase();
     env.DB = database;

@@ -58,6 +58,16 @@ Request:
 
 Returns `serverUrl`, `participantToken`, `room`, and `expiresIn`. Returns `503` when LiveKit is not configured.
 
+### `POST /api/livekit/egress/dj/status`
+
+### `POST /api/livekit/egress/dj/start`
+
+### `POST /api/livekit/egress/dj/stop`
+
+Protected DJ livestream controls. All three require `Authorization: Bearer <DJ_STREAM_CONTROL_TOKEN>` and a JSON `room`. Stop also requires `egressId`. Start creates one LiveKit RoomComposite egress using the speaker layout and H.264 720p30 preset. Status and start return only a sanitized egress ID, room, lifecycle status, and destination count. Full RTMP URLs and stream keys are never returned.
+
+Returns `503` until LiveKit credentials, `DJ_RTMP_URLS`, and `DJ_STREAM_CONTROL_TOKEN` are configured. Start is idempotent for an active room egress.
+
 ## Runway Characters
 
 ### `GET /api/runway/avatars`
