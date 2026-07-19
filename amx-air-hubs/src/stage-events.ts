@@ -2,6 +2,19 @@ export type StageEventFormat = "summit" | "xr-con" | "expo";
 export type StageVenueLayout = "theater" | "arena" | "expo-hall";
 export type StageEventStatus = "draft" | "published" | "doors-open" | "live" | "complete";
 export type StageTicketTierId = "general" | "vip" | "speaker";
+export type StageSeatSection = "house" | "vip";
+export type StageSeatStatus = "open" | "held" | "reserved" | "checked-in" | "blocked";
+
+export interface StageSeat {
+  id: string;
+  label: string;
+  section: StageSeatSection;
+  row: string;
+  number: number;
+  status: StageSeatStatus;
+  guestName: string;
+  tierId: Extract<StageTicketTierId, "general" | "vip">;
+}
 
 export interface StageTicketTier {
   id: StageTicketTierId;
@@ -19,6 +32,7 @@ export interface StageEventState {
   sourceRoom: string;
   startsAt: string;
   ticketTiers: StageTicketTier[];
+  seats: StageSeat[];
 }
 
 export interface StageEventPreset {
@@ -81,6 +95,56 @@ export const STAGE_EVENT_PRESETS: StageEventPreset[] = [
   },
 ];
 
+function seatId(section: StageSeatSection, row: string, number: number) {
+  return `${section === "vip" ? "V" : "H"}-${row}${String(number).padStart(2, "0")}`;
+}
+
+export function createStageSeats(format: StageEventFormat, checkedInHouse = 0, checkedInVip = 0): StageSeat[] {
+  const preset = stageEventPreset(format);
+  const house = Array.from({ length: preset.generalSeats }, (_, index) => {
+    const row = String.fromCharCode(65 + Math.floor(index / 9));
+    const number = index % 9 + 1;
+    return {
+      id: seatId("house", row, number),
+      label: `${row}${number}`,
+      section: "house",
+      row,
+      number,
+      status: index < checkedInHouse ? "checked-in" : "open",
+      guestName: "",
+      tierId: "general",
+    } satisfies StageSeat;
+  });
+  const vip = Array.from({ length: preset.vipSeats }, (_, index) => {
+    const number = index + 1;
+    return {
+      id: seatId("vip", "V", number),
+      label: `V${number}`,
+      section: "vip",
+      row: "V",
+      number,
+      status: index < checkedInVip ? "checked-in" : "open",
+      guestName: "",
+      tierId: "vip",
+    } satisfies StageSeat;
+  });
+  return [...vip, ...house];
+}
+
+export function stageSeatCounts(seats: StageSeat[]) {
+  const status = (value: StageSeatStatus) => seats.filter((seat) => seat.status === value).length;
+  return {
+    capacity: seats.length,
+    open: status("open"),
+    held: status("held"),
+    reserved: status("reserved"),
+    checkedIn: status("checked-in"),
+    blocked: status("blocked"),
+    checkedInHouse: seats.filter((seat) => seat.section === "house" && seat.status === "checked-in").length,
+    checkedInVip: seats.filter((seat) => seat.section === "vip" && seat.status === "checked-in").length,
+  };
+}
+
 export function defaultStageEvent(room = "AMXSTAGE"): StageEventState {
   const preset = STAGE_EVENT_PRESETS[0];
   const startsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -94,19 +158,31 @@ export function defaultStageEvent(room = "AMXSTAGE"): StageEventState {
     sourceRoom: "AMX-MAIN",
     startsAt: startsAt.toISOString(),
     ticketTiers: preset.ticketTiers.map((tier) => ({ ...tier })),
+    seats: createStageSeats(preset.id),
   };
 }
 
-export function normalizeStageEvent(value: Partial<StageEventState> | undefined, room = "AMXSTAGE") {
+export function normalizeStageEvent(value: Partial<StageEventState> | undefined, room = "AMXSTAGE", legacyHouse = 0, legacyVip = 0) {
   const fallback = defaultStageEvent(room);
   const preset = STAGE_EVENT_PRESETS.find((item) => item.id === value?.format) || STAGE_EVENT_PRESETS[0];
   const validStatus = ["draft", "published", "doors-open", "live", "complete"].includes(value?.status || "");
+  const validSeatStatuses: StageSeatStatus[] = ["open", "held", "reserved", "checked-in", "blocked"];
   const tiers = preset.ticketTiers.map((fallbackTier) => {
     const saved = value?.ticketTiers?.find((tier) => tier.id === fallbackTier.id);
     return {
       ...fallbackTier,
       ...saved,
       capacity: Math.max(1, Math.min(100, Math.round(Number(saved?.capacity) || fallbackTier.capacity))),
+    };
+  });
+  const canonicalSeats = createStageSeats(preset.id, value?.seats?.length ? 0 : legacyHouse, value?.seats?.length ? 0 : legacyVip);
+  const seats = canonicalSeats.map((seat) => {
+    const saved = value?.seats?.find((candidate) => candidate.id === seat.id);
+    if (!saved) return seat;
+    return {
+      ...seat,
+      status: validSeatStatuses.includes(saved.status) ? saved.status : "open",
+      guestName: String(saved.guestName || "").trim().slice(0, 48),
     };
   });
   const sourceRoom = String(value?.sourceRoom || fallback.sourceRoom).toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || fallback.sourceRoom;
@@ -120,6 +196,7 @@ export function normalizeStageEvent(value: Partial<StageEventState> | undefined,
     sourceRoom,
     startsAt: value?.startsAt && !Number.isNaN(Date.parse(value.startsAt)) ? value.startsAt : fallback.startsAt,
     ticketTiers: tiers,
+    seats,
   } satisfies StageEventState;
 }
 

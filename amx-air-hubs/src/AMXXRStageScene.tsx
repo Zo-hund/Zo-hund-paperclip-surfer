@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { LiveVideoFeed } from "./LiveKitPod";
-import type { StageVenueLayout } from "./stage-events";
+import type { StageSeat, StageVenueLayout } from "./stage-events";
 import type { SponsorCreative, StageAudioState, StageMode, StageShot } from "./stage-production";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
@@ -12,6 +12,7 @@ interface Props {
   sponsor: SponsorCreative;
   generalSeats: number;
   vipSeats: number;
+  seats: StageSeat[];
   venueLayout: StageVenueLayout;
   live: boolean;
   audio: StageAudioState;
@@ -132,14 +133,14 @@ function disposeObject(root: THREE.Object3D) {
   materials.forEach((material) => material.dispose());
 }
 
-export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, venueLayout, live, audio, programFeed, reducedMotion, onBackend }: Props) {
+export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, reducedMotion, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({ mode, shot, sponsor, generalSeats, vipSeats, venueLayout, live, audio });
+  const stateRef = useRef({ mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio });
   const programScreenRef = useRef<THREE.Mesh | null>(null);
   const [sceneGeneration, setSceneGeneration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => { stateRef.current = { mode, shot, sponsor, generalSeats, vipSeats, venueLayout, live, audio }; }, [audio, generalSeats, live, mode, shot, sponsor, venueLayout, vipSeats]);
+  useEffect(() => { stateRef.current = { mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio }; }, [audio, generalSeats, live, mode, seats, shot, sponsor, venueLayout, vipSeats]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -236,7 +237,10 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, v
     const seatOpen = new THREE.MeshStandardMaterial({ color: 0x15252d, roughness: 0.72, metalness: 0.25 });
     const seatFilled = new THREE.MeshStandardMaterial({ color: 0x287f91, roughness: 0.58, metalness: 0.22 });
     const seatVip = new THREE.MeshStandardMaterial({ color: 0xb98e35, roughness: 0.48, metalness: 0.44 });
-    materials.push(seatOpen, seatFilled, seatVip);
+    const seatHeld = new THREE.MeshStandardMaterial({ color: 0xd39b35, emissive: 0x5b3607, emissiveIntensity: 0.38, roughness: 0.52, metalness: 0.32 });
+    const seatCheckedIn = new THREE.MeshStandardMaterial({ color: 0x2a9560, emissive: 0x0a4027, emissiveIntensity: 0.4, roughness: 0.5, metalness: 0.25 });
+    const seatBlocked = new THREE.MeshStandardMaterial({ color: 0x3a1722, roughness: 0.82, metalness: 0.12 });
+    materials.push(seatOpen, seatFilled, seatVip, seatHeld, seatCheckedIn, seatBlocked);
     let generalIndex = 0;
     for (let row = 0; row < 4; row++) {
       for (let column = 0; column < 9; column++) {
@@ -245,6 +249,7 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, v
         const seat = box([0.78, 0.7, 0.76], [x, 0.46 + row * 0.13, z], seatOpen);
         seat.userData.seatType = "general";
         seat.userData.seatIndex = generalIndex++;
+        seat.userData.seatId = `H-${String.fromCharCode(65 + row)}${String(column + 1).padStart(2, "0")}`;
         seat.userData.row = row;
         seat.userData.column = column;
         seat.rotation.x = -0.08;
@@ -258,6 +263,7 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, v
       const seat = box([0.9, 0.76, 0.82], [x, 0.5, 2.25], seatOpen);
       seat.userData.seatType = "vip";
       seat.userData.seatIndex = vipIndex++;
+      seat.userData.seatId = `V-V${String(column + 1).padStart(2, "0")}`;
       seat.userData.column = column;
       seatGroups.push(seat);
       scene.add(seat);
@@ -377,14 +383,21 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, v
         sponsorTexture.needsUpdate = true;
         host.dataset.sponsor = current.sponsor.id;
       }
-      const seatKey = `${current.generalSeats}:${current.vipSeats}`;
+      const seatKey = current.seats.map((seat) => `${seat.id}:${seat.status}`).join("|") || `${current.generalSeats}:${current.vipSeats}`;
       if (seatKey !== lastSeatState) {
         lastSeatState = seatKey;
+        const seatPlan = new Map(current.seats.map((seat) => [seat.id, seat]));
         seatGroups.forEach((seat) => {
-          const occupied = seat.userData.seatType === "vip" ? seat.userData.seatIndex < current.vipSeats : seat.userData.seatIndex < current.generalSeats;
-          seat.material = occupied ? (seat.userData.seatType === "vip" ? seatVip : seatFilled) : seatOpen;
+          const assignment = seatPlan.get(String(seat.userData.seatId));
+          if (!assignment) seat.material = seatBlocked;
+          else if (assignment.status === "checked-in") seat.material = seatCheckedIn;
+          else if (assignment.status === "held") seat.material = seatHeld;
+          else if (assignment.status === "reserved") seat.material = assignment.section === "vip" ? seatVip : seatFilled;
+          else if (assignment.status === "blocked") seat.material = seatBlocked;
+          else seat.material = seatOpen;
         });
-        host.dataset.seats = seatKey;
+        host.dataset.seats = `${current.generalSeats}:${current.vipSeats}`;
+        host.dataset.seatPlan = String(current.seats.length);
       }
       if (current.venueLayout !== lastVenueLayout) {
         lastVenueLayout = current.venueLayout;

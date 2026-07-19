@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Copy, DoorOpen, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, Users } from "lucide-react";
+import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, Crown, DoorOpen, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, UserPlus, Users } from "lucide-react";
 import { QRCodeCard } from "./components";
 import { getActiveTenant } from "./operations";
 import { absoluteInviteUrl, createPodInvite, getOwnedPodInvite, resolvePodInvite, revokePodInvite, storeOwnedPodInvite, type PodInvite } from "./pod-invites";
-import { STAGE_EVENT_PRESETS, stageEventPreset, type StageEventFormat, type StageEventState, type StageEventStatus, type StageTicketTierId } from "./stage-events";
+import { createStageSeats, stageSeatCounts, STAGE_EVENT_PRESETS, stageEventPreset, type StageEventFormat, type StageEventState, type StageEventStatus, type StageSeat, type StageSeatSection, type StageSeatStatus, type StageTicketTierId } from "./stage-events";
 import type { StageProductionState } from "./stage-production";
 import { getTenantRecord } from "./tenant-management";
 
@@ -25,6 +25,14 @@ const STATUSES: Array<{ id: StageEventStatus; label: string }> = [
   { id: "complete", label: "Complete" },
 ];
 
+const SEAT_STATUSES: Array<{ id: StageSeatStatus; label: string; icon: typeof Circle }> = [
+  { id: "open", label: "Open", icon: Circle },
+  { id: "held", label: "Hold", icon: Clock3 },
+  { id: "reserved", label: "Reserve", icon: Armchair },
+  { id: "checked-in", label: "Check in", icon: CheckCircle2 },
+  { id: "blocked", label: "Block", icon: Ban },
+];
+
 function localDateTime(value: string) {
   const date = new Date(value);
   const offset = date.getTimezoneOffset() * 60_000;
@@ -42,9 +50,29 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   const [passes, setPasses] = useState<Partial<Record<StageTicketTierId, PodInvite>>>({});
   const [busyTier, setBusyTier] = useState<StageTicketTierId | null>(null);
   const [notice, setNotice] = useState("");
+  const [selectedSection, setSelectedSection] = useState<StageSeatSection>("house");
+  const [selectedSeatId, setSelectedSeatId] = useState(() => event.seats.find((seat) => seat.section === "house")?.id || event.seats[0]?.id || "");
+  const [guestDraft, setGuestDraft] = useState("");
   const preset = stageEventPreset(event.format);
   const activeTier = event.ticketTiers.find((tier) => tier.id === selectedTier) || event.ticketTiers[0];
   const activePass = passes[activeTier.id];
+  const seatCounts = stageSeatCounts(event.seats);
+  const selectedSeat = event.seats.find((seat) => seat.id === selectedSeatId);
+  const visibleSeats = event.seats.filter((seat) => seat.section === selectedSection);
+  const seatRows = useMemo(() => {
+    const rows = new Map<string, StageSeat[]>();
+    visibleSeats.forEach((seat) => rows.set(seat.row, [...(rows.get(seat.row) || []), seat]));
+    return [...rows.entries()];
+  }, [visibleSeats]);
+
+  useEffect(() => {
+    if (selectedSeat?.section === selectedSection) return;
+    setSelectedSeatId(event.seats.find((seat) => seat.section === selectedSection)?.id || event.seats[0]?.id || "");
+  }, [event.seats, selectedSeat?.section, selectedSection]);
+
+  useEffect(() => {
+    setGuestDraft(selectedSeat?.guestName || "");
+  }, [selectedSeat?.guestName, selectedSeat?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,12 +92,15 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   const updateEvent = (patch: Partial<StageEventState>) => onUpdate({ event: { ...event, ...patch } });
   const selectFormat = (format: StageEventFormat) => {
     const next = stageEventPreset(format);
+    const seats = createStageSeats(format);
     onUpdate({
-      event: { ...event, format, venueLayout: next.venueLayout, title: next.defaultTitle, ticketTiers: next.ticketTiers.map((tier) => ({ ...tier })) },
-      generalSeats: next.generalSeats,
-      vipSeats: next.vipSeats,
+      event: { ...event, format, venueLayout: next.venueLayout, title: next.defaultTitle, ticketTiers: next.ticketTiers.map((tier) => ({ ...tier })), seats },
+      generalSeats: 0,
+      vipSeats: 0,
       mode: format === "xr-con" ? "metaverse" : "in-person",
     });
+    setSelectedSection("house");
+    setSelectedSeatId(seats.find((seat) => seat.section === "house")?.id || seats[0]?.id || "");
     setPasses({});
     setNotice(`${next.label} venue loaded.`);
   };
@@ -86,6 +117,35 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   const updateCapacity = (tierId: StageTicketTierId, capacity: number) => updateEvent({
     ticketTiers: event.ticketTiers.map((tier) => tier.id === tierId ? { ...tier, capacity: Math.max(1, Math.min(100, Math.round(capacity) || 1)) } : tier),
   });
+  const updateSeat = (seatId: string, patch: Partial<Pick<StageSeat, "status" | "guestName">>) => {
+    const seats = event.seats.map((seat) => seat.id === seatId ? { ...seat, ...patch } : seat);
+    const counts = stageSeatCounts(seats);
+    onUpdate({ event: { ...event, seats }, generalSeats: counts.checkedInHouse, vipSeats: counts.checkedInVip });
+  };
+  const setSeatStatus = (status: StageSeatStatus) => {
+    if (!selectedSeat) return;
+    const guestName = status === "open" || status === "blocked" ? "" : guestDraft.trim().slice(0, 48);
+    updateSeat(selectedSeat.id, { status, guestName });
+    setNotice(`${selectedSeat.label} is ${status === "checked-in" ? "checked in" : status}.`);
+  };
+  const saveGuest = () => {
+    if (!selectedSeat || selectedSeat.status === "open" || selectedSeat.status === "blocked") return;
+    const guestName = guestDraft.trim().slice(0, 48);
+    if (guestName === selectedSeat.guestName) return;
+    updateSeat(selectedSeat.id, { guestName });
+    setNotice(`${selectedSeat.label} guest updated.`);
+  };
+  const reserveNext = () => {
+    const seat = event.seats.find((candidate) => candidate.section === selectedSection && candidate.status === "open");
+    if (!seat) {
+      setNotice(`No open ${selectedSection} seats remain.`);
+      return;
+    }
+    const guestName = guestDraft.trim().slice(0, 48);
+    setSelectedSeatId(seat.id);
+    updateSeat(seat.id, { status: "reserved", guestName });
+    setNotice(`${seat.label} reserved${guestName ? ` for ${guestName}` : ""}.`);
+  };
   const issuePass = async (tierId: StageTicketTierId) => {
     const tier = event.ticketTiers.find((item) => item.id === tierId);
     if (!tier) return;
@@ -153,6 +213,22 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
       <div className="stage-event-fields"><label>Source room<select value={event.sourceRoom} onChange={(change) => updateEvent({ sourceRoom: change.target.value })}>{[...new Set([event.sourceRoom, ...connectedPods])].map((pod) => <option key={pod}>{pod}</option>)}</select></label><label>Starts<input type="datetime-local" value={localDateTime(event.startsAt)} onChange={(change) => { if (change.target.value) updateEvent({ startsAt: new Date(change.target.value).toISOString() }); }}/></label></div>
       <div className="stage-event-status" aria-label="Event status">{STATUSES.map((status) => <button key={status.id} className={event.status === status.id ? "active" : ""} onClick={() => updateEvent({ status: status.id })}>{status.label}</button>)}</div>
       <button className="stage-promote-button" onClick={promote}><DoorOpen/><span>PROMOTE {event.sourceRoom} TO STAGE</span></button>
+    </section>
+
+    <section className="stage-control-section stage-seat-manager">
+      <header><div><span className="eyebrow">EVENT SEAT MANAGER</span><h2>Live venue seating</h2></div><span className="stage-seat-occupancy"><b>{seatCounts.checkedIn}/{seatCounts.capacity}</b><small>checked in</small></span></header>
+      <div className="stage-seat-stats" aria-label="Seat inventory summary"><span className="open"><i/><b>{seatCounts.open}</b><small>Open</small></span><span className="held"><i/><b>{seatCounts.held}</b><small>Held</small></span><span className="reserved"><i/><b>{seatCounts.reserved}</b><small>Reserved</small></span><span className="checked-in"><i/><b>{seatCounts.checkedIn}</b><small>In</small></span><span className="blocked"><i/><b>{seatCounts.blocked}</b><small>Blocked</small></span></div>
+      <div className="stage-seat-zones" aria-label="Seat section"><button className={selectedSection === "house" ? "active" : ""} onClick={() => setSelectedSection("house")}><Armchair/><span>House</span><b>{event.seats.filter((seat) => seat.section === "house").length}</b></button><button className={selectedSection === "vip" ? "active" : ""} onClick={() => setSelectedSection("vip")}><Crown/><span>VIP / Sponsor</span><b>{event.seats.filter((seat) => seat.section === "vip").length}</b></button></div>
+      <div className="stage-seat-map-tool">
+        <div className="stage-seat-map-front">AMX XR STAGE</div>
+        <div className="stage-seat-rows">{seatRows.map(([row, seats]) => <div className="stage-seat-row" key={row}><b>{row}</b><div>{seats.map((seat) => <button key={seat.id} className={`${seat.status} ${selectedSeatId === seat.id ? "selected" : ""}`} onClick={() => setSelectedSeatId(seat.id)} aria-label={`${seat.label}, ${seat.status}${seat.guestName ? `, ${seat.guestName}` : ""}`} title={`${seat.label} / ${seat.status}${seat.guestName ? ` / ${seat.guestName}` : ""}`}><span>{seat.number}</span></button>)}</div></div>)}</div>
+      </div>
+      {selectedSeat && <div className="stage-seat-inspector">
+        <header><span><b>{selectedSeat.section === "vip" ? "VIP / SPONSOR" : "HOUSE"} {selectedSeat.label}</b><small>{selectedSeat.status.replace("-", " ")}</small></span><i className={selectedSeat.status}/></header>
+        <label>Guest / member<input aria-label="Seat guest name" value={guestDraft} maxLength={48} placeholder="Add attendee name" onChange={(change) => setGuestDraft(change.target.value)} onBlur={saveGuest}/></label>
+        <div className="stage-seat-actions">{SEAT_STATUSES.map(({ id, label, icon: Icon }) => <button key={id} className={selectedSeat.status === id ? `active ${id}` : id} onClick={() => setSeatStatus(id)} title={`${label} ${selectedSeat.label}`}><Icon/><span>{label}</span></button>)}</div>
+        <button className="stage-seat-next" onClick={reserveNext}><UserPlus/><span>RESERVE NEXT {selectedSection.toUpperCase()} SEAT</span></button>
+      </div>}
     </section>
 
     <section className="stage-control-section stage-ticket-inventory">

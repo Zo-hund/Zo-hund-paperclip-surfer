@@ -211,8 +211,6 @@ export function AMXXRStagePage() {
     const preset = stageEventPreset(production.state.event.format);
     production.update({
       event: { ...production.state.event, sourceRoom: pod, status: production.state.event.status === "draft" ? "published" : production.state.event.status },
-      generalSeats: preset.generalSeats,
-      vipSeats: preset.vipSeats,
       sponsor: { id: production.state.event.id, name: production.state.event.title, headline: `${preset.label} / ${pod} promoted to stage`, cta: new Date(production.state.event.startsAt).toLocaleString(), accent: preset.accent },
       cue: "opening",
       shot: "wide",
@@ -266,7 +264,7 @@ export function AMXXRStagePage() {
 
     <div className="stage-command-layout">
       <section className="stage-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing AMX XR Stage</b></div>}><AMXXRStageScene mode={production.state.mode} shot={production.state.shot} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programChannel.feed} reducedMotion={settings.reducedMotion} onBackend={setBackend}/></Suspense>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing AMX XR Stage</b></div>}><AMXXRStageScene mode={production.state.mode} shot={production.state.shot} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programChannel.feed} reducedMotion={settings.reducedMotion} onBackend={setBackend}/></Suspense>
         <div className="stage-scene-overlay"><div><span className="eyebrow">{production.state.event.format.toUpperCase()} / {production.state.mode.toUpperCase()} / {backend === "webgpu" ? "WEBGPU" : backend === "webgl2" ? "WEBGL2" : "GPU INIT"}</span><b>{production.state.event.title}</b><small>{production.state.event.status.toUpperCase()} / {production.state.event.sourceRoom} / PGM {programChannel.label}: {programChannel.feed && !programChannel.feed.muted ? programChannel.feed.name : production.state.sponsor.name}</small></div><div className="stage-seat-tally"><Crown/><span>VIP <b>{production.state.vipSeats}/8</b></span><i/><Armchair/><span>HOUSE <b>{production.state.generalSeats}/36</b></span></div></div>
       </section>
 

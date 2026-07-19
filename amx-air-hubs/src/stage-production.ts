@@ -96,8 +96,8 @@ function initialState(operatorId: string, room = "AMXSTAGE"): StageProductionSta
     cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
     audio: { ...DEFAULT_STAGE_AUDIO },
     event: defaultStageEvent(room),
-    generalSeats: 36,
-    vipSeats: 8,
+    generalSeats: 0,
+    vipSeats: 0,
     connectedPods: ["AMX-MAIN"],
     revision,
     updatedAt: new Date(revision).toISOString(),
@@ -110,7 +110,7 @@ function storedState(room: string, operatorId: string) {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
     if (!saved) return initialState(operatorId, room);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...initialState(operatorId, room), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...saved.audio }, event: normalizeStageEvent(saved.event, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId, room), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...saved.audio }, event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
     return initialState(operatorId, room);
   }
@@ -143,7 +143,7 @@ export function useStageProduction(roomCode: string) {
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...packet.state.audio }, event: normalizeStageEvent(packet.state.event, room), revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...packet.state.audio }, event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;
