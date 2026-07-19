@@ -531,6 +531,22 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(missing.status, 404);
   });
 
+  test("stores Stage audio with its playable content type", async () => {
+    env.MEDIA = memoryBucket();
+    const upload = await worker.fetch(request("/api/media", {
+      method: "POST",
+      headers: { "Content-Type": "audio/wav", "X-AMX-Filename": "stage-theme.wav", "X-AMX-Tenant": "tech-at-nite", "CF-Connecting-IP": crypto.randomUUID() },
+      body: new Uint8Array([82, 73, 70, 70]),
+    }), env);
+    const stored = await upload.json();
+    const playback = await worker.fetch(request(stored.url), env);
+
+    assert.equal(upload.status, 201);
+    assert.equal(stored.contentType, "audio/wav");
+    assert.equal(playback.headers.get("Content-Type"), "audio/wav");
+    assert.match(playback.headers.get("Content-Disposition"), /stage-theme\.wav/);
+  });
+
   test("issues a room token and explicitly dispatches the configured LiveKit agent", async (context) => {
     Object.assign(env, {
       LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",

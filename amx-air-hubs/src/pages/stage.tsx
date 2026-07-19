@@ -3,14 +3,17 @@ import {
   Armchair, ArrowUpToLine, Bot, CalendarRange, Camera, CameraOff, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2, LockKeyhole,
   Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Sparkles, Users, Video, Volume2, Wifi,
 } from "lucide-react";
-import type { CaptureState, LiveVideoFeed } from "../LiveKitPod";
+import type { CaptureState, LiveVideoFeed, ProgramAudioState } from "../LiveKitPod";
 import type { StageFeedMonitorStatus } from "../StageFeedMonitor";
 import { agents } from "../data";
 import { trackEvent } from "../platform";
 import { useAMX } from "../AppContext";
+import { StageAudioLibrary } from "../StageAudioLibrary";
 import { useStageSoundscape } from "../StageSoundscape";
 import { StageEventConsole } from "../StageEventConsole";
 import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
+import { getActiveTenant } from "../operations";
+import { STAGE_DECK_PRESETS, stageAudioTrackId } from "../stage-audio";
 import { stageEventPreset } from "../stage-events";
 import { selectStageProgramFeed, sortStageVideoFeeds } from "../stage-camera-routing";
 import {
@@ -38,13 +41,6 @@ const CUES: Array<{ id: StageCue; label: string }> = [
   { id: "qa", label: "Q&A" },
   { id: "sponsor", label: "Sponsor" },
   { id: "close", label: "Close" },
-];
-
-const DECK_TRACKS: Array<{ id: StageDeckTrack; label: string }> = [
-  { id: "air-pulse", label: "AIR Pulse" },
-  { id: "night-grid", label: "Night Grid" },
-  { id: "spoken-bed", label: "Spoken Bed" },
-  { id: "sponsor-sting", label: "Sponsor Sting" },
 ];
 
 const SOUNDSCAPES: Array<{ id: StageSoundscape; label: string }> = [
@@ -87,6 +83,7 @@ export function AMXXRStagePage() {
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
   const [feedMonitorStatus, setFeedMonitorStatus] = useState<StageFeedMonitorStatus>("connecting");
   const [cameraMediaState, setCameraMediaState] = useState<CaptureState>("off");
+  const [programAudioState, setProgramAudioState] = useState<ProgramAudioState>("off");
   const [djControlToken, setDjControlToken] = useState("");
   const [djBroadcast, setDjBroadcast] = useState<DjBroadcastState | null>(null);
   const [djBroadcastBusy, setDjBroadcastBusy] = useState(false);
@@ -102,6 +99,11 @@ export function AMXXRStagePage() {
   const [sponsorDraft, setSponsorDraft] = useState({ name: "", headline: "", cta: "VISIT THE SPONSOR", accent: "#55e6ff" });
   const inventory = useMemo(() => [...DEFAULT_SPONSORS, ...customSponsors], [customSponsors]);
   const crew = agents.slice(0, 4);
+  const tenantId = getActiveTenant();
+  const deckTracks = useMemo(() => [
+    ...STAGE_DECK_PRESETS,
+    ...production.state.audio.library.map((asset) => ({ id: stageAudioTrackId(asset.id), label: asset.name })),
+  ], [production.state.audio.library]);
   const orderedVideoFeeds = useMemo(() => sortStageVideoFeeds(videoFeeds), [videoFeeds]);
   const cameraChannels = useMemo(() => SHOTS.map((camera) => {
     const configuredRoute = production.state.cameraRoutes[camera.id] || "auto";
@@ -162,6 +164,12 @@ export function AMXXRStagePage() {
       recordStartedAt: recording ? Date.now() : null,
     });
     trackEvent(recording ? "stage_podcast_record_cued" : "stage_podcast_record_stopped", { locationTag: production.room });
+  };
+  const fireStinger = async () => {
+    if (!production.state.audio.stingerTrack) return;
+    if (!soundscapeRuntime.enabled && !(await soundscapeRuntime.enable())) return;
+    updateAudio({ stingerTriggeredAt: Date.now() });
+    trackEvent("stage_audio_stinger_fired", { campaignId: production.state.audio.stingerTrack, locationTag: production.room });
   };
   const runDjBroadcast = async (action: "status" | "start" | "stop") => {
     if (!djControlToken.trim()) {
@@ -286,15 +294,17 @@ export function AMXXRStagePage() {
 
           <div className="stage-console-view" hidden={view !== "collab"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">CROSS-POD CONNECTION</span><h2>Linked showcases</h2></div><span className="stage-sync-state"><i/>{production.transport}</span></header><label className="stage-room-field">Stage room<input value={roomCode} onChange={(event) => changeRoom(event.target.value)}/></label><div className="stage-pod-link"><input value={podDraft} onChange={(event) => setPodDraft(event.target.value)} placeholder="POD CODE"/><button onClick={linkPod} disabled={!podDraft.trim()}><Link2/>Link</button></div><div className="stage-pod-list">{production.state.connectedPods.map((pod) => <div key={pod} className={production.state.event.sourceRoom === pod ? "promoted" : ""}><span><i/><b>{pod}</b><small>{production.state.event.sourceRoom === pod ? "promoted event source" : "stage cue bus linked"}</small></span><span className="stage-pod-actions"><button onClick={() => promotePod(pod)} aria-label={`Promote ${pod} to stage`} title={`Promote ${pod} to stage`}><ArrowUpToLine/></button><button onClick={() => unlinkPod(pod)} aria-label={`Unlink ${pod}`} title={`Unlink ${pod}`}><Minus/></button></span></div>)}</div></section>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onCameraState={setCameraMediaState}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onCameraState={setCameraMediaState} programAudioStream={soundscapeRuntime.programStream} onProgramAudioState={setProgramAudioState}/></Suspense>
           </div>
 
           <div className="stage-console-view stage-audio-console" hidden={view !== "audio"}>
-            <section className="stage-control-section"><header><div><span className="eyebrow">PROGRAM AUDIO</span><h2>Music and podcast runtime</h2></div><span className={`stage-sync-state ${production.state.audio.transport === "playing" ? "audio-live" : ""}`}><i/>{production.state.audio.transport}</span></header><div className="stage-audio-format">{(["show", "podcast", "dj"] as StageAudioFormat[]).map((format) => { const Icon = format === "podcast" ? Podcast : format === "dj" ? Disc3 : Music2; return <button key={format} className={production.state.audio.format === format ? "active" : ""} onClick={() => selectAudioFormat(format)}><Icon/><span>{format}</span></button>; })}</div><div className="stage-audio-transport"><button className={production.state.audio.transport === "playing" ? "active" : ""} onClick={() => void toggleAudioTransport()}>{production.state.audio.transport === "playing" ? <Pause/> : <Play/>}<span>{production.state.audio.transport === "playing" ? "STOP PROGRAM" : "START PROGRAM"}</span></button><button className={soundscapeRuntime.enabled ? "monitoring" : ""} onClick={() => void (soundscapeRuntime.enabled ? soundscapeRuntime.disable() : soundscapeRuntime.enable())}><Headphones/><span>{soundscapeRuntime.enabled ? "MONITOR ON" : "ENABLE MONITOR"}</span></button></div><div className="stage-audio-runtime"><span><Volume2/><b>{soundscapeRuntime.status.toUpperCase()}</b><small>LOCAL MONITOR</small></span><span><Wifi/><b>{production.transport.toUpperCase()}</b><small>PROGRAM SYNC</small></span><span><Music2/><b>{elapsedLabel(production.state.audio.startedAt, runtimeNow)}</b><small>RUNTIME</small></span></div></section>
+            <section className="stage-control-section"><header><div><span className="eyebrow">PROGRAM AUDIO</span><h2>Music and podcast runtime</h2></div><span className={`stage-sync-state ${production.state.audio.transport === "playing" ? "audio-live" : ""}`}><i/>{production.state.audio.transport}</span></header><div className="stage-audio-format">{(["show", "podcast", "dj"] as StageAudioFormat[]).map((format) => { const Icon = format === "podcast" ? Podcast : format === "dj" ? Disc3 : Music2; return <button key={format} className={production.state.audio.format === format ? "active" : ""} onClick={() => selectAudioFormat(format)}><Icon/><span>{format}</span></button>; })}</div><div className="stage-audio-transport"><button className={production.state.audio.transport === "playing" ? "active" : ""} onClick={() => void toggleAudioTransport()}>{production.state.audio.transport === "playing" ? <Pause/> : <Play/>}<span>{production.state.audio.transport === "playing" ? "STOP PROGRAM" : "START PROGRAM"}</span></button><button className={soundscapeRuntime.enabled ? "monitoring" : ""} onClick={() => void (soundscapeRuntime.enabled ? soundscapeRuntime.disable() : soundscapeRuntime.enable())}><Headphones/><span>{soundscapeRuntime.enabled ? "MONITOR ON" : "ENABLE MONITOR"}</span></button></div><div className="stage-audio-runtime"><span><Volume2/><b>{soundscapeRuntime.status.toUpperCase()}</b><small>LOCAL MONITOR</small></span><span><Radio/><b>{programAudioState.toUpperCase()}</b><small>ROOM MIX</small></span><span><Wifi/><b>{production.transport.toUpperCase()}</b><small>PROGRAM SYNC</small></span><span><Music2/><b>{elapsedLabel(production.state.audio.startedAt, runtimeNow)}</b><small>RUNTIME</small></span></div></section>
 
-            <section className="stage-control-section stage-dj-live"><header><div><span className="eyebrow">DJ LIVE / RTMP</span><h2>Outbound broadcast</h2></div><span className={`stage-sync-state ${djBroadcast?.active ? "audio-live" : ""}`}><i/>{djBroadcast?.active ? "ON AIR" : djBroadcastBusy ? "WORKING" : "OFF AIR"}</span></header><div className="stage-dj-live-source"><RadioTower/><span><b>LIVEKIT ROOM MIX</b><small>{production.room} / camera, microphone and shared audio</small></span>{djBroadcast?.active && <code>{djBroadcast.active.id.slice(0, 12)}</code>}</div><label className="stage-dj-live-token"><LockKeyhole/><input type="password" autoComplete="off" value={djControlToken} onChange={(event) => setDjControlToken(event.target.value)} placeholder="STREAM CONTROL TOKEN" aria-label="DJ stream control token"/><button disabled={djBroadcastBusy || !djControlToken.trim()} onClick={() => void runDjBroadcast("status")} aria-label="Check DJ broadcast" title="Check DJ broadcast"><RefreshCw/></button></label><div className="stage-dj-live-actions"><button disabled={djBroadcastBusy || !djControlToken.trim() || Boolean(djBroadcast?.active)} onClick={() => void runDjBroadcast("start")}><RadioTower/>START DJ LIVE</button><button className="stop" disabled={djBroadcastBusy || !djBroadcast?.active} onClick={() => void runDjBroadcast("stop")}><CircleStop/>STOP STREAM</button></div><p>{djBroadcastMessage}</p></section>
+            <StageAudioLibrary audio={production.state.audio} tenantId={tenantId} onUpdate={updateAudio}/>
 
-            <section className="stage-control-section"><header><div><span className="eyebrow">DJ BOOTH / POD</span><h2>Deck mixer</h2></div><b className="stage-audio-bpm">{production.state.audio.bpm} BPM</b></header><div className="stage-deck-grid"><label><span>DECK A</span><select value={production.state.audio.deckA} onChange={(event) => updateAudio({ deckA: event.target.value as StageDeckTrack })}>{DECK_TRACKS.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label><label><span>DECK B</span><select value={production.state.audio.deckB} onChange={(event) => updateAudio({ deckB: event.target.value as StageDeckTrack })}>{DECK_TRACKS.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label></div><label className="stage-audio-slider"><span>CROSSFADER <b>{production.state.audio.crossfader}%</b></span><input type="range" min="0" max="100" value={production.state.audio.crossfader} onChange={(event) => updateAudio({ crossfader: Number(event.target.value) })}/></label><div className="stage-audio-levels"><label><span>MASTER <b>{production.state.audio.master}%</b></span><input type="range" min="0" max="100" value={production.state.audio.master} onChange={(event) => updateAudio({ master: Number(event.target.value) })}/></label><div className="stage-bpm-stepper"><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm - 1, 60, 160) })} aria-label="Decrease BPM"><Minus/></button><output>{production.state.audio.bpm}</output><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm + 1, 60, 160) })} aria-label="Increase BPM"><Plus/></button></div></div></section>
+            <section className="stage-control-section stage-dj-live"><header><div><span className="eyebrow">DJ LIVE / RTMP</span><h2>Outbound broadcast</h2></div><span className={`stage-sync-state ${djBroadcast?.active ? "audio-live" : ""}`}><i/>{djBroadcast?.active ? "ON AIR" : djBroadcastBusy ? "WORKING" : "OFF AIR"}</span></header><div className="stage-dj-live-source"><RadioTower/><span><b>LIVEKIT ROOM MIX</b><small>{production.room} / cameras, voices, screens and program mix</small></span>{djBroadcast?.active && <code>{djBroadcast.active.id.slice(0, 12)}</code>}</div><label className="stage-dj-live-token"><LockKeyhole/><input type="password" autoComplete="off" value={djControlToken} onChange={(event) => setDjControlToken(event.target.value)} placeholder="STREAM CONTROL TOKEN" aria-label="DJ stream control token"/><button disabled={djBroadcastBusy || !djControlToken.trim()} onClick={() => void runDjBroadcast("status")} aria-label="Check DJ broadcast" title="Check DJ broadcast"><RefreshCw/></button></label><div className="stage-dj-live-actions"><button disabled={djBroadcastBusy || !djControlToken.trim() || Boolean(djBroadcast?.active)} onClick={() => void runDjBroadcast("start")}><RadioTower/>START DJ LIVE</button><button className="stop" disabled={djBroadcastBusy || !djBroadcast?.active} onClick={() => void runDjBroadcast("stop")}><CircleStop/>STOP STREAM</button></div><p>{djBroadcastMessage}</p></section>
+
+            <section className="stage-control-section"><header><div><span className="eyebrow">DJ BOOTH / POD</span><h2>Deck mixer</h2></div><b className="stage-audio-bpm">{production.state.audio.bpm} BPM</b></header><div className="stage-deck-grid"><label><span>DECK A</span><select value={production.state.audio.deckA} onChange={(event) => updateAudio({ deckA: event.target.value as StageDeckTrack })}>{deckTracks.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label><label><span>DECK B</span><select value={production.state.audio.deckB} onChange={(event) => updateAudio({ deckB: event.target.value as StageDeckTrack })}>{deckTracks.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label></div><label className="stage-audio-slider"><span>CROSSFADER <b>{production.state.audio.crossfader}%</b></span><input type="range" min="0" max="100" value={production.state.audio.crossfader} onChange={(event) => updateAudio({ crossfader: Number(event.target.value) })}/></label><div className="stage-audio-levels"><label><span>MASTER <b>{production.state.audio.master}%</b></span><input type="range" min="0" max="100" value={production.state.audio.master} onChange={(event) => updateAudio({ master: Number(event.target.value) })}/></label><div className="stage-bpm-stepper"><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm - 1, 60, 160) })} aria-label="Decrease BPM"><Minus/></button><output>{production.state.audio.bpm}</output><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm + 1, 60, 160) })} aria-label="Increase BPM"><Plus/></button></div></div><div className="stage-stinger-control"><label><span>STINGER</span><select value={production.state.audio.stingerTrack || ""} onChange={(event) => updateAudio({ stingerTrack: event.target.value ? event.target.value as StageDeckTrack : null })}><option value="">NO STINGER</option>{deckTracks.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label><button disabled={!production.state.audio.stingerTrack} onClick={() => void fireStinger()}><Sparkles/>FIRE</button></div></section>
 
             <section className="stage-control-section"><header><div><span className="eyebrow">IN-WORLD SOUNDSCAPE</span><h2>Spatial atmosphere</h2></div><Headphones/></header><div className="stage-soundscape-grid">{SOUNDSCAPES.map((soundscape) => <button key={soundscape.id} className={production.state.audio.soundscape === soundscape.id ? "active" : ""} onClick={() => updateAudio({ soundscape: soundscape.id })}><span>{soundscape.label}</span><i/></button>)}</div></section>
 

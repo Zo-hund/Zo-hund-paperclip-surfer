@@ -1,20 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { StageAudioState, StageDeckTrack, StageSoundscape } from "./stage-production";
+import {
+  stageAudioAssetForTrack, type StageAudioState, type StageDeckPreset, type StageDeckTrack, type StageSoundscape,
+} from "./stage-audio";
 
 type MonitorStatus = "off" | "starting" | "ready" | "blocked" | "unsupported";
 
 type DeckNodes = {
   tone: OscillatorNode;
+  toneGain: GainNode;
   harmonic: OscillatorNode;
+  harmonicGain: GainNode;
   filter: BiquadFilterNode;
   output: GainNode;
   lfo: OscillatorNode;
   lfoDepth: GainNode;
+  media: HTMLAudioElement;
+  mediaGain: GainNode;
+  loadedTrack: StageDeckTrack | null;
 };
 
 type SoundscapeEngine = {
   context: AudioContext;
+  compressor: DynamicsCompressorNode;
   master: GainNode;
+  programOutput: MediaStreamAudioDestinationNode;
   deckA: DeckNodes;
   deckB: DeckNodes;
   bedTone: OscillatorNode;
@@ -23,9 +32,12 @@ type SoundscapeEngine = {
   noise: AudioBufferSourceNode;
   noiseGain: GainNode;
   noiseFilter: BiquadFilterNode;
+  stinger: HTMLAudioElement;
+  stingerGain: GainNode;
+  lastStingerAt: number | null;
 };
 
-const TRACKS: Record<StageDeckTrack, { root: number; harmonic: number; cutoff: number }> = {
+const TRACKS: Record<StageDeckPreset, { root: number; harmonic: number; cutoff: number }> = {
   "air-pulse": { root: 55, harmonic: 110, cutoff: 920 },
   "night-grid": { root: 65.41, harmonic: 130.81, cutoff: 720 },
   "spoken-bed": { root: 73.42, harmonic: 146.83, cutoff: 540 },
@@ -62,18 +74,25 @@ function createDeck(context: AudioContext, destination: AudioNode, pan: number):
   toneGain.gain.value = 0.12;
   const harmonicGain = context.createGain();
   harmonicGain.gain.value = 0.18;
+  const mediaGain = context.createGain();
+  mediaGain.gain.value = 0;
+  const media = document.createElement("audio");
+  media.preload = "auto";
+  media.loop = true;
+  const mediaSource = context.createMediaElementSource(media);
   const lfo = context.createOscillator();
   lfo.type = "triangle";
   const lfoDepth = context.createGain();
   lfoDepth.gain.value = 180;
   tone.connect(toneGain).connect(filter);
   harmonic.connect(harmonicGain).connect(filter);
+  mediaSource.connect(mediaGain).connect(filter);
   lfo.connect(lfoDepth).connect(filter.frequency);
   filter.connect(panner).connect(output).connect(destination);
   tone.start();
   harmonic.start();
   lfo.start();
-  return { tone, harmonic, filter, output, lfo, lfoDepth };
+  return { tone, toneGain, harmonic, harmonicGain, filter, output, lfo, lfoDepth, media, mediaGain, loadedTrack: null };
 }
 
 function createNoise(context: AudioContext) {
@@ -99,9 +118,12 @@ function createEngine() {
   compressor.threshold.value = -16;
   compressor.knee.value = 14;
   compressor.ratio.value = 5;
+  const programOutput = context.createMediaStreamDestination();
   const master = context.createGain();
   master.gain.value = 0;
-  master.connect(compressor).connect(context.destination);
+  master.connect(compressor);
+  compressor.connect(context.destination);
+  compressor.connect(programOutput);
   const deckA = createDeck(context, master, -0.32);
   const deckB = createDeck(context, master, 0.32);
   const bedGain = context.createGain();
@@ -120,15 +142,84 @@ function createEngine() {
   noiseFilter.Q.value = 0.7;
   noise.connect(noiseFilter).connect(noiseGain).connect(master);
   noise.start();
-  return { context, master, deckA, deckB, bedTone, bedGain, bedFilter, noise, noiseGain, noiseFilter } satisfies SoundscapeEngine;
+  const stinger = document.createElement("audio");
+  stinger.preload = "auto";
+  const stingerGain = context.createGain();
+  stingerGain.gain.value = 0.88;
+  context.createMediaElementSource(stinger).connect(stingerGain).connect(compressor);
+  return { context, compressor, master, programOutput, deckA, deckB, bedTone, bedGain, bedFilter, noise, noiseGain, noiseFilter, stinger, stingerGain, lastStingerAt: null } satisfies SoundscapeEngine;
 }
 
-function applyDeck(deck: DeckNodes, track: StageDeckTrack, bpm: number, now: number) {
-  const preset = TRACKS[track];
+function alignMedia(media: HTMLAudioElement, state: StageAudioState) {
+  if (!state.startedAt || !Number.isFinite(media.duration) || media.duration <= 0) return;
+  const target = Math.max(0, (Date.now() - state.startedAt) / 1000) % media.duration;
+  if (Math.abs(media.currentTime - target) > 1.5) media.currentTime = target;
+}
+
+function applyDeck(deck: DeckNodes, track: StageDeckTrack, state: StageAudioState, now: number) {
+  const asset = stageAudioAssetForTrack(track, state.library);
+  if (asset) {
+    deck.toneGain.gain.setTargetAtTime(0, now, 0.04);
+    deck.harmonicGain.gain.setTargetAtTime(0, now, 0.04);
+    deck.mediaGain.gain.setTargetAtTime(0.82, now, 0.06);
+    deck.filter.frequency.setTargetAtTime(16_000, now, 0.08);
+    deck.lfoDepth.gain.setTargetAtTime(0, now, 0.05);
+    if (deck.loadedTrack !== track) {
+      deck.loadedTrack = track;
+      deck.media.src = asset.url;
+      deck.media.load();
+      deck.media.onloadedmetadata = () => alignMedia(deck.media, state);
+    }
+    alignMedia(deck.media, state);
+    if (state.transport === "playing") void deck.media.play().catch(() => undefined);
+    else deck.media.pause();
+    return;
+  }
+
+  deck.media.pause();
+  deck.mediaGain.gain.setTargetAtTime(0, now, 0.04);
+  deck.toneGain.gain.setTargetAtTime(0.12, now, 0.04);
+  deck.harmonicGain.gain.setTargetAtTime(0.18, now, 0.04);
+  deck.lfoDepth.gain.setTargetAtTime(180, now, 0.05);
+  const preset = TRACKS[track as StageDeckPreset] || TRACKS["air-pulse"];
   deck.tone.frequency.setTargetAtTime(preset.root, now, 0.08);
   deck.harmonic.frequency.setTargetAtTime(preset.harmonic, now, 0.08);
   deck.filter.frequency.setTargetAtTime(preset.cutoff, now, 0.12);
-  deck.lfo.frequency.setTargetAtTime(Math.max(0.5, bpm / 60 / 2), now, 0.1);
+  deck.lfo.frequency.setTargetAtTime(Math.max(0.5, state.bpm / 60 / 2), now, 0.1);
+}
+
+function playPresetStinger(engine: SoundscapeEngine, preset: StageDeckPreset) {
+  const shape = TRACKS[preset] || TRACKS["sponsor-sting"];
+  const now = engine.context.currentTime;
+  [shape.root * 2, shape.harmonic * 2].forEach((frequency, index) => {
+    const oscillator = engine.context.createOscillator();
+    const gain = engine.context.createGain();
+    oscillator.type = index ? "sine" : "triangle";
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.5, now + 0.35);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(index ? 0.16 : 0.24, now + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.85);
+    oscillator.connect(gain).connect(engine.compressor);
+    oscillator.start(now + index * 0.05);
+    oscillator.stop(now + 0.9);
+  });
+}
+
+function applyStinger(engine: SoundscapeEngine, state: StageAudioState) {
+  if (!state.stingerTriggeredAt || state.stingerTriggeredAt === engine.lastStingerAt || !state.stingerTrack) return;
+  engine.lastStingerAt = state.stingerTriggeredAt;
+  const elapsed = (Date.now() - state.stingerTriggeredAt) / 1000;
+  if (elapsed > 4) return;
+  const asset = stageAudioAssetForTrack(state.stingerTrack, state.library);
+  if (!asset) {
+    engine.stinger.pause();
+    playPresetStinger(engine, state.stingerTrack as StageDeckPreset);
+    return;
+  }
+  if (engine.stinger.src !== new URL(asset.url, location.href).href) engine.stinger.src = asset.url;
+  engine.stinger.currentTime = Math.max(0, elapsed);
+  void engine.stinger.play().catch(() => undefined);
 }
 
 function applyState(engine: SoundscapeEngine, state: StageAudioState) {
@@ -140,20 +231,23 @@ function applyState(engine: SoundscapeEngine, state: StageAudioState) {
   engine.master.gain.setTargetAtTime(active ? Math.max(0, Math.min(1, state.master / 100)) * 0.34 : 0, now, 0.08);
   engine.deckA.output.gain.setTargetAtTime(deckA, now, 0.06);
   engine.deckB.output.gain.setTargetAtTime(deckB, now, 0.06);
-  applyDeck(engine.deckA, state.deckA, state.bpm, now);
-  applyDeck(engine.deckB, state.deckB, state.bpm, now);
+  applyDeck(engine.deckA, state.deckA, state, now);
+  applyDeck(engine.deckB, state.deckB, state, now);
   const soundscape = SOUNDSCAPES[state.soundscape];
   engine.bedTone.frequency.setTargetAtTime(soundscape.bed, now, 0.18);
   engine.bedFilter.frequency.setTargetAtTime(soundscape.cutoff, now, 0.18);
   engine.bedGain.gain.setTargetAtTime(state.format === "podcast" ? 0.08 : 0.12, now, 0.12);
   engine.noiseFilter.frequency.setTargetAtTime(soundscape.cutoff * 1.35, now, 0.18);
   engine.noiseGain.gain.setTargetAtTime(soundscape.noise, now, 0.12);
+  engine.stingerGain.gain.setTargetAtTime(Math.max(0, Math.min(1, state.master / 100)) * 0.88, now, 0.06);
+  applyStinger(engine, state);
 }
 
 export function useStageSoundscape(state: StageAudioState) {
   const engineRef = useRef<SoundscapeEngine | null>(null);
   const stateRef = useRef(state);
   const [status, setStatus] = useState<MonitorStatus>("off");
+  const [programStream, setProgramStream] = useState<MediaStream | null>(null);
   stateRef.current = state;
 
   useEffect(() => {
@@ -164,7 +258,12 @@ export function useStageSoundscape(state: StageAudioState) {
   useEffect(() => () => {
     const engine = engineRef.current;
     engineRef.current = null;
-    if (engine) void engine.context.close();
+    if (engine) {
+      engine.deckA.media.pause();
+      engine.deckB.media.pause();
+      engine.stinger.pause();
+      void engine.context.close();
+    }
   }, []);
 
   const enable = useCallback(async () => {
@@ -178,6 +277,7 @@ export function useStageSoundscape(state: StageAudioState) {
       engineRef.current = engine;
       await engine.context.resume();
       applyState(engine, stateRef.current);
+      setProgramStream(engine.programOutput.stream);
       setStatus("ready");
       return true;
     } catch {
@@ -188,9 +288,14 @@ export function useStageSoundscape(state: StageAudioState) {
 
   const disable = useCallback(async () => {
     const engine = engineRef.current;
-    if (engine) await engine.context.suspend();
+    if (engine) {
+      engine.deckA.media.pause();
+      engine.deckB.media.pause();
+      engine.stinger.pause();
+      await engine.context.suspend();
+    }
     setStatus("off");
   }, []);
 
-  return { status, enable, disable, enabled: status === "ready" };
+  return { status, enable, disable, enabled: status === "ready", programStream };
 }

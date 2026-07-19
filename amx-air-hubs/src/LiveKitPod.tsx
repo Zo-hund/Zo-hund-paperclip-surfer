@@ -10,6 +10,7 @@ import { countStageAudienceParticipants, stageFeedId } from "./stage-camera-rout
 type PodStatus = "idle" | "connecting" | "livekit" | "local" | "error";
 export type CaptureState = "off" | "requesting" | "published" | "muted" | "blocked";
 type PlaybackState = "off" | "ready" | "blocked";
+export type ProgramAudioState = "off" | "publishing" | "published" | "blocked";
 export type LiveVideoFeed = {
   id: string;
   participantIdentity?: string;
@@ -38,6 +39,8 @@ interface Props {
   onSceneStreams?: (streams: MediaStream[]) => void;
   onVideoFeeds?: (feeds: LiveVideoFeed[]) => void;
   onCameraState?: (state: CaptureState) => void;
+  programAudioStream?: MediaStream | null;
+  onProgramAudioState?: (state: ProgramAudioState) => void;
   compact?: boolean;
 }
 
@@ -72,7 +75,7 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
   return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const [status, setStatus] = useState<PodStatus>("idle");
@@ -83,17 +86,21 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   const [microphoneState, setMicrophoneState] = useState<CaptureState>("off");
   const [screenShareState, setScreenShareState] = useState<CaptureState>("off");
   const [playbackState, setPlaybackState] = useState<PlaybackState>("off");
+  const [programAudioState, setProgramAudioState] = useState<ProgramAudioState>("off");
   const [connectionQuality, setConnectionQuality] = useState("unknown");
   const [activeSpeaker, setActiveSpeaker] = useState("");
   const roomRef = useRef<Room | null>(null);
   const fallbackStreamRef = useRef<MediaStream | null>(null);
+  const programTrackRef = useRef<MediaStreamTrack | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
   const onLocalStreamRef = useRef(onLocalStream);
   const onSceneStreamsRef = useRef(onSceneStreams);
   const onVideoFeedsRef = useRef(onVideoFeeds);
+  const onProgramAudioStateRef = useRef(onProgramAudioState);
   useEffect(() => { onLocalStreamRef.current = onLocalStream; }, [onLocalStream]);
   useEffect(() => { onSceneStreamsRef.current = onSceneStreams; }, [onSceneStreams]);
   useEffect(() => { onVideoFeedsRef.current = onVideoFeeds; }, [onVideoFeeds]);
+  useEffect(() => { onProgramAudioStateRef.current = onProgramAudioState; }, [onProgramAudioState]);
   useEffect(() => { onCameraState?.(cameraState); }, [cameraState, onCameraState]);
   useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
 
@@ -120,12 +127,14 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     fallbackStreamRef.current = null;
     void roomRef.current?.disconnect();
     roomRef.current = null;
+    programTrackRef.current = null;
     setSurfaces([]);
     setParticipantCount(1);
     setCameraState("off");
     setMicrophoneState("off");
     setScreenShareState("off");
     setPlaybackState("off");
+    setProgramAudioState("off");
     setConnectionQuality("unknown");
     setActiveSpeaker("");
     setStatus("idle");
@@ -133,9 +142,51 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     onLocalStreamRef.current?.(null);
     onSceneStreamsRef.current?.([]);
     onVideoFeedsRef.current?.([]);
+    onProgramAudioStateRef.current?.("off");
   }, []);
 
   useEffect(() => disconnect, [disconnect]);
+
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!room || status !== "livekit") return;
+    const nextTrack = programAudioStream?.getAudioTracks().find((track) => track.readyState === "live") || null;
+    if (programTrackRef.current === nextTrack) {
+      const nextState: ProgramAudioState = nextTrack ? "published" : "off";
+      setProgramAudioState(nextState);
+      onProgramAudioStateRef.current?.(nextState);
+      return;
+    }
+    let stale = false;
+    void (async () => {
+      const previousTrack = programTrackRef.current;
+      if (previousTrack) await room.localParticipant.unpublishTrack(previousTrack, false);
+      if (stale) return;
+      programTrackRef.current = null;
+      if (!nextTrack) {
+        setProgramAudioState("off");
+        onProgramAudioStateRef.current?.("off");
+        return;
+      }
+      setProgramAudioState("publishing");
+      onProgramAudioStateRef.current?.("publishing");
+      try {
+        await room.localParticipant.publishTrack(nextTrack, { name: "AMX Program Mix", source: Track.Source.Unknown, stream: "amx-stage-program" });
+        if (stale) {
+          await room.localParticipant.unpublishTrack(nextTrack, false);
+          return;
+        }
+        programTrackRef.current = nextTrack;
+        setProgramAudioState("published");
+        onProgramAudioStateRef.current?.("published");
+      } catch (error) {
+        setProgramAudioState("blocked");
+        onProgramAudioStateRef.current?.("blocked");
+        setMessage(error instanceof Error ? `Program mix could not publish: ${error.message}` : "Program mix could not publish");
+      }
+    })();
+    return () => { stale = true; };
+  }, [programAudioStream, status]);
 
   const openLocalPreview = useCallback(async (reason?: string) => {
     fallbackStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -236,6 +287,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         updateCount();
       });
       room.on(RoomEvent.Disconnected, () => {
+        programTrackRef.current = null;
         setStatus("idle");
         setMessage("Room disconnected");
         setSurfaces([]);
@@ -243,7 +295,9 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         setMicrophoneState("off");
         setScreenShareState("off");
         setPlaybackState("off");
+        setProgramAudioState("off");
         onLocalStreamRef.current?.(null);
+        onProgramAudioStateRef.current?.("off");
       });
       await room.connect(credentials.serverUrl, credentials.participantToken);
       try {
@@ -376,7 +430,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     </div>
     <div ref={audioHostRef} className="pod-audio-host"/>
     <div className="livekit-pod-foot">
-      <div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "voice published" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{screenShareState === "published" && <span className="media-ready"><MonitorUp/>screen live</span>}{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>
+      <div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "voice published" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{programAudioState !== "off" && <span className={programAudioState === "published" ? "media-ready" : ""}><Volume2/>{programAudioState === "published" ? "program mix" : programAudioState}</span>}{screenShareState === "published" && <span className="media-ready"><MonitorUp/>screen live</span>}{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>
       {live ? <div className="pod-media-actions">{status === "livekit" && <><button disabled={cameraState === "requesting"} onClick={() => void toggleCamera()} aria-label={cameraState === "published" ? "Turn camera off" : "Turn camera on"} title={cameraState === "published" ? "Turn camera off" : "Turn camera on"}>{cameraState === "published" ? <Camera/> : <CameraOff/>}</button><button disabled={microphoneState === "requesting"} onClick={() => void toggleMicrophone()} aria-label={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"} title={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"}>{microphoneState === "published" ? <Mic/> : <MicOff/>}</button><button disabled={screenShareState === "requesting"} onClick={() => void toggleScreenShare()} aria-label={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} title={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} className={screenShareState === "published" ? "active" : ""}><MonitorUp/></button>{playbackState === "blocked" && <button onClick={() => void resumeAudio()} aria-label="Resume room audio" title="Resume room audio"><Volume2/></button>}</>}<button className="button secondary" onClick={disconnect}><CameraOff/>Leave</button></div> : <button className="button primary" disabled={status === "connecting"} onClick={join}>{status === "connecting" ? <Radio/> : <Video/>}{status === "connecting" ? "Connecting" : status === "error" ? "Retry camera" : "Join pod"}</button>}
     </div>
     <p className="pod-status-message">{message}</p>
