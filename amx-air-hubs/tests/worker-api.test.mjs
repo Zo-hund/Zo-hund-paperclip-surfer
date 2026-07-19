@@ -537,6 +537,7 @@ describe("AMX AIR Hubs Worker API", () => {
       LIVEKIT_API_KEY: "livekit-key",
       LIVEKIT_API_SECRET: "livekit-secret",
       LIVEKIT_AGENT_NAME: "amx-voice-agent",
+      LIVEKIT_OPERATOR_HOSTS: "amx.example",
     });
     const calls = [];
     context.mock.method(globalThis, "fetch", async (url, init) => {
@@ -565,25 +566,72 @@ describe("AMX AIR Hubs Worker API", () => {
       LIVEKIT_API_KEY: "livekit-key",
       LIVEKIT_API_SECRET: "livekit-secret",
       LIVEKIT_AGENT_NAME: "amx-voice-agent",
+      PUBLIC_LIVEKIT_ROOMS: "AMXSTAGE",
     });
     const calls = [];
     context.mock.method(globalThis, "fetch", async (...args) => {
       calls.push(args);
       return new Response(null, { status: 500 });
     });
-    const response = await worker.fetch(jsonRequest("/api/livekit/token", { room: "AMXSTAGE", identity: "viewer-1", name: "Stage Viewer", role: "viewer" }), env);
+    const response = await worker.fetch(jsonRequest("/api/livekit/viewer-token", { room: "AMXSTAGE", identity: "forced-identity", name: "Stage Viewer", role: "participant", clientType: "stage-monitor" }), env);
     const body = await response.json();
     const tokenPayload = JSON.parse(Buffer.from(body.participantToken.split(".")[1], "base64url").toString("utf8"));
 
     assert.equal(response.status, 200);
     assert.equal(body.role, "viewer");
+    assert.match(tokenPayload.identity, /^viewer-/);
+    assert.notEqual(tokenPayload.identity, "forced-identity");
     assert.equal(tokenPayload.video.roomJoin, true);
     assert.equal(tokenPayload.video.canSubscribe, true);
     assert.equal(tokenPayload.video.canPublish, false);
     assert.equal(tokenPayload.video.canPublishData, false);
     assert.equal(JSON.parse(tokenPayload.metadata).role, "viewer");
+    assert.equal(JSON.parse(tokenPayload.metadata).clientType, "audience");
     assert.equal(body.agentDispatch.dispatched, false);
     assert.equal(calls.length, 0);
+  });
+
+  test("rejects viewer tokens for rooms outside the public allowlist", async () => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      PUBLIC_LIVEKIT_ROOMS: "AMXSTAGE",
+    });
+    const response = await worker.fetch(jsonRequest("/api/livekit/viewer-token", { room: "PRIVATE-POD" }), env);
+
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, "This room is not available on the public viewer");
+  });
+
+  test("issues a stage-monitor identity only on an allowed operator host", async () => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      PUBLIC_LIVEKIT_ROOMS: "AMXSTAGE",
+      LIVEKIT_OPERATOR_HOSTS: "amx.example",
+    });
+    const response = await worker.fetch(jsonRequest("/api/livekit/viewer-token", { room: "AMXSTAGE", clientType: "stage-monitor" }), env);
+    const body = await response.json();
+    const tokenPayload = JSON.parse(Buffer.from(body.participantToken.split(".")[1], "base64url").toString("utf8"));
+
+    assert.equal(response.status, 200);
+    assert.match(tokenPayload.identity, /^stage-monitor-/);
+    assert.equal(JSON.parse(tokenPayload.metadata).clientType, "stage-monitor");
+  });
+
+  test("rejects publisher tokens outside the private operator host allowlist", async () => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      LIVEKIT_OPERATOR_HOSTS: "operators.example",
+    });
+    const response = await worker.fetch(jsonRequest("/api/livekit/token", { room: "AMXSTAGE", identity: "publisher-1" }), env);
+
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, "LiveKit participant tokens are restricted to the private operator host");
   });
 
   test("keeps DJ stream destinations server-only and requires complete broadcast configuration", async () => {

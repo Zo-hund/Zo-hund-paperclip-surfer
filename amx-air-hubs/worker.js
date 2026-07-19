@@ -259,7 +259,20 @@ function base64Url(value) {
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-async function createLiveKitToken(env, room, identity, name, role = "participant") {
+function policyValues(value) {
+  return String(value || "").split(/[\n,]/).map((item) => item.trim().toLowerCase()).filter(Boolean);
+}
+
+function publicLiveKitRoomAllowed(env, room) {
+  return policyValues(env.PUBLIC_LIVEKIT_ROOMS).includes(room.toLowerCase());
+}
+
+function liveKitOperatorHostAllowed(env, url) {
+  if (["localhost", "127.0.0.1"].includes(url.hostname)) return true;
+  return policyValues(env.LIVEKIT_OPERATOR_HOSTS).includes(url.hostname.toLowerCase());
+}
+
+async function createLiveKitToken(env, room, identity, name, role = "participant", clientType = role) {
   const viewer = role === "viewer";
   const now = Math.floor(Date.now() / 1000);
   const encodedHeader = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -272,7 +285,7 @@ async function createLiveKitToken(env, room, identity, name, role = "participant
     nbf: now - 5,
     exp: now + 60 * 15,
     jti: crypto.randomUUID(),
-    metadata: JSON.stringify({ app: "amx-air-hubs", room, role }),
+    metadata: JSON.stringify({ app: "amx-air-hubs", room, role, clientType }),
     video: { room, roomJoin: true, canPublish: !viewer, canSubscribe: true, canPublishData: !viewer },
   }));
   const unsigned = `${encodedHeader}.${encodedPayload}`;
@@ -430,8 +443,8 @@ async function ensureLiveKitAgentDispatch(env, room, requestId) {
     clearTimeout(timeout);
   }
 }
-function allowRequest(request) {
-  const key = request.headers.get("CF-Connecting-IP") || "local";
+function allowRequest(request, limit = 120, namespace = "api") {
+  const key = `${namespace}:${request.headers.get("CF-Connecting-IP") || "local"}`;
   const now = Date.now();
   if (rateBuckets.size > 10_000) {
     for (const [bucketKey, value] of rateBuckets) if (now - value.start > 60_000) rateBuckets.delete(bucketKey);
@@ -440,7 +453,7 @@ function allowRequest(request) {
   if (now - bucket.start > 60_000) { bucket.start = now; bucket.count = 0; }
   bucket.count += 1;
   rateBuckets.set(key, bucket);
-  return bucket.count <= 120;
+  return bucket.count <= limit;
 }
 
 function gatewayUrl(base, path) {
@@ -1310,10 +1323,34 @@ async function handleApi(request, env, url, requestId) {
     }
     return new Response(null, { status: 204, headers: capabilityHeaders({ "Cache-Control": "no-store", "X-Request-ID": requestId }) });
   }
+  if (request.method === "POST" && url.pathname === "/api/livekit/viewer-token") {
+    if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
+      return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);
+    }
+    if (!allowRequest(request, 30, "livekit-viewer")) return reply({ error: "Viewer token rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
+    let serverUrl;
+    try {
+      const parsed = new URL(env.LIVEKIT_URL);
+      if (!["wss:", "ws:"].includes(parsed.protocol)) throw new Error("LiveKit URL must use WebSocket transport");
+      serverUrl = parsed.toString().replace(/\/$/, "");
+    } catch (error) {
+      return reply({ error: error instanceof Error ? error.message : "Invalid LiveKit URL", requestId }, 500);
+    }
+    const body = await readJson(request, 16 * 1024);
+    const room = safeId(body.room).toUpperCase().slice(0, 64);
+    if (!room) return reply({ error: "Room is required", requestId }, 400);
+    if (!publicLiveKitRoomAllowed(env, room)) return reply({ error: "This room is not available on the public viewer", requestId }, 403);
+    const clientType = body.clientType === "stage-monitor" && liveKitOperatorHostAllowed(env, url) ? "stage-monitor" : "audience";
+    const identity = `${clientType === "stage-monitor" ? "stage-monitor" : "viewer"}-${crypto.randomUUID().slice(0, 18)}`;
+    const name = safeLabel(body.name, clientType === "stage-monitor" ? "AMX Stage Router" : "AMX Stage Viewer").slice(0, 80);
+    const participantToken = await createLiveKitToken(env, room, identity, name, "viewer", clientType);
+    return reply({ serverUrl, participantToken, identity, room, role: "viewer", clientType, expiresIn: 900, agentDispatch: { configured: false, dispatched: false }, requestId });
+  }
   if (request.method === "POST" && url.pathname === "/api/livekit/token") {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
       return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);
     }
+    if (!liveKitOperatorHostAllowed(env, url)) return reply({ error: "LiveKit participant tokens are restricted to the private operator host", requestId }, 403);
     let serverUrl;
     try {
       const parsed = new URL(env.LIVEKIT_URL);
@@ -1326,11 +1363,10 @@ async function handleApi(request, env, url, requestId) {
     const room = safeId(body.room).toUpperCase().slice(0, 64);
     const identity = safeId(body.identity).slice(0, 64);
     const name = safeLabel(body.name, identity || "AMX Explorer").slice(0, 80);
-    const role = body.role === "viewer" ? "viewer" : "participant";
     if (!room || !identity) return reply({ error: "Room and identity are required", requestId }, 400);
-    const participantToken = await createLiveKitToken(env, room, identity, name, role);
-    const agentDispatch = role === "viewer" ? { configured: false, dispatched: false } : await ensureLiveKitAgentDispatch(env, room, requestId);
-    return reply({ serverUrl, participantToken, room, role, expiresIn: 900, agentDispatch, requestId });
+    const participantToken = await createLiveKitToken(env, room, identity, name, "participant", "operator");
+    const agentDispatch = await ensureLiveKitAgentDispatch(env, room, requestId);
+    return reply({ serverUrl, participantToken, room, role: "participant", expiresIn: 900, agentDispatch, requestId });
   }
   if (request.method === "POST" && url.pathname.startsWith("/api/livekit/egress/dj/")) {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);

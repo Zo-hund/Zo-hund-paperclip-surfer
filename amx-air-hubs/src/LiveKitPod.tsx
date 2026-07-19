@@ -5,12 +5,14 @@ import {
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
 } from "livekit-client";
 import type { Agent } from "./data";
+import { countStageAudienceParticipants, stageFeedId } from "./stage-camera-routing";
 
 type PodStatus = "idle" | "connecting" | "livekit" | "local" | "error";
 export type CaptureState = "off" | "requesting" | "published" | "muted" | "blocked";
 type PlaybackState = "off" | "ready" | "blocked";
 export type LiveVideoFeed = {
   id: string;
+  participantIdentity?: string;
   name: string;
   local: boolean;
   source: "camera" | "screen";
@@ -20,6 +22,7 @@ export type LiveVideoFeed = {
 
 type VideoSurface = {
   id: string;
+  participantIdentity?: string;
   name: string;
   local: boolean;
   source: "camera" | "screen";
@@ -95,17 +98,17 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
 
   useEffect(() => {
-    const feeds = surfaces.map((surface) => {
+    const feeds = surfaces.flatMap<LiveVideoFeed>((surface) => {
       const stream = surface.stream || (surface.track ? new MediaStream([surface.track.mediaStreamTrack]) : null);
-      return stream ? { id: surface.id, name: surface.name, local: surface.local, source: surface.source, stream, muted: Boolean(surface.muted) } satisfies LiveVideoFeed : null;
-    }).filter((feed): feed is LiveVideoFeed => Boolean(feed));
+      return stream ? [{ id: surface.id, participantIdentity: surface.participantIdentity, name: surface.name, local: surface.local, source: surface.source, stream, muted: Boolean(surface.muted) }] : [];
+    });
     onSceneStreamsRef.current?.(feeds.slice().sort((left, right) => Number(right.source === "screen") - Number(left.source === "screen")).map((feed) => feed.stream));
     onVideoFeedsRef.current?.(feeds);
   }, [surfaces]);
 
-  const addVideoTrack = useCallback((track: LocalVideoTrack | RemoteVideoTrack, id: string, name: string, local: boolean, source: "camera" | "screen" = "camera") => {
+  const addVideoTrack = useCallback((track: LocalVideoTrack | RemoteVideoTrack, id: string, name: string, local: boolean, source: "camera" | "screen" = "camera", participantIdentity?: string) => {
     setSurfaces((current) => {
-      const next = { id, name, local, source, track, muted: track.isMuted };
+      const next = { id, participantIdentity, name, local, source, track, muted: track.isMuted };
       const index = current.findIndex((surface) => surface.id === id);
       if (index < 0) return [...current, next];
       return current.map((surface, surfaceIndex) => surfaceIndex === index ? next : surface);
@@ -148,7 +151,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         audio: false,
       });
       fallbackStreamRef.current = stream;
-      setSurfaces([{ id: identity, name: "You", local: true, source: "camera", stream }]);
+      setSurfaces([{ id: stageFeedId(identity, "camera"), participantIdentity: identity, name: "You", local: true, source: "camera", stream }]);
       setStatus("local");
       setCameraState("published");
       setMicrophoneState("off");
@@ -187,13 +190,15 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       roomRef.current?.disconnect();
       const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true });
       roomRef.current = room;
-      const updateCount = () => setParticipantCount(room.remoteParticipants.size + 1);
+      const updateCount = () => setParticipantCount(countStageAudienceParticipants(room.remoteParticipants.values(), 1));
       room.on(RoomEvent.ParticipantConnected, updateCount);
       room.on(RoomEvent.ParticipantDisconnected, updateCount);
+      room.on(RoomEvent.ParticipantMetadataChanged, updateCount);
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         if (track.kind === Track.Kind.Video) {
           const screen = publication.source === Track.Source.ScreenShare;
-          addVideoTrack(track as RemoteVideoTrack, `${participant.identity}-${track.sid}`, screen ? `${participant.name || participant.identity} / screen` : participant.name || participant.identity, false, screen ? "screen" : "camera");
+          const source = screen ? "screen" : "camera";
+          addVideoTrack(track as RemoteVideoTrack, stageFeedId(participant.identity, source), screen ? `${participant.name || participant.identity} / screen` : participant.name || participant.identity, false, source, participant.identity);
         }
         if (track.kind === Track.Kind.Audio && audioHostRef.current) audioHostRef.current.appendChild(track.attach());
       });
@@ -256,7 +261,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         const localTrack = publication?.videoTrack as LocalVideoTrack | undefined;
         if (localTrack) {
           cameraReady = true;
-          addVideoTrack(localTrack, identity, "You", true, "camera");
+          addVideoTrack(localTrack, stageFeedId(identity, "camera"), "You", true, "camera", identity);
           onLocalStreamRef.current?.(new MediaStream([localTrack.mediaStreamTrack]));
         }
       } catch (error) {
@@ -275,7 +280,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         microphoneIssue = mediaDeviceMessage(error, "microphone");
       }
       setMicrophoneState(microphoneReady ? "published" : "blocked");
-      setParticipantCount(room.remoteParticipants.size + 1);
+      updateCount();
       setStatus("livekit");
       const agentState = credentials.agentDispatch?.dispatched ? ` / ${credentials.agentDispatch.agentName || "voice agent"} dispatched` : credentials.agentDispatch?.configured ? " / voice agent unavailable" : "";
       const voiceState = microphoneReady && room.canPlaybackAudio ? " / voice ready" : microphoneReady ? " / voice published; tap audio to listen" : ` / ${microphoneIssue || "microphone permission is off"}`;
@@ -316,7 +321,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
       const track = publication?.videoTrack as LocalVideoTrack | undefined;
       if (!track) throw new Error("Camera track was not published");
-      addVideoTrack(track, identity, "You", true, "camera");
+      addVideoTrack(track, stageFeedId(identity, "camera"), "You", true, "camera", identity);
       onLocalStreamRef.current?.(new MediaStream([track.mediaStreamTrack]));
       setCameraState("published");
     } catch (error) {
@@ -345,7 +350,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       const publication = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
       const track = publication?.videoTrack as LocalVideoTrack | undefined;
       if (!track) throw new Error("Screen-share track was not published");
-      addVideoTrack(track, `${identity}-screen`, "Your screen", true, "screen");
+      addVideoTrack(track, stageFeedId(identity, "screen"), "Your screen", true, "screen", identity);
       setScreenShareState("published");
       const audioPublication = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
       setMessage(`Screen share is live in the pod and routed to a Blender panel${audioPublication?.audioTrack ? " with shared audio" : "; enable tab or system audio in the share picker for the program mix"}`);

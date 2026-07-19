@@ -6,7 +6,8 @@ import {
 } from "livekit-client";
 import { useParams } from "react-router-dom";
 import type { LiveVideoFeed } from "../LiveKitPod";
-import { useStageProduction, type StageShot } from "../stage-production";
+import { useStageProduction } from "../stage-production";
+import { countStageAudienceParticipants, selectStageProgramFeed, stageFeedId } from "../stage-camera-routing";
 import { stageSeatCounts } from "../stage-events";
 import type { RendererBackend } from "../webgpu";
 
@@ -19,8 +20,6 @@ interface ViewerFeed extends LiveVideoFeed {
   participantIdentity: string;
   track: RemoteVideoTrack;
 }
-
-const SHOT_INDEX: Record<StageShot, number> = { wide: 0, host: 1, audience: 2, crane: 3 };
 
 function ViewerProgramVideo({ feed }: { feed: ViewerFeed }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -47,12 +46,11 @@ export function StageLiveViewerPage() {
   const [backend, setBackend] = useState<RendererBackend>("webgl2");
   const roomRef = useRef<Room | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
-  const identity = useMemo(() => `viewer-${crypto.randomUUID().slice(0, 12)}`, []);
   const seatCounts = stageSeatCounts(production.state.event.seats);
 
   const addFeed = useCallback((track: RemoteVideoTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
     const source = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
-    const id = `${participant.identity}-${track.sid}`;
+    const id = stageFeedId(participant.identity, source);
     const feed: ViewerFeed = {
       id,
       participantIdentity: participant.identity,
@@ -69,10 +67,10 @@ export function StageLiveViewerPage() {
   const connect = useCallback(async () => {
     setStatus("connecting");
     try {
-      const response = await fetch("/api/livekit/token", {
+      const response = await fetch("/api/livekit/viewer-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: roomCode, identity, name: "AMX Stage Viewer", role: "viewer" }),
+        body: JSON.stringify({ room: roomCode, name: "AMX Stage Viewer", clientType: "audience" }),
       });
       const credentials = await response.json().catch(() => ({})) as { serverUrl?: string; participantToken?: string; error?: string };
       if (!response.ok || !credentials.serverUrl || !credentials.participantToken) {
@@ -82,8 +80,9 @@ export function StageLiveViewerPage() {
       }
       const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true });
       roomRef.current = room;
-      const updateCount = () => setParticipantCount(room.remoteParticipants.size + 1);
+      const updateCount = () => setParticipantCount(countStageAudienceParticipants(room.remoteParticipants.values(), 1));
       room.on(RoomEvent.ParticipantConnected, updateCount);
+      room.on(RoomEvent.ParticipantMetadataChanged, updateCount);
       room.on(RoomEvent.ParticipantDisconnected, (participant) => {
         updateCount();
         setFeeds((current) => current.filter((feed) => feed.participantIdentity !== participant.identity));
@@ -109,7 +108,7 @@ export function StageLiveViewerPage() {
       setStatus("offline");
       setNotice(error instanceof Error ? error.message : "Live camera relay is unavailable.");
     }
-  }, [addFeed, identity, roomCode]);
+  }, [addFeed, roomCode]);
 
   useEffect(() => {
     void connect();
@@ -124,15 +123,7 @@ export function StageLiveViewerPage() {
   }, [production.state.event.title]);
 
   const route = production.state.cameraRoutes[production.state.shot];
-  const programFeed = useMemo(() => {
-    const active = feeds.filter((feed) => !feed.muted);
-    if (!active.length || route === "virtual") return null;
-    if (route && route !== "auto") {
-      const direct = active.find((feed) => feed.id === route || feed.participantIdentity === route);
-      if (direct) return direct;
-    }
-    return active[SHOT_INDEX[production.state.shot]] || active[0];
-  }, [feeds, production.state.shot, route]);
+  const programFeed = useMemo(() => selectStageProgramFeed(feeds, production.state.shot, route), [feeds, production.state.shot, route]);
   const showProgram = mode === "program" && Boolean(programFeed);
   const channelLive = production.state.live || status === "live";
 

@@ -58,6 +58,18 @@ Request:
 
 Returns `serverUrl`, `participantToken`, `room`, and `expiresIn`. Returns `503` when LiveKit is not configured.
 
+This operator-only endpoint always issues publish, subscribe, and data permissions and may dispatch the configured room agent. The request host must appear in `LIVEKIT_OPERATOR_HOSTS`; caller-supplied viewer roles are ignored.
+
+### `POST /api/livekit/viewer-token`
+
+Request:
+
+```json
+{ "room": "AMXSTAGE", "name": "AMX Stage Viewer" }
+```
+
+Issues a server-generated identity with subscribe-only room permissions. The room must appear in `PUBLIC_LIVEKIT_ROOMS`. Caller-supplied identities and roles are ignored, agent dispatch is disabled, and the route has a separate 30 requests/minute/IP limit. The private Stage router may request `clientType: "stage-monitor"` only from an allowed operator host.
+
 ### `POST /api/livekit/egress/dj/status`
 
 ### `POST /api/livekit/egress/dj/start`

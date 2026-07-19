@@ -14,7 +14,7 @@
     "build": "tsc -b && vite build && node scripts/build-worker.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc -b",
-    "test": "node --test tests/worker-api.test.mjs",
+    "test": "node --test tests/*.test.mjs",
     "verify": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
