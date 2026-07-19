@@ -21,6 +21,7 @@
 17. Mute or disconnect the on-program participant and confirm the channel reports muted/offline and the program mesh returns to its governed sponsor fallback.
 18. In Pods, promote a linked showcase room. In Event, switch through Summit, XR Con, and Expo and confirm `data-venue-layout` reports `theater`, `arena`, and `expo-hall` while the visible seating arrangement changes.
 19. Set the event title, source, start time, and lifecycle. Issue General, VIP, and Speaker admission passes, confirm each QR resolves to a distinct invite lobby with the expected role/capacity, accept one pass, refresh the counter, and revoke it from the issuing device. Do not enable public ticket sales until a payment and order system is configured.
+20. Test `/stage` at 390x844 portrait, 320x568 narrow portrait, 667x375 phone landscape, and 844x390 wide landscape. Confirm the Stage ends above mobile navigation, the console scrolls independently, no control crosses the viewport, event inputs compute to at least 16px, ticket actions remain at least 44px tall, and the WebGPU/WebGL canvas remains nonblank.
 
 ## Observability
 
