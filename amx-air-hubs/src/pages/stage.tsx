@@ -4,6 +4,7 @@ import {
   Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Sparkles, Users, Video, Volume2, Wifi,
 } from "lucide-react";
 import type { CaptureState, LiveVideoFeed } from "../LiveKitPod";
+import type { StageFeedMonitorStatus } from "../StageFeedMonitor";
 import { agents } from "../data";
 import { trackEvent } from "../platform";
 import { useAMX } from "../AppContext";
@@ -17,6 +18,7 @@ import {
 
 const AMXXRStageScene = lazy(async () => ({ default: (await import("../AMXXRStageScene")).AMXXRStageScene }));
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
+const StageFeedMonitor = lazy(async () => ({ default: (await import("../StageFeedMonitor")).StageFeedMonitor }));
 
 type ConsoleView = "production" | "collab" | "audio" | "audience" | "sponsors";
 
@@ -82,6 +84,7 @@ export function AMXXRStagePage() {
   const soundscapeRuntime = useStageSoundscape(production.state.audio);
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
+  const [feedMonitorStatus, setFeedMonitorStatus] = useState<StageFeedMonitorStatus>("connecting");
   const [cameraMediaState, setCameraMediaState] = useState<CaptureState>("off");
   const [djControlToken, setDjControlToken] = useState("");
   const [djBroadcast, setDjBroadcast] = useState<DjBroadcastState | null>(null);
@@ -99,10 +102,12 @@ export function AMXXRStagePage() {
   const inventory = useMemo(() => [...DEFAULT_SPONSORS, ...customSponsors], [customSponsors]);
   const crew = agents.slice(0, 4);
   const cameraChannels = useMemo(() => SHOTS.map((camera, index) => {
-    const route = production.state.cameraRoutes[camera.id] || "auto";
-    const feed = route === "virtual" ? null : route === "auto" ? videoFeeds[index] || null : videoFeeds.find((candidate) => candidate.id === route) || null;
+    const configuredRoute = production.state.cameraRoutes[camera.id] || "auto";
+    const routedFeed = configuredRoute === "auto" || configuredRoute === "virtual" ? null : videoFeeds.find((candidate) => candidate.id === configuredRoute) || null;
+    const route = configuredRoute !== "auto" && configuredRoute !== "virtual" && !routedFeed && videoFeeds.length ? "auto" : configuredRoute;
+    const feed = route === "virtual" ? null : route === "auto" ? videoFeeds[index] || (camera.id === production.state.shot ? videoFeeds[0] : null) || null : routedFeed;
     return { ...camera, route, feed };
-  }), [production.state.cameraRoutes, videoFeeds]);
+  }), [production.state.cameraRoutes, production.state.shot, videoFeeds]);
   const programChannel = cameraChannels.find((camera) => camera.id === production.state.shot) || cameraChannels[0];
 
   const changeRoom = (value: string) => {
@@ -256,6 +261,7 @@ export function AMXXRStagePage() {
 
   const seatsTotal = production.state.generalSeats + production.state.vipSeats;
   return <div className="page amx-stage-page">
+    <Suspense fallback={null}><StageFeedMonitor roomCode={production.room} onStatus={setFeedMonitorStatus} onVideoFeeds={setVideoFeeds}/></Suspense>
     <header className="stage-workspace-bar">
       <div className="stage-title"><span className="eyebrow">AMX XR STAGE / LIVE PRODUCTION</span><h1>Show control</h1></div>
       <div className="stage-show-status"><span className={production.state.live ? "live" : "ready"}><i/>{production.state.live ? "ON AIR" : "READY"}</span><span><Camera/>{production.state.shot.toUpperCase()} / {programChannel.feed && !programChannel.feed.muted ? programChannel.feed.name : "VIRTUAL"}</span><span><Users/>{seatsTotal} seated</span><span><Link2/>{production.state.connectedPods.length} pods</span><span><Wifi/>{production.transport}</span></div>
@@ -275,13 +281,13 @@ export function AMXXRStagePage() {
         <div ref={consoleBodyRef} className="stage-console-body">
           <div className="stage-console-view" hidden={view !== "production"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">VENUE MODE</span><h2>Audience format</h2></div><span className="stage-sync-state"><i/>{production.peerCount} operator{production.peerCount === 1 ? "" : "s"}</span></header><div className="stage-mode-control">{(["in-person", "online", "metaverse"] as StageMode[]).map((mode) => <button key={mode} className={production.state.mode === mode ? "active" : ""} onClick={() => setMode(mode)}>{mode}</button>)}</div></section>
-            <section className="stage-control-section"><header><div><span className="eyebrow">LIVE CAMERA TEAM</span><h2>Route and take</h2></div><div className="stage-camera-header-actions">{videoFeeds.length === 0 && <button className={cameraMediaState === "blocked" ? "blocked" : ""} onClick={openCameraSetup}><Camera/>{cameraMediaState === "blocked" ? "RETRY CAMERA" : cameraMediaState === "requesting" ? "OPENING" : "CONNECT CAMERA"}</button>}<span className={production.state.live ? "camera-tally live" : "camera-tally"}><i/>PGM</span></div></header><div className="stage-shot-grid">{cameraChannels.map(({ id, label, detail, icon: Icon, route, feed }) => <div key={id} className={`stage-camera-channel ${production.state.shot === id ? "active" : ""} ${feed && !feed.muted ? "feed-ready" : ""}`}><button aria-label={`${label} ${detail}`} onClick={() => takeShot(id)}><span className="stage-camera-preview"><CameraFeedPreview feed={feed}/></span><Icon/><span className="stage-camera-name"><b>{label}</b><small>{feed ? `${feed.name}${feed.muted ? " / muted" : ""}` : route !== "auto" && route !== "virtual" ? "Feed offline" : detail}</small></span><i/></button><select aria-label={`Route ${label} source`} value={route} onChange={(event) => routeCamera(id, event.target.value)}><option value="auto">AUTO INPUT {videoFeeds.length > 0 ? id === "wide" ? "1" : id === "host" ? "2" : id === "audience" ? "3" : "4" : ""}</option><option value="virtual">VIRTUAL SHOT</option>{route !== "auto" && route !== "virtual" && !videoFeeds.some((candidate) => candidate.id === route) && <option value={route}>FEED OFFLINE</option>}{videoFeeds.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} / {candidate.source}</option>)}</select></div>)}</div></section>
+            <section className="stage-control-section"><header><div><span className="eyebrow">LIVE CAMERA TEAM</span><h2>Route and take</h2></div><div className="stage-camera-header-actions"><span className={`stage-feed-monitor-state ${feedMonitorStatus}`}><Wifi/>{feedMonitorStatus === "live" ? `${videoFeeds.length} FEED${videoFeeds.length === 1 ? "" : "S"}` : feedMonitorStatus === "connecting" ? "SCANNING" : "RELAY OFF"}</span>{cameraMediaState !== "published" && <button className={cameraMediaState === "blocked" ? "blocked" : ""} onClick={openCameraSetup}><Camera/>{cameraMediaState === "blocked" ? "RETRY CAMERA" : cameraMediaState === "requesting" ? "OPENING" : "CONNECT CAMERA"}</button>}<span className={production.state.live ? "camera-tally live" : "camera-tally"}><i/>PGM</span></div></header><div className="stage-shot-grid">{cameraChannels.map(({ id, label, detail, icon: Icon, route, feed }) => <div key={id} className={`stage-camera-channel ${production.state.shot === id ? "active" : ""} ${feed && !feed.muted ? "feed-ready" : ""}`}><button aria-label={`${label} ${detail}`} onClick={() => takeShot(id)}><span className="stage-camera-preview"><CameraFeedPreview feed={feed}/></span><Icon/><span className="stage-camera-name"><b>{label}</b><small>{feed ? `${feed.name}${feed.muted ? " / muted" : ""}` : route !== "auto" && route !== "virtual" ? "Feed offline" : detail}</small></span><i/></button><select aria-label={`Route ${label} source`} value={route} onChange={(event) => routeCamera(id, event.target.value)}><option value="auto">AUTO INPUT {videoFeeds.length > 0 ? id === "wide" ? "1" : id === "host" ? "2" : id === "audience" ? "3" : "4" : ""}</option><option value="virtual">VIRTUAL SHOT</option>{route !== "auto" && route !== "virtual" && !videoFeeds.some((candidate) => candidate.id === route) && <option value={route}>FEED OFFLINE</option>}{videoFeeds.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} / {candidate.source}</option>)}</select></div>)}</div></section>
             <section className="stage-control-section"><header><div><span className="eyebrow">SHOW CUES</span><h2>Run of show</h2></div><b className="stage-current-cue">{production.state.cue}</b></header><div className="stage-cue-grid">{CUES.map((cue) => <button key={cue.id} className={production.state.cue === cue.id ? "active" : ""} onClick={() => fireCue(cue.id)}><span>{cue.label}</span><ChevronRight/></button>)}</div></section>
           </div>
 
           <div className="stage-console-view" hidden={view !== "collab"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">CROSS-POD CONNECTION</span><h2>Linked showcases</h2></div><span className="stage-sync-state"><i/>{production.transport}</span></header><label className="stage-room-field">Stage room<input value={roomCode} onChange={(event) => changeRoom(event.target.value)}/></label><div className="stage-pod-link"><input value={podDraft} onChange={(event) => setPodDraft(event.target.value)} placeholder="POD CODE"/><button onClick={linkPod} disabled={!podDraft.trim()}><Link2/>Link</button></div><div className="stage-pod-list">{production.state.connectedPods.map((pod) => <div key={pod} className={production.state.event.sourceRoom === pod ? "promoted" : ""}><span><i/><b>{pod}</b><small>{production.state.event.sourceRoom === pod ? "promoted event source" : "stage cue bus linked"}</small></span><span className="stage-pod-actions"><button onClick={() => promotePod(pod)} aria-label={`Promote ${pod} to stage`} title={`Promote ${pod} to stage`}><ArrowUpToLine/></button><button onClick={() => unlinkPod(pod)} aria-label={`Unlink ${pod}`} title={`Unlink ${pod}`}><Minus/></button></span></div>)}</div></section>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onVideoFeeds={setVideoFeeds} onCameraState={setCameraMediaState}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onCameraState={setCameraMediaState}/></Suspense>
           </div>
 
           <div className="stage-console-view stage-audio-console" hidden={view !== "audio"}>

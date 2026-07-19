@@ -94,6 +94,22 @@ function drawSponsor(canvas: HTMLCanvasElement, creative: SponsorCreative, brand
   context.fillText(live ? "ON AIR" : "STAGE READY", 110, 364);
 }
 
+function drawSponsorRibbon(canvas: HTMLCanvasElement, creative: SponsorCreative, live: boolean) {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  context.fillStyle = "#03080d";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = creative.accent;
+  context.fillRect(0, 0, canvas.width, 4);
+  context.fillRect(0, canvas.height - 4, canvas.width, 4);
+  context.fillRect(0, 0, 16, canvas.height);
+  context.fillStyle = "#f5fbfc";
+  context.font = "800 27px Arial";
+  context.textBaseline = "middle";
+  const label = `AMX AIR HUBS.CC  //  ${creative.name.toUpperCase().slice(0, 26)}  //  ${creative.headline.toUpperCase().slice(0, 52)}  //  ${live ? "LIVE" : "STAGE READY"}`;
+  context.fillText(label, 48, canvas.height / 2);
+}
+
 function bindStream(mesh: THREE.Mesh, stream: MediaStream) {
   const video = document.createElement("video");
   video.autoplay = true;
@@ -234,9 +250,19 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
     rightSponsor.position.x = 6.45;
     rightSponsor.rotation.y = -0.38;
     scene.add(leftSponsor, rightSponsor);
-    const ribbon = new THREE.Mesh(new THREE.PlaneGeometry(19, 0.65), sponsorMaterial);
+    const ribbonCanvas = document.createElement("canvas");
+    ribbonCanvas.width = 2048;
+    ribbonCanvas.height = 70;
+    const ribbonTexture = new THREE.CanvasTexture(ribbonCanvas);
+    ribbonTexture.colorSpace = THREE.SRGBColorSpace;
+    ribbonTexture.minFilter = THREE.LinearFilter;
+    textures.push(ribbonTexture);
+    const ribbonMaterial = new THREE.MeshBasicMaterial({ map: ribbonTexture, toneMapped: false, side: THREE.DoubleSide });
+    materials.push(ribbonMaterial);
+    const ribbon = new THREE.Mesh(new THREE.PlaneGeometry(19, 0.65), ribbonMaterial);
     ribbon.position.set(0, 7.05, -7.3);
     scene.add(ribbon);
+    host.dataset.ribbonAspect = `${ribbonCanvas.width}:${ribbonCanvas.height}`;
 
     const seatGroups: THREE.Mesh[] = [];
     const seatOpen = new THREE.MeshStandardMaterial({ color: 0x15252d, roughness: 0.72, metalness: 0.25 });
@@ -386,6 +412,8 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
         lastSponsor = sponsorKey;
         drawSponsor(sponsorCanvas, current.sponsor, brandImage, current.live);
         sponsorTexture.needsUpdate = true;
+        drawSponsorRibbon(ribbonCanvas, current.sponsor, current.live);
+        ribbonTexture.needsUpdate = true;
         host.dataset.sponsor = current.sponsor.id;
       }
       const seatKey = current.seats.map((seat) => `${seat.id}:${seat.status}`).join("|") || `${current.generalSeats}:${current.vipSeats}`;
