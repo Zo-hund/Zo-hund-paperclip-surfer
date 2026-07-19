@@ -28,6 +28,14 @@ test("keeps explicit camera routes offline until the same identity returns", () 
   assert.equal(routing.selectStageProgramFeed([{ id: "other:camera", participantIdentity: "other", source: "camera" }], "host", route), null);
 });
 
+test("migrates pre-release track routes to auto without changing stable routes", () => {
+  const legacy = { wide: "participant-TR_track", host: "auto", audience: "host-1:camera", crane: "virtual" };
+  const stable = { wide: "host-1:camera", host: "auto", audience: "guest-1:screen", crane: "virtual" };
+
+  assert.deepEqual(routing.migrateLegacyStageCameraRoutes(legacy), { wide: "auto", host: "auto", audience: "host-1:camera", crane: "virtual" });
+  assert.equal(routing.migrateLegacyStageCameraRoutes(stable), stable);
+});
+
 test("does not count stage monitors or agent services as audience", () => {
   const participants = [
     { identity: "viewer-1", metadata: JSON.stringify({ role: "viewer", clientType: "audience" }) },

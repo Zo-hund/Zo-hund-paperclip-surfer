@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { defaultStageEvent, normalizeStageEvent, type StageEventState } from "./stage-events";
+import { migrateLegacyStageCameraRoutes } from "./stage-camera-routing";
 
 export type StageMode = "in-person" | "online" | "metaverse";
 export type StageShot = "wide" | "host" | "audience" | "crane";
@@ -117,7 +118,7 @@ function storedState(room: string, operatorId: string) {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
     if (!saved) return initialState(operatorId, room);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...initialState(operatorId, room), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...saved.audio }, event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId, room), ...saved, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), audio: { ...DEFAULT_STAGE_AUDIO, ...saved.audio }, event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
     return initialState(operatorId, room);
   }
@@ -151,7 +152,7 @@ export function useStageProduction(roomCode: string, options: { readOnly?: boole
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...packet.state.audio }, event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), audio: { ...DEFAULT_STAGE_AUDIO, ...packet.state.audio }, event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;

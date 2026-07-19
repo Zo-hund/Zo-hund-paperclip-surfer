@@ -19,6 +19,18 @@ export function stageFeedId(participantIdentity: string, source: RoutableStageFe
   return `${participantIdentity}:${source}`;
 }
 
+export function migrateLegacyStageCameraRoutes(routes: Record<StageShot, string>) {
+  let changed = false;
+  const next = { ...routes };
+  (Object.keys(SHOT_INDEX) as StageShot[]).forEach((shot) => {
+    const route = next[shot];
+    if (!route || route === "auto" || route === "virtual" || /:(camera|screen)$/.test(route)) return;
+    next[shot] = "auto";
+    changed = true;
+  });
+  return changed ? next : routes;
+}
+
 export function sortStageVideoFeeds<T extends RoutableStageFeed>(feeds: Iterable<T>) {
   return [...feeds].sort((left, right) => {
     const sourceOrder = Number(left.source === "screen") - Number(right.source === "screen");
