@@ -134,6 +134,18 @@ Atomically consumes one capacity slot while the invite is active and unexpired. 
 
 Revokes the invite. Requires `Authorization: Bearer {ownerToken}`. Only a SHA-256 hash of the owner capability is persisted in D1.
 
+## Stage production workflows
+
+### `GET /api/stage/workflows/:roomCode?tenantId={tenantId}`
+
+Returns the latest durable pre-production, live rundown, and post-production record for one tenant and Stage room. The route is available only from a hostname listed in `STAGE_OPERATOR_HOSTS`; when that variable is omitted it uses `LIVEKIT_OPERATOR_HOSTS`. A missing record returns `404` so the console can initialize a new production without claiming that it was previously persisted.
+
+### `PUT /api/stage/workflows/:roomCode`
+
+Persists a bounded workflow envelope containing `tenantId`, a positive monotonic `revision`, `updatedBy`, and the workflow object. The JSON body is capped at 128 KB and the persisted workflow at 120 KB. D1 only replaces a record when the incoming revision is at least as new as the stored revision, preventing a delayed operator packet from overwriting a later rundown.
+
+The API does not replace user authentication. Keep the Stage operator site private and configure the hostname allowlist before deployment.
+
 ## Spatial anchors and digital twins
 
 ### GET /api/anchors?room={ROOM}

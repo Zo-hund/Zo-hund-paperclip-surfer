@@ -11,6 +11,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - LiveKit screen sharing plus participant video routed into Blender-authored world displays.
 - Three-bus Nexus production switcher with independent preview/program routing, whole-room layouts, persistent cues, and AMX Labs / AMX AIR HUBS.CC stingers.
 - AMX XR Stage with WebGPU venue cameras, routable LiveKit multicamera feeds, animated camera-operator NPCs, synchronized Summit/XR Con/Expo venues, Pod-to-stage promotion, tiered admission passes, audience/VIP seating, and governed sponsor slates.
+- Enterprise pre-production, show-runtime, and post-production workflow with crew call sheets, preflight gates, approvals, timed Pod/Main Stage rundowns, director holds, durable activity evidence, delivery tracking, and production-report export.
 - Private Stage audio uploads with rights confirmation, real Deck A/B playback, synchronized stingers, Web Audio mixing, local preview, and LiveKit program-bus publication.
 - HLS/MP4/WebM media playback composited onto dedicated in-world Three.js display meshes with Fit and Fill modes.
 - Google Maps search, selection, shared geo anchors, and agent location context.
@@ -25,7 +26,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Supabase Realtime room messaging with local BroadcastChannel fallback.
 - Multimodal agents for text, audio, images, video, code, GLB, PDF, and documents.
 - Server-side Agent Runtime, MCP, and Plugin gateway contracts.
-- D1 persistence for proof, analytics, media metadata, and agent-run telemetry.
+- D1 persistence for proof, analytics, media metadata, Stage production workflows, and agent-run telemetry.
 - R2 object storage for agent attachments up to 25 MB.
 - Server-side HMAC proof attestation when `PROOF_SIGNING_SECRET` is configured.
 - Liveness, readiness, request tracing, bounded inputs, security headers, and structured logs.

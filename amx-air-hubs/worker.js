@@ -272,6 +272,12 @@ function liveKitOperatorHostAllowed(env, url) {
   return policyValues(env.LIVEKIT_OPERATOR_HOSTS).includes(url.hostname.toLowerCase());
 }
 
+function stageOperatorHostAllowed(env, url) {
+  if (["localhost", "127.0.0.1"].includes(url.hostname)) return true;
+  const hosts = policyValues(env.STAGE_OPERATOR_HOSTS || env.LIVEKIT_OPERATOR_HOSTS);
+  return hosts.includes(url.hostname.toLowerCase());
+}
+
 async function createLiveKitToken(env, room, identity, name, role = "participant", clientType = role) {
   const viewer = role === "viewer";
   const now = Math.floor(Date.now() / 1000);
@@ -1089,6 +1095,8 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS data_center_telemetry_tenant_idx ON data_center_telemetry (tenant_id, observed_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS project_learning_state (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL, learner_id TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS project_learning_lookup_idx ON project_learning_state (tenant_id, project_id, learner_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS stage_workflows (tenant_id TEXT NOT NULL, room_code TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL, PRIMARY KEY (tenant_id, room_code))"),
+    db.prepare("CREATE INDEX IF NOT EXISTS stage_workflows_updated_idx ON stage_workflows (tenant_id, updated_at)"),
   ]).catch((error) => {
     databaseInitialization = undefined;
     throw error;
@@ -1128,6 +1136,40 @@ async function handleApi(request, env, url, requestId) {
   if (request.method === "GET" && url.pathname === "/api/maps/config") {
     const apiKey = String(env.GOOGLE_MAPS_BROWSER_KEY || "").trim();
     return reply({ configured: Boolean(apiKey), ...(apiKey ? { apiKey } : {}) });
+  }
+  if (url.pathname.startsWith("/api/stage/workflows/")) {
+    if (!stageOperatorHostAllowed(env, url)) return reply({ error: "Stage workflow records are restricted to the private operator host", requestId }, 403);
+    if (!env.DB) return reply({ error: "Durable Stage workflow storage is not configured", requestId }, 503);
+    const room = safeId(url.pathname.split("/").pop()).toUpperCase().slice(0, 24);
+    if (!room) return reply({ error: "Stage room is required", requestId }, 400);
+    await initialize(env.DB);
+    if (request.method === "GET") {
+      const tenantId = safeId(url.searchParams.get("tenantId")).slice(0, 64);
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      const row = await env.DB.prepare("SELECT revision, payload, updated_at, updated_by FROM stage_workflows WHERE tenant_id = ? AND room_code = ? LIMIT 1").bind(tenantId, room).first();
+      if (!row) return reply({ error: "Stage workflow not found", requestId }, 404);
+      let workflow;
+      try { workflow = JSON.parse(row.payload); }
+      catch { return reply({ error: "Stored Stage workflow is invalid", requestId }, 500); }
+      return reply({ tenantId, room, revision: Number(row.revision) || 0, workflow, updatedAt: row.updated_at, updatedBy: row.updated_by, persisted: true, requestId });
+    }
+    if (request.method === "PUT") {
+      const body = await readJson(request, 128 * 1024);
+      const tenantId = safeId(body.tenantId).slice(0, 64);
+      const revision = Math.round(Number(body.revision));
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      if (!Number.isSafeInteger(revision) || revision < 1) return reply({ error: "A positive workflow revision is required", requestId }, 400);
+      if (!isPlainObject(body.workflow)) return reply({ error: "workflow must be an object", requestId }, 400);
+      const payload = JSON.stringify(body.workflow);
+      if (new TextEncoder().encode(payload).byteLength > 120 * 1024) return reply({ error: "Stage workflow exceeds the 120 KB limit", requestId }, 413);
+      const updatedAt = new Date().toISOString();
+      const updatedBy = safeId(body.updatedBy, "operator").slice(0, 64);
+      await env.DB.prepare("INSERT INTO stage_workflows (tenant_id, room_code, revision, payload, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id, room_code) DO UPDATE SET revision = excluded.revision, payload = excluded.payload, updated_at = excluded.updated_at, updated_by = excluded.updated_by WHERE excluded.revision >= stage_workflows.revision")
+        .bind(tenantId, room, revision, payload, updatedAt, updatedBy).run();
+      logEvent("info", "stage.workflow_saved", { requestId, tenantId, room, revision, updatedBy });
+      return reply({ tenantId, room, revision, workflow: body.workflow, updatedAt, updatedBy, persisted: true, requestId });
+    }
+    return reply({ error: "Method not allowed", requestId }, 405, { Allow: "GET, PUT" });
   }
   if (request.method === "POST" && url.pathname === "/api/pod-invites") {
     if (!env.DB) return reply({ error: "Durable invite storage is not configured", requestId }, 503);

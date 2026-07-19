@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Armchair, ArrowUpToLine, Bot, CalendarRange, Camera, CameraOff, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2, LockKeyhole,
-  Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Sparkles, Users, Video, Volume2, Wifi,
+  ListChecks, Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Sparkles, Users, Video, Volume2, Wifi,
 } from "lucide-react";
 import type { CaptureState, LiveVideoFeed, ProgramAudioState } from "../LiveKitPod";
 import type { StageFeedMonitorStatus } from "../StageFeedMonitor";
@@ -11,10 +11,12 @@ import { useAMX } from "../AppContext";
 import { StageAudioLibrary } from "../StageAudioLibrary";
 import { useStageSoundscape } from "../StageSoundscape";
 import { StageEventConsole } from "../StageEventConsole";
+import { StageShowWorkflow, type StageWorkflowRuntimeCue } from "../StageShowWorkflow";
 import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
 import { getActiveTenant } from "../operations";
 import { STAGE_DECK_PRESETS, stageAudioTrackId } from "../stage-audio";
 import { stageEventPreset } from "../stage-events";
+import { reviseStageShowWorkflow, stageWorkflowReadiness, type StageShowWorkflow as StageShowWorkflowState } from "../stage-show-workflow";
 import { selectStageProgramFeed, sortStageVideoFeeds } from "../stage-camera-routing";
 import {
   DEFAULT_SPONSORS, useStageProduction, type SponsorCreative, type StageAudioFormat, type StageAudioState, type StageCue, type StageDeckTrack, type StageMode, type StageShot, type StageSoundscape,
@@ -24,7 +26,7 @@ const AMXXRStageScene = lazy(async () => ({ default: (await import("../AMXXRStag
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
 const StageFeedMonitor = lazy(async () => ({ default: (await import("../StageFeedMonitor")).StageFeedMonitor }));
 
-type ConsoleView = "production" | "collab" | "audio" | "audience" | "sponsors";
+type ConsoleView = "workflow" | "production" | "collab" | "audio" | "audience" | "sponsors";
 
 const SHOTS: Array<{ id: StageShot; label: string; detail: string; icon: typeof Camera }> = [
   { id: "wide", label: "CAM 1", detail: "Stage wide", icon: Video },
@@ -75,7 +77,7 @@ function CameraFeedPreview({ feed }: { feed: LiveVideoFeed | null }) {
 
 export function AMXXRStagePage() {
   const { settings, activeMission } = useAMX();
-  const [view, setView] = useState<ConsoleView>("production");
+  const [view, setView] = useState<ConsoleView>("workflow");
   const [roomCode, setRoomCode] = useState(() => localStorage.getItem("amx_stage_room") || "AMXSTAGE");
   const production = useStageProduction(roomCode);
   const soundscapeRuntime = useStageSoundscape(production.state.audio);
@@ -206,10 +208,36 @@ export function AMXXRStagePage() {
     production.update(patch);
     trackEvent("stage_cue_fired", { campaignId: cue === "sponsor" ? patch.sponsor?.id : undefined, locationTag: production.room });
   };
+  const updateShowWorkflow = (workflow: StageShowWorkflowState, runtime?: StageWorkflowRuntimeCue) => {
+    const patch: Parameters<typeof production.update>[0] = { workflow };
+    if (runtime) {
+      patch.cue = runtime.cue;
+      patch.shot = runtime.shot;
+      if (runtime.target !== "MAIN-STAGE") patch.event = { ...production.state.event, sourceRoom: runtime.target };
+      if (runtime.cue === "sponsor") patch.sponsor = inventory[(inventory.findIndex((item) => item.id === production.state.sponsor.id) + 1) % inventory.length];
+    }
+    production.update(patch);
+    if (runtime) trackEvent("stage_rundown_cue_taken", { campaignId: runtime.cue === "sponsor" ? patch.sponsor?.id : undefined, locationTag: runtime.target });
+  };
+  const applyShowLive = (live: boolean, workflow: StageShowWorkflowState) => {
+    production.update({ live, workflow, event: { ...production.state.event, status: live ? "live" : "complete" }, cue: live ? "opening" : "close", shot: live ? "wide" : production.state.shot });
+    trackEvent(live ? "stage_show_started" : "stage_show_ended", { campaignId: production.state.sponsor.id, locationTag: production.room });
+  };
   const toggleLive = () => {
     const live = !production.state.live;
-    production.update({ live, event: { ...production.state.event, status: live ? "live" : "complete" }, cue: live ? "opening" : "close", shot: live ? "wide" : production.state.shot });
-    trackEvent(live ? "stage_show_started" : "stage_show_ended", { campaignId: production.state.sponsor.id, locationTag: production.room });
+    const readiness = stageWorkflowReadiness(production.state.workflow);
+    if (live && (!readiness.ready || production.state.workflow.status !== "ready")) {
+      setView("workflow");
+      return;
+    }
+    const timestamp = new Date().toISOString();
+    const workflow = reviseStageShowWorkflow(production.state.workflow, live ? {
+      phase: "live", status: "on-air", showStartedAt: production.state.workflow.showStartedAt || timestamp, showEndedAt: null, holdStartedAt: null,
+    } : {
+      phase: "post", status: "wrap", showEndedAt: timestamp, holdStartedAt: null, holdReason: "", currentItemId: null,
+      rundown: production.state.workflow.rundown.map((item) => item.status === "live" ? { ...item, status: "complete", completedAt: timestamp } : item),
+    }, { action: live ? "show.started" : "show.ended", detail: live ? "Main Stage and connected Pod rundown started" : "Program ended and post-production handoff opened", actor: production.state.operatorId });
+    applyShowLive(live, workflow);
   };
   const linkPod = () => {
     const pod = podDraft.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
@@ -272,7 +300,7 @@ export function AMXXRStagePage() {
     <header className="stage-workspace-bar">
       <div className="stage-title"><span className="eyebrow">AMX XR STAGE / LIVE PRODUCTION</span><h1>Show control</h1></div>
       <div className="stage-show-status"><span className={production.state.live ? "live" : "ready"}><i/>{production.state.live ? "ON AIR" : "READY"}</span><span><Camera/>{production.state.shot.toUpperCase()} / {programChannel.feed && !programChannel.feed.muted ? programChannel.feed.name : "VIRTUAL"}</span><span><Users/>{seatsTotal} seated</span><span><Link2/>{production.state.connectedPods.length} pods</span><span><Wifi/>{production.transport}</span></div>
-      <button className={`stage-live-button ${production.state.live ? "end" : ""}`} onClick={toggleLive}>{production.state.live ? <CircleStop/> : <Radio/>}{production.state.live ? "END SHOW" : "GO LIVE"}</button>
+      <button className={`stage-live-button ${production.state.live ? "end" : ""}`} onClick={toggleLive}>{production.state.live ? <CircleStop/> : stageWorkflowReadiness(production.state.workflow).ready && production.state.workflow.status === "ready" ? <Radio/> : <ListChecks/>}{production.state.live ? "END SHOW" : stageWorkflowReadiness(production.state.workflow).ready && production.state.workflow.status === "ready" ? "GO LIVE" : "PREFLIGHT"}</button>
     </header>
 
     <div className="stage-command-layout">
@@ -283,9 +311,12 @@ export function AMXXRStagePage() {
 
       <aside className="stage-console">
         <div className="stage-console-tabs" role="tablist" aria-label="Stage console">{([
-          ["production", "Show", Clapperboard], ["collab", "Pods", Radio], ["audio", "Audio", Headphones], ["audience", "Event", CalendarRange], ["sponsors", "Ads", Megaphone],
+          ["workflow", "Run", ListChecks], ["production", "Show", Clapperboard], ["collab", "Pods", Radio], ["audio", "Audio", Headphones], ["audience", "Event", CalendarRange], ["sponsors", "Ads", Megaphone],
         ] as const).map(([id, label, Icon]) => <button key={id} className={view === id ? "active" : ""} aria-label={label} onClick={() => setView(id)}><Icon/><span>{label}</span></button>)}</div>
         <div ref={consoleBodyRef} className="stage-console-body">
+          <div className="stage-console-view" hidden={view !== "workflow"}>
+            <StageShowWorkflow room={production.room} tenantId={tenantId} event={production.state.event} connectedPods={production.state.connectedPods} workflow={production.state.workflow} operatorId={production.state.operatorId} live={production.state.live} onWorkflowChange={updateShowWorkflow} onLiveChange={applyShowLive}/>
+          </div>
           <div className="stage-console-view" hidden={view !== "production"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">VENUE MODE</span><h2>Audience format</h2></div><span className="stage-sync-state"><i/>{production.peerCount} operator{production.peerCount === 1 ? "" : "s"}</span></header><div className="stage-mode-control">{(["in-person", "online", "metaverse"] as StageMode[]).map((mode) => <button key={mode} className={production.state.mode === mode ? "active" : ""} onClick={() => setMode(mode)}>{mode}</button>)}</div></section>
             <section className="stage-control-section"><header><div><span className="eyebrow">LIVE CAMERA TEAM</span><h2>Route and take</h2></div><div className="stage-camera-header-actions"><span className={`stage-feed-monitor-state ${feedMonitorStatus}`}><Wifi/>{feedMonitorStatus === "live" ? `${orderedVideoFeeds.length} FEED${orderedVideoFeeds.length === 1 ? "" : "S"}` : feedMonitorStatus === "connecting" ? "SCANNING" : "RELAY OFF"}</span>{cameraMediaState !== "published" && <button className={cameraMediaState === "blocked" ? "blocked" : ""} onClick={openCameraSetup}><Camera/>{cameraMediaState === "blocked" ? "RETRY CAMERA" : cameraMediaState === "requesting" ? "OPENING" : "CONNECT CAMERA"}</button>}<span className={production.state.live ? "camera-tally live" : "camera-tally"}><i/>PGM</span></div></header><div className="stage-shot-grid">{cameraChannels.map(({ id, label, detail, icon: Icon, route, feed }) => <div key={id} className={`stage-camera-channel ${production.state.shot === id ? "active" : ""} ${feed && !feed.muted ? "feed-ready" : ""}`}><button aria-label={`${label} ${detail}`} onClick={() => takeShot(id)}><span className="stage-camera-preview"><CameraFeedPreview feed={feed}/></span><Icon/><span className="stage-camera-name"><b>{label}</b><small>{feed ? `${feed.name}${feed.muted ? " / muted" : ""}` : route !== "auto" && route !== "virtual" ? "Feed offline" : detail}</small></span><i/></button><select aria-label={`Route ${label} source`} value={route} onChange={(event) => routeCamera(id, event.target.value)}><option value="auto">AUTO INPUT {orderedVideoFeeds.length > 0 ? id === "wide" ? "1" : id === "host" ? "2" : id === "audience" ? "3" : "4" : ""}</option><option value="virtual">VIRTUAL SHOT</option>{route !== "auto" && route !== "virtual" && !orderedVideoFeeds.some((candidate) => candidate.id === route) && <option value={route}>FEED OFFLINE</option>}{orderedVideoFeeds.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} / {candidate.source}</option>)}</select></div>)}</div></section>

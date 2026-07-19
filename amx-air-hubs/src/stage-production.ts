@@ -3,6 +3,7 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from "@supaba
 import { defaultStageEvent, normalizeStageEvent, type StageEventState } from "./stage-events";
 import { migrateLegacyStageCameraRoutes } from "./stage-camera-routing";
 import { normalizeStageAudio, type StageAudioState } from "./stage-audio";
+import { defaultStageShowWorkflow, normalizeStageShowWorkflow, type StageShowWorkflow } from "./stage-show-workflow";
 
 export { DEFAULT_STAGE_AUDIO } from "./stage-audio";
 export type { StageAudioAsset, StageAudioFormat, StageAudioState, StageAudioTransport, StageDeckPreset, StageDeckTrack, StageSoundscape } from "./stage-audio";
@@ -28,6 +29,7 @@ export interface StageProductionState {
   cameraRoutes: Record<StageShot, string>;
   audio: StageAudioState;
   event: StageEventState;
+  workflow: StageShowWorkflow;
   generalSeats: number;
   vipSeats: number;
   connectedPods: string[];
@@ -76,6 +78,7 @@ function initialState(operatorId: string, room = "AMXSTAGE"): StageProductionSta
     cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
     audio: normalizeStageAudio(),
     event: defaultStageEvent(room),
+    workflow: defaultStageShowWorkflow(room),
     generalSeats: 0,
     vipSeats: 0,
     connectedPods: ["AMX-MAIN"],
@@ -90,7 +93,7 @@ function storedState(room: string, operatorId: string) {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
     if (!saved) return initialState(operatorId, room);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...initialState(operatorId, room), ...saved, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), audio: normalizeStageAudio(saved.audio), event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId, room), ...saved, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), audio: normalizeStageAudio(saved.audio), event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), workflow: normalizeStageShowWorkflow(saved.workflow, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
     return initialState(operatorId, room);
   }
@@ -124,7 +127,7 @@ export function useStageProduction(roomCode: string, options: { readOnly?: boole
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), audio: normalizeStageAudio(packet.state.audio), event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), audio: normalizeStageAudio(packet.state.audio), event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), workflow: normalizeStageShowWorkflow(packet.state.workflow, room), revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;

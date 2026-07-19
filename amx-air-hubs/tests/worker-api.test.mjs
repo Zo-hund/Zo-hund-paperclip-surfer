@@ -82,6 +82,35 @@ function podInviteDatabase(row) {
   };
 }
 
+function stageWorkflowDatabase(initialRow = null) {
+  let row = initialRow;
+  return {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          return {
+            async run() {
+              if (sql.includes("INSERT INTO stage_workflows")) {
+                const [tenant_id, room_code, revision, payload, updated_at, updated_by] = values;
+                if (!row || Number(revision) >= Number(row.revision)) row = { tenant_id, room_code, revision, payload, updated_at, updated_by };
+              }
+              return { success: true, meta: { changes: 1 } };
+            },
+            async all() { return { results: [] }; },
+            async first() { return sql.includes("FROM stage_workflows") ? row : { ok: 1 }; },
+          };
+        },
+        async run() { return { success: true }; },
+        async first() { return { ok: 1 }; },
+      };
+    },
+    async batch(statements) {
+      for (const statement of statements) if (typeof statement.run === "function") await statement.run();
+      return [];
+    },
+  };
+}
+
 async function hash(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -302,6 +331,36 @@ describe("AMX AIR Hubs Worker API", () => {
     body = await response.json();
     assert.equal(body.configured, true);
     assert.equal(body.apiKey, "restricted-browser-key");
+  });
+
+  test("persists and resolves a tenant-scoped Stage production workflow", async () => {
+    env.DB = stageWorkflowDatabase();
+    env.STAGE_OPERATOR_HOSTS = "amx.example";
+    const workflow = { productionId: "production-amxstage", revision: 200, phase: "pre", status: "planning", activity: [] };
+    const saved = await worker.fetch(jsonRequest("/api/stage/workflows/AMXSTAGE", {
+      tenantId: "tech-at-nite", revision: 200, updatedBy: "director-1", workflow,
+    }, "PUT"), env);
+    const savedBody = await saved.json();
+
+    assert.equal(saved.status, 200);
+    assert.equal(savedBody.persisted, true);
+    assert.equal(savedBody.room, "AMXSTAGE");
+
+    const loaded = await worker.fetch(request("/api/stage/workflows/AMXSTAGE?tenantId=tech-at-nite"), env);
+    const loadedBody = await loaded.json();
+    assert.equal(loaded.status, 200);
+    assert.equal(loadedBody.workflow.productionId, "production-amxstage");
+    assert.equal(loadedBody.updatedBy, "director-1");
+  });
+
+  test("restricts durable Stage workflows to an explicitly allowed operator host", async () => {
+    env.DB = stageWorkflowDatabase();
+    env.STAGE_OPERATOR_HOSTS = "private.example";
+    const response = await worker.fetch(request("/api/stage/workflows/AMXSTAGE?tenantId=tech-at-nite"), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 403);
+    assert.match(body.error, /private operator host/);
   });
 
   test("creates a durable pod showcase invite with a separate owner capability", async () => {
