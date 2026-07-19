@@ -259,7 +259,8 @@ function base64Url(value) {
   return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-async function createLiveKitToken(env, room, identity, name) {
+async function createLiveKitToken(env, room, identity, name, role = "participant") {
+  const viewer = role === "viewer";
   const now = Math.floor(Date.now() / 1000);
   const encodedHeader = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const encodedPayload = base64Url(JSON.stringify({
@@ -271,8 +272,8 @@ async function createLiveKitToken(env, room, identity, name) {
     nbf: now - 5,
     exp: now + 60 * 15,
     jti: crypto.randomUUID(),
-    metadata: JSON.stringify({ app: "amx-air-hubs", room }),
-    video: { room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true },
+    metadata: JSON.stringify({ app: "amx-air-hubs", room, role }),
+    video: { room, roomJoin: true, canPublish: !viewer, canSubscribe: true, canPublishData: !viewer },
   }));
   const unsigned = `${encodedHeader}.${encodedPayload}`;
   const key = await crypto.subtle.importKey(
@@ -1325,10 +1326,11 @@ async function handleApi(request, env, url, requestId) {
     const room = safeId(body.room).toUpperCase().slice(0, 64);
     const identity = safeId(body.identity).slice(0, 64);
     const name = safeLabel(body.name, identity || "AMX Explorer").slice(0, 80);
+    const role = body.role === "viewer" ? "viewer" : "participant";
     if (!room || !identity) return reply({ error: "Room and identity are required", requestId }, 400);
-    const participantToken = await createLiveKitToken(env, room, identity, name);
-    const agentDispatch = await ensureLiveKitAgentDispatch(env, room, requestId);
-    return reply({ serverUrl, participantToken, room, expiresIn: 900, agentDispatch, requestId });
+    const participantToken = await createLiveKitToken(env, room, identity, name, role);
+    const agentDispatch = role === "viewer" ? { configured: false, dispatched: false } : await ensureLiveKitAgentDispatch(env, room, requestId);
+    return reply({ serverUrl, participantToken, room, role, expiresIn: 900, agentDispatch, requestId });
   }
   if (request.method === "POST" && url.pathname.startsWith("/api/livekit/egress/dj/")) {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);

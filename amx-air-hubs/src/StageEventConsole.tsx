@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, Crown, DoorOpen, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, UserPlus, Users } from "lucide-react";
+import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, Crown, DoorOpen, ExternalLink, Eye, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, UserPlus, Users } from "lucide-react";
 import { QRCodeCard } from "./components";
 import { getActiveTenant } from "./operations";
 import { absoluteInviteUrl, createPodInvite, getOwnedPodInvite, resolvePodInvite, revokePodInvite, storeOwnedPodInvite, type PodInvite } from "./pod-invites";
@@ -146,6 +146,10 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
     updateSeat(seat.id, { status: "reserved", guestName });
     setNotice(`${seat.label} reserved${guestName ? ` for ${guestName}` : ""}.`);
   };
+  const copyViewerLink = async () => {
+    await navigator.clipboard.writeText(new URL(`/watch/${room}`, location.origin).toString());
+    setNotice("Live viewer link copied.");
+  };
   const issuePass = async (tierId: StageTicketTierId) => {
     const tier = event.ticketTiers.find((item) => item.id === tierId);
     if (!tier) return;
@@ -213,6 +217,7 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
       <div className="stage-event-fields"><label>Source room<select value={event.sourceRoom} onChange={(change) => updateEvent({ sourceRoom: change.target.value })}>{[...new Set([event.sourceRoom, ...connectedPods])].map((pod) => <option key={pod}>{pod}</option>)}</select></label><label>Starts<input type="datetime-local" value={localDateTime(event.startsAt)} onChange={(change) => { if (change.target.value) updateEvent({ startsAt: new Date(change.target.value).toISOString() }); }}/></label></div>
       <div className="stage-event-status" aria-label="Event status">{STATUSES.map((status) => <button key={status.id} className={event.status === status.id ? "active" : ""} onClick={() => updateEvent({ status: status.id })}>{status.label}</button>)}</div>
       <button className="stage-promote-button" onClick={promote}><DoorOpen/><span>PROMOTE {event.sourceRoom} TO STAGE</span></button>
+      <div className="stage-viewer-publish"><a href={`/watch/${room}`} target="_blank" rel="noreferrer"><Eye/><span>OPEN LIVE VIEWER</span><ExternalLink/></a><button onClick={() => void copyViewerLink()} aria-label="Copy live viewer link" title="Copy live viewer link"><Copy/></button></div>
     </section>
 
     <section className="stage-control-section stage-seat-manager">

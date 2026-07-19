@@ -18,6 +18,7 @@ interface Props {
   audio: StageAudioState;
   programFeed?: LiveVideoFeed | null;
   reducedMotion?: boolean;
+  portraitFraming?: boolean;
   onBackend?: (backend: RendererBackend) => void;
 }
 
@@ -133,7 +134,7 @@ function disposeObject(root: THREE.Object3D) {
   materials.forEach((material) => material.dispose());
 }
 
-export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, reducedMotion, onBackend }: Props) {
+export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, reducedMotion, portraitFraming, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio });
   const programScreenRef = useRef<THREE.Mesh | null>(null);
@@ -161,7 +162,11 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x02070d);
     scene.fog = new THREE.FogExp2(0x02070d, 0.018);
-    const camera = new THREE.PerspectiveCamera(42, host.clientWidth / Math.max(1, host.clientHeight), 0.08, 120);
+    const initialAspect = host.clientWidth / Math.max(1, host.clientHeight);
+    const portraitFov = (aspect: number) => portraitFraming && aspect < 1
+      ? Math.min(100, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(42) / 2) * 1.6 / Math.max(0.35, aspect))))
+      : 42;
+    const camera = new THREE.PerspectiveCamera(portraitFov(initialAspect), initialAspect, 0.08, 120);
     camera.position.copy(SHOTS.wide.position);
     camera.lookAt(SHOTS.wide.target);
     const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: "high-performance", forceWebGL: forceWebGLDiagnostic() });
@@ -497,6 +502,7 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
     });
     const resize = () => {
       camera.aspect = host.clientWidth / Math.max(1, host.clientHeight);
+      camera.fov = portraitFov(camera.aspect);
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
     };
@@ -525,7 +531,7 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
       void renderer.dispose();
       if (host.contains(renderer.domElement)) host.removeChild(renderer.domElement);
     };
-  }, [onBackend, reducedMotion]);
+  }, [onBackend, portraitFraming, reducedMotion]);
 
   return <div className="amx-xr-stage-scene" ref={hostRef} aria-label="AMX XR Stage live production venue">
     {loading && <div className="nexus-scene-loading"><span/><b>Building AMX XR Stage</b></div>}

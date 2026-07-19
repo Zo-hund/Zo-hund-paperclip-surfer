@@ -49,10 +49,17 @@ export interface StageProductionState {
   operatorId: string;
 }
 
-interface StagePacket {
+interface StageStatePacket {
   type: "stage-state";
   state: StageProductionState;
 }
+
+interface StageRequestPacket {
+  type: "stage-request";
+  requestId: string;
+}
+
+type StagePacket = StageStatePacket | StageRequestPacket;
 
 export const DEFAULT_SPONSORS: SponsorCreative[] = [
   { id: "amx-air", name: "AMX AIR HUBS.CC", headline: "Create. Curate. Connect.", cta: "ENTER THE XR RUNWAY", accent: "#55e6ff" },
@@ -116,7 +123,8 @@ function storedState(room: string, operatorId: string) {
   }
 }
 
-export function useStageProduction(roomCode: string) {
+export function useStageProduction(roomCode: string, options: { readOnly?: boolean } = {}) {
+  const readOnly = Boolean(options.readOnly);
   const room = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "AMXSTAGE";
   const operatorId = useMemo(() => sessionStorage.getItem("amx_stage_operator") || crypto.randomUUID().slice(0, 8), []);
   const [state, setState] = useState<StageProductionState>(() => storedState(room, operatorId));
@@ -169,9 +177,17 @@ export function useStageProduction(roomCode: string) {
     if (localHost() || !config?.supabaseUrl || !config.supabasePublishableKey) {
       if (!("BroadcastChannel" in window)) { setTransport("offline"); return; }
       const channel = new BroadcastChannel(`amx-stage-${room}`);
-      channel.onmessage = (event) => receive(event.data as StagePacket);
+      channel.onmessage = (event) => {
+        const packet = event.data as StagePacket;
+        if (packet.type === "stage-request") {
+          if (!readOnly) channel.postMessage({ type: "stage-state", state: stateRef.current } satisfies StageStatePacket);
+          return;
+        }
+        receive(packet);
+      };
       localRef.current = channel;
       setTransport("local mesh");
+      if (readOnly) channel.postMessage({ type: "stage-request", requestId: operatorId } satisfies StageRequestPacket);
       return () => { channel.close(); localRef.current = null; };
     }
 
@@ -185,22 +201,26 @@ export function useStageProduction(roomCode: string) {
     realtimeRef.current = channel;
     channel
       .on("broadcast", { event: "stage-sync" }, ({ payload }) => receive(payload as StagePacket))
+      .on("broadcast", { event: "stage-request" }, () => {
+        if (!readOnly) void channel.send({ type: "broadcast", event: "stage-sync", payload: { type: "stage-state", state: stateRef.current } satisfies StageStatePacket });
+      })
       .on("presence", { event: "sync" }, () => setPeerCount(Math.max(1, Object.keys(channel.presenceState()).length)))
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           setTransport("websocket");
-          void channel.track({ operatorId, joinedAt: new Date().toISOString() });
+          if (readOnly) void channel.send({ type: "broadcast", event: "stage-request", payload: { type: "stage-request", requestId: operatorId } satisfies StageRequestPacket });
+          else void channel.track({ operatorId, joinedAt: new Date().toISOString() });
         } else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) setTransport("offline");
       });
     return () => {
-      void channel.untrack();
+      if (!readOnly) void channel.untrack();
       void supabase.removeChannel(channel);
       realtimeRef.current = null;
       supabaseRef.current = null;
     };
-  }, [operatorId, receive, room]);
+  }, [operatorId, readOnly, receive, room]);
 
-  const bridgeKey = state.connectedPods.filter((pod) => pod !== room).sort().join("|");
+  const bridgeKey = readOnly ? "" : state.connectedPods.filter((pod) => pod !== room).sort().join("|");
   useEffect(() => {
     const podRooms = bridgeKey.split("|").filter(Boolean);
     if (!podRooms.length) return;
@@ -209,7 +229,7 @@ export function useStageProduction(roomCode: string) {
       if (!("BroadcastChannel" in window)) return;
       const channels = podRooms.map((pod) => new BroadcastChannel(`amx-stage-${pod}`));
       bridgeLocalRef.current = channels;
-      const packet: StagePacket = { type: "stage-state", state: stateRef.current };
+      const packet: StageStatePacket = { type: "stage-state", state: stateRef.current };
       channels.forEach((channel) => channel.postMessage(packet));
       return () => {
         channels.forEach((channel) => channel.close());
@@ -223,7 +243,7 @@ export function useStageProduction(roomCode: string) {
       const channel = supabase.channel(`amx-stage-${pod}`);
       channel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          void channel.send({ type: "broadcast", event: "stage-sync", payload: { type: "stage-state", state: stateRef.current } satisfies StagePacket });
+          void channel.send({ type: "broadcast", event: "stage-sync", payload: { type: "stage-state", state: stateRef.current } satisfies StageStatePacket });
         }
       });
       return channel;
@@ -236,6 +256,7 @@ export function useStageProduction(roomCode: string) {
   }, [bridgeKey]);
 
   const update = useCallback((patch: Partial<Omit<StageProductionState, "revision" | "updatedAt" | "operatorId">>) => {
+    if (readOnly) return stateRef.current;
     const revision = Math.max(Date.now(), stateRef.current.revision + 1);
     const next: StageProductionState = {
       ...stateRef.current,
@@ -249,7 +270,7 @@ export function useStageProduction(roomCode: string) {
     localStorage.setItem(`amx_stage_${room}`, JSON.stringify(next));
     broadcast({ type: "stage-state", state: next });
     return next;
-  }, [broadcast, operatorId, room]);
+  }, [broadcast, operatorId, readOnly, room]);
 
   return { room, state, transport, peerCount, update };
 }

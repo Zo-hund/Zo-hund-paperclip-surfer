@@ -559,6 +559,33 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.match(calls[1].url, /CreateDispatch/);
   });
 
+  test("issues subscribe-only LiveKit credentials for a public stage viewer", async (context) => {
+    Object.assign(env, {
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      LIVEKIT_AGENT_NAME: "amx-voice-agent",
+    });
+    const calls = [];
+    context.mock.method(globalThis, "fetch", async (...args) => {
+      calls.push(args);
+      return new Response(null, { status: 500 });
+    });
+    const response = await worker.fetch(jsonRequest("/api/livekit/token", { room: "AMXSTAGE", identity: "viewer-1", name: "Stage Viewer", role: "viewer" }), env);
+    const body = await response.json();
+    const tokenPayload = JSON.parse(Buffer.from(body.participantToken.split(".")[1], "base64url").toString("utf8"));
+
+    assert.equal(response.status, 200);
+    assert.equal(body.role, "viewer");
+    assert.equal(tokenPayload.video.roomJoin, true);
+    assert.equal(tokenPayload.video.canSubscribe, true);
+    assert.equal(tokenPayload.video.canPublish, false);
+    assert.equal(tokenPayload.video.canPublishData, false);
+    assert.equal(JSON.parse(tokenPayload.metadata).role, "viewer");
+    assert.equal(body.agentDispatch.dispatched, false);
+    assert.equal(calls.length, 0);
+  });
+
   test("keeps DJ stream destinations server-only and requires complete broadcast configuration", async () => {
     Object.assign(env, {
       LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",

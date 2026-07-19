@@ -6,6 +6,7 @@ import { QRStudioPage, RoleDashboardPage } from "./pages/operations";
 import { TenantConsolePage } from "./TenantConsole";
 import { NexusPage } from "./pages/nexus";
 import { AMXXRStagePage } from "./pages/stage";
+import { StageLiveViewerPage } from "./pages/stage-viewer";
 import { AgentWorkbenchPage } from "./pages/agent-workbench";
 import { RuntimeStatusPage } from "./pages/runtime-status";
 import { PodInvitePage } from "./pages/invites";
@@ -67,6 +68,7 @@ export default function App() {
     <Route path="/ar/scan/:campaignId" element={<ModeExperiencePage mode="ar"/>}/>
     <Route path="/vr/pods/:podId" element={<ModeExperiencePage mode="vr"/>}/>
     <Route path="/mr/workspace/:workspaceId" element={<ModeExperiencePage mode="mr"/>}/>
+    <Route path="/watch/:roomCode" element={<StageLiveViewerPage/>}/>
     <Route path="/scan/*" element={<ScanResolver/>}/>
     <Route path="/sponsor/*" element={<SponsorResolver/>}/>
     <Route path="*" element={<ShellRoutes/>}/>
