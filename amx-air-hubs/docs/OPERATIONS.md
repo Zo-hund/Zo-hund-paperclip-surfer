@@ -16,6 +16,7 @@
 12. Join the LiveKit stage room only after camera/microphone permission is approved; verify participant media separately from the production cue bus.
 13. Join two camera-team participants, route their named tracks to separate Stage camera channels, take each channel, and confirm `data-program-feed-id` and `data-program-feed-live` change on the 3D scene host.
 14. With no Stage feed connected, select `CONNECT CAMERA` in the Show console. Confirm the Pods console scrolls to an above-fold `Join pod` action on desktop and phone. After a denied permission, confirm `RETRY CAMERA` remains available and the displayed error identifies blocked, missing, busy, or unsupported media hardware.
+15. Open the Stage Audio console, mute master, start the program, select DJ and Podcast formats, move both deck controls, change BPM and soundscape, and run the podcast record cue for at least one second. Confirm all `data-audio-*` attributes follow the console, the DJ booth reports ready, and stopping transport clears both timers. Repeat on a connected Pod and confirm the production state synchronizes while its local monitor remains opt-in.
 14. Mute or disconnect the on-program participant and confirm the channel reports muted/offline and the program mesh returns to its governed sponsor fallback.
 
 ## Observability

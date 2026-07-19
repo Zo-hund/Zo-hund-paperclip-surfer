@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { LiveVideoFeed } from "./LiveKitPod";
-import type { SponsorCreative, StageMode, StageShot } from "./stage-production";
+import type { SponsorCreative, StageAudioState, StageMode, StageShot } from "./stage-production";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   generalSeats: number;
   vipSeats: number;
   live: boolean;
+  audio: StageAudioState;
   programFeed?: LiveVideoFeed | null;
   reducedMotion?: boolean;
   onBackend?: (backend: RendererBackend) => void;
@@ -129,14 +130,14 @@ function disposeObject(root: THREE.Object3D) {
   materials.forEach((material) => material.dispose());
 }
 
-export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, live, programFeed, reducedMotion, onBackend }: Props) {
+export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, live, audio, programFeed, reducedMotion, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({ mode, shot, sponsor, generalSeats, vipSeats, live });
+  const stateRef = useRef({ mode, shot, sponsor, generalSeats, vipSeats, live, audio });
   const programScreenRef = useRef<THREE.Mesh | null>(null);
   const [sceneGeneration, setSceneGeneration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => { stateRef.current = { mode, shot, sponsor, generalSeats, vipSeats, live }; }, [generalSeats, live, mode, shot, sponsor, vipSeats]);
+  useEffect(() => { stateRef.current = { mode, shot, sponsor, generalSeats, vipSeats, live, audio }; }, [audio, generalSeats, live, mode, shot, sponsor, vipSeats]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -263,6 +264,52 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, l
     operators[2].position.set(6.1, 0, 5.2);
     operators.forEach((operator) => scene.add(operator));
 
+    const djBooth = new THREE.Group();
+    djBooth.name = "DJ_Booth_Pod";
+    const boothShell = box([4.7, 1.15, 1.35], [0, 1.2, 0], darkMetal);
+    const boothFront = box([4.25, 0.08, 0.04], [0, 1.25, 0.7], cyan);
+    const mixer = box([1.12, 0.12, 0.72], [0, 1.84, -0.05], darkMetal);
+    const crossfaderKnob = box([0.12, 0.1, 0.18], [0, 1.94, 0.06], gold);
+    const platterMaterialA = new THREE.MeshStandardMaterial({ color: 0x163844, emissive: 0x0b6f80, emissiveIntensity: 0.65, metalness: 0.62, roughness: 0.3 });
+    const platterMaterialB = new THREE.MeshStandardMaterial({ color: 0x36163c, emissive: 0x8a197d, emissiveIntensity: 0.65, metalness: 0.62, roughness: 0.3 });
+    materials.push(platterMaterialA, platterMaterialB);
+    const platterA = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.1, 30), platterMaterialA);
+    platterA.position.set(-1.38, 1.88, -0.03);
+    const platterB = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.1, 30), platterMaterialB);
+    platterB.position.set(1.38, 1.88, -0.03);
+    const vuBars: THREE.Mesh[] = [];
+    for (let index = 0; index < 8; index += 1) {
+      const bar = box([0.12, 0.04, 0.08], [-0.49 + index * 0.14, 2.03, -0.05], index < 5 ? cyan : magenta);
+      vuBars.push(bar);
+      djBooth.add(bar);
+    }
+    const speakerMaterial = new THREE.MeshStandardMaterial({ color: 0x0a1116, metalness: 0.32, roughness: 0.7 });
+    materials.push(speakerMaterial);
+    [-2.95, 2.95].forEach((x) => {
+      const speaker = box([0.82, 2.35, 0.76], [x, 1.35, -0.18], speakerMaterial);
+      const woofer = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.05, 22), darkMetal);
+      woofer.rotation.x = Math.PI / 2;
+      woofer.position.set(x, 1.12, 0.22);
+      const tweeter = woofer.clone();
+      tweeter.scale.setScalar(0.52);
+      tweeter.position.y = 1.82;
+      djBooth.add(speaker, woofer, tweeter);
+    });
+    [-0.62, 0.62].forEach((x) => {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.1, 8), darkMetal);
+      arm.position.set(x, 2.35, -0.12);
+      arm.rotation.z = x > 0 ? -0.5 : 0.5;
+      const microphone = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.16, 4, 8), gold);
+      microphone.position.set(x * 1.42, 2.72, -0.12);
+      microphone.rotation.z = Math.PI / 2;
+      djBooth.add(arm, microphone);
+    });
+    djBooth.add(boothShell, boothFront, mixer, crossfaderKnob, platterA, platterB);
+    djBooth.position.set(-3.65, 0, -4.25);
+    djBooth.scale.setScalar(0.72);
+    scene.add(djBooth);
+    host.dataset.djBooth = "ready";
+
     const crane = new THREE.Group();
     crane.name = "Camera_Crane";
     const craneArm = box([0.16, 0.16, 7.2], [0, 4.7, 0], darkMetal);
@@ -349,6 +396,24 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, l
           operator.rotation.y = Math.sin(elapsed * 0.24 + index) * 0.08 + (index === 1 ? -2.5 : index === 2 ? -2.1 : 0.4);
         }
       });
+      const audioActive = current.audio.transport === "playing";
+      if (audioActive && !reducedMotion) {
+        const deckSpeed = current.audio.bpm / 7200;
+        platterA.rotation.y += deckSpeed;
+        platterB.rotation.y -= deckSpeed * 0.96;
+      }
+      const energy = audioActive ? 0.45 + Math.sin(elapsed * Math.max(2, current.audio.bpm / 30)) * 0.3 : 0.12;
+      platterMaterialA.emissiveIntensity = 0.32 + energy;
+      platterMaterialB.emissiveIntensity = 0.32 + energy;
+      vuBars.forEach((bar, index) => {
+        bar.scale.y = audioActive ? 0.7 + Math.abs(Math.sin(elapsed * 4.2 + index * 0.7)) * 2.4 : 0.42;
+      });
+      crossfaderKnob.position.x = THREE.MathUtils.lerp(-0.42, 0.42, current.audio.crossfader / 100);
+      host.dataset.audioTransport = current.audio.transport;
+      host.dataset.audioFormat = current.audio.format;
+      host.dataset.audioBpm = String(current.audio.bpm);
+      host.dataset.audioRecording = String(current.audio.recording);
+      host.dataset.soundscape = current.audio.soundscape;
       if (hostAvatar && !reducedMotion) hostAvatar.position.y += Math.sin(elapsed * 1.6) * 0.00045;
       if (!reducedMotion) crane.rotation.y = -0.42 + Math.sin(elapsed * 0.18) * 0.08;
       renderer.render(scene, camera);

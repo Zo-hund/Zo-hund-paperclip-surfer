@@ -4,6 +4,24 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from "@supaba
 export type StageMode = "in-person" | "online" | "metaverse";
 export type StageShot = "wide" | "host" | "audience" | "crane";
 export type StageCue = "standby" | "opening" | "speaker" | "demo" | "qa" | "sponsor" | "close";
+export type StageAudioFormat = "show" | "podcast" | "dj";
+export type StageAudioTransport = "stopped" | "playing";
+export type StageDeckTrack = "air-pulse" | "night-grid" | "spoken-bed" | "sponsor-sting";
+export type StageSoundscape = "air-grid" | "deep-focus" | "crowd-warmup" | "podcast-room";
+
+export interface StageAudioState {
+  format: StageAudioFormat;
+  transport: StageAudioTransport;
+  recording: boolean;
+  deckA: StageDeckTrack;
+  deckB: StageDeckTrack;
+  crossfader: number;
+  master: number;
+  bpm: number;
+  soundscape: StageSoundscape;
+  startedAt: number | null;
+  recordStartedAt: number | null;
+}
 
 export interface SponsorCreative {
   id: string;
@@ -20,6 +38,7 @@ export interface StageProductionState {
   cue: StageCue;
   sponsor: SponsorCreative;
   cameraRoutes: Record<StageShot, string>;
+  audio: StageAudioState;
   generalSeats: number;
   vipSeats: number;
   connectedPods: string[];
@@ -46,6 +65,20 @@ export const DEFAULT_CAMERA_ROUTES: Record<StageShot, string> = {
   crane: "auto",
 };
 
+export const DEFAULT_STAGE_AUDIO: StageAudioState = {
+  format: "show",
+  transport: "stopped",
+  recording: false,
+  deckA: "air-pulse",
+  deckB: "night-grid",
+  crossfader: 50,
+  master: 62,
+  bpm: 112,
+  soundscape: "air-grid",
+  startedAt: null,
+  recordStartedAt: null,
+};
+
 function localHost() {
   return ["localhost", "127.0.0.1"].includes(location.hostname);
 }
@@ -59,6 +92,7 @@ function initialState(operatorId: string): StageProductionState {
     cue: "standby",
     sponsor: DEFAULT_SPONSORS[0],
     cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
+    audio: { ...DEFAULT_STAGE_AUDIO },
     generalSeats: 24,
     vipSeats: 6,
     connectedPods: ["AMX-MAIN"],
@@ -73,7 +107,7 @@ function storedState(room: string, operatorId: string) {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
     if (!saved) return initialState(operatorId);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...initialState(operatorId), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...saved.audio }, revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
     return initialState(operatorId);
   }
@@ -106,7 +140,7 @@ export function useStageProduction(roomCode: string) {
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...packet.state.audio }, revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;
