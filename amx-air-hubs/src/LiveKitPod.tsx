@@ -357,7 +357,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   }, []);
 
   const live = status === "livekit" || status === "local";
-  return <section className={`livekit-pod ${compact ? "compact" : ""}`}>
+  return <section className={`livekit-pod ${compact ? "compact" : ""}`} data-transport={status} data-camera-state={cameraState} data-microphone-state={microphoneState} data-screen-state={screenShareState} data-video-feeds={surfaces.filter((surface) => !surface.muted).length}>
     <div className="livekit-pod-head"><div><span className="eyebrow">LIVEKIT ROOM / {safeRoom}</span><h2>Human + agent screens</h2></div><span className={`pod-transport ${status}`}><i/>{status === "livekit" ? "LIVEKIT" : status === "local" ? "LOCAL VIDEO" : status.toUpperCase()}</span></div>
     <div className="pod-screen-grid">
       {surfaces.length ? surfaces.map((surface) => <PodVideoTile key={surface.id} surface={surface}/>) : <div className="pod-camera-off"><CameraOff/><span>Your screen is private until you join</span></div>}

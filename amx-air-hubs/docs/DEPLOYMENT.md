@@ -43,6 +43,8 @@ The current production stage is deployed owner-only. Continue with ChatGPT sign-
 
 Do not change the site to shared or public until an application identity provider, tenant authorization, R2 ownership checks, Supabase policies, and abuse controls are configured.
 
+The PWA manifest is on this same protected origin and is requested with owner credentials. A `401` for `/manifest.webmanifest` indicates an old shell or expired owner session; it is separate from LiveKit camera publication.
+
 ## Phone and XR Validation
 
 1. Open the HTTPS stage on the target phone and complete owner sign-in.
