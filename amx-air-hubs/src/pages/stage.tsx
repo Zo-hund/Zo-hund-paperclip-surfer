@@ -1,14 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Armchair, Bot, Camera, CameraOff, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2, LockKeyhole,
-  Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Sparkles, Ticket, Users, Video, Volume2, Wifi,
+  Armchair, ArrowUpToLine, Bot, CalendarRange, Camera, CameraOff, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2, LockKeyhole,
+  Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Sparkles, Users, Video, Volume2, Wifi,
 } from "lucide-react";
 import type { CaptureState, LiveVideoFeed } from "../LiveKitPod";
 import { agents } from "../data";
 import { trackEvent } from "../platform";
 import { useAMX } from "../AppContext";
 import { useStageSoundscape } from "../StageSoundscape";
+import { StageEventConsole } from "../StageEventConsole";
 import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
+import { stageEventPreset } from "../stage-events";
 import {
   DEFAULT_SPONSORS, useStageProduction, type SponsorCreative, type StageAudioFormat, type StageAudioState, type StageCue, type StageDeckTrack, type StageMode, type StageShot, type StageSoundscape,
 } from "../stage-production";
@@ -73,7 +75,7 @@ function CameraFeedPreview({ feed }: { feed: LiveVideoFeed | null }) {
 }
 
 export function AMXXRStagePage() {
-  const { settings } = useAMX();
+  const { settings, activeMission } = useAMX();
   const [view, setView] = useState<ConsoleView>("production");
   const [roomCode, setRoomCode] = useState(() => localStorage.getItem("amx_stage_room") || "AMXSTAGE");
   const production = useStageProduction(roomCode);
@@ -194,7 +196,7 @@ export function AMXXRStagePage() {
   };
   const toggleLive = () => {
     const live = !production.state.live;
-    production.update({ live, cue: live ? "opening" : "close", shot: live ? "wide" : production.state.shot });
+    production.update({ live, event: { ...production.state.event, status: live ? "live" : "complete" }, cue: live ? "opening" : "close", shot: live ? "wide" : production.state.shot });
     trackEvent(live ? "stage_show_started" : "stage_show_ended", { campaignId: production.state.sponsor.id, locationTag: production.room });
   };
   const linkPod = () => {
@@ -205,6 +207,19 @@ export function AMXXRStagePage() {
     trackEvent("stage_pod_linked", { locationTag: pod });
   };
   const unlinkPod = (pod: string) => production.update({ connectedPods: production.state.connectedPods.filter((item) => item !== pod) });
+  const promotePod = (pod: string) => {
+    const preset = stageEventPreset(production.state.event.format);
+    production.update({
+      event: { ...production.state.event, sourceRoom: pod, status: production.state.event.status === "draft" ? "published" : production.state.event.status },
+      generalSeats: preset.generalSeats,
+      vipSeats: preset.vipSeats,
+      sponsor: { id: production.state.event.id, name: production.state.event.title, headline: `${preset.label} / ${pod} promoted to stage`, cta: new Date(production.state.event.startsAt).toLocaleString(), accent: preset.accent },
+      cue: "opening",
+      shot: "wide",
+    });
+    setView("audience");
+    trackEvent("stage_room_promoted", { campaignId: production.state.event.id, locationTag: pod });
+  };
   const addSponsor = () => {
     if (!sponsorDraft.name.trim() || !sponsorDraft.headline.trim()) return;
     const sponsor: SponsorCreative = { ...sponsorDraft, id: `sponsor-${crypto.randomUUID().slice(0, 8)}`, name: sponsorDraft.name.trim(), headline: sponsorDraft.headline.trim(), cta: sponsorDraft.cta.trim() || "VISIT THE SPONSOR" };
@@ -251,13 +266,13 @@ export function AMXXRStagePage() {
 
     <div className="stage-command-layout">
       <section className="stage-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing AMX XR Stage</b></div>}><AMXXRStageScene mode={production.state.mode} shot={production.state.shot} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} live={production.state.live} audio={production.state.audio} programFeed={programChannel.feed} reducedMotion={settings.reducedMotion} onBackend={setBackend}/></Suspense>
-        <div className="stage-scene-overlay"><div><span className="eyebrow">{production.state.mode.toUpperCase()} / {backend === "webgpu" ? "WEBGPU" : backend === "webgl2" ? "WEBGL2" : "GPU INIT"}</span><b>AMX XR STAGE</b><small>{production.state.cue.toUpperCase()} / PGM {programChannel.label}: {programChannel.feed && !programChannel.feed.muted ? programChannel.feed.name : production.state.sponsor.name}</small></div><div className="stage-seat-tally"><Crown/><span>VIP <b>{production.state.vipSeats}/8</b></span><i/><Armchair/><span>HOUSE <b>{production.state.generalSeats}/36</b></span></div></div>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing AMX XR Stage</b></div>}><AMXXRStageScene mode={production.state.mode} shot={production.state.shot} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programChannel.feed} reducedMotion={settings.reducedMotion} onBackend={setBackend}/></Suspense>
+        <div className="stage-scene-overlay"><div><span className="eyebrow">{production.state.event.format.toUpperCase()} / {production.state.mode.toUpperCase()} / {backend === "webgpu" ? "WEBGPU" : backend === "webgl2" ? "WEBGL2" : "GPU INIT"}</span><b>{production.state.event.title}</b><small>{production.state.event.status.toUpperCase()} / {production.state.event.sourceRoom} / PGM {programChannel.label}: {programChannel.feed && !programChannel.feed.muted ? programChannel.feed.name : production.state.sponsor.name}</small></div><div className="stage-seat-tally"><Crown/><span>VIP <b>{production.state.vipSeats}/8</b></span><i/><Armchair/><span>HOUSE <b>{production.state.generalSeats}/36</b></span></div></div>
       </section>
 
       <aside className="stage-console">
         <div className="stage-console-tabs" role="tablist" aria-label="Stage console">{([
-          ["production", "Show", Clapperboard], ["collab", "Pods", Radio], ["audio", "Audio", Headphones], ["audience", "Seats", Ticket], ["sponsors", "Ads", Megaphone],
+          ["production", "Show", Clapperboard], ["collab", "Pods", Radio], ["audio", "Audio", Headphones], ["audience", "Event", CalendarRange], ["sponsors", "Ads", Megaphone],
         ] as const).map(([id, label, Icon]) => <button key={id} className={view === id ? "active" : ""} aria-label={label} onClick={() => setView(id)}><Icon/><span>{label}</span></button>)}</div>
         <div ref={consoleBodyRef} className="stage-console-body">
           <div className="stage-console-view" hidden={view !== "production"}>
@@ -267,7 +282,7 @@ export function AMXXRStagePage() {
           </div>
 
           <div className="stage-console-view" hidden={view !== "collab"}>
-            <section className="stage-control-section"><header><div><span className="eyebrow">CROSS-POD CONNECTION</span><h2>Linked showcases</h2></div><span className="stage-sync-state"><i/>{production.transport}</span></header><label className="stage-room-field">Stage room<input value={roomCode} onChange={(event) => changeRoom(event.target.value)}/></label><div className="stage-pod-link"><input value={podDraft} onChange={(event) => setPodDraft(event.target.value)} placeholder="POD CODE"/><button onClick={linkPod} disabled={!podDraft.trim()}><Link2/>Link</button></div><div className="stage-pod-list">{production.state.connectedPods.map((pod) => <div key={pod}><span><i/><b>{pod}</b><small>stage cue bus linked</small></span><button onClick={() => unlinkPod(pod)} aria-label={`Unlink ${pod}`} title={`Unlink ${pod}`}><Minus/></button></div>)}</div></section>
+            <section className="stage-control-section"><header><div><span className="eyebrow">CROSS-POD CONNECTION</span><h2>Linked showcases</h2></div><span className="stage-sync-state"><i/>{production.transport}</span></header><label className="stage-room-field">Stage room<input value={roomCode} onChange={(event) => changeRoom(event.target.value)}/></label><div className="stage-pod-link"><input value={podDraft} onChange={(event) => setPodDraft(event.target.value)} placeholder="POD CODE"/><button onClick={linkPod} disabled={!podDraft.trim()}><Link2/>Link</button></div><div className="stage-pod-list">{production.state.connectedPods.map((pod) => <div key={pod} className={production.state.event.sourceRoom === pod ? "promoted" : ""}><span><i/><b>{pod}</b><small>{production.state.event.sourceRoom === pod ? "promoted event source" : "stage cue bus linked"}</small></span><span className="stage-pod-actions"><button onClick={() => promotePod(pod)} aria-label={`Promote ${pod} to stage`} title={`Promote ${pod} to stage`}><ArrowUpToLine/></button><button onClick={() => unlinkPod(pod)} aria-label={`Unlink ${pod}`} title={`Unlink ${pod}`}><Minus/></button></span></div>)}</div></section>
             <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onVideoFeeds={setVideoFeeds} onCameraState={setCameraMediaState}/></Suspense>
           </div>
 
@@ -284,8 +299,7 @@ export function AMXXRStagePage() {
           </div>
 
           <div className="stage-console-view" hidden={view !== "audience"}>
-            <section className="stage-control-section"><header><div><span className="eyebrow">HOUSE MANAGEMENT</span><h2>Pod seating</h2></div><b className="stage-seat-total">{seatsTotal}/44</b></header><div className="stage-seat-control"><div><Crown/><span><b>VIP / sponsor</b><small>Front-row reserved seats</small></span><output>{production.state.vipSeats}</output></div><input type="range" min="0" max="8" value={production.state.vipSeats} onChange={(event) => production.update({ vipSeats: Number(event.target.value) })}/><div className="seat-stepper"><button onClick={() => production.update({ vipSeats: clamp(production.state.vipSeats - 1, 0, 8) })} aria-label="Remove VIP seat"><Minus/></button><button onClick={() => production.update({ vipSeats: clamp(production.state.vipSeats + 1, 0, 8) })} aria-label="Add VIP seat"><Plus/></button></div></div><div className="stage-seat-control"><div><Armchair/><span><b>General house</b><small>In-person and avatar seats</small></span><output>{production.state.generalSeats}</output></div><input type="range" min="0" max="36" value={production.state.generalSeats} onChange={(event) => production.update({ generalSeats: Number(event.target.value) })}/><div className="seat-stepper"><button onClick={() => production.update({ generalSeats: clamp(production.state.generalSeats - 1, 0, 36) })} aria-label="Remove general seat"><Minus/></button><button onClick={() => production.update({ generalSeats: clamp(production.state.generalSeats + 1, 0, 36) })} aria-label="Add general seat"><Plus/></button></div></div></section>
-            <section className="stage-audience-map"><div className="stage-map-stage">STAGE</div><div className="stage-map-vip">{Array.from({ length: 8 }, (_, index) => <i key={index} className={index < production.state.vipSeats ? "filled" : ""}/>)}</div><div className="stage-map-house">{Array.from({ length: 36 }, (_, index) => <i key={index} className={index < production.state.generalSeats ? "filled" : ""}/>)}</div></section>
+            <StageEventConsole room={production.room} event={production.state.event} connectedPods={production.state.connectedPods} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} missionId={activeMission.id} onUpdate={production.update}/>
           </div>
 
           <div className="stage-console-view" hidden={view !== "sponsors"}>

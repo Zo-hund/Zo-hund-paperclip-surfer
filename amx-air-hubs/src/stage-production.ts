@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
+import { defaultStageEvent, normalizeStageEvent, type StageEventState } from "./stage-events";
 
 export type StageMode = "in-person" | "online" | "metaverse";
 export type StageShot = "wide" | "host" | "audience" | "crane";
@@ -39,6 +40,7 @@ export interface StageProductionState {
   sponsor: SponsorCreative;
   cameraRoutes: Record<StageShot, string>;
   audio: StageAudioState;
+  event: StageEventState;
   generalSeats: number;
   vipSeats: number;
   connectedPods: string[];
@@ -83,7 +85,7 @@ function localHost() {
   return ["localhost", "127.0.0.1"].includes(location.hostname);
 }
 
-function initialState(operatorId: string): StageProductionState {
+function initialState(operatorId: string, room = "AMXSTAGE"): StageProductionState {
   const revision = Date.now();
   return {
     live: false,
@@ -93,8 +95,9 @@ function initialState(operatorId: string): StageProductionState {
     sponsor: DEFAULT_SPONSORS[0],
     cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
     audio: { ...DEFAULT_STAGE_AUDIO },
-    generalSeats: 24,
-    vipSeats: 6,
+    event: defaultStageEvent(room),
+    generalSeats: 36,
+    vipSeats: 8,
     connectedPods: ["AMX-MAIN"],
     revision,
     updatedAt: new Date(revision).toISOString(),
@@ -105,11 +108,11 @@ function initialState(operatorId: string): StageProductionState {
 function storedState(room: string, operatorId: string) {
   try {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
-    if (!saved) return initialState(operatorId);
+    if (!saved) return initialState(operatorId, room);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...initialState(operatorId), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...saved.audio }, revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId, room), ...saved, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...saved.audio }, event: normalizeStageEvent(saved.event, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
-    return initialState(operatorId);
+    return initialState(operatorId, room);
   }
 }
 
@@ -140,7 +143,7 @@ export function useStageProduction(roomCode: string) {
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...packet.state.audio }, revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: { ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }, audio: { ...DEFAULT_STAGE_AUDIO, ...packet.state.audio }, event: normalizeStageEvent(packet.state.event, room), revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;

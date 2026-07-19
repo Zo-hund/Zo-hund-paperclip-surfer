@@ -140,7 +140,11 @@ Without Supabase, room messages use BroadcastChannel and work only between tabs 
 
 The Stage host is exported from `assets/blender/zohund-avatar.blend` as a separate glTF package at `public/models/zohund-stage/`. Its first-party texture files avoid protected-origin `blob:` image loading. Regenerate it with `scripts/export-zohund-stage-avatar.py` after changing the Blender source.
 
-Stage show state is separate from room media. LiveKit owns participant camera, microphone, screen, and agent tracks for the active stage room. Supabase Realtime owns production cues, live status, camera, venue mode, sponsor creative, seating, audio production, and linked-Pod state. Every update carries a monotonic revision so an older network packet cannot replace a newer operator cue.
+Stage show state is separate from room media. LiveKit owns participant camera, microphone, screen, and agent tracks for the active stage room. Supabase Realtime owns production cues, live status, camera, venue mode, sponsor creative, seating, event configuration, audio production, and linked-Pod state. Every update carries a monotonic revision so an older network packet cannot replace a newer operator cue.
+
+The Event console promotes a linked Pod into one of three synchronized venue presets: Summit theater, XR Con arena, or Expo hall. A preset changes the Three.js seating transform, house inventory, title, source room, event lifecycle, and sponsor slate without replacing the live Stage room. Starting or ending the show advances the shared event status to `live` or `complete`.
+
+General, VIP/partner, and speaker/exhibitor inventory can each issue a durable D1-backed admission pass through the existing Pod invite service. Every tier has a separate hidden token, role, capacity, expiry, acceptance count, QR code, share action, and device-held owner key for revocation. Pass tokens are never written into synchronized Stage state. These passes control admission only; a payment provider, refund policy, tax handling, and order ledger must be integrated before representing them as paid tickets.
 
 The Audio console synchronizes show, podcast, and DJ formats; transport; deck presets; equal-power crossfader; BPM; master level; soundscape; and podcast record cue. Its shared `startedAt` values give connected Pods one production timeline. Each browser must explicitly enable its local monitor because Web Audio autoplay policy is device-local. The procedural deck and ambience engine uses HRTF panners at the in-world booth speaker positions and does not load copyrighted music. `START RECORD CUE` is synchronized rundown state, not a claim that a server-side podcast file is being archived. LiveKit remains the host and guest voice transport.
 
@@ -154,7 +158,7 @@ Camera-team workflow: all operators join the same Stage LiveKit room, publish ca
 
 When no feed is connected, the Stage Show console exposes `CONNECT CAMERA`, opens the Pods media panel, and scrolls its compact controls into view. Capture failures preserve a retry action and report the browser's device category instead of collapsing every failure into a generic permission message. CAM 1-3 and CRANE remain production take controls; they do not request device permission themselves.
 
-Each Pod code linked in the Pods console receives the same production packet on its `amx-stage-{POD}` cue bus. A Stage page using that Pod code can therefore follow the show state. This is production-state distribution, not automatic LiveKit room federation; participants who need shared audio/video must join the same configured LiveKit room or use a separate media bridge.
+Each Pod code linked in the Pods console receives the same production packet on its `amx-stage-{POD}` cue bus. A Stage page using that Pod code can therefore follow the show state. The promote action marks one linked Pod as the event source and opens its Event workspace. This is production-state distribution, not automatic LiveKit room federation; participants who need shared audio/video must join the same configured LiveKit room or use a separate media bridge.
 
 Without Supabase, the cue bus uses BroadcastChannel and reaches only tabs on the same device. The console labels this transport `local mesh`; it does not claim remote Pod synchronization.
 

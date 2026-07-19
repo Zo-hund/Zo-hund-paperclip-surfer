@@ -19,6 +19,8 @@
 15. Open the Stage Audio console, mute master, start the program, select DJ and Podcast formats, move both deck controls, change BPM and soundscape, and run the podcast record cue for at least one second. Confirm all `data-audio-*` attributes follow the console, the DJ booth reports ready, and stopping transport clears both timers. Repeat on a connected Pod and confirm the production state synchronizes while its local monitor remains opt-in.
 16. Before a DJ livestream, configure the platform RTMP/RTMPS ingest URL in `DJ_RTMP_URLS` and a distinct operator secret in `DJ_STREAM_CONTROL_TOKEN`. Join the Stage Pod, publish camera and microphone, share the DJ software or Stage tab with audio, then use Audio > DJ LIVE to check status and start. Confirm the platform preview has both picture and audio before making the platform event public. Stop the egress from DJ LIVE at show end and confirm it reports off air. Never paste a platform stream key into a browser field or shared room state.
 17. Mute or disconnect the on-program participant and confirm the channel reports muted/offline and the program mesh returns to its governed sponsor fallback.
+18. In Pods, promote a linked showcase room. In Event, switch through Summit, XR Con, and Expo and confirm `data-venue-layout` reports `theater`, `arena`, and `expo-hall` while the visible seating arrangement changes.
+19. Set the event title, source, start time, and lifecycle. Issue General, VIP, and Speaker admission passes, confirm each QR resolves to a distinct invite lobby with the expected role/capacity, accept one pass, refresh the counter, and revoke it from the issuing device. Do not enable public ticket sales until a payment and order system is configured.
 
 ## Observability
 
