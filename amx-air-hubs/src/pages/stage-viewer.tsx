@@ -8,6 +8,7 @@ import { useParams } from "react-router-dom";
 import type { LiveVideoFeed } from "../LiveKitPod";
 import { useStageSoundscape } from "../StageSoundscape";
 import { useStageProduction } from "../stage-production";
+import { stageCameraMotionPreset, type StageCameraMotionState } from "../stage-camera-motion";
 import { countStageAudienceParticipants, selectStageProgramFeed, stageFeedId } from "../stage-camera-routing";
 import { stageSeatCounts } from "../stage-events";
 import type { RendererBackend } from "../webgpu";
@@ -22,7 +23,22 @@ interface ViewerFeed extends LiveVideoFeed {
   track: RemoteVideoTrack;
 }
 
-function ViewerProgramVideo({ feed }: { feed: ViewerFeed }) {
+function programVideoMotion(motion: StageCameraMotionState): Keyframe[] {
+  const amount = motion.intensity / 100;
+  const crop = 1 + 0.16 * amount;
+  switch (motion.id) {
+    case "crane-reveal": return [{ transform: `scale(${crop}) translateY(${4 * amount}%)` }, { transform: "scale(1) translateY(0)" }];
+    case "crane-sweep": return [{ transform: `scale(${crop}) translateX(${-5 * amount}%)` }, { transform: `scale(${crop}) translateX(${5 * amount}%)` }];
+    case "dolly-push": return [{ transform: "scale(1)" }, { transform: `scale(${1 + 0.22 * amount})` }];
+    case "orbit-arc": return [{ transform: `scale(${crop}) translateX(${-4 * amount}%)` }, { transform: `scale(${crop}) translateX(${4 * amount}%)` }];
+    case "truck-parallax": return [{ transform: `scale(${crop}) translateX(${5 * amount}%)` }, { transform: `scale(${crop}) translateX(${-5 * amount}%)` }];
+    case "audience-pan": return [{ transform: `scale(${crop}) translateX(${-6 * amount}%)` }, { transform: `scale(${crop}) translateX(${6 * amount}%)` }];
+    case "dolly-zoom": return [{ transform: "scale(1)" }, { transform: `scale(${1 + 0.28 * amount})` }];
+    default: return [{ transform: "none" }, { transform: "none" }];
+  }
+}
+
+function ViewerProgramVideo({ feed, motion }: { feed: ViewerFeed; motion: StageCameraMotionState }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const video = ref.current;
@@ -31,7 +47,24 @@ function ViewerProgramVideo({ feed }: { feed: ViewerFeed }) {
     void video.play().catch(() => undefined);
     return () => { feed.track.detach(video); };
   }, [feed]);
-  return <video ref={ref} className="stage-viewer-video" autoPlay muted playsInline/>;
+  useEffect(() => {
+    const video = ref.current;
+    if (!video || motion.id === "static" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const preset = stageCameraMotionPreset(motion.id);
+    const duration = preset.durationMs / motion.speed;
+    const animation = video.animate(programVideoMotion(motion), {
+      duration,
+      iterations: motion.loop ? Infinity : 1,
+      fill: "forwards",
+      easing: "cubic-bezier(.45,0,.2,1)",
+    });
+    if (motion.startedAt) {
+      const elapsed = Math.max(0, Date.now() - motion.startedAt);
+      animation.currentTime = motion.loop ? elapsed % duration : Math.min(elapsed, duration);
+    }
+    return () => animation.cancel();
+  }, [motion.id, motion.intensity, motion.loop, motion.speed, motion.startedAt]);
+  return <video ref={ref} className="stage-viewer-video" data-camera-motion={motion.id} autoPlay muted playsInline/>;
 }
 
 export function StageLiveViewerPage() {
@@ -224,9 +257,9 @@ export function StageLiveViewerPage() {
   return <main className={`stage-viewer-page ${showProgram ? "program-active" : "venue-active"}`} style={{ "--viewer-accent": production.state.sponsor.accent } as React.CSSProperties}>
     <div className="stage-viewer-media" aria-label="AMX XR Stage live program">
       <Suspense fallback={<div className="stage-viewer-loading"><span/><b>OPENING AMX XR STAGE</b></div>}>
-        <AMXXRStageScene mode={production.state.mode} shot={production.state.shot} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programFeed} reducedMotion={matchMedia("(prefers-reduced-motion: reduce)").matches} portraitFraming onBackend={setBackend}/>
+        <AMXXRStageScene mode={production.state.mode} shot={production.state.shot} cameraMotion={production.state.cameraMotion} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programFeed} reducedMotion={matchMedia("(prefers-reduced-motion: reduce)").matches} portraitFraming onBackend={setBackend}/>
       </Suspense>
-      {showProgram && programFeed && <ViewerProgramVideo feed={programFeed}/>} 
+      {showProgram && programFeed && <ViewerProgramVideo feed={programFeed} motion={production.state.cameraMotion}/>}
       {!programFeed && <div className="stage-viewer-waiting"><Clapperboard/><span><b>VIRTUAL PROGRAM</b><small>Live camera feed waiting</small></span></div>}
     </div>
 

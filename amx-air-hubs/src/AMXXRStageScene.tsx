@@ -4,11 +4,13 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { LiveVideoFeed } from "./LiveKitPod";
 import type { StageSeat, StageVenueLayout } from "./stage-events";
 import type { SponsorCreative, StageAudioState, StageMode, StageShot } from "./stage-production";
+import { smoothCameraMotionProgress, stageCameraMotionPreset, stageCameraMotionProgress, type StageCameraMotionState } from "./stage-camera-motion";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
 interface Props {
   mode: StageMode;
   shot: StageShot;
+  cameraMotion: StageCameraMotionState;
   sponsor: SponsorCreative;
   generalSeats: number;
   vipSeats: number;
@@ -163,14 +165,14 @@ function disposeObject(root: THREE.Object3D) {
   materials.forEach((material) => material.dispose());
 }
 
-export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, reducedMotion, portraitFraming, onBackend }: Props) {
+export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, reducedMotion, portraitFraming, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({ mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio });
+  const stateRef = useRef({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio });
   const programScreenRef = useRef<THREE.Mesh | null>(null);
   const [sceneGeneration, setSceneGeneration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  useEffect(() => { stateRef.current = { mode, shot, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio }; }, [audio, generalSeats, live, mode, seats, shot, sponsor, venueLayout, vipSeats]);
+  useEffect(() => { stateRef.current = { mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio }; }, [audio, cameraMotion, generalSeats, live, mode, seats, shot, sponsor, venueLayout, vipSeats]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -463,15 +465,72 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
     let lastVenueLayout: StageVenueLayout | "" = "";
     let lastMode: StageMode | "" = "";
     const clock = new THREE.Clock();
+    const motionPosition = new THREE.Vector3();
+    const motionTarget = new THREE.Vector3();
+    const calculatedPosition = new THREE.Vector3();
+    const calculatedTarget = new THREE.Vector3();
+    const desiredMatrix = new THREE.Matrix4();
+    const desiredQuaternion = new THREE.Quaternion();
+    const rollQuaternion = new THREE.Quaternion();
+    const cameraAxis = new THREE.Vector3(0, 0, 1);
     const animate = () => {
       if (disposed) return;
       const elapsed = clock.getElapsedTime();
       const current = stateRef.current;
       const targetShot = SHOTS[current.shot];
+      const motionPreset = stageCameraMotionPreset(current.cameraMotion.id);
+      const rawMotionProgress = stageCameraMotionProgress(current.cameraMotion);
+      const motionProgress = smoothCameraMotionProgress(rawMotionProgress, current.cameraMotion.loop);
+      const motionAmount = reducedMotion ? 0 : current.cameraMotion.intensity / 100;
+      const baseFov = portraitFov(camera.aspect);
+      let motionFov = baseFov;
+      let cameraRoll = 0;
+      motionPosition.copy(targetShot.position);
+      motionTarget.copy(targetShot.target);
+      calculatedPosition.copy(targetShot.position);
+      calculatedTarget.copy(targetShot.target);
+      if (current.cameraMotion.id === "crane-reveal") {
+        calculatedPosition.set(-3.7, 3.15, 5.2).lerp(targetShot.position, motionProgress);
+        calculatedTarget.set(0, 1.45, -2.2).lerp(targetShot.target, motionProgress);
+        motionFov = THREE.MathUtils.lerp(baseFov + 8, baseFov - 2, motionProgress);
+      } else if (current.cameraMotion.id === "crane-sweep") {
+        calculatedPosition.set(THREE.MathUtils.lerp(-8.6, 8.6, motionProgress), 6.8 + Math.sin(motionProgress * Math.PI) * 2.1, 8.8);
+        calculatedTarget.set(THREE.MathUtils.lerp(-1.4, 1.4, motionProgress), 1.9, -3.7);
+        cameraRoll = THREE.MathUtils.lerp(-0.018, 0.018, motionProgress);
+      } else if (current.cameraMotion.id === "dolly-push") {
+        calculatedPosition.set(0, THREE.MathUtils.lerp(5.4, 4.1, motionProgress), THREE.MathUtils.lerp(13.5, 7.2, motionProgress));
+        calculatedTarget.set(0, THREE.MathUtils.lerp(2.3, 2.05, motionProgress), -4.2);
+        motionFov = THREE.MathUtils.lerp(baseFov, baseFov - 7, motionProgress);
+      } else if (current.cameraMotion.id === "orbit-arc") {
+        const angle = THREE.MathUtils.lerp(-0.72, 0.72, motionProgress);
+        calculatedPosition.set(Math.sin(angle) * 7.1, 2.75 + Math.sin(motionProgress * Math.PI) * 0.65, -4.25 + Math.cos(angle) * 7.1);
+        calculatedTarget.set(0, 1.95, -4.3);
+      } else if (current.cameraMotion.id === "truck-parallax") {
+        calculatedPosition.set(THREE.MathUtils.lerp(-4.4, 4.4, motionProgress), 2.5, 3.7);
+        calculatedTarget.set(THREE.MathUtils.lerp(-1.15, 1.15, motionProgress), 1.95, -4.25);
+      } else if (current.cameraMotion.id === "audience-pan") {
+        calculatedPosition.copy(targetShot.position);
+        calculatedTarget.set(THREE.MathUtils.lerp(-5.4, 5.4, motionProgress), 1.25, 6.1);
+        motionFov = baseFov + 3;
+      } else if (current.cameraMotion.id === "dolly-zoom") {
+        const baseDistance = 6.65;
+        const distance = THREE.MathUtils.lerp(baseDistance, baseDistance + 5.2, motionProgress);
+        calculatedPosition.set(2.1, 2.45, targetShot.target.z + distance);
+        calculatedTarget.copy(targetShot.target);
+        motionFov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) * baseDistance / distance));
+      }
+      motionPosition.lerp(calculatedPosition, motionAmount);
+      motionTarget.lerp(calculatedTarget, motionAmount);
+      const desiredFov = THREE.MathUtils.lerp(baseFov, motionFov, motionAmount);
+      if (Math.abs(camera.fov - desiredFov) > 0.01) {
+        camera.fov = desiredFov;
+        camera.updateProjectionMatrix();
+      }
       const cameraEase = reducedMotion ? 1 : 0.055;
-      camera.position.lerp(targetShot.position, cameraEase);
-      const desired = new THREE.Matrix4().lookAt(camera.position, targetShot.target, camera.up);
-      const desiredQuaternion = new THREE.Quaternion().setFromRotationMatrix(desired);
+      camera.position.lerp(motionPosition, cameraEase);
+      desiredMatrix.lookAt(camera.position, motionTarget, camera.up);
+      desiredQuaternion.setFromRotationMatrix(desiredMatrix);
+      if (cameraRoll) desiredQuaternion.multiply(rollQuaternion.setFromAxisAngle(cameraAxis, cameraRoll * motionAmount));
       camera.quaternion.slerp(desiredQuaternion, reducedMotion ? 1 : 0.08);
 
       const sponsorKey = `${current.sponsor.id}:${current.sponsor.headline}:${current.live}`;
@@ -635,10 +694,12 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
       host.dataset.scoreSound = score.sound;
       host.dataset.scoreBeat = String(Math.floor((Date.now() - scoreOrigin) / beatDuration) % 4 + 1);
       if (hostAvatar && !reducedMotion) hostAvatar.position.y += Math.sin(elapsed * 1.6) * 0.00045;
-      if (!reducedMotion) crane.rotation.y = -0.42 + Math.sin(elapsed * 0.18) * 0.08;
+      if (!reducedMotion) crane.rotation.y = current.cameraMotion.id === "crane-sweep" ? THREE.MathUtils.lerp(-0.72, 0.08, motionProgress) : -0.42 + Math.sin(elapsed * 0.18) * 0.08;
       renderer.render(scene, camera);
       host.dataset.frames = String(frame++);
       host.dataset.shot = current.shot;
+      host.dataset.cameraMotion = motionPreset.id;
+      host.dataset.cameraMotionProgress = rawMotionProgress.toFixed(3);
       host.dataset.live = String(current.live);
       if (frame % 30 === 0) {
         host.dataset.drawCalls = String(renderer.info.render.drawCalls);
