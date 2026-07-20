@@ -24,6 +24,8 @@ This runs TypeScript, the Worker API contract suite, the Vite production build, 
 
 Sites owns the actual D1 and R2 resources. The `drizzle/` migration is packaged with every saved version.
 
+Because this application is nested inside the upstream Paperclip monorepo, save Sites versions with the validated `amx-air-hubs/dist` deployment archive. A source-only Sites build starts at the monorepo root and is not the release path for this application.
+
 ## Hosted Configuration
 
 Set hosted values through Sites runtime environment management. Do not commit secrets or add them to `.openai/hosting.json`.
