@@ -6,7 +6,7 @@ import { normalizeStageAudio, type StageAudioState } from "./stage-audio";
 import { defaultStageShowWorkflow, normalizeStageShowWorkflow, type StageShowWorkflow } from "./stage-show-workflow";
 
 export { DEFAULT_STAGE_AUDIO } from "./stage-audio";
-export type { StageAudioAsset, StageAudioFormat, StageAudioState, StageAudioTransport, StageDeckPreset, StageDeckTrack, StageSoundscape } from "./stage-audio";
+export type { StageAudioAsset, StageAudioFormat, StageAudioState, StageAudioTransport, StageDeckPreset, StageDeckTrack, StageLightingLook, StageScoreCue, StageScoreMode, StageScoreState, StageSoundDesign, StageSoundscape, StageVfxLook } from "./stage-audio";
 
 export type StageMode = "in-person" | "online" | "metaverse";
 export type StageShot = "wide" | "host" | "audience" | "crane";

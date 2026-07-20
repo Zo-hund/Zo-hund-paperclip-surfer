@@ -29,6 +29,15 @@ const SHOTS: Record<StageShot, { position: THREE.Vector3; target: THREE.Vector3;
   crane: { position: new THREE.Vector3(-8.4, 8.2, 8.4), target: new THREE.Vector3(0, 2, -3.4), operator: 0 },
 };
 
+const SCORE_LIGHTING = {
+  house: { primary: 0xd9f7ff, secondary: 0x8bc9d8, background: 0x061017 },
+  keynote: { primary: 0xffffff, secondary: 0x55e6ff, background: 0x02070d },
+  "neon-grid": { primary: 0x55e6ff, secondary: 0xff63de, background: 0x050413 },
+  audience: { primary: 0xf4c96b, secondary: 0x79eea8, background: 0x0b0904 },
+  brand: { primary: 0x55e6ff, secondary: 0xff63de, background: 0x030611 },
+  finale: { primary: 0xffd376, secondary: 0xff63de, background: 0x0c0612 },
+} as const;
+
 function box(size: [number, number, number], position: [number, number, number], material: THREE.Material) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
   mesh.position.set(...position);
@@ -203,7 +212,8 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
     const gold = new THREE.MeshBasicMaterial({ color: 0xf4c96b, toneMapped: false });
     materials.push(darkMetal, floorMaterial, cyan, magenta, gold);
 
-    scene.add(new THREE.HemisphereLight(0xbdefff, 0x02070d, 1.35));
+    const houseLight = new THREE.HemisphereLight(0xbdefff, 0x02070d, 1.35);
+    scene.add(houseLight);
     const key = new THREE.DirectionalLight(0xffffff, 2.6);
     key.position.set(-5, 10, 8);
     scene.add(key);
@@ -214,6 +224,59 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
     magentaWash.position.set(5, 8, 2);
     magentaWash.target.position.set(2, 0.5, -4);
     scene.add(cyanWash, cyanWash.target, magentaWash, magentaWash.target);
+
+    const scoreSpots: THREE.SpotLight[] = [];
+    [-5.7, -1.9, 1.9, 5.7].forEach((x, index) => {
+      const fixture = new THREE.SpotLight(index % 2 ? 0xff63de : 0x55e6ff, 70, 28, 0.34, 0.5, 1.25);
+      fixture.position.set(x, 8.3, -1.2);
+      fixture.target.position.set(x * 0.46, 0.5, -4.25);
+      scoreSpots.push(fixture);
+      scene.add(fixture, fixture.target);
+    });
+
+    const laserMaterial = new THREE.MeshBasicMaterial({ color: 0x55e6ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    const prismMaterial = new THREE.MeshBasicMaterial({ color: 0xff63de, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+    const pulseMaterial = new THREE.MeshBasicMaterial({ color: 0x55e6ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+    materials.push(laserMaterial, prismMaterial, pulseMaterial);
+    const laserGroup = new THREE.Group();
+    const laserBeams: THREE.Mesh[] = [];
+    for (let index = 0; index < 7; index += 1) {
+      const beam = box([0.035, 0.035, 13], [(index - 3) * 1.55, 4.8, -1.6], laserMaterial);
+      beam.rotation.x = 0.48;
+      beam.rotation.z = (index - 3) * 0.055;
+      laserBeams.push(beam);
+      laserGroup.add(beam);
+    }
+    laserGroup.visible = false;
+    scene.add(laserGroup);
+    const prismGroup = new THREE.Group();
+    [1.35, 1.8, 2.25].forEach((radius, index) => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, 0.035 + index * 0.008, 10, 72), prismMaterial);
+      ring.position.set(0, 4.15, -6.86 + index * 0.012);
+      ring.userData.spin = index % 2 ? -1 : 1;
+      prismGroup.add(ring);
+    });
+    prismGroup.visible = false;
+    scene.add(prismGroup);
+    const beatRing = new THREE.Mesh(new THREE.RingGeometry(1.08, 1.16, 72), pulseMaterial);
+    beatRing.rotation.x = -Math.PI / 2;
+    beatRing.position.set(0, 0.68, -4.2);
+    beatRing.visible = false;
+    scene.add(beatRing);
+
+    const confettiPositions = new Float32Array(180 * 3);
+    for (let index = 0; index < 180; index += 1) {
+      confettiPositions[index * 3] = (Math.random() - 0.5) * 12;
+      confettiPositions[index * 3 + 1] = 0.8 + Math.random() * 7.4;
+      confettiPositions[index * 3 + 2] = -7 + Math.random() * 6;
+    }
+    const confettiGeometry = new THREE.BufferGeometry();
+    confettiGeometry.setAttribute("position", new THREE.BufferAttribute(confettiPositions, 3));
+    const confettiMaterial = new THREE.PointsMaterial({ color: 0xffd376, size: 0.075, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    materials.push(confettiMaterial);
+    const confetti = new THREE.Points(confettiGeometry, confettiMaterial);
+    confetti.visible = false;
+    scene.add(confetti);
 
     const floor = box([22, 0.25, 24], [0, -0.18, 1], floorMaterial);
     scene.add(floor);
@@ -502,6 +565,71 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
       host.dataset.audioBpm = String(current.audio.bpm);
       host.dataset.audioRecording = String(current.audio.recording);
       host.dataset.soundscape = current.audio.soundscape;
+      const score = current.audio.score;
+      const scoreLook = SCORE_LIGHTING[score.lighting];
+      const scoreOrigin = score.firedAt || current.audio.startedAt || Date.now();
+      const beatDuration = 60_000 / Math.max(60, Math.min(160, current.audio.bpm));
+      const beatPhase = ((Date.now() - scoreOrigin) % beatDuration) / beatDuration;
+      const beatPulse = score.beatSync ? Math.pow(1 - beatPhase, 4) : 0.35 + Math.sin(elapsed * 1.4) * 0.12;
+      const scoreLevel = score.armed ? score.intensity / 100 : 0.22;
+      houseLight.intensity = 0.9 + scoreLevel * 1.45;
+      key.intensity = 1.8 + scoreLevel * 2.8;
+      key.color.setHex(score.armed ? scoreLook.primary : 0xffffff);
+      cyanWash.color.setHex(score.armed ? scoreLook.primary : current.mode === "metaverse" ? 0x7e5cff : 0x55e6ff);
+      magentaWash.color.setHex(score.armed ? scoreLook.secondary : 0xff63de);
+      cyanWash.intensity = 44 + scoreLevel * 98 + beatPulse * scoreLevel * 24;
+      magentaWash.intensity = 40 + scoreLevel * 90 + beatPulse * scoreLevel * 20;
+      scoreSpots.forEach((fixture, index) => {
+        fixture.color.setHex(index % 2 ? scoreLook.secondary : scoreLook.primary);
+        fixture.intensity = score.armed ? 28 + scoreLevel * 94 + beatPulse * scoreLevel * 32 : 18;
+        if (!reducedMotion && score.armed && score.vfx === "laser-sweep") fixture.target.position.x = (index - 1.5) * 1.25 + Math.sin(elapsed * 0.9 + index) * 2.1;
+        else fixture.target.position.x = [-5.7, -1.9, 1.9, 5.7][index] * 0.46;
+      });
+      renderer.toneMappingExposure = 1.02 + scoreLevel * 0.22;
+      if (scene.background instanceof THREE.Color) scene.background.setHex(score.armed ? scoreLook.background : current.mode === "metaverse" ? 0x09051a : current.mode === "online" ? 0x100610 : 0x02070d);
+
+      const laserActive = score.armed && score.vfx === "laser-sweep";
+      laserGroup.visible = laserActive;
+      laserMaterial.color.setHex(scoreLook.primary);
+      laserMaterial.opacity = laserActive ? 0.12 + scoreLevel * 0.2 : 0;
+      if (laserActive && !reducedMotion) laserBeams.forEach((beam, index) => { beam.rotation.y = Math.sin(elapsed * 0.72 + index * 0.44) * 0.32; });
+
+      const prismActive = score.armed && score.vfx === "prism";
+      prismGroup.visible = prismActive;
+      prismMaterial.color.setHex(scoreLook.secondary);
+      prismMaterial.opacity = prismActive ? 0.24 + beatPulse * 0.36 * scoreLevel : 0;
+      if (prismActive && !reducedMotion) prismGroup.children.forEach((ring, index) => {
+        ring.rotation.z += Number(ring.userData.spin) * (0.0018 + index * 0.0008);
+        ring.scale.setScalar(1 + beatPulse * 0.035 * (index + 1));
+      });
+
+      const pulseActive = score.armed && score.vfx === "beat-pulse";
+      beatRing.visible = pulseActive;
+      pulseMaterial.color.setHex(scoreLook.primary);
+      pulseMaterial.opacity = pulseActive ? Math.max(0.04, (1 - beatPhase) * 0.68 * scoreLevel) : 0;
+      beatRing.scale.setScalar(0.65 + beatPhase * 2.5);
+
+      const confettiActive = score.armed && score.vfx === "confetti";
+      confetti.visible = confettiActive;
+      confettiMaterial.color.setHex(frame % 90 < 45 ? scoreLook.primary : scoreLook.secondary);
+      confettiMaterial.opacity = confettiActive ? 0.55 + scoreLevel * 0.35 : 0;
+      if (confettiActive && !reducedMotion) {
+        const positions = confettiGeometry.getAttribute("position") as THREE.BufferAttribute;
+        const values = positions.array as Float32Array;
+        for (let index = 0; index < values.length; index += 3) {
+          values[index] += Math.sin(elapsed * 1.6 + index) * 0.0015;
+          values[index + 1] -= 0.012 + (index % 7) * 0.001;
+          if (values[index + 1] < 0.72) values[index + 1] = 8.1;
+        }
+        positions.needsUpdate = true;
+      }
+      host.dataset.scoreArmed = String(score.armed);
+      host.dataset.scoreMode = score.mode;
+      host.dataset.scoreCue = score.activeCue || "none";
+      host.dataset.scoreLighting = score.lighting;
+      host.dataset.scoreVfx = score.vfx;
+      host.dataset.scoreSound = score.sound;
+      host.dataset.scoreBeat = String(Math.floor((Date.now() - scoreOrigin) / beatDuration) % 4 + 1);
       if (hostAvatar && !reducedMotion) hostAvatar.position.y += Math.sin(elapsed * 1.6) * 0.00045;
       if (!reducedMotion) crane.rotation.y = -0.42 + Math.sin(elapsed * 0.18) * 0.08;
       renderer.render(scene, camera);
@@ -556,6 +684,7 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
       });
       disposableTextures.forEach((texture) => texture.dispose());
       disposableMaterials.forEach((material) => material.dispose());
+      confettiGeometry.dispose();
       void renderer.dispose();
       if (host.contains(renderer.domElement)) host.removeChild(renderer.domElement);
     };

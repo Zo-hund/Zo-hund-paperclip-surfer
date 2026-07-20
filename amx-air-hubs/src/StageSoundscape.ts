@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  stageAudioAssetForTrack, type StageAudioState, type StageDeckPreset, type StageDeckTrack, type StageSoundscape,
+  stageAudioAssetForTrack, type StageAudioState, type StageDeckPreset, type StageDeckTrack, type StageSoundDesign, type StageSoundscape,
 } from "./stage-audio";
 
 type MonitorStatus = "off" | "starting" | "ready" | "blocked" | "unsupported";
@@ -35,6 +35,7 @@ type SoundscapeEngine = {
   stinger: HTMLAudioElement;
   stingerGain: GainNode;
   lastStingerAt: number | null;
+  lastScoreAt: number | null;
 };
 
 const TRACKS: Record<StageDeckPreset, { root: number; harmonic: number; cutoff: number }> = {
@@ -147,7 +148,7 @@ function createEngine() {
   const stingerGain = context.createGain();
   stingerGain.gain.value = 0.88;
   context.createMediaElementSource(stinger).connect(stingerGain).connect(compressor);
-  return { context, compressor, master, programOutput, deckA, deckB, bedTone, bedGain, bedFilter, noise, noiseGain, noiseFilter, stinger, stingerGain, lastStingerAt: null } satisfies SoundscapeEngine;
+  return { context, compressor, master, programOutput, deckA, deckB, bedTone, bedGain, bedFilter, noise, noiseGain, noiseFilter, stinger, stingerGain, lastStingerAt: null, lastScoreAt: null } satisfies SoundscapeEngine;
 }
 
 function alignMedia(media: HTMLAudioElement, state: StageAudioState) {
@@ -222,6 +223,50 @@ function applyStinger(engine: SoundscapeEngine, state: StageAudioState) {
   void engine.stinger.play().catch(() => undefined);
 }
 
+function scoreVoice(engine: SoundscapeEngine, options: { at: number; duration: number; start: number; end: number; gain: number; type?: OscillatorType }) {
+  const oscillator = engine.context.createOscillator();
+  const gain = engine.context.createGain();
+  oscillator.type = options.type || "triangle";
+  oscillator.frequency.setValueAtTime(options.start, options.at);
+  oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, options.end), options.at + options.duration);
+  gain.gain.setValueAtTime(0.0001, options.at);
+  gain.gain.exponentialRampToValueAtTime(options.gain, options.at + Math.min(0.04, options.duration * 0.18));
+  gain.gain.exponentialRampToValueAtTime(0.0001, options.at + options.duration);
+  oscillator.connect(gain).connect(engine.stingerGain);
+  oscillator.start(options.at);
+  oscillator.stop(options.at + options.duration + 0.02);
+}
+
+function playScoreSound(engine: SoundscapeEngine, design: StageSoundDesign, bpm: number) {
+  const now = engine.context.currentTime + 0.015;
+  if (design === "impact") {
+    scoreVoice(engine, { at: now, duration: 0.92, start: 118, end: 38, gain: 0.38, type: "sine" });
+    scoreVoice(engine, { at: now + 0.018, duration: 0.58, start: 244, end: 62, gain: 0.2, type: "triangle" });
+    return;
+  }
+  if (design === "riser") {
+    scoreVoice(engine, { at: now, duration: 1.35, start: 92, end: 740, gain: 0.2, type: "sawtooth" });
+    scoreVoice(engine, { at: now + 0.12, duration: 1.2, start: 184, end: 1108, gain: 0.12, type: "sine" });
+    return;
+  }
+  if (design === "pulse") {
+    const interval = Math.min(0.5, Math.max(0.375, 60 / Math.max(60, Math.min(160, bpm))));
+    [0, interval].forEach((offset, index) => scoreVoice(engine, { at: now + offset, duration: 0.28, start: index ? 164.81 : 110, end: index ? 123.47 : 82.41, gain: 0.22, type: "triangle" }));
+    return;
+  }
+  if (design === "sparkle") {
+    [523.25, 659.25, 783.99].forEach((frequency, index) => scoreVoice(engine, { at: now + index * 0.075, duration: 0.48, start: frequency, end: frequency * 1.18, gain: 0.1, type: "sine" }));
+  }
+}
+
+function applyScoreSound(engine: SoundscapeEngine, state: StageAudioState) {
+  const score = state.score;
+  if (!score.armed || score.sound === "none" || !score.firedAt || score.firedAt === engine.lastScoreAt) return;
+  engine.lastScoreAt = score.firedAt;
+  if (Date.now() - score.firedAt > 4_000) return;
+  playScoreSound(engine, score.sound, state.bpm);
+}
+
 function applyState(engine: SoundscapeEngine, state: StageAudioState) {
   const now = engine.context.currentTime;
   const active = state.transport === "playing";
@@ -241,6 +286,7 @@ function applyState(engine: SoundscapeEngine, state: StageAudioState) {
   engine.noiseGain.gain.setTargetAtTime(soundscape.noise, now, 0.12);
   engine.stingerGain.gain.setTargetAtTime(Math.max(0, Math.min(1, state.master / 100)) * 0.88, now, 0.06);
   applyStinger(engine, state);
+  applyScoreSound(engine, state);
 }
 
 export function useStageSoundscape(state: StageAudioState) {

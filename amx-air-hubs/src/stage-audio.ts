@@ -3,6 +3,32 @@ export type StageAudioTransport = "stopped" | "playing";
 export type StageDeckPreset = "air-pulse" | "night-grid" | "spoken-bed" | "sponsor-sting";
 export type StageDeckTrack = StageDeckPreset | `upload:${string}`;
 export type StageSoundscape = "air-grid" | "deep-focus" | "crowd-warmup" | "podcast-room";
+export type StageScoreMode = "manual" | "cue-follow";
+export type StageLightingLook = "house" | "keynote" | "neon-grid" | "audience" | "brand" | "finale";
+export type StageVfxLook = "clean" | "beat-pulse" | "laser-sweep" | "prism" | "confetti";
+export type StageSoundDesign = "none" | "impact" | "riser" | "pulse" | "sparkle";
+export type StageScoreCue = "standby" | "opening" | "speaker" | "demo" | "qa" | "sponsor" | "close";
+
+export interface StageScoreState {
+  armed: boolean;
+  beatSync: boolean;
+  mode: StageScoreMode;
+  lighting: StageLightingLook;
+  vfx: StageVfxLook;
+  sound: StageSoundDesign;
+  intensity: number;
+  activeCue: StageScoreCue | null;
+  firedAt: number | null;
+}
+
+export interface StageScorePreset {
+  cue: StageScoreCue;
+  label: string;
+  lighting: StageLightingLook;
+  vfx: StageVfxLook;
+  sound: StageSoundDesign;
+  intensity: number;
+}
 
 export interface StageAudioAsset {
   id: string;
@@ -30,7 +56,47 @@ export interface StageAudioState {
   library: StageAudioAsset[];
   stingerTrack: StageDeckTrack | null;
   stingerTriggeredAt: number | null;
+  score: StageScoreState;
 }
+
+export const STAGE_LIGHTING_LOOKS: Array<{ id: StageLightingLook; label: string }> = [
+  { id: "house", label: "House" },
+  { id: "keynote", label: "Keynote" },
+  { id: "neon-grid", label: "Neon Grid" },
+  { id: "audience", label: "Audience" },
+  { id: "brand", label: "AMX Brand" },
+  { id: "finale", label: "Finale" },
+];
+
+export const STAGE_VFX_LOOKS: Array<{ id: StageVfxLook; label: string }> = [
+  { id: "clean", label: "Clean" },
+  { id: "beat-pulse", label: "Beat Pulse" },
+  { id: "laser-sweep", label: "Laser Sweep" },
+  { id: "prism", label: "Prism" },
+  { id: "confetti", label: "Confetti" },
+];
+
+export const STAGE_SCORE_PRESETS: StageScorePreset[] = [
+  { cue: "standby", label: "Standby", lighting: "house", vfx: "clean", sound: "none", intensity: 32 },
+  { cue: "opening", label: "Opening", lighting: "brand", vfx: "prism", sound: "riser", intensity: 86 },
+  { cue: "speaker", label: "Speaker", lighting: "keynote", vfx: "clean", sound: "pulse", intensity: 60 },
+  { cue: "demo", label: "Demo", lighting: "neon-grid", vfx: "laser-sweep", sound: "sparkle", intensity: 78 },
+  { cue: "qa", label: "Q&A", lighting: "audience", vfx: "beat-pulse", sound: "pulse", intensity: 56 },
+  { cue: "sponsor", label: "Sponsor", lighting: "brand", vfx: "prism", sound: "sparkle", intensity: 82 },
+  { cue: "close", label: "Finale", lighting: "finale", vfx: "confetti", sound: "impact", intensity: 94 },
+];
+
+export const DEFAULT_STAGE_SCORE: StageScoreState = {
+  armed: false,
+  beatSync: true,
+  mode: "cue-follow",
+  lighting: "house",
+  vfx: "clean",
+  sound: "none",
+  intensity: 32,
+  activeCue: null,
+  firedAt: null,
+};
 
 export const STAGE_DECK_PRESETS: Array<{ id: StageDeckPreset; label: string }> = [
   { id: "air-pulse", label: "AIR Pulse" },
@@ -54,11 +120,17 @@ export const DEFAULT_STAGE_AUDIO: StageAudioState = {
   library: [],
   stingerTrack: "sponsor-sting",
   stingerTriggeredAt: null,
+  score: DEFAULT_STAGE_SCORE,
 };
 
 const PRESETS = new Set<StageDeckTrack>(STAGE_DECK_PRESETS.map((track) => track.id));
 const FORMATS = new Set<StageAudioFormat>(["show", "podcast", "dj"]);
 const SOUNDSCAPES = new Set<StageSoundscape>(["air-grid", "deep-focus", "crowd-warmup", "podcast-room"]);
+const SCORE_MODES = new Set<StageScoreMode>(["manual", "cue-follow"]);
+const LIGHTING_LOOKS = new Set<StageLightingLook>(STAGE_LIGHTING_LOOKS.map((look) => look.id));
+const VFX_LOOKS = new Set<StageVfxLook>(STAGE_VFX_LOOKS.map((look) => look.id));
+const SOUND_DESIGNS = new Set<StageSoundDesign>(["none", "impact", "riser", "pulse", "sparkle"]);
+const SCORE_CUES = new Set<StageScoreCue>(STAGE_SCORE_PRESETS.map((preset) => preset.cue));
 const MAX_LIBRARY_ITEMS = 24;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
@@ -70,6 +142,39 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
 function timestamp(value: unknown) {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+export function normalizeStageScore(value?: Partial<StageScoreState> | null): StageScoreState {
+  const source = value || {};
+  return {
+    armed: Boolean(source.armed),
+    beatSync: source.beatSync !== false,
+    mode: SCORE_MODES.has(source.mode as StageScoreMode) ? source.mode as StageScoreMode : DEFAULT_STAGE_SCORE.mode,
+    lighting: LIGHTING_LOOKS.has(source.lighting as StageLightingLook) ? source.lighting as StageLightingLook : DEFAULT_STAGE_SCORE.lighting,
+    vfx: VFX_LOOKS.has(source.vfx as StageVfxLook) ? source.vfx as StageVfxLook : DEFAULT_STAGE_SCORE.vfx,
+    sound: SOUND_DESIGNS.has(source.sound as StageSoundDesign) ? source.sound as StageSoundDesign : DEFAULT_STAGE_SCORE.sound,
+    intensity: Math.round(boundedNumber(source.intensity, DEFAULT_STAGE_SCORE.intensity, 0, 100)),
+    activeCue: SCORE_CUES.has(source.activeCue as StageScoreCue) ? source.activeCue as StageScoreCue : null,
+    firedAt: timestamp(source.firedAt),
+  };
+}
+
+export function applyStageScoreCue(score: StageScoreState, cue: StageScoreCue, firedAt = Date.now()): StageScoreState {
+  const preset = STAGE_SCORE_PRESETS.find((candidate) => candidate.cue === cue) || STAGE_SCORE_PRESETS[0];
+  return normalizeStageScore({ ...score, lighting: preset.lighting, vfx: preset.vfx, sound: preset.sound, intensity: preset.intensity, activeCue: cue, firedAt });
+}
+
+export function stageScoreClock(bpm: number, startedAt: number | null, now = Date.now()) {
+  const safeBpm = boundedNumber(bpm, DEFAULT_STAGE_AUDIO.bpm, 60, 160);
+  const elapsed = startedAt ? Math.max(0, now - startedAt) : 0;
+  const beatDuration = 60_000 / safeBpm;
+  const beatIndex = Math.floor(elapsed / beatDuration);
+  return {
+    beat: beatIndex % 4 + 1,
+    bar: Math.floor(beatIndex / 4) + 1,
+    phase: (elapsed % beatDuration) / beatDuration,
+    beatDuration,
+  };
 }
 
 function normalizeAsset(value: unknown): StageAudioAsset | null {
@@ -140,6 +245,7 @@ export function normalizeStageAudio(value?: Partial<StageAudioState> | null): St
     library,
     stingerTrack: stingerCandidate,
     stingerTriggeredAt: timestamp(source.stingerTriggeredAt),
+    score: normalizeStageScore(source.score),
   };
 }
 

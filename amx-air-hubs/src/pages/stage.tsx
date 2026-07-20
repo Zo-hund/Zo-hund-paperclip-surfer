@@ -11,10 +11,11 @@ import { useAMX } from "../AppContext";
 import { StageAudioLibrary } from "../StageAudioLibrary";
 import { useStageSoundscape } from "../StageSoundscape";
 import { StageEventConsole } from "../StageEventConsole";
+import { StageScoreDesigner } from "../StageScoreDesigner";
 import { StageShowWorkflow, type StageWorkflowRuntimeCue } from "../StageShowWorkflow";
 import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
 import { getActiveTenant } from "../operations";
-import { STAGE_DECK_PRESETS, stageAudioTrackId } from "../stage-audio";
+import { STAGE_DECK_PRESETS, applyStageScoreCue, normalizeStageScore, stageAudioTrackId, type StageScoreState } from "../stage-audio";
 import { stageEventPreset } from "../stage-events";
 import { reviseStageShowWorkflow, stageWorkflowReadiness, type StageShowWorkflow as StageShowWorkflowState } from "../stage-show-workflow";
 import { selectStageProgramFeed, sortStageVideoFeeds } from "../stage-camera-routing";
@@ -134,6 +135,14 @@ export function AMXXRStagePage() {
   const updateAudio = (patch: Partial<StageAudioState>) => {
     production.update({ audio: { ...production.state.audio, ...patch } });
   };
+  const updateScore = (patch: Partial<StageScoreState>) => {
+    updateAudio({ score: normalizeStageScore({ ...production.state.audio.score, ...patch }) });
+  };
+  const scoredAudioForCue = (cue: StageCue, force = false) => {
+    const audio = production.state.audio;
+    if (!audio.score.armed || (!force && audio.score.mode !== "cue-follow")) return audio;
+    return { ...audio, score: applyStageScoreCue(audio.score, cue) };
+  };
   const selectAudioFormat = (format: StageAudioFormat) => {
     const formatPatch: Partial<StageAudioState> = format === "podcast"
       ? { format, soundscape: "podcast-room", deckA: "spoken-bed", bpm: 88 }
@@ -203,16 +212,31 @@ export function AMXXRStagePage() {
     });
   };
   const fireCue = (cue: StageCue) => {
-    const patch: Parameters<typeof production.update>[0] = { cue };
+    const scoredAudio = scoredAudioForCue(cue);
+    const patch: Parameters<typeof production.update>[0] = { cue, ...(scoredAudio !== production.state.audio ? { audio: scoredAudio } : {}) };
+    if (scoredAudio !== production.state.audio && !soundscapeRuntime.enabled) void soundscapeRuntime.enable();
     if (cue === "sponsor") patch.sponsor = inventory[(inventory.findIndex((item) => item.id === production.state.sponsor.id) + 1) % inventory.length];
     production.update(patch);
     trackEvent("stage_cue_fired", { campaignId: cue === "sponsor" ? patch.sponsor?.id : undefined, locationTag: production.room });
+  };
+  const fireScoreCue = async (cue: StageCue) => {
+    if (!production.state.audio.score.armed) return;
+    if (!soundscapeRuntime.enabled) void soundscapeRuntime.enable();
+    const patch: Parameters<typeof production.update>[0] = { cue, audio: scoredAudioForCue(cue, true) };
+    if (cue === "sponsor") patch.sponsor = inventory[(inventory.findIndex((item) => item.id === production.state.sponsor.id) + 1) % inventory.length];
+    production.update(patch);
+    trackEvent("stage_score_cue_fired", { campaignId: cue, locationTag: production.room });
   };
   const updateShowWorkflow = (workflow: StageShowWorkflowState, runtime?: StageWorkflowRuntimeCue) => {
     const patch: Parameters<typeof production.update>[0] = { workflow };
     if (runtime) {
       patch.cue = runtime.cue;
       patch.shot = runtime.shot;
+      const scoredAudio = scoredAudioForCue(runtime.cue);
+      if (scoredAudio !== production.state.audio) {
+        patch.audio = scoredAudio;
+        if (!soundscapeRuntime.enabled) void soundscapeRuntime.enable();
+      }
       if (runtime.target !== "MAIN-STAGE") patch.event = { ...production.state.event, sourceRoom: runtime.target };
       if (runtime.cue === "sponsor") patch.sponsor = inventory[(inventory.findIndex((item) => item.id === production.state.sponsor.id) + 1) % inventory.length];
     }
@@ -220,7 +244,10 @@ export function AMXXRStagePage() {
     if (runtime) trackEvent("stage_rundown_cue_taken", { campaignId: runtime.cue === "sponsor" ? patch.sponsor?.id : undefined, locationTag: runtime.target });
   };
   const applyShowLive = (live: boolean, workflow: StageShowWorkflowState) => {
-    production.update({ live, workflow, event: { ...production.state.event, status: live ? "live" : "complete" }, cue: live ? "opening" : "close", shot: live ? "wide" : production.state.shot });
+    const cue: StageCue = live ? "opening" : "close";
+    const scoredAudio = scoredAudioForCue(cue);
+    if (scoredAudio !== production.state.audio && !soundscapeRuntime.enabled) void soundscapeRuntime.enable();
+    production.update({ live, workflow, event: { ...production.state.event, status: live ? "live" : "complete" }, cue, shot: live ? "wide" : production.state.shot, audio: scoredAudio });
     trackEvent(live ? "stage_show_started" : "stage_show_ended", { campaignId: production.state.sponsor.id, locationTag: production.room });
   };
   const toggleLive = () => {
@@ -330,6 +357,8 @@ export function AMXXRStagePage() {
 
           <div className="stage-console-view stage-audio-console" hidden={view !== "audio"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">PROGRAM AUDIO</span><h2>Music and podcast runtime</h2></div><span className={`stage-sync-state ${production.state.audio.transport === "playing" ? "audio-live" : ""}`}><i/>{production.state.audio.transport}</span></header><div className="stage-audio-format">{(["show", "podcast", "dj"] as StageAudioFormat[]).map((format) => { const Icon = format === "podcast" ? Podcast : format === "dj" ? Disc3 : Music2; return <button key={format} className={production.state.audio.format === format ? "active" : ""} onClick={() => selectAudioFormat(format)}><Icon/><span>{format}</span></button>; })}</div><div className="stage-audio-transport"><button className={production.state.audio.transport === "playing" ? "active" : ""} onClick={() => void toggleAudioTransport()}>{production.state.audio.transport === "playing" ? <Pause/> : <Play/>}<span>{production.state.audio.transport === "playing" ? "STOP PROGRAM" : "START PROGRAM"}</span></button><button className={soundscapeRuntime.enabled ? "monitoring" : ""} onClick={() => void (soundscapeRuntime.enabled ? soundscapeRuntime.disable() : soundscapeRuntime.enable())}><Headphones/><span>{soundscapeRuntime.enabled ? "MONITOR ON" : "ENABLE MONITOR"}</span></button></div><div className="stage-audio-runtime"><span><Volume2/><b>{soundscapeRuntime.status.toUpperCase()}</b><small>LOCAL MONITOR</small></span><span><Radio/><b>{programAudioState.toUpperCase()}</b><small>ROOM MIX</small></span><span><Wifi/><b>{production.transport.toUpperCase()}</b><small>PROGRAM SYNC</small></span><span><Music2/><b>{elapsedLabel(production.state.audio.startedAt, runtimeNow)}</b><small>RUNTIME</small></span></div></section>
+
+            <StageScoreDesigner audio={production.state.audio} currentCue={production.state.cue} onUpdate={updateScore} onFire={fireScoreCue}/>
 
             <StageAudioLibrary audio={production.state.audio} tenantId={tenantId} onUpdate={updateAudio}/>
 

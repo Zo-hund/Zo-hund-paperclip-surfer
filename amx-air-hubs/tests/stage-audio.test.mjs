@@ -58,3 +58,38 @@ test("resolves uploaded track labels and duration display", () => {
   assert.equal(audio.stageAudioTrackLabel(track, state.library), "Opening Theme");
   assert.equal(audio.stageAudioDurationLabel(63.4), "1:03");
 });
+
+test("normalizes bounded show-score controls and rejects unknown looks", () => {
+  const state = audio.normalizeStageAudio({
+    score: {
+      armed: true,
+      beatSync: false,
+      mode: "cue-follow",
+      lighting: "unknown-look",
+      vfx: "laser-sweep",
+      sound: "impact",
+      intensity: 900,
+      activeCue: "demo",
+      firedAt: 42,
+    },
+  });
+
+  assert.equal(state.score.armed, true);
+  assert.equal(state.score.beatSync, false);
+  assert.equal(state.score.lighting, "house");
+  assert.equal(state.score.vfx, "laser-sweep");
+  assert.equal(state.score.intensity, 100);
+  assert.equal(state.score.activeCue, "demo");
+});
+
+test("applies a deterministic finale score and computes a shared beat clock", () => {
+  const score = audio.applyStageScoreCue(audio.DEFAULT_STAGE_SCORE, "close", 5_250);
+  const clock = audio.stageScoreClock(120, 1_000, 5_250);
+
+  assert.deepEqual(
+    { lighting: score.lighting, vfx: score.vfx, sound: score.sound, intensity: score.intensity, cue: score.activeCue },
+    { lighting: "finale", vfx: "confetti", sound: "impact", intensity: 94, cue: "close" },
+  );
+  assert.deepEqual(clock, { beat: 1, bar: 3, phase: 0.5, beatDuration: 500 });
+  assert.equal(audio.STAGE_VFX_LOOKS.some((look) => look.id.includes("strobe")), false);
+});
