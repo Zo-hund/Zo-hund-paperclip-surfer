@@ -1,4 +1,4 @@
-const CACHE = "amx-air-v5";
+const CACHE = "amx-air-v6";
 const CORE = [
   "/",
   "/index.html",
@@ -23,11 +23,24 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (request.method !== "GET" || url.pathname.startsWith("/api/") || url.origin !== location.origin) return;
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/index.html")));
+    event.respondWith(fetch(request).catch(async () => (await caches.match("/index.html")) || Response.error()));
     return;
   }
-  event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-    if (response.ok) caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    const canCache = response.status === 200
+      && response.type === "basic"
+      && !request.headers.has("range");
+    if (canCache) {
+      try {
+        const cache = await caches.open(CACHE);
+        await cache.put(request, response.clone());
+      } catch {
+        // Storage limits and unsupported responses must not break the request.
+      }
+    }
     return response;
-  })));
+  })());
 });

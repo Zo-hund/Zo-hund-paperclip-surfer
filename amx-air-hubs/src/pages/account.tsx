@@ -21,7 +21,7 @@ export function AccountPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [claimStatus, setClaimStatus] = useState("");
-  const claimed = useRef(false);
+  const attemptedInvite = useRef("");
   const queryInvite = searchParams.get("invite")?.trim() || "";
   const storedInvite = localStorage.getItem("amx_member_invite") || "";
   const invite = queryInvite || storedInvite;
@@ -31,18 +31,19 @@ export function AccountPage() {
   }, [queryInvite]);
 
   useEffect(() => {
-    if (!auth.session || !auth.profile || !invite || claimed.current) return;
-    claimed.current = true;
+    if (!auth.session || !auth.profile || !invite || attemptedInvite.current === invite) return;
+    attemptedInvite.current = invite;
     setClaimStatus("Applying membership invitation...");
     void auth.claimInvite(invite).then((profile) => {
       localStorage.removeItem("amx_member_invite");
       setClaimStatus(`${profile.membership_role === "operator" ? "Operator" : "Member"} access activated.`);
       navigate("/account", { replace: true });
     }).catch((error) => {
-      claimed.current = false;
+      localStorage.removeItem("amx_member_invite");
       setClaimStatus(error instanceof Error ? error.message : "Invitation could not be applied.");
+      navigate("/account", { replace: true });
     });
-  }, [auth, invite, navigate]);
+  }, [auth.profile?.id, auth.session?.user.id, invite, navigate]);
 
   useEffect(() => {
     const next = searchParams.get("next");
