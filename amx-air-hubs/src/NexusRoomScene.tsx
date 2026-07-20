@@ -55,6 +55,14 @@ interface Props {
   onNpcState?: (state: NpcRuntimeState) => void;
 }
 
+function responsiveRoomFov(aspect: number) {
+  const baseFov = 42;
+  const referenceAspect = 1.45;
+  if (aspect >= referenceAspect) return baseFov;
+  const verticalRadians = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) * referenceAspect / Math.max(0.55, aspect));
+  return Math.min(62, THREE.MathUtils.radToDeg(verticalRadians));
+}
+
 type ScreenName = ProductionScreenId;
 
 function screenMaterial(texture: THREE.Texture) {
@@ -530,7 +538,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     sceneRef.current = scene;
     scene.background = new THREE.Color(0x02070d);
     scene.fog = new THREE.FogExp2(0x02070d, 0.025);
-    const camera = new THREE.PerspectiveCamera(42, host.clientWidth / host.clientHeight, 0.05, 100);
+    const initialAspect = host.clientWidth / Math.max(1, host.clientHeight);
+    const camera = new THREE.PerspectiveCamera(responsiveRoomFov(initialAspect), initialAspect, 0.05, 100);
     camera.position.set(0, 4.15, 9.4);
     const renderer = new THREE.WebGPURenderer({
       antialias: true,
@@ -739,7 +748,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       setError(initError instanceof Error ? initError.message : "The GPU renderer could not be initialized");
     });
     const resize = () => {
-      camera.aspect = host.clientWidth / host.clientHeight;
+      camera.aspect = host.clientWidth / Math.max(1, host.clientHeight);
+      camera.fov = responsiveRoomFov(camera.aspect);
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
     };
