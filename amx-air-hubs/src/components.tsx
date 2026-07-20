@@ -3,20 +3,22 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import QRCode from "qrcode";
 import {
   Accessibility, Activity, BadgeCheck, Bot, ChevronRight, CircleUserRound, Download,
-  Clapperboard, Cpu, Home, LayoutGrid, Menu, Move3d, Radio, Settings2, ShieldCheck, ShoppingBag, Volume2, VolumeX, X, Zap,
+  Clapperboard, Cpu, Home, LayoutGrid, LogIn, Menu, Move3d, Radio, Settings2, ShieldCheck, ShoppingBag, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import type { Agent, Mission } from "./data";
 import { sponsorConfig } from "./data";
 import { useAMX } from "./AppContext";
 import { getOfflineQueue, syncOfflineQueue } from "./operations";
+import { useMemberAuth } from "./member-auth";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accessibilityOpen, setAccessibilityOpen] = useState(false);
   const { xp, role, activeMission } = useAMX();
+  const member = useMemberAuth();
   const location = useLocation();
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
-  const nav = [
+  const memberNav = [
     { to: "/", label: "Home", icon: Home },
     { to: "/dashboard", label: "Dashboard", icon: Activity },
     { to: "/missions", label: "Missions", icon: Radio },
@@ -26,6 +28,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/agents", label: "Agents", icon: Bot },
     { to: "/wallet", label: "Proof", icon: BadgeCheck },
     { to: "/control", label: "Control", icon: LayoutGrid },
+  ];
+  const nav = member.session ? memberNav : [
+    { to: "/", label: "Home", icon: Home },
+    { to: "/sponsor", label: "Partners", icon: ShoppingBag },
   ];
   return (
     <div className="app-shell">
@@ -38,14 +44,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           {nav.map(({to, label, icon: Icon}) => <NavLink key={to} to={to} className={({isActive}) => isActive ? "active" : ""}><Icon size={16}/>{label}</NavLink>)}
         </nav>
         <div className="top-actions">
-          <span className="role-chip">{role}</span>
-          <span className="xp-chip"><Zap size={14}/>{xp.toLocaleString()} XP</span>
-          <SyncBadge/>
+          {member.session && <span className="role-chip">{member.profile?.membership_role || role}</span>}
+          {member.session && <span className="xp-chip"><Zap size={14}/>{xp.toLocaleString()} XP</span>}
+          {member.session && <SyncBadge/>}
+          <Link className={member.session ? "icon-button account-button" : "button secondary compact account-signin"} to="/account" title={member.session ? "Member account" : undefined} aria-label={member.session ? "Member account" : undefined}>{member.session ? <CircleUserRound/> : <><LogIn/>Sign in</>}</Link>
           <button className="icon-button" title="Accessibility settings" aria-label="Accessibility settings" onClick={() => setAccessibilityOpen(true)}><Accessibility size={20}/></button>
           <button className="icon-button mobile-menu-button" title="Open menu" aria-label="Open menu" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={21}/> : <Menu size={21}/>}</button>
         </div>
       </header>
-      {menuOpen && <nav className="mobile-menu">{nav.map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={18}/>{label}<ChevronRight size={16}/></NavLink>)}</nav>}
+      {menuOpen && <nav className="mobile-menu">{nav.map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={18}/>{label}<ChevronRight size={16}/></NavLink>)}<NavLink to="/account"><CircleUserRound size={18}/>Account<ChevronRight size={16}/></NavLink></nav>}
       <main>{children}</main>
       <nav className="bottom-nav" aria-label="Mobile navigation">
         {nav.slice(0,5).map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={20}/><span>{label}</span></NavLink>)}

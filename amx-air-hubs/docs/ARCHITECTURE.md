@@ -4,7 +4,8 @@
 
 ```mermaid
 flowchart LR
-  User["Phone, headset, or desktop"] --> Sites["Private HTTPS Sites gate"]
+  User["Phone, headset, or desktop"] --> Sites["Public HTTPS Sites delivery"]
+  User --> Auth["Supabase Auth + member profiles"]
   Sites --> Worker["AMX Cloudflare Worker"]
   Worker --> Assets["Vite static assets"]
   Worker --> D1["D1 structured records"]
@@ -14,10 +15,11 @@ flowchart LR
   Worker --> Plugins["Plugin Gateway"]
   Worker --> LiveKit["LiveKit media rooms"]
   User --> Supabase["Supabase Realtime"]
+  Auth --> Worker
   User --> WebXR["WebXR, WebGPU, WebGL, camera"]
 ```
 
-The browser is responsible for interaction, rendering, camera capture, local drafts, and offline queues. The Worker is the trust boundary for secrets, persistence, remote agent/tool execution, media storage, readiness, and proof attestation.
+The browser is responsible for interaction, rendering, camera capture, local drafts, and offline queues. Supabase Auth establishes member identity and database roles. The Worker revalidates private API sessions against Supabase before persistence, remote agent/tool execution, media storage, and operator operations.
 
 ## Client Layers
 
@@ -54,6 +56,7 @@ The browser is responsible for interaction, rendering, camera capture, local dra
 | Room messages and presence | Supabase Realtime or Durable Object | BroadcastChannel |
 | Camera and microphone tracks | LiveKit | Device-local preview |
 | UI preferences and drafts | Browser storage | Browser storage is intentional |
+| Member identity and role | Supabase Auth + `member_profiles` | No local authorization fallback |
 
 R2 stores media bytes. D1 stores only searchable metadata. Agent prompts are not written to D1 by the Worker; only operational run metadata is persisted.
 

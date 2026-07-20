@@ -148,6 +148,43 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.deepEqual(body.missingRequired, ["database", "media", "livekit"]);
   });
 
+  test("requires a verified member session for private APIs", async () => {
+    Object.assign(env, {
+      MEMBER_AUTH_REQUIRED: "true",
+      SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+    });
+    const response = await worker.fetch(jsonRequest("/api/agents/respond", { text: "private request" }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 401);
+    assert.equal(body.error, "Member sign-in required");
+  });
+
+  test("uses the database membership role for operator authorization", async () => {
+    Object.assign(env, {
+      MEMBER_AUTH_REQUIRED: "true",
+      SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      LIVEKIT_OPERATOR_HOSTS: "amx.example",
+      DB: stageWorkflowDatabase(),
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/v1/user")) return Response.json({ id: "00000000-0000-4000-8000-000000000001", email: "member@example.com" });
+      return Response.json([{ id: "00000000-0000-4000-8000-000000000001", member_code: "AMX-00000000", membership_role: "member", membership_status: "active" }]);
+    };
+    try {
+      const response = await worker.fetch(request("/api/stage/workflows/AMXSTAGE?tenantId=tech-at-nite", { headers: { Cookie: "amx_member_session=header.payload.signature" } }), env);
+      const body = await response.json();
+      assert.equal(response.status, 403);
+      assert.equal(body.error, "This member role cannot access the requested operation");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("reports configured remote capabilities without exposing secrets", async () => {
     Object.assign(env, {
       AGENT_RUNTIME_URL: "https://agents.example.com",

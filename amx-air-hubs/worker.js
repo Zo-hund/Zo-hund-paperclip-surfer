@@ -1,5 +1,6 @@
 const rateBuckets = new Map();
 const ephemeralRooms = new Map();
+const memberSessionCache = new Map();
 let databaseInitialization;
 const APP_HTML = "__AMX_APP_HTML__";
 const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), display-capture=(self), fullscreen=(self), xr-spatial-tracking=(self)";
@@ -136,6 +137,91 @@ function safeHexColor(value, fallback = "#55e6ff") {
 async function sha256(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function memberSessionToken(request) {
+  const cookies = String(request.headers.get("Cookie") || "").split(";");
+  for (const cookie of cookies) {
+    const [name, ...parts] = cookie.trim().split("=");
+    if (name === "amx_member_session") {
+      try { return decodeURIComponent(parts.join("=")); }
+      catch { return ""; }
+    }
+  }
+  const authorization = request.headers.get("Authorization") || "";
+  const bearer = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  return bearer.split(".").length === 3 ? bearer : "";
+}
+
+function memberAuthRequired(env) {
+  const setting = String(env.MEMBER_AUTH_REQUIRED || "").trim().toLowerCase();
+  if (setting === "false") return false;
+  return setting === "true" || Boolean(env.SUPABASE_URL && env.SUPABASE_PUBLISHABLE_KEY);
+}
+
+function publicApiRequest(request, url) {
+  if (request.method === "GET" && ["/api/health", "/api/ready", "/api/config", "/api/agents/capabilities"].includes(url.pathname)) return true;
+  if (request.method === "POST" && ["/api/livekit/viewer-token", "/api/analytics/events"].includes(url.pathname)) return true;
+  if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") return true;
+  if (url.pathname.startsWith("/api/pod-invites/")) {
+    const segments = url.pathname.split("/").filter(Boolean);
+    const action = segments[3] || "";
+    return (request.method === "GET" && !action) || (request.method === "POST" && action === "accept");
+  }
+  return false;
+}
+
+function requiredMemberRoles(url) {
+  if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/")) return ["operator"];
+  return ["member", "trainer", "operator"];
+}
+
+async function verifyMemberRequest(request, env, roles) {
+  if (!memberAuthRequired(env)) return null;
+  const supabaseUrl = String(env.SUPABASE_URL || "").replace(/\/$/, "");
+  const publishableKey = String(env.SUPABASE_PUBLISHABLE_KEY || "").trim();
+  if (!supabaseUrl || !publishableKey) throw new HttpError(503, "Member authentication is not configured");
+  const token = memberSessionToken(request);
+  if (!token) throw new HttpError(401, "Member sign-in required");
+
+  const cacheKey = await sha256(token);
+  const cached = memberSessionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    if (!roles.includes(cached.profile.membership_role)) throw new HttpError(403, "This member role cannot access the requested operation");
+    return cached;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  const headers = { Authorization: `Bearer ${token}`, apikey: publishableKey, Accept: "application/json" };
+  try {
+    const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, { headers, signal: controller.signal });
+    if (!userResponse.ok) throw new HttpError(401, "Member session is invalid or expired");
+    const user = await userResponse.json();
+    if (!user?.id) throw new HttpError(401, "Member session did not resolve a user");
+
+    const profileUrl = new URL(`${supabaseUrl}/rest/v1/member_profiles`);
+    profileUrl.searchParams.set("select", "id,member_code,membership_role,membership_status");
+    profileUrl.searchParams.set("id", `eq.${user.id}`);
+    profileUrl.searchParams.set("limit", "1");
+    const profileResponse = await fetch(profileUrl, { headers, signal: controller.signal });
+    if (!profileResponse.ok) throw new HttpError(403, "Member profile authorization failed");
+    const profiles = await profileResponse.json();
+    const profile = Array.isArray(profiles) ? profiles[0] : null;
+    if (!profile || profile.membership_status !== "active") throw new HttpError(403, "An active member profile is required");
+    if (!roles.includes(profile.membership_role)) throw new HttpError(403, "This member role cannot access the requested operation");
+
+    const verified = { user: { id: user.id, email: user.email || "" }, profile, expiresAt: Date.now() + 30_000 };
+    if (memberSessionCache.size > 500) memberSessionCache.clear();
+    memberSessionCache.set(cacheKey, verified);
+    return verified;
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if (error?.name === "AbortError") throw new HttpError(503, "Member authentication timed out");
+    throw new HttpError(503, "Member authentication is unavailable");
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function podInviteStatus(row, now = Date.now()) {
@@ -1117,12 +1203,27 @@ async function initialize(db) {
 async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
   if (!allowRequest(request)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
+  if (!publicApiRequest(request, url)) await verifyMemberRequest(request, env, requiredMemberRoles(url));
   if (request.method === "GET" && url.pathname === "/api/health") {
     return reply({ ok: true, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() });
   }
   if (request.method === "GET" && url.pathname === "/api/ready") {
     const readiness = await probeReadiness(env);
     return reply({ ...readiness, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, readiness.ready ? 200 : 503);
+  }
+  if (request.method === "GET" && url.pathname === "/api/config") {
+    const readiness = runtimeReadiness(env);
+    return reply({
+      supabaseUrl: env.SUPABASE_URL || "",
+      supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY || "",
+      memberAuthRequired: memberAuthRequired(env),
+      livekitConfigured: readiness.components.livekit,
+      persistenceConfigured: readiness.components.database,
+      mediaStorageConfigured: readiness.components.media,
+      roomTransport: readiness.roomTransport,
+      deploymentMode: readiness.mode,
+      version: SERVICE_VERSION,
+    });
   }
   if (request.method === "GET" && url.pathname === "/api/agents/capabilities") return reply(agentCapabilities(env));
   if (request.method === "GET" && url.pathname === "/api/runway/avatars") {

@@ -39,15 +39,24 @@ Add optional service credentials from `.env.example`. When an integration become
 
 ## Access Model
 
-The current production stage is deployed owner-only. Continue with ChatGPT sign-in is expected before the application loads. This is the production authentication boundary for the stage.
+Sites is public so guests can reach the home page, public Stage viewer, published member credentials, scans, and invitation links without a ChatGPT sign-in screen. Supabase Auth is the application identity boundary for member routes, and the Worker verifies active member or operator roles for private APIs.
 
-Do not change the site to shared or public until an application identity provider, tenant authorization, R2 ownership checks, Supabase policies, and abuse controls are configured.
+Set `MEMBER_AUTH_REQUIRED=true` in Sites. Production also requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; the application fails closed for private APIs when the member gate is enabled but those values are absent.
 
-The PWA manifest is on this same protected origin and is requested with owner credentials. A `401` for `/manifest.webmanifest` indicates an old shell or expired owner session; it is separate from LiveKit camera publication.
+In Supabase Authentication > URL Configuration, set the Site URL to `https://amx-hubs.cc/account` and add these redirect URLs:
+
+```text
+https://amx-hubs.cc/**
+https://www.amx-hubs.cc/**
+https://amx-air-hubs-stage.zohund-ai.chatgpt.site/**
+http://localhost:*/**
+```
+
+The redirect allowlist is required for magic links, email confirmation, and password recovery to return to the same account origin.
 
 ## Phone and XR Validation
 
-1. Open the HTTPS stage on the target phone and complete owner sign-in.
+1. Open the HTTPS stage on the target phone and sign in with an active AMX member account.
 2. Open `/control/runtime`; confirm `database`, `media`, and `proof-signing` are connected.
 3. Open `/mission/webxr-creator/run`; grant camera or XR permissions only when prompted by the action.
 4. Verify AR camera compositing, WebXR session entry, and placement on the physical device.

@@ -95,7 +95,7 @@ The connector:
 - Subscribe to agent and participant tracks.
 - Disconnect and release media tracks when the scene exits.
 
-The owner-only `*.chatgpt.site` stage is protected by browser session authentication and cannot serve as a native Quest API origin. Before a multi-device test, deploy the Worker API on a separate HTTPS origin with device enrollment and tenant authorization, then set that origin in `AMX Environment.asset`. Never copy a browser cookie, LiveKit API key, or LiveKit API secret into the APK.
+The public HTTPS stage can serve as the initial Quest API origin, but native clients need an explicit Supabase access-token flow instead of a browser cookie. Set the HTTPS origin in `AMX Environment.asset`, enroll the device to the intended tenant, and send the member bearer token on protected API calls. Never copy a browser cookie, LiveKit API key, or LiveKit API secret into the APK.
 
 ## Spatial anchors
 

@@ -10,6 +10,8 @@ import { StageLiveViewerPage } from "./pages/stage-viewer";
 import { AgentWorkbenchPage } from "./pages/agent-workbench";
 import { RuntimeStatusPage } from "./pages/runtime-status";
 import { PodInvitePage } from "./pages/invites";
+import { AccountPage, PublicMemberProfilePage } from "./pages/account";
+import { RequireMember } from "./member-auth";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
   ModeExperiencePage, ReplayPage, RoomLobbyPage, TeamMonitorPage, TeamProfilePage,
@@ -19,55 +21,57 @@ import {
 function ShellRoutes() {
   return <AppShell><Routes>
     <Route path="/" element={<HomePage/>}/>
-    <Route path="/role" element={<RoleSelectPage/>}/>
-    <Route path="/dashboard" element={<RoleDashboardPage/>}/>
-    <Route path="/missions" element={<MissionsPage/>}/>
-    <Route path="/agents" element={<AgentsPage/>}/>
-    <Route path="/agents/:agentId/profile" element={<AgentProfilePage/>}/>
-    <Route path="/agents/:agentId/workspace" element={<AgentWorkbenchPage/>}/>
-    <Route path="/play/:missionId" element={<ExperienceLauncherPage/>}/>
-    <Route path="/mission/:id/pre" element={<PreRunPage/>}/>
-    <Route path="/mission/:id/complete" element={<CompletePage/>}/>
-    <Route path="/wallet" element={<WalletPage/>}/>
-    <Route path="/marketplace" element={<MarketplacePage/>}/>
-    <Route path="/pods" element={<PodsPage/>}/>
+    <Route path="/account" element={<AccountPage/>}/>
+    <Route path="/members/:slug" element={<PublicMemberProfilePage/>}/>
+    <Route path="/role" element={<RequireMember><RoleSelectPage/></RequireMember>}/>
+    <Route path="/dashboard" element={<RequireMember><RoleDashboardPage/></RequireMember>}/>
+    <Route path="/missions" element={<RequireMember><MissionsPage/></RequireMember>}/>
+    <Route path="/agents" element={<RequireMember><AgentsPage/></RequireMember>}/>
+    <Route path="/agents/:agentId/profile" element={<RequireMember><AgentProfilePage/></RequireMember>}/>
+    <Route path="/agents/:agentId/workspace" element={<RequireMember><AgentWorkbenchPage/></RequireMember>}/>
+    <Route path="/play/:missionId" element={<RequireMember><ExperienceLauncherPage/></RequireMember>}/>
+    <Route path="/mission/:id/pre" element={<RequireMember><PreRunPage/></RequireMember>}/>
+    <Route path="/mission/:id/complete" element={<RequireMember><CompletePage/></RequireMember>}/>
+    <Route path="/wallet" element={<RequireMember><WalletPage/></RequireMember>}/>
+    <Route path="/marketplace" element={<RequireMember><MarketplacePage/></RequireMember>}/>
+    <Route path="/pods" element={<RequireMember><PodsPage/></RequireMember>}/>
     <Route path="/sponsor" element={<SponsorPage/>}/>
-    <Route path="/admin" element={<AdminPage/>}/>
-    <Route path="/analytics" element={<AnalyticsPage/>}/>
-    <Route path="/control" element={<ControlPage/>}/>
-    <Route path="/control/runtime" element={<RuntimeStatusPage/>}/>
-    <Route path="/nexus" element={<NexusPage/>}/>
-    <Route path="/stage" element={<AMXXRStagePage/>}/>
-    <Route path="/qr-studio" element={<QRStudioPage/>}/>
-    <Route path="/tenants" element={<TenantConsolePage/>}/>
-    <Route path="/settings/comfort" element={<ComfortSettingsPage/>}/>
-    <Route path="/profiles/:userId" element={<HumanProfilePage/>}/>
-    <Route path="/teams" element={<TeamsPage/>}/>
-    <Route path="/teams/:teamId" element={<TeamProfilePage/>}/>
-    <Route path="/teams/:teamId/runs" element={<TeamMonitorPage/>}/>
-    <Route path="/teams/:teamId/rewards" element={<TeamProfilePage/>}/>
-    <Route path="/rooms/:roomId/lobby" element={<RoomLobbyPage/>}/>
-    <Route path="/rooms/:roomId/toolbelt" element={<ToolbeltPage/>}/>
+    <Route path="/admin" element={<RequireMember roles={["operator"]}><AdminPage/></RequireMember>}/>
+    <Route path="/analytics" element={<RequireMember roles={["trainer", "operator"]}><AnalyticsPage/></RequireMember>}/>
+    <Route path="/control" element={<RequireMember roles={["operator"]}><ControlPage/></RequireMember>}/>
+    <Route path="/control/runtime" element={<RequireMember roles={["operator"]}><RuntimeStatusPage/></RequireMember>}/>
+    <Route path="/nexus" element={<RequireMember><NexusPage/></RequireMember>}/>
+    <Route path="/stage" element={<RequireMember roles={["operator"]}><AMXXRStagePage/></RequireMember>}/>
+    <Route path="/qr-studio" element={<RequireMember roles={["trainer", "operator"]}><QRStudioPage/></RequireMember>}/>
+    <Route path="/tenants" element={<RequireMember roles={["operator"]}><TenantConsolePage/></RequireMember>}/>
+    <Route path="/settings/comfort" element={<RequireMember><ComfortSettingsPage/></RequireMember>}/>
+    <Route path="/profiles/:userId" element={<RequireMember><HumanProfilePage/></RequireMember>}/>
+    <Route path="/teams" element={<RequireMember><TeamsPage/></RequireMember>}/>
+    <Route path="/teams/:teamId" element={<RequireMember><TeamProfilePage/></RequireMember>}/>
+    <Route path="/teams/:teamId/runs" element={<RequireMember><TeamMonitorPage/></RequireMember>}/>
+    <Route path="/teams/:teamId/rewards" element={<RequireMember><TeamProfilePage/></RequireMember>}/>
+    <Route path="/rooms/:roomId/lobby" element={<RequireMember><RoomLobbyPage/></RequireMember>}/>
+    <Route path="/rooms/:roomId/toolbelt" element={<RequireMember><ToolbeltPage/></RequireMember>}/>
     <Route path="/join/:token" element={<PodInvitePage/>}/>
-    <Route path="/runs/team/:runId" element={<TeamMonitorPage/>}/>
-    <Route path="/runs/:runId/replay" element={<ReplayPage/>}/>
+    <Route path="/runs/team/:runId" element={<RequireMember><TeamMonitorPage/></RequireMember>}/>
+    <Route path="/runs/:runId/replay" element={<RequireMember><ReplayPage/></RequireMember>}/>
     <Route path="*" element={<HomePage/>}/>
   </Routes></AppShell>;
 }
 
 export default function App() {
   return <Routes>
-    <Route path="/mission/:id/run" element={<MissionRunPage/>}/>
-    <Route path="/play/2d/:missionId" element={<ModeExperiencePage mode="2d"/>}/>
-    <Route path="/play/3d/:missionId" element={<ModeExperiencePage mode="3d"/>}/>
-    <Route path="/play/ar/:missionId" element={<ModeExperiencePage mode="ar"/>}/>
-    <Route path="/play/vr/:missionId" element={<ModeExperiencePage mode="vr"/>}/>
-    <Route path="/play/mr/:missionId" element={<ModeExperiencePage mode="mr"/>}/>
-    <Route path="/runs/2d/:runId" element={<ModeExperiencePage mode="2d"/>}/>
-    <Route path="/worlds/:worldId" element={<ModeExperiencePage mode="3d"/>}/>
+    <Route path="/mission/:id/run" element={<RequireMember><MissionRunPage/></RequireMember>}/>
+    <Route path="/play/2d/:missionId" element={<RequireMember><ModeExperiencePage mode="2d"/></RequireMember>}/>
+    <Route path="/play/3d/:missionId" element={<RequireMember><ModeExperiencePage mode="3d"/></RequireMember>}/>
+    <Route path="/play/ar/:missionId" element={<RequireMember><ModeExperiencePage mode="ar"/></RequireMember>}/>
+    <Route path="/play/vr/:missionId" element={<RequireMember><ModeExperiencePage mode="vr"/></RequireMember>}/>
+    <Route path="/play/mr/:missionId" element={<RequireMember><ModeExperiencePage mode="mr"/></RequireMember>}/>
+    <Route path="/runs/2d/:runId" element={<RequireMember><ModeExperiencePage mode="2d"/></RequireMember>}/>
+    <Route path="/worlds/:worldId" element={<RequireMember><ModeExperiencePage mode="3d"/></RequireMember>}/>
     <Route path="/ar/scan/:campaignId" element={<ModeExperiencePage mode="ar"/>}/>
-    <Route path="/vr/pods/:podId" element={<ModeExperiencePage mode="vr"/>}/>
-    <Route path="/mr/workspace/:workspaceId" element={<ModeExperiencePage mode="mr"/>}/>
+    <Route path="/vr/pods/:podId" element={<RequireMember><ModeExperiencePage mode="vr"/></RequireMember>}/>
+    <Route path="/mr/workspace/:workspaceId" element={<RequireMember><ModeExperiencePage mode="mr"/></RequireMember>}/>
     <Route path="/watch/:roomCode" element={<StageLiveViewerPage/>}/>
     <Route path="/scan/*" element={<ScanResolver/>}/>
     <Route path="/sponsor/*" element={<SponsorResolver/>}/>

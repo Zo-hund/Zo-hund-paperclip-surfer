@@ -2,7 +2,10 @@
 
 ## Implemented Controls
 
-- Owner-only Sites authentication for the deployed stage.
+- Public Sites delivery with Supabase application identity for private member routes.
+- RLS-protected `member_profiles`, private-by-default visibility, and database-backed member, trainer, and operator roles.
+- Worker verification of active Supabase sessions and member roles for private APIs.
+- One-use, SHA-256-hashed operator invitations with bounded expiry.
 - Server-only Agent, MCP, Plugin, LiveKit, and proof-signing secrets.
 - HTTPS/WSS enforcement for remote integrations, with localhost-only insecure development exceptions.
 - Gateway timeouts, JSON-only responses, and response-size limits.
@@ -22,21 +25,20 @@ The browser is untrusted. Browser proof signatures are convenience checks only; 
 
 Remote Agent, MCP, and Plugin systems are separate trust domains. Give each a scoped token, rotate independently, and expose only allowlisted operations in those gateways.
 
-## Known Release Boundary
+## Access Boundary
 
-Owner-only Sites access is appropriate for private staging and a single owner. It is not a substitute for application-level multi-user authorization.
+Sites serves the public home, live viewer, public profiles, sponsor routes, scans, and invitation entry. Supabase Auth protects private routes. `member_profiles.membership_role` is the authority for member, trainer, and operator access; browser metadata and local storage never grant a role.
 
-Pod invitation capabilities govern access to a specific showcase link inside the private stage. They do not prove a human identity and do not replace application sessions, tenant membership checks, or LiveKit participant authorization for a public release.
+The browser mirrors the current access token into a same-origin `Secure; SameSite=Strict` cookie because the existing Worker clients use same-origin fetch and WebSocket requests. The token already exists in the Supabase browser session. The Worker verifies it with Supabase Auth, then reads the RLS-protected profile before handling a private API request. Operator APIs also require the `operator` database role.
 
-Before a shared/public launch, implement:
+Pod invitation capabilities grant access to a specific showcase and remain separate from human identity. Accepting a public Pod invitation does not grant member or operator access.
 
-1. User identity and session verification inside the Worker.
-2. Tenant- and owner-scoped authorization for D1 and R2 operations.
-3. Supabase Realtime row/channel policies tied to identity.
-4. Per-user and per-route durable rate limits.
-5. Media malware/content scanning where the organization requires it.
-6. Retention, deletion, export, and audit policies.
-7. Secret rotation and incident response ownership.
+Remaining enterprise hardening:
+
+1. Add per-user ownership columns and checks to D1/R2 records; current private APIs require a member but several legacy records remain tenant-scoped.
+2. Add durable per-user rate limits for horizontally scaled high-volume deployments.
+3. Add media malware/content scanning where the organization requires it.
+4. Finalize retention, deletion, export, audit, and incident-response policies.
 
 ## Secret Handling
 
