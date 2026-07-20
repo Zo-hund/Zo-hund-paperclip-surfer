@@ -70,6 +70,7 @@ function ViewerProgramVideo({ feed, motion }: { feed: ViewerFeed; motion: StageC
 export function StageLiveViewerPage() {
   const params = useParams();
   const roomCode = String(params.roomCode || "AMXSTAGE").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "AMXSTAGE";
+  const displayWall = new URLSearchParams(window.location.search).get("display") === "wall";
   const production = useStageProduction(roomCode, { readOnly: true });
   const [status, setStatus] = useState<ViewerStatus>("connecting");
   const [mode, setMode] = useState<ViewerMode>("program");
@@ -254,7 +255,7 @@ export function StageLiveViewerPage() {
     else await document.exitFullscreen();
   };
 
-  return <main className={`stage-viewer-page ${showProgram ? "program-active" : "venue-active"}`} style={{ "--viewer-accent": production.state.sponsor.accent } as React.CSSProperties}>
+  return <main className={`stage-viewer-page ${showProgram ? "program-active" : "venue-active"}${displayWall ? " display-wall" : ""}`} style={{ "--viewer-accent": production.state.sponsor.accent } as React.CSSProperties}>
     <div className="stage-viewer-media" aria-label="AMX XR Stage live program">
       <Suspense fallback={<div className="stage-viewer-loading"><span/><b>OPENING AMX XR STAGE</b></div>}>
         <AMXXRStageScene mode={production.state.mode} shot={production.state.shot} cameraMotion={production.state.cameraMotion} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programFeed} reducedMotion={matchMedia("(prefers-reduced-motion: reduce)").matches} portraitFraming onBackend={setBackend}/>

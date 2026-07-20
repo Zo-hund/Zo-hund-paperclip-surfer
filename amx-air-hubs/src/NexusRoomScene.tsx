@@ -6,8 +6,10 @@ import type { GeoAnchor } from "./geospatial";
 import { DEFAULT_NPC_STATE, NPC_WAYPOINTS, waypointFor, type NpcAction, type NpcCommand, type NpcDirection, type NpcRuntimeState, type NpcWaypointId } from "./npc-controller";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 import { DEFAULT_WORLD_CAMERA_CONTROL, WORLD_CAMERA_POSES, WORLD_CAMERA_RIG_LAYER, normalizeWorldCameraControl, type WorldCameraControl, type WorldCameraId } from "./world-camera-control";
+import type { ScreenLayoutMode, ScreenWallFit } from "./screen-wall";
 
 export type { WorldCameraControl, WorldCameraId } from "./world-camera-control";
+export type { ScreenLayoutMode, ScreenWallFit } from "./screen-wall";
 
 export type LightPreset = "mission" | "focus" | "standby";
 export type VideoFit = "contain" | "cover";
@@ -43,6 +45,9 @@ interface Props {
   mediaFit?: VideoFit;
   screenProgram: ScreenProgram;
   screenStinger?: ScreenStinger | null;
+  screenMode?: ScreenLayoutMode;
+  screenWallSource?: ScreenSourceId;
+  screenWallFit?: ScreenWallFit;
   locationPanel?: LocationPanelData | null;
   anchors: GeoAnchor[];
   lightPreset: LightPreset;
@@ -199,13 +204,13 @@ function bindVideoElement(mesh: THREE.Mesh, video: HTMLVideoElement, mirror = fa
   };
 }
 
-function bindStream(mesh: THREE.Mesh, stream: MediaStream, mirror = false) {
+function bindStream(mesh: THREE.Mesh, stream: MediaStream, mirror = false, fit: VideoFit = "cover") {
   const video = document.createElement("video");
   video.srcObject = stream;
   video.muted = true;
   video.autoplay = true;
   video.playsInline = true;
-  return bindVideoElement(mesh, video, mirror, true);
+  return bindVideoElement(mesh, video, mirror, true, fit);
 }
 
 function drawBrandSurface(canvas:HTMLCanvasElement, brand:"amx-air"|"amx-labs"|"dip"|"black", image:HTMLImageElement, elapsed=1) {
@@ -245,6 +250,35 @@ function bindLocationSurface(mesh:THREE.Mesh,data:LocationPanelData) {
   const previous=mesh.material;const material=screenMaterial(texture);mesh.material=material;fitTextureToSurface(mesh,texture,canvas.width/canvas.height,"contain");
   const timer=window.setInterval(()=>{drawLocationPanel(canvas,data);texture.needsUpdate=true},1000);
   return()=>{window.clearInterval(timer);texture.dispose();material.dispose();if(mesh.material===material)mesh.material=previous;restoreMediaSurface(mesh)};
+}
+
+interface ScreenSourceBinding {
+  streams: Array<MediaStream | null | undefined>;
+  mediaElement?: HTMLVideoElement | null;
+  runwayElement?: HTMLVideoElement | null;
+  mediaFit: VideoFit;
+  fitOverride?: VideoFit;
+  locationPanel?: LocationPanelData | null;
+}
+
+function bindScreenSource(mesh: THREE.Mesh, source: ScreenSourceId, binding: ScreenSourceBinding) {
+  if (source.startsWith("camera-")) {
+    const stream = binding.streams[Number(source.slice(-1)) - 1];
+    return stream
+      ? bindStream(mesh, stream, source === "camera-1", binding.fitOverride || "cover")
+      : bindBrandSurface(mesh, "amx-air");
+  }
+  if (source === "media") return binding.mediaElement
+    ? bindVideoElement(mesh, binding.mediaElement, false, false, binding.fitOverride || binding.mediaFit)
+    : bindBrandSurface(mesh, "amx-air");
+  if (source === "runway") return binding.runwayElement
+    ? bindVideoElement(mesh, binding.runwayElement, false, false, binding.fitOverride || "contain")
+    : bindBrandSurface(mesh, "amx-labs");
+  if (source === "map") return binding.locationPanel
+    ? bindLocationSurface(mesh, binding.locationPanel)
+    : bindBrandSurface(mesh, "amx-labs");
+  if (source === "amx-air" || source === "amx-labs" || source === "black") return bindBrandSurface(mesh, source);
+  return bindBrandSurface(mesh, "black");
 }
 
 function wrapCanvasText(context: CanvasRenderingContext2D, text: string, x: number, y: number, width: number, lineHeight: number, maxLines: number) {
@@ -494,10 +528,11 @@ function npcSnapshot(npc: NpcSceneRuntime): NpcRuntimeState {
   };
 }
 
-export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, screenMode = "triple", screenWallSource = "amx-air", screenWallFit = "contain", locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
+  const screenWallRef = useRef<THREE.Mesh | null>(null);
   const lightRefs = useRef<THREE.Light[]>([]);
   const anchorLayerRef = useRef<THREE.Group | null>(null);
   const avatarRef = useRef<THREE.Object3D | null>(null);
@@ -609,6 +644,24 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         screenRefs.current[name] = target && (target as THREE.Mesh).isMesh ? target as THREE.Mesh : null;
       });
       scene.add(model);
+      const screenMeshes = (Object.values(screenRefs.current).filter(Boolean) as THREE.Mesh[]);
+      if (screenMeshes.length === 3) {
+        const wallBounds = new THREE.Box3();
+        screenMeshes.forEach((mesh) => wallBounds.union(new THREE.Box3().setFromObject(mesh)));
+        const wallSize = wallBounds.getSize(new THREE.Vector3());
+        const wallCenter = wallBounds.getCenter(new THREE.Vector3());
+        const wallGeometry = new THREE.PlaneGeometry(wallSize.x + 0.18, Math.max(2.08, wallSize.y + 0.18));
+        const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x02070d, toneMapped: false, side: THREE.DoubleSide });
+        const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+        wall.name = "Screen_Wall";
+        wall.position.set(wallCenter.x, wallCenter.y, wallBounds.max.z + 0.045);
+        wall.rotation.set(0, Math.PI, Math.PI);
+        wall.renderOrder = 5;
+        wall.visible = false;
+        scene.add(wall);
+        screenWallRef.current = wall;
+        host.dataset.screenWall = `${wallSize.x.toFixed(2)}x${Math.max(2.08, wallSize.y + 0.18).toFixed(2)}`;
+      }
       const bounds = new THREE.Box3().setFromObject(model);
       const size = bounds.getSize(new THREE.Vector3());
       const center = bounds.getCenter(new THREE.Vector3());
@@ -820,6 +873,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       avatarRef.current = null;
       sceneRef.current = null;
       anchorLayerRef.current = null;
+      screenWallRef.current = null;
       screenRefs.current = { Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null };
       lightRefs.current = [];
       if (host.contains(renderer.domElement)) host.removeChild(renderer.domElement);
@@ -965,23 +1019,28 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   useEffect(() => {
     const cleanups:Array<()=>void>=[];
     const streams=[sceneStreams[0]||localStream,sceneStreams[1],sceneStreams[2]];
-    (Object.keys(screenProgram) as ProductionScreenId[]).forEach((screen)=>{
-      const mesh=screenRefs.current[screen];if(!mesh)return;
-      const activeStinger=screenStinger?.targets.includes(screen)?screenStinger:null;
-      if(activeStinger){cleanups.push(bindBrandSurface(mesh,activeStinger.brand,true));return}
-      const source=screenProgram[screen];
+    const screenMeshes = Object.values(screenRefs.current).filter(Boolean) as THREE.Mesh[];
+    const wall = screenWallRef.current;
+    const binding: ScreenSourceBinding = { streams, mediaElement, runwayElement, mediaFit, locationPanel };
+    if (screenMode === "wall" && wall) {
+      screenMeshes.forEach((mesh) => { mesh.visible = false; });
+      wall.visible = true;
       try {
-        if(source.startsWith("camera-")){const stream=streams[Number(source.slice(-1))-1];cleanups.push(stream?bindStream(mesh,stream,source==="camera-1"):bindBrandSurface(mesh,"amx-air"));return}
-        if(source==="media"){cleanups.push(mediaElement?bindVideoElement(mesh,mediaElement,false,false,mediaFit):bindBrandSurface(mesh,"amx-air"));return}
-        if(source==="runway"){cleanups.push(runwayElement?bindVideoElement(mesh,runwayElement,false,false,"contain"):bindBrandSurface(mesh,"amx-labs"));return}
-        if(source==="map"){cleanups.push(locationPanel?bindLocationSurface(mesh,locationPanel):bindBrandSurface(mesh,"amx-labs"));return}
-        if(source==="amx-air"||source==="amx-labs"||source==="black"){cleanups.push(bindBrandSurface(mesh,source));return}
-        cleanups.push(bindBrandSurface(mesh,"black"));
-      } catch {cleanups.push(bindBrandSurface(mesh,"black"))}
-    });
-    if(hostRef.current){hostRef.current.dataset.screenPrograms=Object.entries(screenProgram).map(([screen,source])=>`${screen}:${source}`).join(",");hostRef.current.dataset.screenStinger=screenStinger?.brand||"idle"}
-    return()=>cleanups.forEach((cleanup)=>cleanup());
-  }, [loading, localStream, locationPanel, mediaElement, mediaFit, runwayElement, sceneStreams, screenProgram, screenStinger]);
+        cleanups.push(screenStinger ? bindBrandSurface(wall, screenStinger.brand, true) : bindScreenSource(wall, screenWallSource, { ...binding, fitOverride: screenWallFit }));
+      } catch { cleanups.push(bindBrandSurface(wall, "black")); }
+    } else {
+      if (wall) wall.visible = false;
+      screenMeshes.forEach((mesh) => { mesh.visible = true; });
+      (Object.keys(screenProgram) as ProductionScreenId[]).forEach((screen)=>{
+        const mesh=screenRefs.current[screen];if(!mesh)return;
+        const activeStinger=screenStinger?.targets.includes(screen)?screenStinger:null;
+        try { cleanups.push(activeStinger ? bindBrandSurface(mesh,activeStinger.brand,true) : bindScreenSource(mesh, screenProgram[screen], binding)); }
+        catch { cleanups.push(bindBrandSurface(mesh,"black")); }
+      });
+    }
+    if(hostRef.current){hostRef.current.dataset.screenMode=screenMode;hostRef.current.dataset.screenWallSource=screenWallSource;hostRef.current.dataset.screenWallFit=screenWallFit;hostRef.current.dataset.screenPrograms=Object.entries(screenProgram).map(([screen,source])=>`${screen}:${source}`).join(",");hostRef.current.dataset.screenStinger=screenStinger?.brand||"idle"}
+    return()=>{cleanups.forEach((cleanup)=>cleanup());screenMeshes.forEach((mesh)=>{mesh.visible=true});if(wall)wall.visible=false};
+  }, [loading, localStream, locationPanel, mediaElement, mediaFit, runwayElement, sceneStreams, screenMode, screenProgram, screenStinger, screenWallFit, screenWallSource]);
 
   return <div className="nexus-room-scene" ref={hostRef} data-media-source={mediaElement ? "connected" : "idle"} aria-label="Interactive Three.js Nexus control room">
     {loading && <div className="nexus-scene-loading"><span/><b>Loading Blender control room</b></div>}
