@@ -145,6 +145,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
   const [displayName, setDisplayName] = useState(profile.display_name);
   const [handle, setHandle] = useState(profile.handle || "");
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url || "");
+  const [externalAvatarUrl, setExternalAvatarUrl] = useState(() => /^https?:\/\//i.test(profile.avatar_url || "") ? profile.avatar_url || "" : "");
   const [visibility, setVisibility] = useState<ProfileVisibility>(profile.profile_visibility);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -159,6 +160,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
     setDisplayName(profile.display_name);
     setHandle(profile.handle || "");
     setAvatarUrl(profile.avatar_url || "");
+    setExternalAvatarUrl(/^https?:\/\//i.test(profile.avatar_url || "") ? profile.avatar_url || "" : "");
     setVisibility(profile.profile_visibility);
   }, [profile]);
 
@@ -167,7 +169,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
     setBusy(true);
     setNotice("");
     try {
-      await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: avatarUrl || null, profile_visibility: visibility });
+      await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: externalAvatarUrl.trim() || avatarUrl || null, profile_visibility: visibility });
       setNotice("Member profile updated.");
     } catch {
       // The provider exposes the safe Auth error in this view.
@@ -185,6 +187,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
     try {
       const image = await uploadIdentityImage(file, `member-${profile.id}`, "profile-avatar");
       setAvatarUrl(image.url);
+      setExternalAvatarUrl("");
       await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: image.url, profile_visibility: visibility });
       setNotice("Profile photo uploaded and saved.");
     } catch (error) {
@@ -201,6 +204,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
     auth.clearError();
     try {
       setAvatarUrl("");
+      setExternalAvatarUrl("");
       await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: null, profile_visibility: visibility });
       setNotice("Profile photo removed.");
     } catch {
@@ -252,12 +256,12 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
       <form className="member-profile-form" onSubmit={save}>
         <div className="section-heading"><div><span className="eyebrow">PROFILE SETTINGS</span><h2>Member identity</h2></div></div>
         <div className="member-photo-editor">
-          <div className="member-photo-preview">{avatarUrl ? <img src={avatarUrl} alt="Profile preview"/> : <UserRound/>}</div>
+          <div className="member-photo-preview">{externalAvatarUrl || avatarUrl ? <img src={externalAvatarUrl || avatarUrl} alt="Profile preview"/> : <UserRound/>}</div>
           <div><b>Profile photo</b><small>PNG, JPEG, or WebP. Up to 5 MB.</small><span className="member-photo-actions"><label className={`button secondary ${photoBusy ? "disabled" : ""}`}><ImagePlus/>{photoBusy ? "Uploading..." : avatarUrl ? "Replace photo" : "Upload photo"}<input disabled={photoBusy} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadPhoto}/></label>{avatarUrl && <button type="button" className="icon-button" title="Remove profile photo" aria-label="Remove profile photo" disabled={photoBusy} onClick={() => void removePhoto()}><Trash2/></button>}</span></div>
         </div>
         <label><span>Display name</span><input required minLength={2} maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)}/></label>
         <label><span>Public handle</span><input pattern="[a-z0-9][a-z0-9_-]{2,29}" maxLength={30} value={handle} onChange={(event) => setHandle(event.target.value.toLowerCase())} placeholder="amx-member"/></label>
-        <label><span>External image URL (optional)</span><input type="url" maxLength={500} value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} placeholder="https://..."/></label>
+        <label><span>External image URL (optional)</span><input type="url" maxLength={500} value={externalAvatarUrl} onChange={(event) => setExternalAvatarUrl(event.target.value)} placeholder="https://..."/></label>
         <button className="button primary" disabled={busy}><Save/>{busy ? "Saving..." : "Save profile"}</button>
       </form>
       <section className="member-privacy-panel">
