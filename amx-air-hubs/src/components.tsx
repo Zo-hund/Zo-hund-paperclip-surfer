@@ -1,19 +1,28 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import {
   Accessibility, Activity, BadgeCheck, Bot, BriefcaseBusiness, ChevronRight, CircleUserRound, Download,
-  Clapperboard, Cpu, Home, LayoutGrid, LogIn, Menu, Move3d, Radio, Settings2, ShieldCheck, ShoppingBag, Volume2, VolumeX, X, Zap,
+  Camera, Clapperboard, Cpu, Gamepad2, Glasses, Home, Layers, LayoutGrid, LogIn, Menu, Move3d, Radio, ScanLine, Settings2, ShieldCheck, ShoppingBag, Smartphone, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import type { Agent, Mission } from "./data";
 import { sponsorConfig } from "./data";
 import { useAMX } from "./AppContext";
 import { getOfflineQueue, syncOfflineQueue } from "./operations";
 import { useMemberAuth } from "./member-auth";
+import { modeRoute } from "./immersive";
+import { detectInputCapabilities, type InputCapabilities } from "./interaction";
+import { resolveSpatialAccess, type SpatialAccessMode } from "./xr-access";
+
+const emptySpatialCapabilities: InputCapabilities = {
+  methods: ["mouse", "keyboard"], webXR: false, immersiveAR: false, immersiveVR: false,
+  camera: false, voice: false, gamepad: false, touch: false, handTracking: false,
+};
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accessibilityOpen, setAccessibilityOpen] = useState(false);
+  const [xrAccessOpen, setXrAccessOpen] = useState(false);
   const { xp, role, activeMission } = useAMX();
   const member = useMemberAuth();
   const location = useLocation();
@@ -48,19 +57,57 @@ export function AppShell({ children }: { children: ReactNode }) {
           {member.session && <span className="role-chip">{member.profile?.membership_role || role}</span>}
           {member.session && <span className="xp-chip"><Zap size={14}/>{xp.toLocaleString()} XP</span>}
           {member.session && <SyncBadge/>}
+          {member.session && <button className="icon-button xr-access-button" title="AR, VR, and mixed reality" aria-label="Open spatial access" onClick={() => setXrAccessOpen(true)}><Glasses/></button>}
           <Link className={member.session ? "icon-button account-button" : "button secondary compact account-signin"} to="/account" title={member.session ? "Member account" : undefined} aria-label={member.session ? "Member account" : undefined}>{member.session ? <CircleUserRound/> : <><LogIn/>Sign in</>}</Link>
           <button className="icon-button" title="Accessibility settings" aria-label="Accessibility settings" onClick={() => setAccessibilityOpen(true)}><Accessibility size={20}/></button>
           <button className="icon-button mobile-menu-button" title="Open menu" aria-label="Open menu" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={21}/> : <Menu size={21}/>}</button>
         </div>
       </header>
-      {menuOpen && <nav className="mobile-menu">{nav.map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={18}/>{label}<ChevronRight size={16}/></NavLink>)}<NavLink to="/account"><CircleUserRound size={18}/>Account<ChevronRight size={16}/></NavLink></nav>}
+      {menuOpen && <nav className="mobile-menu">{nav.map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={18}/>{label}<ChevronRight size={16}/></NavLink>)}{member.session && <button onClick={() => { setMenuOpen(false); setXrAccessOpen(true); }}><Glasses size={18}/>Spatial access<ChevronRight size={16}/></button>}<NavLink to="/account"><CircleUserRound size={18}/>Account<ChevronRight size={16}/></NavLink></nav>}
       <main>{children}</main>
       <nav className="bottom-nav" aria-label="Mobile navigation">
         {nav.slice(0,5).map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={20}/><span>{label}</span></NavLink>)}
       </nav>
       {accessibilityOpen && <AccessibilityPanel onClose={() => setAccessibilityOpen(false)}/>}
+      {xrAccessOpen && <XRAccessPanel missionId={activeMission.id} onClose={() => setXrAccessOpen(false)}/>}
     </div>
   );
+}
+
+function XRAccessPanel({ missionId, onClose }: { missionId: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  const [capabilities, setCapabilities] = useState<InputCapabilities>(emptySpatialCapabilities);
+  const [checking, setChecking] = useState(true);
+  useEffect(() => {
+    let active = true;
+    void detectInputCapabilities().then((detected) => { if (active) { setCapabilities(detected); setChecking(false); } });
+    return () => { active = false; };
+  }, []);
+  const modes: Array<{ id: SpatialAccessMode; label: string; icon: typeof ScanLine }> = [
+    { id: "ar", label: "Augmented reality", icon: ScanLine },
+    { id: "vr", label: "Virtual reality", icon: Glasses },
+    { id: "mr", label: "Mixed reality", icon: Layers },
+  ];
+  const launch = (mode: SpatialAccessMode) => {
+    const route = resolveSpatialAccess(mode, capabilities);
+    onClose();
+    navigate(modeRoute(route.resolved, missionId));
+  };
+  return <div className="modal-backdrop" onMouseDown={onClose}><aside className="xr-access-panel" onMouseDown={(event) => event.stopPropagation()} aria-label="Spatial access">
+    <header><div><span className="eyebrow">SPATIAL ACCESS / DEVICE ROUTER</span><h2>Enter spatial mode</h2></div><button className="icon-button" onClick={onClose} aria-label="Close spatial access"><X/></button></header>
+    <div className="xr-device-status" aria-live="polite">
+      <span><ShieldCheck/><b>{window.isSecureContext ? "HTTPS READY" : "HTTPS REQUIRED"}</b><small>SECURE ORIGIN</small></span>
+      <span><Smartphone/><b>{checking ? "CHECKING" : capabilities.touch ? "TOUCH READY" : "DESKTOP"}</b><small>DEVICE</small></span>
+      <span><Gamepad2/><b>{checking ? "CHECKING" : capabilities.immersiveVR ? "XR INPUT" : capabilities.gamepad ? "GAMEPAD" : "POINTER"}</b><small>INPUT</small></span>
+    </div>
+    <div className="xr-access-modes">
+      {modes.map(({id,label,icon:Icon}) => { const route=resolveSpatialAccess(id,capabilities); return <button key={id} onClick={() => launch(id)} disabled={checking}>
+        <span className={`xr-mode-symbol ${id}`}><Icon/></span><span><b>{label}</b><small>{checking ? "Checking device" : route.status}</small></span><i className={route.ready ? "ready" : "fallback"}>{route.resolved.toUpperCase()}</i><ChevronRight/>
+      </button>; })}
+    </div>
+    <div className="xr-access-capabilities"><span><Camera/>{capabilities.camera ? "CAMERA" : "NO CAMERA"}</span><span><Glasses/>{capabilities.webXR ? "WEBXR" : "WEB FALLBACK"}</span><span><Move3d/>{capabilities.handTracking ? "HANDS" : "TOUCH / POINTER"}</span></div>
+    <footer><span><b>ACTIVE MISSION</b><small>{missionId.replace(/-/g, " ")}</small></span><Link className="button secondary compact" to="/settings/comfort" onClick={onClose}><Settings2/>Comfort</Link></footer>
+  </aside></div>;
 }
 
 function SyncBadge() {
