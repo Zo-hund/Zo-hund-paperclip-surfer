@@ -24,6 +24,7 @@ export type LiveVideoFeed = {
   width?: number;
   height?: number;
   frameRate?: number;
+  track?: LocalVideoTrack | RemoteVideoTrack;
 };
 
 type VideoSurface = {
@@ -229,7 +230,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       const stream = surface.stream || (surface.track ? new MediaStream([surface.track.mediaStreamTrack]) : null);
       const settings = surface.track?.mediaStreamTrack.getSettings() || stream?.getVideoTracks()[0]?.getSettings();
       const diagnostics = stageVideoDiagnostics(settings);
-      return stream ? [{ id: surface.id, participantIdentity: surface.participantIdentity, name: surface.name, local: surface.local, source: surface.source, stream, muted: Boolean(surface.muted), width: diagnostics.width, height: diagnostics.height, frameRate: diagnostics.frameRate }] : [];
+      return stream ? [{ id: surface.id, participantIdentity: surface.participantIdentity, name: surface.name, local: surface.local, source: surface.source, stream, muted: Boolean(surface.muted), width: diagnostics.width, height: diagnostics.height, frameRate: diagnostics.frameRate, track: surface.track }] : [];
     });
     onSceneStreamsRef.current?.(feeds.slice().sort((left, right) => Number(right.source === "screen") - Number(left.source === "screen")).map((feed) => feed.stream));
     onVideoFeedsRef.current?.(feeds);

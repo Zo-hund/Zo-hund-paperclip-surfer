@@ -58,6 +58,7 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
           width: Math.round(Number(settings.width) || 0),
           height: Math.round(Number(settings.height) || 0),
           frameRate: Math.round(Number(settings.frameRate) || 0),
+          track,
         },
       });
       commit();

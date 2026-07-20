@@ -119,22 +119,26 @@ function drawSponsorRibbon(canvas: HTMLCanvasElement, creative: SponsorCreative,
   context.fillText(label, 48, canvas.height / 2);
 }
 
-function bindStream(mesh: THREE.Mesh, stream: MediaStream) {
+function bindStream(mesh: THREE.Mesh, feed: LiveVideoFeed) {
   const video = document.createElement("video");
   video.autoplay = true;
   video.muted = true;
   video.playsInline = true;
-  video.srcObject = stream;
+  if (feed.track) feed.track.attach(video);
+  else video.srcObject = feed.stream;
   const texture = new THREE.VideoTexture(video);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
   const previous = mesh.material;
   const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
   mesh.material = material;
   void video.play().catch(() => undefined);
   return () => {
     video.pause();
-    video.srcObject = null;
+    if (feed.track) feed.track.detach(video);
+    else video.srcObject = null;
     texture.dispose();
     material.dispose();
     if (mesh.material === material) mesh.material = previous;
@@ -178,7 +182,7 @@ export function AMXXRStageScene({ mode, shot, sponsor, generalSeats, vipSeats, s
       host.dataset.programFeedLive = String(Boolean(programFeed && !programFeed.muted));
     }
     if (!screen || !programFeed || programFeed.muted) return;
-    return bindStream(screen, programFeed.stream);
+    return bindStream(screen, programFeed);
   }, [programFeed, sceneGeneration]);
 
   useEffect(() => {
