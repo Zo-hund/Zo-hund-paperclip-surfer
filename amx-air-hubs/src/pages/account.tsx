@@ -61,7 +61,7 @@ export function AccountPage() {
       } else if (mode === "create") {
         const result = await auth.signUp(displayName, email, password);
         setNotice(result.confirmationRequired ? "Check your email to confirm the account, then return here." : "Member account created.");
-      } else if (auth.recoveryMode || searchParams.get("mode") === "recovery") {
+      } else if (auth.recoveryMode) {
         await auth.updatePassword(password);
         setNotice("Password updated. You can continue to your workspace.");
         setMode("signin");
@@ -94,7 +94,7 @@ export function AccountPage() {
   if (auth.loading) return <div className="account-loading"><span className="live-dot"/>Checking AMX membership...</div>;
   if (auth.session && auth.profile) return <MemberAccount profile={auth.profile} claimStatus={claimStatus}/>;
 
-  const recoveringPassword = mode === "recover" && (auth.recoveryMode || searchParams.get("mode") === "recovery");
+  const recoveringPassword = mode === "recover" && auth.recoveryMode;
   return <div className="account-entry">
     <section className="account-brand-panel">
       <img src="/brand/amx-air-hubs-brand.png" alt="AMX AIR HUBS"/>
@@ -145,6 +145,9 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url || "");
   const [visibility, setVisibility] = useState<ProfileVisibility>(profile.profile_visibility);
   const [busy, setBusy] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [notice, setNotice] = useState("");
   const profilePath = publicMemberPath(profile);
   const canShare = profile.profile_visibility === "public";
@@ -178,6 +181,27 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
     setNotice("Public profile link ready.");
   };
 
+  const changePassword = async (event: FormEvent) => {
+    event.preventDefault();
+    auth.clearError();
+    setNotice("");
+    if (newPassword !== confirmPassword) {
+      setNotice("The new passwords do not match.");
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      await auth.updatePassword(newPassword);
+      setNewPassword("");
+      setConfirmPassword("");
+      setNotice("Password updated. Your member account remains signed in on this device.");
+    } catch {
+      // The provider exposes the safe Auth error in this view.
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
   return <div className="page section-wrap member-account-page">
     <PageHeader eyebrow="MEMBER ACCOUNT" title={profile.display_name} description="Manage your AMX identity, public credential, and private workspace access." actions={<button className="button secondary" onClick={() => void auth.signOut()}><LogOut/>Sign out</button>}/>
     {(claimStatus || auth.error || notice) && <div className={`member-notice ${auth.error ? "error" : ""}`}>{auth.error || claimStatus || notice}</div>}
@@ -206,6 +230,12 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
         {profile.membership_role === "operator" && <Link className="button ghost full" to="/control"><ShieldCheck/>Open operator control</Link>}
       </section>
     </div>
+    <form className="member-security-panel" onSubmit={changePassword}>
+      <div><span className="eyebrow">ACCOUNT SECURITY</span><h2>Change password</h2><p>Use an active signed-in session when email recovery is unavailable or rate limited.</p></div>
+      <label><span>New password</span><input required type="password" minLength={8} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="8 characters minimum"/></label>
+      <label><span>Confirm password</span><input required type="password" minLength={8} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat new password"/></label>
+      <button className="button secondary" disabled={passwordBusy}><KeyRound/>{passwordBusy ? "Updating..." : "Update password"}</button>
+    </form>
   </div>;
 }
 

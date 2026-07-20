@@ -31,3 +31,13 @@ test("browser auth uses only the publishable Supabase configuration", async () =
   assert.match(auth, /membership_role/);
   assert.doesNotMatch(auth, /user_metadata\.membership_role|user_metadata\.role/);
 });
+
+test("members can change a password from an active session without sending email", async () => {
+  const auth = await read("src/member-auth.tsx");
+  const account = await read("src/pages/account.tsx");
+  assert.match(auth, /client\.auth\.updateUser\(\{ password \}\)/);
+  assert.match(auth, /over_email_send_rate_limit/);
+  assert.match(account, /className="member-security-panel"/);
+  assert.match(account, /auth\.updatePassword\(newPassword\)/);
+  assert.doesNotMatch(account, /auth\.recoveryMode \|\| searchParams\.get\("mode"\) === "recovery"/);
+});

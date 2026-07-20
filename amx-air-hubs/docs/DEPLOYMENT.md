@@ -56,6 +56,8 @@ http://localhost:*/**
 
 The redirect allowlist is required for magic links, email confirmation, and password recovery to return to the same account origin.
 
+Configure custom SMTP before public account enrollment. Supabase's built-in sender is limited to two combined authentication emails per hour and is intended only for testing. For Hostinger Email, use `smtp.hostinger.com` with SSL port `465` or STARTTLS port `587`, the complete sender email as the username, and the mailbox password. Keep SMTP credentials only in Supabase Authentication settings.
+
 ## Phone and XR Validation
 
 1. Open the HTTPS stage on the target phone and sign in with an active AMX member account.

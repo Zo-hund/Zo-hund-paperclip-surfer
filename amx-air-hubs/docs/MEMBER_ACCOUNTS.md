@@ -19,6 +19,8 @@ The React router improves the user experience, but it is not the security bounda
 4. The public route `/members/:handle` can read only active, public profiles through RLS.
 5. A signed-in user can claim a bounded invitation. The initial operator invitation is one-use and expires after 14 days.
 
+Signed-in members can change their password directly from `/account` without sending another recovery email. This is the preferred recovery path when a trusted device still has an active session.
+
 New users are active members, not operators. Roles are never accepted from `user_metadata`, URL parameters, or browser storage.
 
 ## Database Controls

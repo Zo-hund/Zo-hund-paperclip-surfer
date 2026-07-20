@@ -92,6 +92,13 @@ async function fetchMemberProfile(client: SupabaseClient, userId: string) {
   return data as MemberProfile | null;
 }
 
+function memberAuthErrorMessage(error: { code?: string; message?: string }) {
+  if (error.code === "over_email_send_rate_limit" || /email rate limit exceeded/i.test(error.message || "")) {
+    return "Email limit reached. Wait before requesting another message, or change your password from a device where you are already signed in.";
+  }
+  return error.message || "The authentication request could not be completed.";
+}
+
 export function publicMemberPath(profile: MemberProfile) {
   return `/members/${encodeURIComponent(profile.handle || profile.member_code)}`;
 }
@@ -201,7 +208,11 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
         email: email.trim(),
         options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}${safePath}` },
       });
-      if (linkError) { setError(linkError.message); throw linkError; }
+      if (linkError) {
+        const message = memberAuthErrorMessage(linkError);
+        setError(message);
+        throw new Error(message);
+      }
     },
     requestPasswordReset: async (email) => {
       setError("");
@@ -209,7 +220,11 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
       const { error: resetError } = await client.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/account?mode=recovery`,
       });
-      if (resetError) { setError(resetError.message); throw resetError; }
+      if (resetError) {
+        const message = memberAuthErrorMessage(resetError);
+        setError(message);
+        throw new Error(message);
+      }
     },
     updatePassword: async (password) => {
       setError("");
