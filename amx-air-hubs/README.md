@@ -23,6 +23,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Runway Characters realtime avatars with microphone, camera, screen context, transcripts, in-world screen routing, and an AMX client-action toolbelt.
 - Tenant-branded 3D digital membership cards with profile QR verification and native sharing.
 - Supabase member accounts with email/password and passwordless entry, private-by-default profiles, public credential links, database roles, and one-time operator invitations.
+- Supabase Partner Portal with role-governed organizations, email-bound team invitations, branded mission campaigns, QR distribution, attribution funnels, and outcome-report export.
 - Durable Skill Pod showcase invitations with guest roles, expiry, capacity, QR links, acceptance lobbies, and owner-key revocation.
 - Above-the-fold Nexus workspace with a persistent 3D world, task-scoped NPC/Avatar/Pod/Media/Vision rail, pinned action feedback, and independent mobile control scrolling.
 - Governed AI digital twin with Blender node bindings, predictive risk, sandbox scenarios, approvals, and durable audit events.
@@ -62,6 +63,8 @@ pnpm --filter @amx/air-hubs verify
 - [Operations Runbook](docs/OPERATIONS.md)
 - [Security Model](docs/SECURITY.md)
 - [Member Accounts](docs/MEMBER_ACCOUNTS.md)
+- [Partner Portal](docs/PARTNER_PORTAL.md)
+- [Organization Console](docs/ORGANIZATION_CONSOLE.md)
 - [Mini Data Center Tenant Pod](docs/MINI_DATA_CENTER_POD.md)
 - [IWSDK Quest WebXR Runtime](docs/IWSDK_QUEST_WEBXR.md)
 - [Unity Quest Integration](docs/UNITY_QUEST_INTEGRATION.md)

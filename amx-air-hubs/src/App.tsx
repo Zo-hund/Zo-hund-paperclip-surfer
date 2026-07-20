@@ -11,6 +11,7 @@ import { AgentWorkbenchPage } from "./pages/agent-workbench";
 import { RuntimeStatusPage } from "./pages/runtime-status";
 import { PodInvitePage } from "./pages/invites";
 import { AccountPage, PublicMemberProfilePage } from "./pages/account";
+import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
 import { RequireMember } from "./member-auth";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
@@ -35,6 +36,8 @@ function ShellRoutes() {
     <Route path="/wallet" element={<RequireMember><WalletPage/></RequireMember>}/>
     <Route path="/marketplace" element={<RequireMember><MarketplacePage/></RequireMember>}/>
     <Route path="/pods" element={<RequireMember><PodsPage/></RequireMember>}/>
+    <Route path="/partners" element={<RequireMember><PartnerPortalPage/></RequireMember>}/>
+    <Route path="/partners/join" element={<RequireMember><PartnerJoinPage/></RequireMember>}/>
     <Route path="/sponsor" element={<SponsorPage/>}/>
     <Route path="/admin" element={<RequireMember roles={["operator"]}><AdminPage/></RequireMember>}/>
     <Route path="/analytics" element={<RequireMember roles={["trainer", "operator"]}><AnalyticsPage/></RequireMember>}/>
@@ -73,6 +76,7 @@ export default function App() {
     <Route path="/vr/pods/:podId" element={<RequireMember><ModeExperiencePage mode="vr"/></RequireMember>}/>
     <Route path="/mr/workspace/:workspaceId" element={<RequireMember><ModeExperiencePage mode="mr"/></RequireMember>}/>
     <Route path="/watch/:roomCode" element={<StageLiveViewerPage/>}/>
+    <Route path="/partner/:organizationId/:campaignSlug" element={<PartnerCampaignResolverPage/>}/>
     <Route path="/scan/*" element={<ScanResolver/>}/>
     <Route path="/sponsor/*" element={<SponsorResolver/>}/>
     <Route path="*" element={<ShellRoutes/>}/>

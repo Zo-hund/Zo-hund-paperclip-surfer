@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import QRCode from "qrcode";
 import {
-  Accessibility, Activity, BadgeCheck, Bot, ChevronRight, CircleUserRound, Download,
+  Accessibility, Activity, BadgeCheck, Bot, BriefcaseBusiness, ChevronRight, CircleUserRound, Download,
   Clapperboard, Cpu, Home, LayoutGrid, LogIn, Menu, Move3d, Radio, Settings2, ShieldCheck, ShoppingBag, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import type { Agent, Mission } from "./data";
@@ -21,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const memberNav = [
     { to: "/", label: "Home", icon: Home },
     { to: "/dashboard", label: "Dashboard", icon: Activity },
+    { to: "/partners", label: "Partners", icon: BriefcaseBusiness },
     { to: "/missions", label: "Missions", icon: Radio },
     { to: `/play/${activeMission.id}`, label: "Play", icon: Move3d },
     { to: "/stage", label: "Stage", icon: Clapperboard },

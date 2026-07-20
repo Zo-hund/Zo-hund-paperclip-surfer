@@ -76,6 +76,12 @@ function getMemberClient() {
   return memberClientPromise;
 }
 
+export async function getMemberDataClient() {
+  const client = await getMemberClient();
+  if (!client) throw new Error("Member accounts are not configured for this environment.");
+  return client;
+}
+
 function syncMemberCookie(session: Session | null) {
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   if (!session?.access_token) {
