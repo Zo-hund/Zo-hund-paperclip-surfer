@@ -76,7 +76,7 @@ Issues a server-generated identity with subscribe-only room permissions. The roo
 
 ### `POST /api/livekit/egress/dj/stop`
 
-Protected DJ livestream controls. All three require `Authorization: Bearer <DJ_STREAM_CONTROL_TOKEN>` and a JSON `room`. Stop also requires `egressId`. Start creates one LiveKit RoomComposite egress using the speaker layout and H.264 720p30 preset. Status and start return only a sanitized egress ID, room, lifecycle status, and destination count. Full RTMP URLs and stream keys are never returned.
+Protected DJ livestream controls. All three require `Authorization: Bearer <DJ_STREAM_CONTROL_TOKEN>` and a JSON `room`. A bounded `videoProfile` may be `720p30`, `1080p30`, or `1080p60`; it defaults to `1080p30`. Stop also requires `egressId`. Start creates one LiveKit RoomComposite egress using the speaker layout and the matching H.264 preset. Status and start return only a sanitized egress ID, room, lifecycle status, destination count, and selected width, height, and frame rate. Full RTMP URLs and stream keys are never returned.
 
 Returns `503` until LiveKit credentials, `DJ_RTMP_URLS`, and `DJ_STREAM_CONTROL_TOKEN` are configured. Start is idempotent for an active room egress.
 

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Camera, CameraOff, Mic, MicOff, MonitorUp, Radio, Users, Video, Volume2, VolumeX, Wifi } from "lucide-react";
 import {
-  LocalVideoTrack, RemoteVideoTrack, Room, RoomEvent, Track,
+  LocalVideoTrack, RemoteVideoTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
+  type TrackPublishOptions, type VideoCaptureOptions,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
 } from "livekit-client";
 import type { Agent } from "./data";
 import { countStageAudienceParticipants, stageFeedId } from "./stage-camera-routing";
+import { stageVideoDiagnostics, stageVideoProfile, type StageVideoDiagnostics, type StageVideoProfile } from "./stage-video";
 
 type PodStatus = "idle" | "connecting" | "livekit" | "local" | "error";
 export type CaptureState = "off" | "requesting" | "published" | "muted" | "blocked";
@@ -19,6 +21,9 @@ export type LiveVideoFeed = {
   source: "camera" | "screen";
   stream: MediaStream;
   muted: boolean;
+  width?: number;
+  height?: number;
+  frameRate?: number;
 };
 
 type VideoSurface = {
@@ -30,6 +35,9 @@ type VideoSurface = {
   muted?: boolean;
   track?: LocalVideoTrack | RemoteVideoTrack;
   stream?: MediaStream;
+  width?: number;
+  height?: number;
+  frameRate?: number;
 };
 
 interface Props {
@@ -41,7 +49,24 @@ interface Props {
   onCameraState?: (state: CaptureState) => void;
   programAudioStream?: MediaStream | null;
   onProgramAudioState?: (state: ProgramAudioState) => void;
+  videoProfile?: StageVideoProfile;
+  onCameraQuality?: (quality: StageVideoDiagnostics | null) => void;
   compact?: boolean;
+}
+
+function liveKitVideoConfig(profileId: StageVideoProfile) {
+  const profile = stageVideoProfile(profileId);
+  const capture = {
+    facingMode: "user",
+    frameRate: profile.frameRate,
+    resolution: { width: profile.width, height: profile.height, frameRate: profile.frameRate },
+  } satisfies VideoCaptureOptions;
+  const publish = {
+    simulcast: true,
+    videoEncoding: { maxBitrate: profile.videoBitrate, maxFramerate: profile.frameRate },
+    videoSimulcastLayers: [VideoPresets.h216, VideoPresets.h540],
+  } satisfies TrackPublishOptions;
+  return { capture, profile, publish };
 }
 
 function mediaDeviceMessage(error: unknown, device: "camera" | "microphone" = "camera") {
@@ -72,12 +97,14 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
       if (!surface.track) element.srcObject = null;
     };
   }, [surface]);
-  return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{surface.muted ? " / MUTED" : ""}</span></div>;
+  const resolution = surface.width && surface.height ? ` / ${surface.width}x${surface.height}` : "";
+  return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{resolution}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, videoProfile = "720p30", onCameraQuality, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
+  const videoConfig = useMemo(() => liveKitVideoConfig(videoProfile), [videoProfile]);
   const [status, setStatus] = useState<PodStatus>("idle");
   const [message, setMessage] = useState("Camera and room media are off");
   const [surfaces, setSurfaces] = useState<VideoSurface[]>([]);
@@ -97,25 +124,33 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   const onSceneStreamsRef = useRef(onSceneStreams);
   const onVideoFeedsRef = useRef(onVideoFeeds);
   const onProgramAudioStateRef = useRef(onProgramAudioState);
+  const onCameraQualityRef = useRef(onCameraQuality);
+  const appliedVideoProfileRef = useRef(videoProfile);
   useEffect(() => { onLocalStreamRef.current = onLocalStream; }, [onLocalStream]);
   useEffect(() => { onSceneStreamsRef.current = onSceneStreams; }, [onSceneStreams]);
   useEffect(() => { onVideoFeedsRef.current = onVideoFeeds; }, [onVideoFeeds]);
   useEffect(() => { onProgramAudioStateRef.current = onProgramAudioState; }, [onProgramAudioState]);
+  useEffect(() => { onCameraQualityRef.current = onCameraQuality; }, [onCameraQuality]);
   useEffect(() => { onCameraState?.(cameraState); }, [cameraState, onCameraState]);
   useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
 
   useEffect(() => {
     const feeds = surfaces.flatMap<LiveVideoFeed>((surface) => {
       const stream = surface.stream || (surface.track ? new MediaStream([surface.track.mediaStreamTrack]) : null);
-      return stream ? [{ id: surface.id, participantIdentity: surface.participantIdentity, name: surface.name, local: surface.local, source: surface.source, stream, muted: Boolean(surface.muted) }] : [];
+      const settings = surface.track?.mediaStreamTrack.getSettings() || stream?.getVideoTracks()[0]?.getSettings();
+      const diagnostics = stageVideoDiagnostics(settings);
+      return stream ? [{ id: surface.id, participantIdentity: surface.participantIdentity, name: surface.name, local: surface.local, source: surface.source, stream, muted: Boolean(surface.muted), width: diagnostics.width, height: diagnostics.height, frameRate: diagnostics.frameRate }] : [];
     });
     onSceneStreamsRef.current?.(feeds.slice().sort((left, right) => Number(right.source === "screen") - Number(left.source === "screen")).map((feed) => feed.stream));
     onVideoFeedsRef.current?.(feeds);
+    const camera = feeds.find((feed) => feed.local && feed.source === "camera" && !feed.muted);
+    onCameraQualityRef.current?.(camera ? stageVideoDiagnostics(camera.stream.getVideoTracks()[0]?.getSettings()) : null);
   }, [surfaces]);
 
   const addVideoTrack = useCallback((track: LocalVideoTrack | RemoteVideoTrack, id: string, name: string, local: boolean, source: "camera" | "screen" = "camera", participantIdentity?: string) => {
     setSurfaces((current) => {
-      const next = { id, participantIdentity, name, local, source, track, muted: track.isMuted };
+      const diagnostics = stageVideoDiagnostics(track.mediaStreamTrack.getSettings());
+      const next = { id, participantIdentity, name, local, source, track, muted: track.isMuted, width: diagnostics.width, height: diagnostics.height, frameRate: diagnostics.frameRate };
       const index = current.findIndex((surface) => surface.id === id);
       if (index < 0) return [...current, next];
       return current.map((surface, surfaceIndex) => surfaceIndex === index ? next : surface);
@@ -143,6 +178,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     onSceneStreamsRef.current?.([]);
     onVideoFeedsRef.current?.([]);
     onProgramAudioStateRef.current?.("off");
+    onCameraQualityRef.current?.(null);
   }, []);
 
   useEffect(() => disconnect, [disconnect]);
@@ -198,11 +234,17 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "user" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          facingMode: { ideal: "user" },
+          width: { ideal: videoConfig.profile.width },
+          height: { ideal: videoConfig.profile.height },
+          frameRate: { ideal: videoConfig.profile.frameRate },
+        },
         audio: false,
       });
+      const diagnostics = stageVideoDiagnostics(stream.getVideoTracks()[0]?.getSettings());
       fallbackStreamRef.current = stream;
-      setSurfaces([{ id: stageFeedId(identity, "camera"), participantIdentity: identity, name: "You", local: true, source: "camera", stream }]);
+      setSurfaces([{ id: stageFeedId(identity, "camera"), participantIdentity: identity, name: "You", local: true, source: "camera", stream, width: diagnostics.width, height: diagnostics.height, frameRate: diagnostics.frameRate }]);
       setStatus("local");
       setCameraState("published");
       setMicrophoneState("off");
@@ -213,7 +255,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       setCameraState("blocked");
       setMessage(mediaDeviceMessage(error));
     }
-  }, [identity]);
+  }, [identity, videoConfig.profile.frameRate, videoConfig.profile.height, videoConfig.profile.width]);
 
   const join = useCallback(async () => {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
@@ -239,7 +281,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         return;
       }
       roomRef.current?.disconnect();
-      const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true });
+      const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true, videoCaptureDefaults: videoConfig.capture, publishDefaults: videoConfig.publish });
       roomRef.current = room;
       const updateCount = () => setParticipantCount(countStageAudienceParticipants(room.remoteParticipants.values(), 1));
       room.on(RoomEvent.ParticipantConnected, updateCount);
@@ -310,11 +352,13 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       let cameraReady = false;
       let cameraIssue = "";
       try {
-        await room.localParticipant.setCameraEnabled(true);
+        appliedVideoProfileRef.current = videoProfile;
+        await room.localParticipant.setCameraEnabled(true, videoConfig.capture, videoConfig.publish);
         const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
         const localTrack = publication?.videoTrack as LocalVideoTrack | undefined;
         if (localTrack) {
           cameraReady = true;
+          localTrack.setPublishingQuality(VideoQuality.HIGH);
           addVideoTrack(localTrack, stageFeedId(identity, "camera"), "You", true, "camera", identity);
           onLocalStreamRef.current?.(new MediaStream([localTrack.mediaStreamTrack]));
         }
@@ -342,7 +386,37 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     } catch (error) {
       await openLocalPreview(error instanceof Error ? `Local self-view live; ${error.message}` : undefined);
     }
-  }, [addVideoTrack, identity, openLocalPreview, safeRoom]);
+  }, [addVideoTrack, identity, openLocalPreview, safeRoom, videoConfig, videoProfile]);
+
+  useEffect(() => {
+    if (appliedVideoProfileRef.current === videoProfile) return;
+    appliedVideoProfileRef.current = videoProfile;
+    const room = roomRef.current;
+    if (!room || status !== "livekit") return;
+    const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
+    const track = publication?.videoTrack as LocalVideoTrack | undefined;
+    if (!track || track.isMuted) return;
+    let cancelled = false;
+    setCameraState("requesting");
+    void (async () => {
+      try {
+        await room.localParticipant.unpublishTrack(track, false);
+        await track.restartTrack(videoConfig.capture);
+        await room.localParticipant.publishTrack(track, videoConfig.publish);
+        if (cancelled) return;
+        track.setPublishingQuality(VideoQuality.HIGH);
+        addVideoTrack(track, stageFeedId(identity, "camera"), "You", true, "camera", identity);
+        onLocalStreamRef.current?.(new MediaStream([track.mediaStreamTrack]));
+        setCameraState("published");
+        setMessage(`${videoConfig.profile.label} camera profile is live`);
+      } catch (error) {
+        if (cancelled) return;
+        setCameraState("blocked");
+        setMessage(mediaDeviceMessage(error));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [addVideoTrack, identity, status, videoConfig, videoProfile]);
 
   const toggleMicrophone = useCallback(async () => {
     const room = roomRef.current;
@@ -365,7 +439,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     const shouldEnable = cameraState !== "published";
     setCameraState("requesting");
     try {
-      await room.localParticipant.setCameraEnabled(shouldEnable);
+      await room.localParticipant.setCameraEnabled(shouldEnable, videoConfig.capture, videoConfig.publish);
       if (!shouldEnable) {
         setSurfaces((current) => current.filter((surface) => !surface.local || surface.source !== "camera"));
         onLocalStreamRef.current?.(null);
@@ -375,6 +449,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       const publication = room.localParticipant.getTrackPublication(Track.Source.Camera);
       const track = publication?.videoTrack as LocalVideoTrack | undefined;
       if (!track) throw new Error("Camera track was not published");
+      track.setPublishingQuality(VideoQuality.HIGH);
       addVideoTrack(track, stageFeedId(identity, "camera"), "You", true, "camera", identity);
       onLocalStreamRef.current?.(new MediaStream([track.mediaStreamTrack]));
       setCameraState("published");
@@ -382,7 +457,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       setCameraState("blocked");
       setMessage(mediaDeviceMessage(error));
     }
-  }, [addVideoTrack, cameraState, identity, status]);
+  }, [addVideoTrack, cameraState, identity, status, videoConfig]);
 
   const toggleScreenShare = useCallback(async () => {
     const room = roomRef.current;
@@ -422,7 +497,8 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   }, []);
 
   const live = status === "livekit" || status === "local";
-  return <section className={`livekit-pod ${compact ? "compact" : ""}`} data-transport={status} data-camera-state={cameraState} data-microphone-state={microphoneState} data-screen-state={screenShareState} data-video-feeds={surfaces.filter((surface) => !surface.muted).length}>
+  const cameraDiagnostics = surfaces.find((surface) => surface.local && surface.source === "camera" && !surface.muted);
+  return <section className={`livekit-pod ${compact ? "compact" : ""}`} data-transport={status} data-camera-state={cameraState} data-microphone-state={microphoneState} data-screen-state={screenShareState} data-video-profile={videoProfile} data-camera-resolution={cameraDiagnostics?.width && cameraDiagnostics.height ? `${cameraDiagnostics.width}x${cameraDiagnostics.height}` : "pending"} data-video-feeds={surfaces.filter((surface) => !surface.muted).length}>
     <div className="livekit-pod-head"><div><span className="eyebrow">LIVEKIT ROOM / {safeRoom}</span><h2>Human + agent screens</h2></div><span className={`pod-transport ${status}`}><i/>{status === "livekit" ? "LIVEKIT" : status === "local" ? "LOCAL VIDEO" : status.toUpperCase()}</span></div>
     <div className="pod-screen-grid">
       {surfaces.length ? surfaces.map((surface) => <PodVideoTile key={surface.id} surface={surface}/>) : <div className="pod-camera-off"><CameraOff/><span>Your screen is private until you join</span></div>}
@@ -430,7 +506,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     </div>
     <div ref={audioHostRef} className="pod-audio-host"/>
     <div className="livekit-pod-foot">
-      <div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "voice published" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{programAudioState !== "off" && <span className={programAudioState === "published" ? "media-ready" : ""}><Volume2/>{programAudioState === "published" ? "program mix" : programAudioState}</span>}{screenShareState === "published" && <span className="media-ready"><MonitorUp/>screen live</span>}{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>
+      <div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={cameraState === "published" ? "media-ready" : ""}><Video/>{cameraDiagnostics?.width && cameraDiagnostics.height ? `${cameraDiagnostics.width}x${cameraDiagnostics.height}${cameraDiagnostics.frameRate ? ` ${cameraDiagnostics.frameRate}fps` : ""}` : videoConfig.profile.shortLabel}</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "voice published" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{programAudioState !== "off" && <span className={programAudioState === "published" ? "media-ready" : ""}><Volume2/>{programAudioState === "published" ? "program mix" : programAudioState}</span>}{screenShareState === "published" && <span className="media-ready"><MonitorUp/>screen live</span>}{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>
       {live ? <div className="pod-media-actions">{status === "livekit" && <><button disabled={cameraState === "requesting"} onClick={() => void toggleCamera()} aria-label={cameraState === "published" ? "Turn camera off" : "Turn camera on"} title={cameraState === "published" ? "Turn camera off" : "Turn camera on"}>{cameraState === "published" ? <Camera/> : <CameraOff/>}</button><button disabled={microphoneState === "requesting"} onClick={() => void toggleMicrophone()} aria-label={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"} title={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"}>{microphoneState === "published" ? <Mic/> : <MicOff/>}</button><button disabled={screenShareState === "requesting"} onClick={() => void toggleScreenShare()} aria-label={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} title={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} className={screenShareState === "published" ? "active" : ""}><MonitorUp/></button>{playbackState === "blocked" && <button onClick={() => void resumeAudio()} aria-label="Resume room audio" title="Resume room audio"><Volume2/></button>}</>}<button className="button secondary" onClick={disconnect}><CameraOff/>Leave</button></div> : <button className="button primary" disabled={status === "connecting"} onClick={join}>{status === "connecting" ? <Radio/> : <Video/>}{status === "connecting" ? "Connecting" : status === "error" ? "Retry camera" : "Join pod"}</button>}
     </div>
     <p className="pod-status-message">{message}</p>

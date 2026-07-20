@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  RemoteVideoTrack, Room, RoomEvent, Track,
+  RemoteVideoTrack, Room, RoomEvent, Track, VideoQuality,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
 } from "livekit-client";
 import type { LiveVideoFeed } from "./LiveKitPod";
@@ -30,7 +30,7 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
     let retryAttempt = 0;
     let retryTimer = 0;
     let tokenRequest: AbortController | null = null;
-    const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true });
+    const room = new Room({ adaptiveStream: false, dynacast: true, disconnectOnPageLeave: true });
     const feeds = new Map<string, MonitoredFeed>();
     const commit = () => {
       if (!disposed) onVideoFeeds([...feeds.values()].map((entry) => entry.feed));
@@ -43,6 +43,7 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
     const addFeed = (track: RemoteVideoTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
       const source = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
       const id = stageFeedId(participant.identity, source);
+      const settings = track.mediaStreamTrack.getSettings();
       feeds.set(id, {
         participantIdentity: participant.identity,
         track,
@@ -54,12 +55,17 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
           source,
           stream: new MediaStream([track.mediaStreamTrack]),
           muted: track.isMuted,
+          width: Math.round(Number(settings.width) || 0),
+          height: Math.round(Number(settings.height) || 0),
+          frameRate: Math.round(Number(settings.frameRate) || 0),
         },
       });
       commit();
     };
     const subscribePublication = (publication: RemoteTrackPublication) => {
-      publication.setSubscribed(publication.kind === Track.Kind.Video);
+      const video = publication.kind === Track.Kind.Video;
+      publication.setSubscribed(video);
+      if (video) publication.setVideoQuality(VideoQuality.HIGH);
     };
     const subscribePublishedVideo = () => {
       room.remoteParticipants.forEach((participant) => participant.trackPublications.forEach(subscribePublication));

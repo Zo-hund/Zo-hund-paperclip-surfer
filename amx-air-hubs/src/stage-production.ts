@@ -4,9 +4,12 @@ import { defaultStageEvent, normalizeStageEvent, type StageEventState } from "./
 import { migrateLegacyStageCameraRoutes } from "./stage-camera-routing";
 import { normalizeStageAudio, type StageAudioState } from "./stage-audio";
 import { defaultStageShowWorkflow, normalizeStageShowWorkflow, type StageShowWorkflow } from "./stage-show-workflow";
+import { normalizeStageVideo, type StageVideoState } from "./stage-video";
 
 export { DEFAULT_STAGE_AUDIO } from "./stage-audio";
 export type { StageAudioAsset, StageAudioFormat, StageAudioState, StageAudioTransport, StageDeckPreset, StageDeckTrack, StageLightingLook, StageScoreCue, StageScoreMode, StageScoreState, StageSoundDesign, StageSoundscape, StageVfxLook } from "./stage-audio";
+export { DEFAULT_STAGE_VIDEO, STAGE_VIDEO_PROFILES } from "./stage-video";
+export type { StageVideoProfile, StageVideoState } from "./stage-video";
 
 export type StageMode = "in-person" | "online" | "metaverse";
 export type StageShot = "wide" | "host" | "audience" | "crane";
@@ -28,6 +31,7 @@ export interface StageProductionState {
   sponsor: SponsorCreative;
   cameraRoutes: Record<StageShot, string>;
   audio: StageAudioState;
+  video: StageVideoState;
   event: StageEventState;
   workflow: StageShowWorkflow;
   generalSeats: number;
@@ -77,6 +81,7 @@ function initialState(operatorId: string, room = "AMXSTAGE"): StageProductionSta
     sponsor: DEFAULT_SPONSORS[0],
     cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
     audio: normalizeStageAudio(),
+    video: normalizeStageVideo(),
     event: defaultStageEvent(room),
     workflow: defaultStageShowWorkflow(room),
     generalSeats: 0,
@@ -93,7 +98,7 @@ function storedState(room: string, operatorId: string) {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
     if (!saved) return initialState(operatorId, room);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...initialState(operatorId, room), ...saved, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), audio: normalizeStageAudio(saved.audio), event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), workflow: normalizeStageShowWorkflow(saved.workflow, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId, room), ...saved, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), audio: normalizeStageAudio(saved.audio), video: normalizeStageVideo(saved.video), event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), workflow: normalizeStageShowWorkflow(saved.workflow, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
     return initialState(operatorId, room);
   }
@@ -127,7 +132,7 @@ export function useStageProduction(roomCode: string, options: { readOnly?: boole
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), audio: normalizeStageAudio(packet.state.audio), event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), workflow: normalizeStageShowWorkflow(packet.state.workflow, room), revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), audio: normalizeStageAudio(packet.state.audio), video: normalizeStageVideo(packet.state.video), event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), workflow: normalizeStageShowWorkflow(packet.state.workflow, room), revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;

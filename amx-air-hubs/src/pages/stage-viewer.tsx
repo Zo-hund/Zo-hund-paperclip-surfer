@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Clapperboard, Maximize2, MonitorPlay, Radio, Share2, Users, Volume2, VolumeX, Wifi } from "lucide-react";
 import {
-  RemoteVideoTrack, Room, RoomEvent, Track,
+  RemoteVideoTrack, Room, RoomEvent, Track, VideoQuality,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
 } from "livekit-client";
 import { useParams } from "react-router-dom";
@@ -51,6 +51,7 @@ export function StageLiveViewerPage() {
   const addFeed = useCallback((track: RemoteVideoTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
     const source = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
     const id = stageFeedId(participant.identity, source);
+    const settings = track.mediaStreamTrack.getSettings();
     const feed: ViewerFeed = {
       id,
       participantIdentity: participant.identity,
@@ -59,6 +60,9 @@ export function StageLiveViewerPage() {
       source,
       stream: new MediaStream([track.mediaStreamTrack]),
       muted: track.isMuted,
+      width: Math.round(Number(settings.width) || 0),
+      height: Math.round(Number(settings.height) || 0),
+      frameRate: Math.round(Number(settings.frameRate) || 0),
       track,
     };
     setFeeds((current) => current.some((item) => item.id === id) ? current.map((item) => item.id === id ? feed : item) : [...current, feed]);
@@ -88,7 +92,10 @@ export function StageLiveViewerPage() {
         setFeeds((current) => current.filter((feed) => feed.participantIdentity !== participant.identity));
       });
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-        if (track.kind === Track.Kind.Video) addFeed(track as RemoteVideoTrack, publication, participant);
+        if (track.kind === Track.Kind.Video) {
+          publication.setVideoQuality(VideoQuality.HIGH);
+          addFeed(track as RemoteVideoTrack, publication, participant);
+        }
         if (track.kind === Track.Kind.Audio && audioHostRef.current) audioHostRef.current.appendChild(track.attach());
       });
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
@@ -186,6 +193,6 @@ export function StageLiveViewerPage() {
     <footer className="stage-viewer-sponsor"><i/><span><small>PRESENTED WITH</small><b>{production.state.sponsor.name}</b></span><strong>{production.state.sponsor.cta}</strong></footer>
     <div ref={audioHostRef} className="stage-viewer-audio" aria-hidden="true"/>
     {notice && <button className="stage-viewer-notice" onClick={() => setNotice("")}><span>{notice}</span></button>}
-    <div className="stage-viewer-health" data-status={status} data-renderer={backend} data-program-feed={programFeed?.id || "virtual"} data-room={production.room}/>
+    <div className="stage-viewer-health" data-status={status} data-renderer={backend} data-program-feed={programFeed?.id || "virtual"} data-program-resolution={programFeed?.width && programFeed.height ? `${programFeed.width}x${programFeed.height}` : "virtual"} data-output-profile={production.state.video.outputProfile} data-room={production.room}/>
   </main>;
 }

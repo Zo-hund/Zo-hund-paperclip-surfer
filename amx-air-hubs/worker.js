@@ -360,6 +360,16 @@ function liveKitEgressDestinations(env) {
     });
 }
 
+const LIVEKIT_EGRESS_PROFILES = {
+  "720p30": { id: "720p30", width: 1280, height: 720, frameRate: 30, preset: 0 },
+  "1080p30": { id: "1080p30", width: 1920, height: 1080, frameRate: 30, preset: 2 },
+  "1080p60": { id: "1080p60", width: 1920, height: 1080, frameRate: 60, preset: 3 },
+};
+
+function liveKitEgressProfile(value) {
+  return LIVEKIT_EGRESS_PROFILES[safeId(value).toLowerCase()] || LIVEKIT_EGRESS_PROFILES["1080p30"];
+}
+
 async function matchesSecret(provided, expected) {
   if (!provided || !expected) return false;
   const values = await Promise.all([provided, expected].map((value) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
@@ -1420,25 +1430,27 @@ async function handleApi(request, env, url, requestId) {
     await authorizeDjBroadcast(request, env);
     const body = await readJson(request, 16 * 1024);
     const room = safeId(body.room).toUpperCase().slice(0, 64);
+    const videoProfile = liveKitEgressProfile(body.videoProfile);
+    const profileResponse = { videoProfile: videoProfile.id, width: videoProfile.width, height: videoProfile.height, frameRate: videoProfile.frameRate };
     if (!room) return reply({ error: "Room is required", requestId }, 400);
     if (url.pathname === "/api/livekit/egress/dj/status") {
       const result = await callLiveKitEgress(env, "ListEgress", { room_name: room, active: true });
       const items = (Array.isArray(result.items) ? result.items : []).map(sanitizeEgress).filter((item) => item.id && item.room === room);
-      return reply({ configured: true, destinationCount: destinations.length, active: items[0] || null, requestId });
+      return reply({ configured: true, destinationCount: destinations.length, active: items[0] || null, ...profileResponse, requestId });
     }
     if (url.pathname === "/api/livekit/egress/dj/start") {
       const listed = await callLiveKitEgress(env, "ListEgress", { room_name: room, active: true });
       const existing = (Array.isArray(listed.items) ? listed.items : []).map(sanitizeEgress).find((item) => item.id && item.room === room);
-      if (existing) return reply({ configured: true, destinationCount: destinations.length, active: existing, alreadyActive: true, requestId });
+      if (existing) return reply({ configured: true, destinationCount: destinations.length, active: existing, alreadyActive: true, ...profileResponse, requestId });
       const result = await callLiveKitEgress(env, "StartRoomCompositeEgress", {
         room_name: room,
         layout: "speaker",
         stream_outputs: [{ protocol: 1, urls: destinations }],
-        preset: 0,
+        preset: videoProfile.preset,
       });
       const active = sanitizeEgress(result);
       logEvent("info", "livekit.dj_egress_started", { requestId, room, egressId: active.id, destinationCount: destinations.length });
-      return reply({ configured: true, destinationCount: destinations.length, active, requestId }, 201);
+      return reply({ configured: true, destinationCount: destinations.length, active, ...profileResponse, requestId }, 201);
     }
     if (url.pathname === "/api/livekit/egress/dj/stop") {
       const egressId = safeId(body.egressId).slice(0, 80);
@@ -1449,7 +1461,7 @@ async function handleApi(request, env, url, requestId) {
       const result = await callLiveKitEgress(env, "StopEgress", { egress_id: egressId });
       const stopped = sanitizeEgress(result);
       logEvent("info", "livekit.dj_egress_stopped", { requestId, room, egressId: stopped.id || egressId });
-      return reply({ configured: true, destinationCount: destinations.length, active: null, stopped: { ...stopped, id: stopped.id || egressId }, requestId });
+      return reply({ configured: true, destinationCount: destinations.length, active: null, stopped: { ...stopped, id: stopped.id || egressId }, ...profileResponse, requestId });
     }
     return reply({ error: "DJ broadcast action not found", requestId }, 404);
   }

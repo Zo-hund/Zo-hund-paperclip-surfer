@@ -764,7 +764,7 @@ describe("AMX AIR Hubs Worker API", () => {
       body: JSON.stringify(body),
     });
 
-    const startResponse = await worker.fetch(controlledRequest("/api/livekit/egress/dj/start", { room: "AMXSTAGE" }), env);
+    const startResponse = await worker.fetch(controlledRequest("/api/livekit/egress/dj/start", { room: "AMXSTAGE", videoProfile: "1080p60" }), env);
     const startText = await startResponse.text();
     const start = JSON.parse(startText);
     const stopResponse = await worker.fetch(controlledRequest("/api/livekit/egress/dj/stop", { room: "AMXSTAGE", egressId: "EG_DJ123" }), env);
@@ -773,6 +773,10 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(startResponse.status, 201);
     assert.equal(start.active.id, "EG_DJ123");
     assert.equal(start.destinationCount, 2);
+    assert.equal(start.videoProfile, "1080p60");
+    assert.equal(start.width, 1920);
+    assert.equal(start.height, 1080);
+    assert.equal(start.frameRate, 60);
     assert.equal(startText.includes("private-stream-key"), false);
     assert.equal(startText.includes("backup-key"), false);
     assert.equal(stopResponse.status, 200);
@@ -784,7 +788,7 @@ describe("AMX AIR Hubs Worker API", () => {
       room_name: "AMXSTAGE",
       layout: "speaker",
       stream_outputs: [{ protocol: 1, urls: ["rtmps://stream.example.com/live/private-stream-key", "rtmp://backup.example.com/live/backup-key"] }],
-      preset: 0,
+      preset: 3,
     });
     assert.match(calls[1].authorization, /^Bearer [^.]+\.[^.]+\.[^.]+$/);
     const tokenPayload = JSON.parse(Buffer.from(calls[1].authorization.slice(7).split(".")[1], "base64url").toString("utf8"));
