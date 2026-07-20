@@ -92,6 +92,8 @@ The participant grant permits room join, publish, subscribe, and data publish fo
 
 The room UI reports camera publication, microphone publication/mute state, browser audio playback permission, local connection quality, and active speakers. `voice published` means a microphone track exists in LiveKit; `audio ready` means the browser can play subscribed room audio. Both are required before the UI describes voice as ready.
 
+The public viewer exposes an explicit Listen Live gate because mobile Safari and Chrome block remote audio until a user gesture. It calls `Room.startAudio()`, resumes every attached LiveKit audio element, and automatically starts audio tracks that arrive after the listener unlocks playback. Every room used by `/watch/:room` must be listed in `PUBLIC_LIVEKIT_ROOMS`.
+
 The pod also publishes browser screen sharing through LiveKit. The share picker opens only after the user selects the monitor button. Camera and screen-share video tracks are routed into the Blender-authored `Screen_User` and agent display meshes. The pod requests optional tab/system audio, but the operator must still select a supported browser tab or screen and explicitly enable audio in the native share picker. When published, LiveKit labels it as the screen-share audio track and includes it in room composites.
 
 LiveKit video surfaces retain their participant name, stable track ID, camera/screen source, local/remote ownership, and mute state. The AMX XR Stage uses this metadata for its ISO camera router instead of treating tracks as anonymous streams.

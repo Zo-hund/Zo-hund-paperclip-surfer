@@ -42,11 +42,16 @@ export function StageLiveViewerPage() {
   const [feeds, setFeeds] = useState<ViewerFeed[]>([]);
   const [participantCount, setParticipantCount] = useState(1);
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioTrackCount, setAudioTrackCount] = useState(0);
   const [notice, setNotice] = useState("");
   const [backend, setBackend] = useState<RendererBackend>("webgl2");
   const roomRef = useRef<Room | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
+  const audioEnabledRef = useRef(false);
+  const audioTrackIdsRef = useRef(new Set<string>());
   const seatCounts = stageSeatCounts(production.state.event.seats);
+
+  useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
 
   const addFeed = useCallback((track: RemoteVideoTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
     const source = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
@@ -96,18 +101,46 @@ export function StageLiveViewerPage() {
           publication.setVideoQuality(VideoQuality.HIGH);
           addFeed(track as RemoteVideoTrack, publication, participant);
         }
-        if (track.kind === Track.Kind.Audio && audioHostRef.current) audioHostRef.current.appendChild(track.attach());
+        if (track.kind === Track.Kind.Audio && audioHostRef.current) {
+          const element = track.attach();
+          element.autoplay = true;
+          element.muted = false;
+          audioHostRef.current.appendChild(element);
+          const trackId = publication.trackSid || track.sid;
+          if (trackId) audioTrackIdsRef.current.add(trackId);
+          setAudioTrackCount(audioTrackIdsRef.current.size);
+          if (audioEnabledRef.current) void element.play().catch(() => {
+            audioEnabledRef.current = false;
+            setAudioEnabled(false);
+            setNotice("Live sound needs another tap on this phone.");
+          });
+        }
       });
-      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication) => {
         track.detach().forEach((element) => element.remove());
         setFeeds((current) => current.filter((feed) => feed.track !== track));
+        if (track.kind === Track.Kind.Audio) {
+          const trackId = publication.trackSid || track.sid;
+          if (trackId) audioTrackIdsRef.current.delete(trackId);
+          setAudioTrackCount(audioTrackIdsRef.current.size);
+        }
       });
       room.on(RoomEvent.TrackMuted, (publication) => setFeeds((current) => current.map((feed) => feed.track === publication.track ? { ...feed, muted: true } : feed)));
       room.on(RoomEvent.TrackUnmuted, (publication) => setFeeds((current) => current.map((feed) => feed.track === publication.track ? { ...feed, muted: false } : feed)));
-      room.on(RoomEvent.AudioPlaybackStatusChanged, () => setAudioEnabled(room.canPlaybackAudio));
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        audioEnabledRef.current = room.canPlaybackAudio;
+        setAudioEnabled(room.canPlaybackAudio);
+      });
       room.on(RoomEvent.Reconnecting, () => setStatus("connecting"));
       room.on(RoomEvent.Reconnected, () => { setStatus("live"); updateCount(); });
-      room.on(RoomEvent.Disconnected, () => { setStatus("offline"); setFeeds([]); });
+      room.on(RoomEvent.Disconnected, () => {
+        audioEnabledRef.current = false;
+        audioTrackIdsRef.current.clear();
+        setAudioEnabled(false);
+        setAudioTrackCount(0);
+        setStatus("offline");
+        setFeeds([]);
+      });
       await room.connect(credentials.serverUrl, credentials.participantToken);
       updateCount();
       setStatus("live");
@@ -139,8 +172,17 @@ export function StageLiveViewerPage() {
     if (!room) return;
     try {
       await room.startAudio();
-      setAudioEnabled(room.canPlaybackAudio);
-      setNotice(room.canPlaybackAudio ? "Program audio enabled." : "Tap again after allowing audio playback.");
+      const elements = [...(audioHostRef.current?.querySelectorAll("audio") || [])];
+      const results = await Promise.allSettled(elements.map((element) => {
+        element.muted = false;
+        element.volume = 1;
+        return element.play();
+      }));
+      const mediaReady = elements.length === 0 || results.some((result) => result.status === "fulfilled");
+      const ready = room.canPlaybackAudio && mediaReady;
+      audioEnabledRef.current = ready;
+      setAudioEnabled(ready);
+      setNotice(ready ? audioTrackCount ? "Live room sound is on." : "Sound is on. Waiting for the Stage program mix." : "Tap Listen Live again after allowing audio playback.");
     } catch {
       setNotice("Audio playback is blocked by this browser.");
     }
@@ -189,6 +231,8 @@ export function StageLiveViewerPage() {
       <div className="stage-viewer-mode" aria-label="Viewer mode"><button className={mode === "program" ? "active" : ""} disabled={!programFeed} onClick={() => setMode("program")} aria-label="Watch program feed" title="Program feed"><MonitorPlay/><span>Program</span></button><button className={mode === "venue" || !programFeed ? "active" : ""} onClick={() => setMode("venue")} aria-label="Watch virtual venue" title="Virtual venue"><Box/><span>Venue</span></button></div>
       <button className={audioEnabled ? "audio active" : "audio"} disabled={status !== "live"} onClick={() => void enableAudio()} aria-label={audioEnabled ? "Program audio enabled" : "Enable program audio"} title={audioEnabled ? "Program audio enabled" : "Enable program audio"}>{audioEnabled ? <Volume2/> : <VolumeX/>}</button>
     </div>
+
+    {status === "live" && !audioEnabled && <button className="stage-viewer-audio-gate" onClick={() => void enableAudio()}><Volume2/><span><b>LISTEN LIVE</b><small>{audioTrackCount ? `${audioTrackCount} AUDIO FEED${audioTrackCount === 1 ? "" : "S"} READY` : "VOICE + PROGRAM MIX"}</small></span></button>}
 
     <footer className="stage-viewer-sponsor"><i/><span><small>PRESENTED WITH</small><b>{production.state.sponsor.name}</b></span><strong>{production.state.sponsor.cta}</strong></footer>
     <div ref={audioHostRef} className="stage-viewer-audio" aria-hidden="true"/>
