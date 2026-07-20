@@ -14,6 +14,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Synchronized 720p30, 1080p30, and 1080p60 Stage profiles with actual camera-resolution diagnostics, LiveKit simulcast high-layer routing, and protected selectable RoomComposite egress.
 - Enterprise pre-production, show-runtime, and post-production workflow with crew call sheets, preflight gates, approvals, timed Pod/Main Stage rundowns, director holds, durable activity evidence, delivery tracking, and production-report export.
 - Private Stage audio uploads with rights confirmation, real Deck A/B playback, synchronized stingers, Web Audio mixing, local preview, and LiveKit program-bus publication.
+- Studio audio mixing with processed 48 kHz voice, independent program and atmosphere buses, live meters, channel switches, master mute, and direct Nexus room or podcast handoff.
 - Cue-follow show scoring with a shared beat clock, programmable Three.js lighting looks, safe music-synchronized VFX, and procedural transitions on the LiveKit program mix.
 - HLS/MP4/WebM media playback composited onto dedicated in-world Three.js display meshes with Fit and Fill modes.
 - Google Maps search, selection, shared geo anchors, and agent location context.

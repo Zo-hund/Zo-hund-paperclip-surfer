@@ -13,6 +13,7 @@ import { useStageSoundscape } from "../StageSoundscape";
 import { StageEventConsole } from "../StageEventConsole";
 import { StageScoreDesigner } from "../StageScoreDesigner";
 import { StageShowWorkflow, type StageWorkflowRuntimeCue } from "../StageShowWorkflow";
+import { StageStudioMixer } from "../StageStudioMixer";
 import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
 import { getActiveTenant } from "../operations";
 import { STAGE_DECK_PRESETS, applyStageScoreCue, normalizeStageScore, stageAudioTrackId, type StageScoreState } from "../stage-audio";
@@ -23,6 +24,7 @@ import {
   DEFAULT_SPONSORS, STAGE_VIDEO_PROFILES, useStageProduction, type SponsorCreative, type StageAudioFormat, type StageAudioState, type StageCue, type StageDeckTrack, type StageMode, type StageShot, type StageSoundscape, type StageVideoState,
 } from "../stage-production";
 import type { StageVideoDiagnostics } from "../stage-video";
+import { stageLaunchConfig } from "../nexus-broadcast";
 
 const AMXXRStageScene = lazy(async () => ({ default: (await import("../AMXXRStageScene")).AMXXRStageScene }));
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
@@ -79,20 +81,24 @@ function CameraFeedPreview({ feed }: { feed: LiveVideoFeed | null }) {
 
 export function AMXXRStagePage() {
   const { settings, activeMission } = useAMX();
-  const [view, setView] = useState<ConsoleView>("workflow");
-  const [roomCode, setRoomCode] = useState(() => localStorage.getItem("amx_stage_room") || "AMXSTAGE");
+  const launch = useMemo(() => stageLaunchConfig(window.location.search), []);
+  const [view, setView] = useState<ConsoleView>(() => launch.openAudio ? "audio" : "workflow");
+  const [roomCode, setRoomCode] = useState(() => launch.room || localStorage.getItem("amx_stage_room") || "AMXSTAGE");
   const production = useStageProduction(roomCode);
   const soundscapeRuntime = useStageSoundscape(production.state.audio);
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
   const [feedMonitorStatus, setFeedMonitorStatus] = useState<StageFeedMonitorStatus>("connecting");
   const [cameraMediaState, setCameraMediaState] = useState<CaptureState>("off");
+  const [microphoneMediaState, setMicrophoneMediaState] = useState<CaptureState>("off");
+  const [voiceLevel, setVoiceLevel] = useState(0);
   const [cameraQuality, setCameraQuality] = useState<StageVideoDiagnostics | null>(null);
   const [programAudioState, setProgramAudioState] = useState<ProgramAudioState>("off");
   const [djControlToken, setDjControlToken] = useState("");
   const [djBroadcast, setDjBroadcast] = useState<DjBroadcastState | null>(null);
   const [djBroadcastBusy, setDjBroadcastBusy] = useState(false);
   const [djBroadcastMessage, setDjBroadcastMessage] = useState("Enter the private control token to check the broadcast destination.");
+  const launchAppliedRef = useRef(false);
   const consoleBodyRef = useRef<HTMLDivElement>(null);
   const [backend, setBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
   const [podDraft, setPodDraft] = useState("");
@@ -115,6 +121,23 @@ export function AMXXRStagePage() {
     return { ...camera, route: configuredRoute, feed: selectStageProgramFeed(orderedVideoFeeds, camera.id, configuredRoute) };
   }), [orderedVideoFeeds, production.state.cameraRoutes]);
   const programChannel = cameraChannels.find((camera) => camera.id === production.state.shot) || cameraChannels[0];
+
+  useEffect(() => {
+    if (launchAppliedRef.current || !launch.fromNexus || production.room !== roomCode) return;
+    launchAppliedRef.current = true;
+    localStorage.setItem("amx_stage_room", production.room);
+    const format = launch.format || "podcast";
+    const formatPatch: Partial<StageAudioState> = format === "podcast"
+      ? { format, soundscape: "podcast-room", deckA: "spoken-bed", bpm: 88 }
+      : { format, soundscape: "air-grid", bpm: 112 };
+    production.update({
+      mode: "online",
+      audio: { ...production.state.audio, ...formatPatch, voiceEnabled: true, soundscapeEnabled: true, masterMuted: false },
+      event: { ...production.state.event, sourceRoom: production.room },
+      connectedPods: Array.from(new Set([...production.state.connectedPods, production.room])).slice(-8),
+    });
+    setView("audio");
+  }, [launch.format, launch.fromNexus, production, roomCode]);
 
   const changeRoom = (value: string) => {
     const safe = value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24);
@@ -364,11 +387,13 @@ export function AMXXRStagePage() {
 
           <div className="stage-console-view" hidden={view !== "collab"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">CROSS-POD CONNECTION</span><h2>Linked showcases</h2></div><span className="stage-sync-state"><i/>{production.transport}</span></header><label className="stage-room-field">Stage room<input value={roomCode} onChange={(event) => changeRoom(event.target.value)}/></label><div className="stage-pod-link"><input value={podDraft} onChange={(event) => setPodDraft(event.target.value)} placeholder="POD CODE"/><button onClick={linkPod} disabled={!podDraft.trim()}><Link2/>Link</button></div><div className="stage-pod-list">{production.state.connectedPods.map((pod) => <div key={pod} className={production.state.event.sourceRoom === pod ? "promoted" : ""}><span><i/><b>{pod}</b><small>{production.state.event.sourceRoom === pod ? "promoted event source" : "stage cue bus linked"}</small></span><span className="stage-pod-actions"><button onClick={() => promotePod(pod)} aria-label={`Promote ${pod} to stage`} title={`Promote ${pod} to stage`}><ArrowUpToLine/></button><button onClick={() => unlinkPod(pod)} aria-label={`Unlink ${pod}`} title={`Unlink ${pod}`}><Minus/></button></span></div>)}</div></section>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onCameraState={setCameraMediaState} programAudioStream={soundscapeRuntime.programStream} onProgramAudioState={setProgramAudioState} videoProfile={production.state.video.captureProfile} onCameraQuality={setCameraQuality}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onCameraState={setCameraMediaState} programAudioStream={soundscapeRuntime.programStream} onProgramAudioState={setProgramAudioState} microphoneEnabled={production.state.audio.voiceEnabled && !production.state.audio.masterMuted} microphoneGain={production.state.audio.voiceGain} onMicrophoneEnabledChange={(voiceEnabled) => updateAudio({ voiceEnabled })} onMicrophoneState={setMicrophoneMediaState} onVoiceLevel={setVoiceLevel} autoConnectProgram videoProfile={production.state.video.captureProfile} onCameraQuality={setCameraQuality}/></Suspense>
           </div>
 
           <div className="stage-console-view stage-audio-console" hidden={view !== "audio"}>
             <section className="stage-control-section"><header><div><span className="eyebrow">PROGRAM AUDIO</span><h2>Music and podcast runtime</h2></div><span className={`stage-sync-state ${production.state.audio.transport === "playing" ? "audio-live" : ""}`}><i/>{production.state.audio.transport}</span></header><div className="stage-audio-format">{(["show", "podcast", "dj"] as StageAudioFormat[]).map((format) => { const Icon = format === "podcast" ? Podcast : format === "dj" ? Disc3 : Music2; return <button key={format} className={production.state.audio.format === format ? "active" : ""} onClick={() => selectAudioFormat(format)}><Icon/><span>{format}</span></button>; })}</div><div className="stage-audio-transport"><button className={production.state.audio.transport === "playing" ? "active" : ""} onClick={() => void toggleAudioTransport()}>{production.state.audio.transport === "playing" ? <Pause/> : <Play/>}<span>{production.state.audio.transport === "playing" ? "STOP PROGRAM" : "START PROGRAM"}</span></button><button className={soundscapeRuntime.enabled ? "monitoring" : ""} onClick={() => void (soundscapeRuntime.enabled ? soundscapeRuntime.disable() : soundscapeRuntime.enable())}><Headphones/><span>{soundscapeRuntime.enabled ? "MONITOR ON" : "ENABLE MONITOR"}</span></button></div><div className="stage-audio-runtime"><span><Volume2/><b>{soundscapeRuntime.status.toUpperCase()}</b><small>LOCAL MONITOR</small></span><span><Radio/><b>{programAudioState.toUpperCase()}</b><small>ROOM MIX</small></span><span><Wifi/><b>{production.transport.toUpperCase()}</b><small>PROGRAM SYNC</small></span><span><Music2/><b>{elapsedLabel(production.state.audio.startedAt, runtimeNow)}</b><small>RUNTIME</small></span></div></section>
+
+            <StageStudioMixer audio={production.state.audio} microphoneState={microphoneMediaState} voiceLevel={voiceLevel} programLevel={soundscapeRuntime.levels.program} ambienceLevel={soundscapeRuntime.levels.ambience} monitorEnabled={soundscapeRuntime.enabled} monitorStatus={soundscapeRuntime.status} programAudioState={programAudioState} onUpdate={updateAudio} onToggleProgram={toggleAudioTransport} onToggleMonitor={async () => { if (soundscapeRuntime.enabled) await soundscapeRuntime.disable(); else await soundscapeRuntime.enable(); }}/>
 
             <StageScoreDesigner audio={production.state.audio} currentCue={production.state.cue} onUpdate={updateScore} onFire={fireScoreCue}/>
 
@@ -378,7 +403,7 @@ export function AMXXRStagePage() {
 
             <section className="stage-control-section"><header><div><span className="eyebrow">DJ BOOTH / POD</span><h2>Deck mixer</h2></div><b className="stage-audio-bpm">{production.state.audio.bpm} BPM</b></header><div className="stage-deck-grid"><label><span>DECK A</span><select value={production.state.audio.deckA} onChange={(event) => updateAudio({ deckA: event.target.value as StageDeckTrack })}>{deckTracks.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label><label><span>DECK B</span><select value={production.state.audio.deckB} onChange={(event) => updateAudio({ deckB: event.target.value as StageDeckTrack })}>{deckTracks.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label></div><label className="stage-audio-slider"><span>CROSSFADER <b>{production.state.audio.crossfader}%</b></span><input type="range" min="0" max="100" value={production.state.audio.crossfader} onChange={(event) => updateAudio({ crossfader: Number(event.target.value) })}/></label><div className="stage-audio-levels"><label><span>MASTER <b>{production.state.audio.master}%</b></span><input type="range" min="0" max="100" value={production.state.audio.master} onChange={(event) => updateAudio({ master: Number(event.target.value) })}/></label><div className="stage-bpm-stepper"><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm - 1, 60, 160) })} aria-label="Decrease BPM"><Minus/></button><output>{production.state.audio.bpm}</output><button onClick={() => updateAudio({ bpm: clamp(production.state.audio.bpm + 1, 60, 160) })} aria-label="Increase BPM"><Plus/></button></div></div><div className="stage-stinger-control"><label><span>STINGER</span><select value={production.state.audio.stingerTrack || ""} onChange={(event) => updateAudio({ stingerTrack: event.target.value ? event.target.value as StageDeckTrack : null })}><option value="">NO STINGER</option>{deckTracks.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}</select></label><button disabled={!production.state.audio.stingerTrack} onClick={() => void fireStinger()}><Sparkles/>FIRE</button></div></section>
 
-            <section className="stage-control-section"><header><div><span className="eyebrow">IN-WORLD SOUNDSCAPE</span><h2>Spatial atmosphere</h2></div><Headphones/></header><div className="stage-soundscape-grid">{SOUNDSCAPES.map((soundscape) => <button key={soundscape.id} className={production.state.audio.soundscape === soundscape.id ? "active" : ""} onClick={() => updateAudio({ soundscape: soundscape.id })}><span>{soundscape.label}</span><i/></button>)}</div></section>
+            <section className="stage-control-section"><header><div><span className="eyebrow">IN-WORLD SOUNDSCAPE</span><h2>Spatial atmosphere</h2></div><span className={`stage-sync-state ${production.state.audio.soundscapeEnabled ? "audio-live" : ""}`}><i/>{production.state.audio.soundscapeEnabled ? "ON" : "OFF"}</span></header><div className="stage-soundscape-grid">{SOUNDSCAPES.map((soundscape) => <button key={soundscape.id} className={production.state.audio.soundscape === soundscape.id ? "active" : ""} onClick={() => updateAudio({ soundscape: soundscape.id, soundscapeEnabled: true })}><span>{soundscape.label}</span><i/></button>)}</div></section>
 
             <section className="stage-control-section stage-podcast-runtime"><header><div><span className="eyebrow">PODCAST POD</span><h2>Record cue and rundown</h2></div><Mic2/></header><button className={production.state.audio.recording ? "recording" : ""} onClick={() => void toggleRecordingCue()}><CircleDot/><span>{production.state.audio.recording ? "STOP RECORD CUE" : "START RECORD CUE"}</span><time>{elapsedLabel(production.state.audio.recordStartedAt, runtimeNow)}</time></button><div><span><b>HOST</b><small>LiveKit voice</small></span><span><b>GUEST</b><small>Pod participant</small></span><span><b>BED</b><small>{SOUNDSCAPES.find((item) => item.id === production.state.audio.soundscape)?.label}</small></span></div></section>
           </div>

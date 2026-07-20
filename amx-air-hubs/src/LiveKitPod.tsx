@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Camera, CameraOff, Mic, MicOff, MonitorUp, Radio, Users, Video, Volume2, VolumeX, Wifi } from "lucide-react";
 import {
-  LocalVideoTrack, RemoteVideoTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
-  type TrackPublishOptions, type VideoCaptureOptions,
+  AudioPresets, LocalVideoTrack, RemoteVideoTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
+  type AudioCaptureOptions, type TrackPublishOptions, type VideoCaptureOptions,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
 } from "livekit-client";
 import type { Agent } from "./data";
@@ -49,9 +49,93 @@ interface Props {
   onCameraState?: (state: CaptureState) => void;
   programAudioStream?: MediaStream | null;
   onProgramAudioState?: (state: ProgramAudioState) => void;
+  microphoneEnabled?: boolean;
+  microphoneGain?: number;
+  onMicrophoneEnabledChange?: (enabled: boolean) => void;
+  onMicrophoneState?: (state: CaptureState) => void;
+  onVoiceLevel?: (level: number) => void;
+  autoConnectProgram?: boolean;
   videoProfile?: StageVideoProfile;
   onCameraQuality?: (quality: StageVideoDiagnostics | null) => void;
   compact?: boolean;
+}
+
+type StudioVoiceEngine = {
+  context: AudioContext;
+  gain: GainNode;
+  rawStream: MediaStream;
+  outputTrack: MediaStreamTrack;
+  meterTimer: number;
+};
+
+const STUDIO_VOICE_CAPTURE = {
+  autoGainControl: true,
+  channelCount: 1,
+  echoCancellation: true,
+  latency: { ideal: 0.01 },
+  noiseSuppression: true,
+  sampleRate: { ideal: 48_000 },
+  sampleSize: { ideal: 24 },
+  voiceIsolation: true,
+} satisfies AudioCaptureOptions;
+
+async function createStudioVoiceEngine(gainPercent: number, onLevel: (level: number) => void) {
+  const rawStream = await navigator.mediaDevices.getUserMedia({ audio: STUDIO_VOICE_CAPTURE, video: false });
+  const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextConstructor) {
+    rawStream.getTracks().forEach((track) => track.stop());
+    throw new Error("Studio voice processing is unavailable in this browser");
+  }
+  const context = new AudioContextConstructor({ latencyHint: "interactive", sampleRate: 48_000 });
+  await context.resume();
+  const source = context.createMediaStreamSource(rawStream);
+  const highPass = context.createBiquadFilter();
+  highPass.type = "highpass";
+  highPass.frequency.value = 82;
+  highPass.Q.value = 0.72;
+  const presence = context.createBiquadFilter();
+  presence.type = "peaking";
+  presence.frequency.value = 3_200;
+  presence.Q.value = 0.9;
+  presence.gain.value = 2.2;
+  const compressor = context.createDynamicsCompressor();
+  compressor.threshold.value = -24;
+  compressor.knee.value = 18;
+  compressor.ratio.value = 4;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.18;
+  const gain = context.createGain();
+  gain.gain.value = Math.max(0, Math.min(1.2, gainPercent / 100));
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 256;
+  const output = context.createMediaStreamDestination();
+  source.connect(highPass).connect(presence).connect(compressor).connect(gain).connect(analyser).connect(output);
+  const meterData = new Uint8Array(analyser.fftSize);
+  const meterTimer = window.setInterval(() => {
+    analyser.getByteTimeDomainData(meterData);
+    let energy = 0;
+    for (const sample of meterData) {
+      const normalized = (sample - 128) / 128;
+      energy += normalized * normalized;
+    }
+    onLevel(Math.min(1, Math.sqrt(energy / meterData.length) * 3.6));
+  }, 100);
+  const outputTrack = output.stream.getAudioTracks()[0];
+  if (!outputTrack) {
+    window.clearInterval(meterTimer);
+    rawStream.getTracks().forEach((track) => track.stop());
+    void context.close();
+    throw new Error("Studio voice processor did not create an audio track");
+  }
+  return { context, gain, rawStream, outputTrack, meterTimer } satisfies StudioVoiceEngine;
+}
+
+function closeStudioVoiceEngine(engine: StudioVoiceEngine | null) {
+  if (!engine) return;
+  window.clearInterval(engine.meterTimer);
+  engine.rawStream.getTracks().forEach((track) => track.stop());
+  engine.outputTrack.stop();
+  void engine.context.close();
 }
 
 function liveKitVideoConfig(profileId: StageVideoProfile) {
@@ -101,7 +185,7 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
   return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{resolution}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, videoProfile = "720p30", onCameraQuality, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, videoProfile = "720p30", onCameraQuality, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const videoConfig = useMemo(() => liveKitVideoConfig(videoProfile), [videoProfile]);
@@ -119,19 +203,25 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   const roomRef = useRef<Room | null>(null);
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const programTrackRef = useRef<MediaStreamTrack | null>(null);
+  const voiceEngineRef = useRef<StudioVoiceEngine | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
   const onLocalStreamRef = useRef(onLocalStream);
   const onSceneStreamsRef = useRef(onSceneStreams);
   const onVideoFeedsRef = useRef(onVideoFeeds);
   const onProgramAudioStateRef = useRef(onProgramAudioState);
   const onCameraQualityRef = useRef(onCameraQuality);
+  const onMicrophoneStateRef = useRef(onMicrophoneState);
+  const onVoiceLevelRef = useRef(onVoiceLevel);
   const appliedVideoProfileRef = useRef(videoProfile);
   useEffect(() => { onLocalStreamRef.current = onLocalStream; }, [onLocalStream]);
   useEffect(() => { onSceneStreamsRef.current = onSceneStreams; }, [onSceneStreams]);
   useEffect(() => { onVideoFeedsRef.current = onVideoFeeds; }, [onVideoFeeds]);
   useEffect(() => { onProgramAudioStateRef.current = onProgramAudioState; }, [onProgramAudioState]);
   useEffect(() => { onCameraQualityRef.current = onCameraQuality; }, [onCameraQuality]);
+  useEffect(() => { onMicrophoneStateRef.current = onMicrophoneState; }, [onMicrophoneState]);
+  useEffect(() => { onVoiceLevelRef.current = onVoiceLevel; }, [onVoiceLevel]);
   useEffect(() => { onCameraState?.(cameraState); }, [cameraState, onCameraState]);
+  useEffect(() => { onMicrophoneStateRef.current?.(microphoneState); }, [microphoneState]);
   useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
 
   useEffect(() => {
@@ -163,6 +253,8 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     void roomRef.current?.disconnect();
     roomRef.current = null;
     programTrackRef.current = null;
+    closeStudioVoiceEngine(voiceEngineRef.current);
+    voiceEngineRef.current = null;
     setSurfaces([]);
     setParticipantCount(1);
     setCameraState("off");
@@ -179,6 +271,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     onVideoFeedsRef.current?.([]);
     onProgramAudioStateRef.current?.("off");
     onCameraQualityRef.current?.(null);
+    onVoiceLevelRef.current?.(0);
   }, []);
 
   useEffect(() => disconnect, [disconnect]);
@@ -207,7 +300,15 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       setProgramAudioState("publishing");
       onProgramAudioStateRef.current?.("publishing");
       try {
-        await room.localParticipant.publishTrack(nextTrack, { name: "AMX Program Mix", source: Track.Source.Unknown, stream: "amx-stage-program" });
+        await room.localParticipant.publishTrack(nextTrack, {
+          name: "AMX Program Mix",
+          source: Track.Source.Unknown,
+          stream: "amx-stage-program",
+          audioPreset: AudioPresets.musicHighQualityStereo,
+          dtx: false,
+          forceStereo: true,
+          red: true,
+        });
         if (stale) {
           await room.localParticipant.unpublishTrack(nextTrack, false);
           return;
@@ -257,8 +358,8 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     }
   }, [identity, videoConfig.profile.frameRate, videoConfig.profile.height, videoConfig.profile.width]);
 
-  const join = useCallback(async () => {
-    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+  const join = useCallback(async (programOnly = false) => {
+    if (!programOnly && (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)) {
       setStatus("error");
       setCameraState("blocked");
       setMicrophoneState("blocked");
@@ -266,8 +367,8 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       return;
     }
     setStatus("connecting");
-    setCameraState("requesting");
-    setMicrophoneState("requesting");
+    setCameraState(programOnly ? "off" : "requesting");
+    setMicrophoneState(programOnly ? "off" : "requesting");
     setMessage("Securing room token...");
     try {
       const response = await fetch("/api/livekit/token", {
@@ -277,11 +378,31 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       });
       const credentials = await response.json().catch(() => ({})) as { serverUrl?: string; participantToken?: string; error?: string; agentDispatch?: { configured?: boolean; dispatched?: boolean; agentName?: string } };
       if (!response.ok || !credentials.serverUrl || !credentials.participantToken) {
+        if (programOnly) {
+          setStatus("error");
+          setProgramAudioState("blocked");
+          onProgramAudioStateRef.current?.("blocked");
+          setMessage(response.status === 503 ? "LiveKit credentials are required to publish the studio program bus" : credentials.error || "Studio program bus could not connect");
+          return;
+        }
         await openLocalPreview(response.status === 503 ? "Local self-view live; add LiveKit stage credentials for multi-user media" : credentials.error);
         return;
       }
       roomRef.current?.disconnect();
-      const room = new Room({ adaptiveStream: true, dynacast: true, disconnectOnPageLeave: true, videoCaptureDefaults: videoConfig.capture, publishDefaults: videoConfig.publish });
+      const room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        disconnectOnPageLeave: true,
+        audioCaptureDefaults: STUDIO_VOICE_CAPTURE,
+        videoCaptureDefaults: videoConfig.capture,
+        publishDefaults: {
+          ...videoConfig.publish,
+          audioPreset: AudioPresets.musicHighQuality,
+          dtx: false,
+          forceStereo: false,
+          red: true,
+        },
+      });
       roomRef.current = room;
       const updateCount = () => setParticipantCount(countStageAudienceParticipants(room.remoteParticipants.values(), 1));
       room.on(RoomEvent.ParticipantConnected, updateCount);
@@ -330,6 +451,9 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       });
       room.on(RoomEvent.Disconnected, () => {
         programTrackRef.current = null;
+        closeStudioVoiceEngine(voiceEngineRef.current);
+        voiceEngineRef.current = null;
+        onVoiceLevelRef.current?.(0);
         setStatus("idle");
         setMessage("Room disconnected");
         setSurfaces([]);
@@ -347,6 +471,12 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         setPlaybackState(room.canPlaybackAudio ? "ready" : "blocked");
       } catch {
         setPlaybackState("blocked");
+      }
+      if (programOnly) {
+        updateCount();
+        setStatus("livekit");
+        setMessage("Studio program bus connected to the LiveKit room");
+        return;
       }
       setMessage("Opening camera and microphone...");
       let cameraReady = false;
@@ -368,25 +498,65 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       }
       setCameraState(cameraReady ? "published" : "blocked");
       let microphoneReady = false;
+      let microphonePublished = false;
       let microphoneIssue = "";
       try {
-        await room.localParticipant.setMicrophoneEnabled(true);
+        closeStudioVoiceEngine(voiceEngineRef.current);
+        const voiceEngine = await createStudioVoiceEngine(microphoneGain, (level) => onVoiceLevelRef.current?.(level));
+        voiceEngineRef.current = voiceEngine;
+        await room.localParticipant.publishTrack(voiceEngine.outputTrack, {
+          name: "AMX Studio Voice",
+          source: Track.Source.Microphone,
+          audioPreset: AudioPresets.musicHighQuality,
+          dtx: false,
+          forceStereo: false,
+          red: true,
+        });
         const microphone = room.localParticipant.getTrackPublication(Track.Source.Microphone);
-        microphoneReady = Boolean(microphone?.audioTrack && !microphone.isMuted);
+        if (microphoneEnabled === false) await microphone?.audioTrack?.mute();
+        microphonePublished = Boolean(microphone?.audioTrack);
+        microphoneReady = Boolean(microphone?.audioTrack && !microphone.isMuted && microphoneEnabled !== false);
       } catch (error) {
+        closeStudioVoiceEngine(voiceEngineRef.current);
+        voiceEngineRef.current = null;
+        onVoiceLevelRef.current?.(0);
         microphoneReady = false;
         microphoneIssue = mediaDeviceMessage(error, "microphone");
       }
-      setMicrophoneState(microphoneReady ? "published" : "blocked");
+      setMicrophoneState(microphoneReady ? "published" : microphonePublished && microphoneEnabled === false ? "muted" : "blocked");
       updateCount();
       setStatus("livekit");
       const agentState = credentials.agentDispatch?.dispatched ? ` / ${credentials.agentDispatch.agentName || "voice agent"} dispatched` : credentials.agentDispatch?.configured ? " / voice agent unavailable" : "";
       const voiceState = microphoneReady && room.canPlaybackAudio ? " / voice ready" : microphoneReady ? " / voice published; tap audio to listen" : ` / ${microphoneIssue || "microphone permission is off"}`;
       setMessage(`LiveKit room connected${agentState}${voiceState}${cameraReady ? "" : ` / ${cameraIssue || "camera permission is off; tap the camera button to retry"}`}`);
     } catch (error) {
+      if (programOnly) {
+        const failedRoom = roomRef.current;
+        roomRef.current = null;
+        failedRoom?.removeAllListeners();
+        void failedRoom?.disconnect();
+        setStatus("error");
+        setProgramAudioState("blocked");
+        onProgramAudioStateRef.current?.("blocked");
+        setMessage(error instanceof Error ? `Studio program bus could not connect: ${error.message}` : "Studio program bus could not connect");
+        return;
+      }
       await openLocalPreview(error instanceof Error ? `Local self-view live; ${error.message}` : undefined);
     }
-  }, [addVideoTrack, identity, openLocalPreview, safeRoom, videoConfig, videoProfile]);
+  }, [addVideoTrack, identity, microphoneEnabled, microphoneGain, openLocalPreview, safeRoom, videoConfig, videoProfile]);
+
+  useEffect(() => {
+    if (!autoConnectProgram || programAudioStream || status !== "error") return;
+    setStatus("idle");
+    setProgramAudioState("off");
+    onProgramAudioStateRef.current?.("off");
+    setMessage("Studio program bus ready to reconnect");
+  }, [autoConnectProgram, programAudioStream, status]);
+
+  useEffect(() => {
+    if (!autoConnectProgram || !programAudioStream || status !== "idle") return;
+    void join(true);
+  }, [autoConnectProgram, join, programAudioStream, status]);
 
   useEffect(() => {
     if (appliedVideoProfileRef.current === videoProfile) return;
@@ -418,20 +588,63 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     return () => { cancelled = true; };
   }, [addVideoTrack, identity, status, videoConfig, videoProfile]);
 
+  useEffect(() => {
+    const engine = voiceEngineRef.current;
+    if (engine) engine.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.2, microphoneGain / 100)), engine.context.currentTime, 0.04);
+  }, [microphoneGain]);
+
+  useEffect(() => {
+    if (microphoneEnabled === undefined) return;
+    const room = roomRef.current;
+    if (!room || status !== "livekit") return;
+    const publication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+    const track = publication?.audioTrack;
+    if (!track || microphoneState === "requesting") return;
+    let cancelled = false;
+    setMicrophoneState("requesting");
+    void (microphoneEnabled ? track.unmute() : track.mute())
+      .then(() => { if (!cancelled) setMicrophoneState(microphoneEnabled ? "published" : "muted"); })
+      .catch((error) => {
+        if (cancelled) return;
+        setMicrophoneState("blocked");
+        setMessage(mediaDeviceMessage(error, "microphone"));
+      });
+    return () => { cancelled = true; };
+  }, [microphoneEnabled, status]);
+
   const toggleMicrophone = useCallback(async () => {
     const room = roomRef.current;
     if (!room || status !== "livekit") return;
     const shouldEnable = microphoneState !== "published";
+    if (onMicrophoneEnabledChange) {
+      onMicrophoneEnabledChange(shouldEnable);
+      return;
+    }
     setMicrophoneState("requesting");
     try {
-      await room.localParticipant.setMicrophoneEnabled(shouldEnable);
-      const publication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
-      setMicrophoneState(shouldEnable && publication?.audioTrack && !publication.isMuted ? "published" : "muted");
+      let publication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      if (shouldEnable && !publication?.audioTrack) {
+        closeStudioVoiceEngine(voiceEngineRef.current);
+        const voiceEngine = await createStudioVoiceEngine(microphoneGain, (level) => onVoiceLevelRef.current?.(level));
+        voiceEngineRef.current = voiceEngine;
+        await room.localParticipant.publishTrack(voiceEngine.outputTrack, {
+          name: "AMX Studio Voice",
+          source: Track.Source.Microphone,
+          audioPreset: AudioPresets.musicHighQuality,
+          dtx: false,
+          forceStereo: false,
+          red: true,
+        });
+        publication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      }
+      if (!publication?.audioTrack) throw new Error("Studio voice track is unavailable");
+      await (shouldEnable ? publication.audioTrack.unmute() : publication.audioTrack.mute());
+      setMicrophoneState(shouldEnable ? "published" : "muted");
     } catch (error) {
       setMicrophoneState("blocked");
       setMessage(mediaDeviceMessage(error, "microphone"));
     }
-  }, [microphoneState, status]);
+  }, [microphoneGain, microphoneState, onMicrophoneEnabledChange, status]);
 
   const toggleCamera = useCallback(async () => {
     const room = roomRef.current;
@@ -498,16 +711,16 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
 
   const live = status === "livekit" || status === "local";
   const cameraDiagnostics = surfaces.find((surface) => surface.local && surface.source === "camera" && !surface.muted);
-  return <section className={`livekit-pod ${compact ? "compact" : ""}`} data-transport={status} data-camera-state={cameraState} data-microphone-state={microphoneState} data-screen-state={screenShareState} data-video-profile={videoProfile} data-camera-resolution={cameraDiagnostics?.width && cameraDiagnostics.height ? `${cameraDiagnostics.width}x${cameraDiagnostics.height}` : "pending"} data-video-feeds={surfaces.filter((surface) => !surface.muted).length}>
-    <div className="livekit-pod-head"><div><span className="eyebrow">LIVEKIT ROOM / {safeRoom}</span><h2>Human + agent screens</h2></div><span className={`pod-transport ${status}`}><i/>{status === "livekit" ? "LIVEKIT" : status === "local" ? "LOCAL VIDEO" : status.toUpperCase()}</span></div>
+  return <section className={`livekit-pod ${compact ? "compact" : ""}`} data-transport={status} data-camera-state={cameraState} data-microphone-state={microphoneState} data-voice-profile="studio-48khz" data-screen-state={screenShareState} data-video-profile={videoProfile} data-camera-resolution={cameraDiagnostics?.width && cameraDiagnostics.height ? `${cameraDiagnostics.width}x${cameraDiagnostics.height}` : "pending"} data-video-feeds={surfaces.filter((surface) => !surface.muted).length}>
+    <div className="livekit-pod-head"><div><span className="eyebrow">LIVEKIT ROOM / {safeRoom}</span><h2>Human + agent screens</h2></div><span className={`pod-transport ${status}`}><i/>{status === "livekit" ? cameraState === "off" && microphoneState === "off" ? "PROGRAM BUS" : "LIVEKIT" : status === "local" ? "LOCAL VIDEO" : status.toUpperCase()}</span></div>
     <div className="pod-screen-grid">
       {surfaces.length ? surfaces.map((surface) => <PodVideoTile key={surface.id} surface={surface}/>) : <div className="pod-camera-off"><CameraOff/><span>Your screen is private until you join</span></div>}
       {agents.slice(0, compact ? 2 : 3).map((agent) => <div className="pod-agent-screen" key={agent.id} style={{ "--agent-screen": agent.color } as React.CSSProperties}><span><Bot/></span><b>{agent.name}</b><small>{agent.role}</small><i>AGENT READY</i></div>)}
     </div>
     <div ref={audioHostRef} className="pod-audio-host"/>
     <div className="livekit-pod-foot">
-      <div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={cameraState === "published" ? "media-ready" : ""}><Video/>{cameraDiagnostics?.width && cameraDiagnostics.height ? `${cameraDiagnostics.width}x${cameraDiagnostics.height}${cameraDiagnostics.frameRate ? ` ${cameraDiagnostics.frameRate}fps` : ""}` : videoConfig.profile.shortLabel}</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "voice published" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{programAudioState !== "off" && <span className={programAudioState === "published" ? "media-ready" : ""}><Volume2/>{programAudioState === "published" ? "program mix" : programAudioState}</span>}{screenShareState === "published" && <span className="media-ready"><MonitorUp/>screen live</span>}{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>
-      {live ? <div className="pod-media-actions">{status === "livekit" && <><button disabled={cameraState === "requesting"} onClick={() => void toggleCamera()} aria-label={cameraState === "published" ? "Turn camera off" : "Turn camera on"} title={cameraState === "published" ? "Turn camera off" : "Turn camera on"}>{cameraState === "published" ? <Camera/> : <CameraOff/>}</button><button disabled={microphoneState === "requesting"} onClick={() => void toggleMicrophone()} aria-label={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"} title={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"}>{microphoneState === "published" ? <Mic/> : <MicOff/>}</button><button disabled={screenShareState === "requesting"} onClick={() => void toggleScreenShare()} aria-label={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} title={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} className={screenShareState === "published" ? "active" : ""}><MonitorUp/></button>{playbackState === "blocked" && <button onClick={() => void resumeAudio()} aria-label="Resume room audio" title="Resume room audio"><Volume2/></button>}</>}<button className="button secondary" onClick={disconnect}><CameraOff/>Leave</button></div> : <button className="button primary" disabled={status === "connecting"} onClick={join}>{status === "connecting" ? <Radio/> : <Video/>}{status === "connecting" ? "Connecting" : status === "error" ? "Retry camera" : "Join pod"}</button>}
+      <div><span><Users/>{participantCount} human{participantCount === 1 ? "" : "s"}</span><span><Radio/>{agents.length} agents</span><span className={cameraState === "published" ? "media-ready" : ""}><Video/>{cameraDiagnostics?.width && cameraDiagnostics.height ? `${cameraDiagnostics.width}x${cameraDiagnostics.height}${cameraDiagnostics.frameRate ? ` ${cameraDiagnostics.frameRate}fps` : ""}` : videoConfig.profile.shortLabel}</span><span className={microphoneState === "published" ? "media-ready" : ""}>{microphoneState === "published" ? <Mic/> : <MicOff/>}{microphoneState === "published" ? "studio voice" : microphoneState}</span><span className={playbackState === "ready" ? "media-ready" : ""}>{playbackState === "ready" ? <Volume2/> : <VolumeX/>}{playbackState === "ready" ? "audio ready" : playbackState}</span>{programAudioState !== "off" && <span className={programAudioState === "published" ? "media-ready" : ""}><Volume2/>{programAudioState === "published" ? "program mix" : programAudioState}</span>}{screenShareState === "published" && <span className="media-ready"><MonitorUp/>screen live</span>}{status === "livekit" && <span><Wifi/>{activeSpeaker ? `${activeSpeaker} speaking` : connectionQuality}</span>}</div>
+      {live ? <div className="pod-media-actions">{status === "livekit" && <><button disabled={cameraState === "requesting"} onClick={() => void toggleCamera()} aria-label={cameraState === "published" ? "Turn camera off" : "Turn camera on"} title={cameraState === "published" ? "Turn camera off" : "Turn camera on"}>{cameraState === "published" ? <Camera/> : <CameraOff/>}</button><button disabled={microphoneState === "requesting"} onClick={() => void toggleMicrophone()} aria-label={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"} title={microphoneState === "published" ? "Mute microphone" : "Unmute microphone"}>{microphoneState === "published" ? <Mic/> : <MicOff/>}</button><button disabled={screenShareState === "requesting"} onClick={() => void toggleScreenShare()} aria-label={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} title={screenShareState === "published" ? "Stop screen sharing" : "Share screen"} className={screenShareState === "published" ? "active" : ""}><MonitorUp/></button>{playbackState === "blocked" && <button onClick={() => void resumeAudio()} aria-label="Resume room audio" title="Resume room audio"><Volume2/></button>}</>}<button className="button secondary" onClick={disconnect}><CameraOff/>Leave</button></div> : <button className="button primary" disabled={status === "connecting"} onClick={() => void join(false)}>{status === "connecting" ? <Radio/> : <Video/>}{status === "connecting" ? "Connecting" : status === "error" ? "Retry camera" : "Join pod"}</button>}
     </div>
     <p className="pod-status-message">{message}</p>
   </section>;

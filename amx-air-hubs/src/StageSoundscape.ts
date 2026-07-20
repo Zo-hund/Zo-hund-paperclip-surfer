@@ -23,6 +23,10 @@ type SoundscapeEngine = {
   context: AudioContext;
   compressor: DynamicsCompressorNode;
   master: GainNode;
+  musicBus: GainNode;
+  ambienceBus: GainNode;
+  musicAnalyser: AnalyserNode;
+  ambienceAnalyser: AnalyserNode;
   programOutput: MediaStreamAudioDestinationNode;
   deckA: DeckNodes;
   deckB: DeckNodes;
@@ -116,24 +120,34 @@ function createEngine() {
     context.listener.positionZ.value = 4.5;
   }
   const compressor = context.createDynamicsCompressor();
-  compressor.threshold.value = -16;
-  compressor.knee.value = 14;
-  compressor.ratio.value = 5;
+  compressor.threshold.value = -18;
+  compressor.knee.value = 16;
+  compressor.ratio.value = 4;
+  compressor.attack.value = 0.004;
+  compressor.release.value = 0.22;
   const programOutput = context.createMediaStreamDestination();
   const master = context.createGain();
   master.gain.value = 0;
   master.connect(compressor);
   compressor.connect(context.destination);
   compressor.connect(programOutput);
-  const deckA = createDeck(context, master, -0.32);
-  const deckB = createDeck(context, master, 0.32);
+  const musicBus = context.createGain();
+  const ambienceBus = context.createGain();
+  const musicAnalyser = context.createAnalyser();
+  const ambienceAnalyser = context.createAnalyser();
+  musicAnalyser.fftSize = 256;
+  ambienceAnalyser.fftSize = 256;
+  musicBus.connect(musicAnalyser).connect(master);
+  ambienceBus.connect(ambienceAnalyser).connect(master);
+  const deckA = createDeck(context, musicBus, -0.32);
+  const deckB = createDeck(context, musicBus, 0.32);
   const bedGain = context.createGain();
   bedGain.gain.value = 0;
   const bedFilter = context.createBiquadFilter();
   bedFilter.type = "lowpass";
   const bedTone = context.createOscillator();
   bedTone.type = "sine";
-  bedTone.connect(bedFilter).connect(bedGain).connect(master);
+  bedTone.connect(bedFilter).connect(bedGain).connect(ambienceBus);
   bedTone.start();
   const noise = createNoise(context);
   const noiseGain = context.createGain();
@@ -141,14 +155,14 @@ function createEngine() {
   const noiseFilter = context.createBiquadFilter();
   noiseFilter.type = "bandpass";
   noiseFilter.Q.value = 0.7;
-  noise.connect(noiseFilter).connect(noiseGain).connect(master);
+  noise.connect(noiseFilter).connect(noiseGain).connect(ambienceBus);
   noise.start();
   const stinger = document.createElement("audio");
   stinger.preload = "auto";
   const stingerGain = context.createGain();
   stingerGain.gain.value = 0.88;
-  context.createMediaElementSource(stinger).connect(stingerGain).connect(compressor);
-  return { context, compressor, master, programOutput, deckA, deckB, bedTone, bedGain, bedFilter, noise, noiseGain, noiseFilter, stinger, stingerGain, lastStingerAt: null, lastScoreAt: null } satisfies SoundscapeEngine;
+  context.createMediaElementSource(stinger).connect(stingerGain).connect(musicBus);
+  return { context, compressor, master, musicBus, ambienceBus, musicAnalyser, ambienceAnalyser, programOutput, deckA, deckB, bedTone, bedGain, bedFilter, noise, noiseGain, noiseFilter, stinger, stingerGain, lastStingerAt: null, lastScoreAt: null } satisfies SoundscapeEngine;
 }
 
 function alignMedia(media: HTMLAudioElement, state: StageAudioState) {
@@ -273,7 +287,10 @@ function applyState(engine: SoundscapeEngine, state: StageAudioState) {
   const crossfader = Math.max(0, Math.min(1, state.crossfader / 100));
   const deckA = Math.cos(crossfader * Math.PI / 2) * 0.72;
   const deckB = Math.sin(crossfader * Math.PI / 2) * 0.72;
-  engine.master.gain.setTargetAtTime(active ? Math.max(0, Math.min(1, state.master / 100)) * 0.34 : 0, now, 0.08);
+  const master = state.masterMuted ? 0 : Math.max(0, Math.min(1, state.master / 100)) * 0.34;
+  engine.master.gain.setTargetAtTime(active ? master : 0, now, 0.08);
+  engine.musicBus.gain.setTargetAtTime(Math.max(0, Math.min(1.25, state.programGain / 80)), now, 0.08);
+  engine.ambienceBus.gain.setTargetAtTime(state.soundscapeEnabled ? Math.max(0, Math.min(1.5, state.soundscapeGain / 45)) : 0, now, 0.08);
   engine.deckA.output.gain.setTargetAtTime(deckA, now, 0.06);
   engine.deckB.output.gain.setTargetAtTime(deckB, now, 0.06);
   applyDeck(engine.deckA, state.deckA, state, now);
@@ -294,6 +311,8 @@ export function useStageSoundscape(state: StageAudioState) {
   const stateRef = useRef(state);
   const [status, setStatus] = useState<MonitorStatus>("off");
   const [programStream, setProgramStream] = useState<MediaStream | null>(null);
+  const [levels, setLevels] = useState({ program: 0, ambience: 0 });
+  const meterTimerRef = useRef<number | null>(null);
   stateRef.current = state;
 
   useEffect(() => {
@@ -302,6 +321,7 @@ export function useStageSoundscape(state: StageAudioState) {
   }, [state]);
 
   useEffect(() => () => {
+    if (meterTimerRef.current !== null) window.clearInterval(meterTimerRef.current);
     const engine = engineRef.current;
     engineRef.current = null;
     if (engine) {
@@ -324,6 +344,20 @@ export function useStageSoundscape(state: StageAudioState) {
       await engine.context.resume();
       applyState(engine, stateRef.current);
       setProgramStream(engine.programOutput.stream);
+      if (meterTimerRef.current === null) {
+        const musicData = new Uint8Array(new ArrayBuffer(engine.musicAnalyser.fftSize));
+        const ambienceData = new Uint8Array(new ArrayBuffer(engine.ambienceAnalyser.fftSize));
+        const meter = (analyser: AnalyserNode, data: Uint8Array<ArrayBuffer>) => {
+          analyser.getByteTimeDomainData(data);
+          let energy = 0;
+          for (const sample of data) {
+            const normalized = (sample - 128) / 128;
+            energy += normalized * normalized;
+          }
+          return Math.min(1, Math.sqrt(energy / data.length) * 3.2);
+        };
+        meterTimerRef.current = window.setInterval(() => setLevels({ program: meter(engine.musicAnalyser, musicData), ambience: meter(engine.ambienceAnalyser, ambienceData) }), 100);
+      }
       setStatus("ready");
       return true;
     } catch {
@@ -340,8 +374,14 @@ export function useStageSoundscape(state: StageAudioState) {
       engine.stinger.pause();
       await engine.context.suspend();
     }
+    if (meterTimerRef.current !== null) {
+      window.clearInterval(meterTimerRef.current);
+      meterTimerRef.current = null;
+    }
+    setProgramStream(null);
+    setLevels({ program: 0, ambience: 0 });
     setStatus("off");
   }, []);
 
-  return { status, enable, disable, enabled: status === "ready", programStream };
+  return { status, enable, disable, enabled: status === "ready", programStream, levels };
 }

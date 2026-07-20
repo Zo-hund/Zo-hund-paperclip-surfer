@@ -15,6 +15,7 @@ import { Metric, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
 import { DEFAULT_NEXUS_AVATAR_URL } from "../avatar-presets";
 import { DEFAULT_NPC_STATE, type NpcCommand, type NpcRuntimeState } from "../npc-controller";
+import { NexusBroadcastConsole } from "../NexusBroadcastConsole";
 
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
 const NexusRoomScene = lazy(async () => ({ default: (await import("../NexusRoomScene")).NexusRoomScene }));
@@ -210,6 +211,7 @@ export function NexusPage() {
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "pod"}>
             <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>
+            <NexusBroadcastConsole roomCode={roomCode}/>
             <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream} onSceneStreams={setSceneStreams}/></Suspense>
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "media"}>

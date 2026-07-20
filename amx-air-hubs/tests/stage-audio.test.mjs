@@ -28,6 +28,12 @@ test("normalizes synchronized audio assets and regenerates private media URLs", 
     library: [asset, { ...asset }],
     crossfader: 900,
     bpm: 12,
+    voiceGain: 900,
+    soundscapeGain: -20,
+    programGain: 240,
+    voiceEnabled: false,
+    soundscapeEnabled: false,
+    masterMuted: true,
   });
 
   assert.equal(state.library.length, 1);
@@ -36,6 +42,28 @@ test("normalizes synchronized audio assets and regenerates private media URLs", 
   assert.equal(state.deckB, "night-grid");
   assert.equal(state.crossfader, 100);
   assert.equal(state.bpm, 60);
+  assert.equal(state.voiceGain, 120);
+  assert.equal(state.soundscapeGain, 0);
+  assert.equal(state.programGain, 100);
+  assert.equal(state.voiceEnabled, false);
+  assert.equal(state.soundscapeEnabled, false);
+  assert.equal(state.masterMuted, true);
+});
+
+test("defaults the studio mixer to processed voice and a live atmosphere bus", () => {
+  const state = audio.normalizeStageAudio();
+
+  assert.deepEqual(
+    {
+      voiceEnabled: state.voiceEnabled,
+      voiceGain: state.voiceGain,
+      soundscapeEnabled: state.soundscapeEnabled,
+      soundscapeGain: state.soundscapeGain,
+      programGain: state.programGain,
+      masterMuted: state.masterMuted,
+    },
+    { voiceEnabled: true, voiceGain: 82, soundscapeEnabled: true, soundscapeGain: 45, programGain: 80, masterMuted: false },
+  );
 });
 
 test("drops unconfirmed or non-audio assets from shared stage state", () => {

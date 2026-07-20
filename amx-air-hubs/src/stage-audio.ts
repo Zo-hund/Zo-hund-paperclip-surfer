@@ -45,6 +45,12 @@ export interface StageAudioState {
   format: StageAudioFormat;
   transport: StageAudioTransport;
   recording: boolean;
+  voiceEnabled: boolean;
+  voiceGain: number;
+  soundscapeEnabled: boolean;
+  soundscapeGain: number;
+  programGain: number;
+  masterMuted: boolean;
   deckA: StageDeckTrack;
   deckB: StageDeckTrack;
   crossfader: number;
@@ -109,6 +115,12 @@ export const DEFAULT_STAGE_AUDIO: StageAudioState = {
   format: "show",
   transport: "stopped",
   recording: false,
+  voiceEnabled: true,
+  voiceGain: 82,
+  soundscapeEnabled: true,
+  soundscapeGain: 45,
+  programGain: 80,
+  masterMuted: false,
   deckA: "air-pulse",
   deckB: "night-grid",
   crossfader: 50,
@@ -234,6 +246,12 @@ export function normalizeStageAudio(value?: Partial<StageAudioState> | null): St
     format,
     transport: source.transport === "playing" ? "playing" : "stopped",
     recording: Boolean(source.recording),
+    voiceEnabled: source.voiceEnabled !== false,
+    voiceGain: Math.round(boundedNumber(source.voiceGain, DEFAULT_STAGE_AUDIO.voiceGain, 0, 120)),
+    soundscapeEnabled: source.soundscapeEnabled !== false,
+    soundscapeGain: Math.round(boundedNumber(source.soundscapeGain, DEFAULT_STAGE_AUDIO.soundscapeGain, 0, 100)),
+    programGain: Math.round(boundedNumber(source.programGain, DEFAULT_STAGE_AUDIO.programGain, 0, 100)),
+    masterMuted: Boolean(source.masterMuted),
     deckA: validTrack(source.deckA, library, DEFAULT_STAGE_AUDIO.deckA),
     deckB: validTrack(source.deckB, library, DEFAULT_STAGE_AUDIO.deckB),
     crossfader: Math.round(boundedNumber(source.crossfader, DEFAULT_STAGE_AUDIO.crossfader, 0, 100)),
