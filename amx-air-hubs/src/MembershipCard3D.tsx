@@ -13,6 +13,7 @@ interface MembershipCard3DProps {
   badges: number;
   proofScope: string;
   profilePath: string;
+  avatarUrl?: string | null;
   onShare: () => void;
 }
 
@@ -43,7 +44,10 @@ export function MembershipCard3D(props: MembershipCard3DProps) {
           <article className="membership-card-face membership-card-front" aria-hidden={flipped}>
             <div className="membership-card-scan"/>
             <header><span className="membership-card-mark"><Sparkles/></span><div><b>AMX AIR HUBS</b><small>DIGITAL MEMBERSHIP</small></div><Wifi/></header>
-            <div className="membership-card-identity"><span>MEMBER</span><h2>{props.memberName}</h2><p>{props.organization} / {props.organizationType}</p></div>
+            <div className={`membership-card-identity ${props.avatarUrl ? "has-avatar" : ""}`}>
+              {props.avatarUrl && <img className="membership-card-avatar" src={props.avatarUrl} alt=""/>}
+              <div><span>MEMBER</span><h2>{props.memberName}</h2><p>{props.organization} / {props.organizationType}</p></div>
+            </div>
             <footer><div><small>MEMBER ID</small><code>{props.memberId}</code></div><div><small>LEVEL</small><b>{props.level}</b></div><BadgeCheck/></footer>
           </article>
           <article className="membership-card-face membership-card-back" aria-hidden={!flipped}>

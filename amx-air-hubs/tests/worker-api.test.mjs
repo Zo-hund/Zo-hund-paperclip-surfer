@@ -627,6 +627,35 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(missing.status, 404);
   });
 
+  test("serves public identity images without exposing private media", async () => {
+    Object.assign(env, {
+      MEMBER_AUTH_REQUIRED: "true",
+      SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      MEDIA: memoryBucket(),
+    });
+    const uploadEnv = { ...env, MEMBER_AUTH_REQUIRED: "false" };
+    const publicUpload = await worker.fetch(request("/api/media", {
+      method: "POST",
+      headers: { "Content-Type": "image/webp", "X-AMX-Filename": "member.webp", "X-AMX-Tenant": "member-1", "X-AMX-Media-Purpose": "profile-avatar", "X-AMX-Visibility": "public" },
+      body: new Uint8Array([1, 2, 3]),
+    }), uploadEnv);
+    const publicMedia = await publicUpload.json();
+    const publicDownload = await worker.fetch(request(publicMedia.url), env);
+
+    const privateUpload = await worker.fetch(request("/api/media", {
+      method: "POST",
+      headers: { "Content-Type": "image/webp", "X-AMX-Filename": "private.webp" },
+      body: new Uint8Array([4, 5, 6]),
+    }), uploadEnv);
+    const privateMedia = await privateUpload.json();
+    const privateDownload = await worker.fetch(request(privateMedia.url), env);
+
+    assert.equal(publicDownload.status, 200);
+    assert.match(publicDownload.headers.get("Cache-Control"), /^public/);
+    assert.equal(privateDownload.status, 401);
+  });
+
   test("stores Stage audio with its playable content type", async () => {
     env.MEDIA = memoryBucket();
     const upload = await worker.fetch(request("/api/media", {

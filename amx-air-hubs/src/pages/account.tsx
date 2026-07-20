@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  ArrowRight, BadgeCheck, Check, Eye, EyeOff, KeyRound, LockKeyhole, LogIn,
-  LogOut, Mail, Save, ShieldCheck, UserRound, UserRoundPlus,
+  ArrowRight, BadgeCheck, Check, Eye, EyeOff, ImagePlus, KeyRound, LockKeyhole, LogIn,
+  LogOut, Mail, Save, ShieldCheck, Trash2, UserRound, UserRoundPlus,
 } from "lucide-react";
 import { MembershipCard3D } from "../MembershipCard3D";
 import { PageHeader, StatusPill } from "../components";
+import { uploadIdentityImage } from "../identity-media";
 import { publicMemberPath, useMemberAuth, type MemberProfile, type ProfileVisibility } from "../member-auth";
 
 type AccountMode = "signin" | "create" | "recover";
@@ -146,6 +147,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url || "");
   const [visibility, setVisibility] = useState<ProfileVisibility>(profile.profile_visibility);
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -171,6 +173,40 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
       // The provider exposes the safe Auth error in this view.
     } finally {
       setBusy(false);
+    }
+  };
+
+  const uploadPhoto = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setPhotoBusy(true);
+    setNotice("");
+    auth.clearError();
+    try {
+      const image = await uploadIdentityImage(file, `member-${profile.id}`, "profile-avatar");
+      setAvatarUrl(image.url);
+      await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: image.url, profile_visibility: visibility });
+      setNotice("Profile photo uploaded and saved.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Profile photo upload failed.");
+    } finally {
+      setPhotoBusy(false);
+      event.target.value = "";
+    }
+  };
+
+  const removePhoto = async () => {
+    setPhotoBusy(true);
+    setNotice("");
+    auth.clearError();
+    try {
+      setAvatarUrl("");
+      await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: null, profile_visibility: visibility });
+      setNotice("Profile photo removed.");
+    } catch {
+      setAvatarUrl(profile.avatar_url || "");
+    } finally {
+      setPhotoBusy(false);
     }
   };
 
@@ -211,13 +247,17 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
       <div><span className="eyebrow">ACCESS</span><StatusPill tone={profile.membership_role === "operator" ? "gold" : "green"}>{profile.membership_role}</StatusPill><small>{profile.membership_status}</small></div>
       <div><span className="eyebrow">PROFILE</span><StatusPill tone={profile.profile_visibility === "public" ? "cyan" : "neutral"}>{profile.profile_visibility}</StatusPill><small>{profile.profile_visibility === "public" ? "Shareable credential" : "Only you can view"}</small></div>
     </div>
-    <MembershipCard3D memberName={profile.display_name} memberId={profile.member_code} organization={profile.organization} organizationType="Member network" color="#55e6ff" level={profile.membership_role.toUpperCase()} xp={0} badges={1} proofScope="amx-member" profilePath={profilePath} onShare={share}/>
+    <MembershipCard3D memberName={profile.display_name} memberId={profile.member_code} organization={profile.organization} organizationType="Member network" color="#55e6ff" level={profile.membership_role.toUpperCase()} xp={0} badges={1} proofScope="amx-member" profilePath={profilePath} avatarUrl={profile.avatar_url} onShare={share}/>
     <div className="member-account-grid">
       <form className="member-profile-form" onSubmit={save}>
         <div className="section-heading"><div><span className="eyebrow">PROFILE SETTINGS</span><h2>Member identity</h2></div></div>
+        <div className="member-photo-editor">
+          <div className="member-photo-preview">{avatarUrl ? <img src={avatarUrl} alt="Profile preview"/> : <UserRound/>}</div>
+          <div><b>Profile photo</b><small>PNG, JPEG, or WebP. Up to 5 MB.</small><span className="member-photo-actions"><label className={`button secondary ${photoBusy ? "disabled" : ""}`}><ImagePlus/>{photoBusy ? "Uploading..." : avatarUrl ? "Replace photo" : "Upload photo"}<input disabled={photoBusy} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadPhoto}/></label>{avatarUrl && <button type="button" className="icon-button" title="Remove profile photo" aria-label="Remove profile photo" disabled={photoBusy} onClick={() => void removePhoto()}><Trash2/></button>}</span></div>
+        </div>
         <label><span>Display name</span><input required minLength={2} maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)}/></label>
         <label><span>Public handle</span><input pattern="[a-z0-9][a-z0-9_-]{2,29}" maxLength={30} value={handle} onChange={(event) => setHandle(event.target.value.toLowerCase())} placeholder="amx-member"/></label>
-        <label><span>Avatar image URL</span><input type="url" maxLength={500} value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} placeholder="https://..."/></label>
+        <label><span>External image URL (optional)</span><input type="url" maxLength={500} value={avatarUrl} onChange={(event) => setAvatarUrl(event.target.value)} placeholder="https://..."/></label>
         <button className="button primary" disabled={busy}><Save/>{busy ? "Saving..." : "Save profile"}</button>
       </form>
       <section className="member-privacy-panel">
@@ -262,7 +302,7 @@ export function PublicMemberProfilePage() {
   if (!profile) return <div className="public-member-missing"><LockKeyhole/><span className="eyebrow">MEMBER PROFILE</span><h1>Private or unavailable</h1><p>This member has not published a public credential.</p><Link className="button primary" to="/">AMX AIR HUBS</Link></div>;
   return <div className="page section-wrap public-member-page">
     <PageHeader eyebrow="VERIFIED AMX MEMBER" title={profile.display_name} description={`${profile.organization} / ${profile.membership_role} / active membership`}/>
-    <MembershipCard3D memberName={profile.display_name} memberId={profile.member_code} organization={profile.organization} organizationType="Member network" color="#55e6ff" level={profile.membership_role.toUpperCase()} xp={0} badges={1} proofScope="amx-member" profilePath={path} onShare={share}/>
+    <MembershipCard3D memberName={profile.display_name} memberId={profile.member_code} organization={profile.organization} organizationType="Member network" color="#55e6ff" level={profile.membership_role.toUpperCase()} xp={0} badges={1} proofScope="amx-member" profilePath={path} avatarUrl={profile.avatar_url} onShare={share}/>
     <div className="public-member-proof"><ShieldCheck/><div><span className="eyebrow">MEMBERSHIP STATUS</span><h2>Active and shareable</h2><p>This public credential is backed by the member's authenticated AMX account. Private workspace data is not exposed.</p></div><StatusPill tone="green">VERIFIED</StatusPill></div>
   </div>;
 }

@@ -161,6 +161,7 @@ function memberAuthRequired(env) {
 
 function publicApiRequest(request, url) {
   if (request.method === "GET" && ["/api/health", "/api/ready", "/api/config", "/api/agents/capabilities"].includes(url.pathname)) return true;
+  if (request.method === "GET" && url.pathname.startsWith("/api/media/")) return true;
   if (request.method === "POST" && ["/api/livekit/viewer-token", "/api/analytics/events"].includes(url.pathname)) return true;
   if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") return true;
   if (url.pathname.startsWith("/api/pod-invites/")) {
@@ -1432,8 +1433,12 @@ async function handleApi(request, env, url, requestId) {
     const id = crypto.randomUUID();
     const fileName = safeLabel(request.headers.get("X-AMX-Filename"), `attachment-${id}`);
     const tenantId = safeId(request.headers.get("X-AMX-Tenant"), "tech-at-nite");
+    const requestedPurpose = safeId(request.headers.get("X-AMX-Media-Purpose"));
+    const identityPurpose = ["profile-avatar", "partner-logo"].includes(requestedPurpose) ? requestedPurpose : "";
+    const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+    const visibility = request.headers.get("X-AMX-Visibility") === "public" && identityPurpose && publicImageTypes.has(contentType) ? "public" : "private";
     const createdAt = new Date().toISOString();
-    await env.MEDIA.put(id, body, { httpMetadata: { contentType }, customMetadata: { fileName, tenantId, createdAt } });
+    await env.MEDIA.put(id, body, { httpMetadata: { contentType }, customMetadata: { fileName, tenantId, createdAt, visibility, purpose: identityPurpose } });
     let metadataPersisted = false;
     if (env.DB) {
       try {
@@ -1446,7 +1451,7 @@ async function handleApi(request, env, url, requestId) {
       }
     }
     logEvent("info", "media.stored", { requestId, id, tenantId, contentType, sizeBytes: body.byteLength });
-    return reply({ id, url: `/api/media/${id}`, fileName, contentType, size: body.byteLength, metadataPersisted, requestId }, 201);
+    return reply({ id, url: `/api/media/${id}`, fileName, contentType, size: body.byteLength, visibility, metadataPersisted, requestId }, 201);
   }
   if (request.method === "GET" && url.pathname.startsWith("/api/media/")) {
     if (!env.MEDIA) return reply({ error: "Media storage is not configured", requestId }, 503);
@@ -1454,7 +1459,9 @@ async function handleApi(request, env, url, requestId) {
     if (!id) return reply({ error: "Media id is required", requestId }, 400);
     const object = await env.MEDIA.get(id);
     if (!object) return reply({ error: "Media not found", requestId }, 404);
-    const headers = new Headers(capabilityHeaders({ "Cache-Control": "private, no-store", "X-Request-ID": requestId }));
+    const isPublicIdentityImage = object.customMetadata?.visibility === "public" && ["profile-avatar", "partner-logo"].includes(object.customMetadata?.purpose);
+    if (!isPublicIdentityImage) await verifyMemberRequest(request, env, requiredMemberRoles(url));
+    const headers = new Headers(capabilityHeaders({ "Cache-Control": isPublicIdentityImage ? "public, max-age=3600, stale-while-revalidate=86400" : "private, no-store", "X-Request-ID": requestId }));
     object.writeHttpMetadata?.(headers);
     headers.set("Content-Type", headers.get("Content-Type") || object.httpMetadata?.contentType || "application/octet-stream");
     headers.set("Content-Disposition", `inline; filename="${safeLabel(object.customMetadata?.fileName, id).replace(/"/g, "")}"`);

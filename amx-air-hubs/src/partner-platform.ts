@@ -1,4 +1,5 @@
 import { getMemberDataClient } from "./member-auth";
+import { uploadIdentityImage } from "./identity-media";
 import { setActiveTenant } from "./operations";
 import { saveTenantRecord } from "./tenant-management";
 
@@ -175,19 +176,7 @@ export async function updatePartnerOrganization(id: string, patch: Partial<Partn
 }
 
 export async function uploadPartnerLogo(organizationId: string, file: File) {
-  if (!file.type.startsWith("image/")) throw new Error("Choose a PNG, JPEG, or WebP image.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("Partner logos are limited to 5 MB.");
-  const response = await fetch("/api/media", {
-    method: "POST",
-    headers: {
-      "Content-Type": file.type,
-      "X-AMX-Filename": file.name,
-      "X-AMX-Tenant": organizationId,
-    },
-    body: file,
-  });
-  const result = await response.json() as { url?: string; error?: string };
-  if (!response.ok || !result.url) throw new Error(result.error || "Partner logo upload failed.");
+  const result = await uploadIdentityImage(file, organizationId, "partner-logo");
   return result.url;
 }
 
