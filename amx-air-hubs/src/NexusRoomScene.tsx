@@ -5,7 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { GeoAnchor } from "./geospatial";
 import { DEFAULT_NPC_STATE, NPC_WAYPOINTS, waypointFor, type NpcAction, type NpcCommand, type NpcDirection, type NpcRuntimeState, type NpcWaypointId } from "./npc-controller";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
-import { DEFAULT_WORLD_CAMERA_CONTROL, WORLD_CAMERA_POSES, normalizeWorldCameraControl, type WorldCameraControl, type WorldCameraId } from "./world-camera-control";
+import { DEFAULT_WORLD_CAMERA_CONTROL, WORLD_CAMERA_POSES, WORLD_CAMERA_RIG_LAYER, normalizeWorldCameraControl, type WorldCameraControl, type WorldCameraId } from "./world-camera-control";
 
 export type { WorldCameraControl, WorldCameraId } from "./world-camera-control";
 
@@ -366,6 +366,7 @@ function addWorldCamera(scene: THREE.Scene, id: Exclude<WorldCameraId, "overview
   const status = new THREE.Mesh(new THREE.SphereGeometry(0.025, 12, 8), new THREE.MeshBasicMaterial({ color: 0x7deea8 }));
   status.position.set(0.12, 0.08, -0.22);
   rig.add(body, lens, status);
+  rig.traverse((child) => child.layers.set(WORLD_CAMERA_RIG_LAYER));
   scene.add(rig);
   return { camera, rig };
 }

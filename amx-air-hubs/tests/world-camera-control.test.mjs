@@ -9,11 +9,18 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const cameras = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
 
-test("moves the briefing rig clear of the center display wall", () => {
-  const pose = cameras.WORLD_CAMERA_POSES.briefing;
-  assert.ok(Math.abs(pose.position[0]) > 4.5);
-  assert.ok(pose.position[1] > 4);
-  assert.ok(pose.position[2] > -4.5);
+test("mounts every production camera on a ceiling perimeter rail", () => {
+  for (const pose of Object.values(cameras.WORLD_CAMERA_POSES)) {
+    assert.ok(Math.abs(pose.position[0]) >= 4.9);
+    assert.ok(pose.position[1] >= 4.75);
+    assert.ok(pose.position[2] > -4.5);
+  }
+});
+
+test("isolates physical camera rigs from program output", () => {
+  assert.equal(cameras.WORLD_CAMERA_RIG_LAYER, 1);
+  const scene = readFileSync(new URL("../src/NexusRoomScene.tsx", import.meta.url), "utf8");
+  assert.match(scene, /rig\.traverse\(\(child\) => child\.layers\.set\(WORLD_CAMERA_RIG_LAYER\)\)/);
 });
 
 test("bounds virtual PTZ controls to usable production ranges", () => {

@@ -12,11 +12,12 @@ export interface WorldCameraPose {
 }
 
 export const DEFAULT_WORLD_CAMERA_CONTROL: WorldCameraControl = { pan: 0, tilt: 0, zoom: 1 };
+export const WORLD_CAMERA_RIG_LAYER = 1;
 
 export const WORLD_CAMERA_POSES: Record<Exclude<WorldCameraId, "overview">, WorldCameraPose> = {
-  entry: { position: [-4.35, 3.25, 4.35], target: [0.3, 1.35, -2.25] },
-  rack: { position: [4.45, 2.85, 3.25], target: [-2.5, 1.25, -1.5] },
-  briefing: { position: [4.75, 4.35, -3.6], target: [0, 1.55, -1.1] },
+  entry: { position: [-4.9, 4.75, 4.2], target: [0.3, 1.35, -2.25] },
+  rack: { position: [4.9, 4.75, 3.7], target: [-2.5, 1.25, -1.5] },
+  briefing: { position: [5, 4.9, -2.8], target: [0, 1.55, -1.1] },
 };
 
 function bounded(value: unknown, fallback: number, minimum: number, maximum: number) {
