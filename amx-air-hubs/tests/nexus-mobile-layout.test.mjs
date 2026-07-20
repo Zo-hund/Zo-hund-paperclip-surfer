@@ -8,7 +8,8 @@ const scene = readFileSync(new URL("../src/NexusRoomScene.tsx", import.meta.url)
 test("keeps the Nexus mobile HUD above the moving avatar", () => {
   assert.match(css, /\.nexus-scene-overlay\{top:8px;bottom:auto;display:grid/);
   assert.match(css, /\.nexus-scene-overlay>div:first-child \.eyebrow\{display:none\}/);
-  assert.match(scene, /camera\.fov = responsiveRoomFov\(camera\.aspect\)/);
+  assert.match(scene, /activeCameraRef\.current === "overview" \? responsiveRoomFov\(camera\.aspect\) : 54/);
+  assert.match(scene, /cameraControlRef\.current/);
 });
 
 test("shows the complete Runway avatar on mobile", () => {

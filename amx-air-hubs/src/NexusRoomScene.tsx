@@ -5,10 +5,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { GeoAnchor } from "./geospatial";
 import { DEFAULT_NPC_STATE, NPC_WAYPOINTS, waypointFor, type NpcAction, type NpcCommand, type NpcDirection, type NpcRuntimeState, type NpcWaypointId } from "./npc-controller";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
+import { DEFAULT_WORLD_CAMERA_CONTROL, WORLD_CAMERA_POSES, normalizeWorldCameraControl, type WorldCameraControl, type WorldCameraId } from "./world-camera-control";
+
+export type { WorldCameraControl, WorldCameraId } from "./world-camera-control";
 
 export type LightPreset = "mission" | "focus" | "standby";
 export type VideoFit = "contain" | "cover";
-export type WorldCameraId = "overview" | "entry" | "rack" | "briefing";
 export type WorldCameraCapture = (camera?: WorldCameraId) => Promise<Blob | null>;
 export type ProductionScreenId = "Screen_User" | "Screen_Agent_Left" | "Screen_Agent_Right";
 export type ScreenSourceId = "camera-1" | "camera-2" | "camera-3" | "media" | "map" | "runway" | "amx-air" | "amx-labs" | "black";
@@ -30,7 +32,7 @@ export const WORLD_CAMERAS: Array<{ id: WorldCameraId; label: string; detail: st
   { id: "overview", label: "Overview", detail: "Operator orbit camera" },
   { id: "entry", label: "Entry", detail: "Door and participant arrival view" },
   { id: "rack", label: "Rack aisle", detail: "Equipment and cooling aisle view" },
-  { id: "briefing", label: "Briefing", detail: "Human and agent collaboration stage" },
+  { id: "briefing", label: "Stage right", detail: "Overhead stage-right view, clear of the display wall" },
 ];
 
 interface Props {
@@ -48,6 +50,7 @@ interface Props {
   avatarUrl?: string;
   npcCommand?: NpcCommand | null;
   activeWorldCamera?: WorldCameraId;
+  cameraControl?: WorldCameraControl;
   onReady?: () => void;
   onBackend?: (backend: RendererBackend) => void;
   onCaptureReady?: (capture: WorldCameraCapture | null) => void;
@@ -364,7 +367,7 @@ function addWorldCamera(scene: THREE.Scene, id: Exclude<WorldCameraId, "overview
   status.position.set(0.12, 0.08, -0.22);
   rig.add(body, lens, status);
   scene.add(rig);
-  return camera;
+  return { camera, rig };
 }
 
 function anchorBeacon(anchor: GeoAnchor) {
@@ -490,7 +493,7 @@ function npcSnapshot(npc: NpcSceneRuntime): NpcRuntimeState {
   };
 }
 
-export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
@@ -517,6 +520,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     lastReportKey: "",
   });
   const activeCameraRef = useRef<WorldCameraId>(activeWorldCamera);
+  const cameraControlRef = useRef<WorldCameraControl>(normalizeWorldCameraControl(cameraControl));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const onReadyRef = useRef(onReady);
@@ -530,6 +534,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   useEffect(() => { onAvatarStateRef.current = onAvatarState; }, [onAvatarState]);
   useEffect(() => { onNpcStateRef.current = onNpcState; }, [onNpcState]);
   useEffect(() => { activeCameraRef.current = activeWorldCamera; }, [activeWorldCamera]);
+  useEffect(() => { cameraControlRef.current = normalizeWorldCameraControl(cameraControl); }, [cameraControl]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -561,10 +566,10 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     controls.maxDistance = 16;
     controls.maxPolarAngle = Math.PI * 0.52;
     controls.autoRotate = false;
-    const worldCameras = new Map<WorldCameraId, THREE.PerspectiveCamera>();
-    worldCameras.set("entry", addWorldCamera(scene, "entry", new THREE.Vector3(-4.35, 3.25, 4.35), new THREE.Vector3(0.3, 1.35, -2.25)));
-    worldCameras.set("rack", addWorldCamera(scene, "rack", new THREE.Vector3(4.45, 2.85, 3.25), new THREE.Vector3(-2.5, 1.25, -1.5)));
-    worldCameras.set("briefing", addWorldCamera(scene, "briefing", new THREE.Vector3(0, 3.25, -4.6), new THREE.Vector3(0, 1.15, 0.4)));
+    const worldCameras = new Map<WorldCameraId, ReturnType<typeof addWorldCamera>>();
+    (Object.entries(WORLD_CAMERA_POSES) as Array<[Exclude<WorldCameraId, "overview">, (typeof WORLD_CAMERA_POSES)[Exclude<WorldCameraId, "overview">]]>).forEach(([id, pose]) => {
+      worldCameras.set(id, addWorldCamera(scene, id, new THREE.Vector3(...pose.position), new THREE.Vector3(...pose.target)));
+    });
     scene.add(new THREE.HemisphereLight(0x8cdfff, 0x02070c, 0.7));
     const runtimeKey = new THREE.DirectionalLight(0x9eefff, 1.8);
     runtimeKey.position.set(-4, 8, 5);
@@ -621,7 +626,10 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     const captureFrame = new URLSearchParams(window.location.search).get("capture") === "1";
     let frame = 0;
     let lastWorldCamera: WorldCameraId = "overview";
+    let lastCameraControl = "";
     let previousElapsed = 0;
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    const panQuaternion = new THREE.Quaternion();
     const render = () => {
       const currentFrame = frame++;
       host.dataset.frames = String(currentFrame);
@@ -630,24 +638,37 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       const delta = Math.min(0.05, Math.max(0.001, elapsed - previousElapsed));
       previousElapsed = elapsed;
       const selectedCamera = activeCameraRef.current;
-      if (selectedCamera !== lastWorldCamera) {
+      const currentControl = cameraControlRef.current;
+      const cameraControlKey = `${selectedCamera}:${currentControl.pan}:${currentControl.tilt}:${currentControl.zoom}`;
+      if (selectedCamera !== lastWorldCamera || cameraControlKey !== lastCameraControl) {
         if (selectedCamera === "overview") {
-          camera.position.set(0, 4.15, 9.4);
-          controls.target.set(0, 1.55, -1.2);
+          if (selectedCamera !== lastWorldCamera) camera.position.set(0, 4.15, 9.4);
+          controls.target.set(currentControl.pan / 15, 1.55 + currentControl.tilt / 16, -1.2);
           controls.enabled = true;
           controls.autoRotate = false;
+          camera.fov = THREE.MathUtils.clamp(responsiveRoomFov(camera.aspect) / currentControl.zoom, 24, 72);
         } else {
           const selected = worldCameras.get(selectedCamera);
           if (selected) {
-            camera.position.copy(selected.position);
-            camera.quaternion.copy(selected.quaternion);
+            camera.position.copy(selected.camera.position);
+            camera.quaternion.copy(selected.camera.quaternion);
+            panQuaternion.setFromAxisAngle(worldUp, THREE.MathUtils.degToRad(-currentControl.pan));
+            camera.quaternion.premultiply(panQuaternion);
+            camera.rotateX(THREE.MathUtils.degToRad(currentControl.tilt));
+            camera.fov = THREE.MathUtils.clamp(54 / currentControl.zoom, 24, 72);
             camera.updateMatrixWorld();
+            selected.rig.quaternion.copy(camera.quaternion);
           }
           controls.enabled = false;
           controls.autoRotate = false;
         }
         lastWorldCamera = selectedCamera;
+        lastCameraControl = cameraControlKey;
         host.dataset.worldCamera = selectedCamera;
+        host.dataset.cameraPan = String(currentControl.pan);
+        host.dataset.cameraTilt = String(currentControl.tilt);
+        host.dataset.cameraZoom = currentControl.zoom.toFixed(1);
+        camera.updateProjectionMatrix();
       }
       controls.update();
       if (model && !reducedMotion) {
@@ -737,7 +758,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       onBackendRef.current?.(backend);
       onCaptureReadyRef.current?.(async (requestedCamera = activeCameraRef.current) => {
         if (disposed) return null;
-        const captureCamera = requestedCamera === "overview" ? camera : worldCameras.get(requestedCamera) || camera;
+        const requested = worldCameras.get(requestedCamera);
+        const captureCamera = requestedCamera === activeCameraRef.current ? camera : requested?.camera || camera;
         renderer.render(scene, captureCamera);
         return new Promise<Blob | null>((resolve) => renderer.domElement.toBlob(resolve, "image/jpeg", 0.86));
       });
@@ -749,7 +771,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     });
     const resize = () => {
       camera.aspect = host.clientWidth / Math.max(1, host.clientHeight);
-      camera.fov = responsiveRoomFov(camera.aspect);
+      const control = cameraControlRef.current;
+      camera.fov = THREE.MathUtils.clamp((activeCameraRef.current === "overview" ? responsiveRoomFov(camera.aspect) : 54) / control.zoom, 24, 72);
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
     };

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, Camera, Cctv, CircleStop, Eye, Gauge, Hand, LoaderCircle, MapPin, MessageCircle, Route, ScanLine, ScanSearch, Send, Upload, UserRound, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, Camera, Cctv, CircleStop, Eye, Gauge, Hand, LoaderCircle, MapPin, MessageCircle, MoveHorizontal, MoveVertical, RotateCcw, Route, ScanLine, ScanSearch, Send, Upload, UserRound, X, ZoomIn } from "lucide-react";
 import type { Agent } from "./data";
 import { AVATAR_PRESETS } from "./avatar-presets";
 import { sendAgentRequest, type AgentAttachment } from "./agent-runtime";
-import { WORLD_CAMERAS, type WorldCameraCapture, type WorldCameraId } from "./NexusRoomScene";
+import { WORLD_CAMERAS, type WorldCameraCapture, type WorldCameraControl, type WorldCameraId } from "./NexusRoomScene";
+import { DEFAULT_WORLD_CAMERA_CONTROL } from "./world-camera-control";
 import { commandFromCue, NPC_WAYPOINTS, type NpcCommand, type NpcDirection, type NpcRuntimeState } from "./npc-controller";
 
 type VisionSource = "live" | "world";
@@ -15,6 +16,8 @@ interface Props {
   localStream: MediaStream | null;
   activeCamera: WorldCameraId;
   onActiveCamera: (camera: WorldCameraId) => void;
+  cameraControl: WorldCameraControl;
+  onCameraControl: (control: WorldCameraControl) => void;
   captureWorld: WorldCameraCapture;
   avatarUrl: string;
   onAvatarUrl: (url: string) => void;
@@ -55,7 +58,7 @@ function normalizeAvatarUrl(value: string) {
   }
 }
 
-export function SpatialPresenceConsole({ view, agents, localStream, activeCamera, onActiveCamera, captureWorld, avatarUrl, onAvatarUrl, npcState, onNpcCommand }: Props) {
+export function SpatialPresenceConsole({ view, agents, localStream, activeCamera, onActiveCamera, cameraControl, onCameraControl, captureWorld, avatarUrl, onAvatarUrl, npcState, onNpcCommand }: Props) {
   const liveVideoRef = useRef<HTMLVideoElement>(null);
   const scanBusyRef = useRef(false);
   const avatarObjectUrlRef = useRef("");
@@ -203,6 +206,7 @@ export function SpatialPresenceConsole({ view, agents, localStream, activeCamera
   const busy = visionState === "capturing" || visionState === "analyzing";
   const liveReady = Boolean(localStream?.getVideoTracks().some((track) => track.readyState === "live"));
   const activePreset = AVATAR_PRESETS.find((preset) => preset.url === avatarUrl);
+  const activeCameraLabel = WORLD_CAMERAS.find((camera) => camera.id === activeCamera)?.label || activeCamera;
 
   return <section className="spatial-presence-console">
     {view === "npc" && <>
@@ -247,6 +251,7 @@ export function SpatialPresenceConsole({ view, agents, localStream, activeCamera
         <div className="world-camera-selector" role="tablist" aria-label="World camera viewpoint">
           {WORLD_CAMERAS.map((camera) => <button key={camera.id} className={activeCamera === camera.id ? "active" : ""} onClick={() => onActiveCamera(camera.id)} title={camera.detail}><Camera/><span>{camera.label}</span></button>)}
         </div>
+        <div className="world-camera-ptz"><header><span><Cctv/><b>VIRTUAL PTZ</b><small>{activeCameraLabel.toUpperCase()} / CONTROLLED</small></span><button onClick={() => onCameraControl({ ...DEFAULT_WORLD_CAMERA_CONTROL })} aria-label="Reset camera controls" title="Reset camera controls"><RotateCcw/></button></header><label><span><MoveHorizontal/>PAN <b>{cameraControl.pan > 0 ? "+" : ""}{cameraControl.pan}°</b></span><input aria-label="Camera pan" type="range" min="-45" max="45" step="1" value={cameraControl.pan} onChange={(event) => onCameraControl({ ...cameraControl, pan: Number(event.target.value) })}/></label><label><span><MoveVertical/>TILT <b>{cameraControl.tilt > 0 ? "+" : ""}{cameraControl.tilt}°</b></span><input aria-label="Camera tilt" type="range" min="-20" max="20" step="1" value={cameraControl.tilt} onChange={(event) => onCameraControl({ ...cameraControl, tilt: Number(event.target.value) })}/></label><label><span><ZoomIn/>ZOOM <b>{cameraControl.zoom.toFixed(1)}x</b></span><input aria-label="Camera zoom" type="range" min="0.7" max="2.2" step="0.1" value={cameraControl.zoom} onChange={(event) => onCameraControl({ ...cameraControl, zoom: Number(event.target.value) })}/></label></div>
       </div>
 
       <div className="spatial-console-section vision-console">

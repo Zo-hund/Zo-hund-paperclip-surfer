@@ -16,6 +16,7 @@ import { useAMX } from "../AppContext";
 import { DEFAULT_NEXUS_AVATAR_URL } from "../avatar-presets";
 import { DEFAULT_NPC_STATE, type NpcCommand, type NpcRuntimeState } from "../npc-controller";
 import { NexusBroadcastConsole } from "../NexusBroadcastConsole";
+import { defaultWorldCameraControls, normalizeWorldCameraControl } from "../world-camera-control";
 
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
 const NexusRoomScene = lazy(async () => ({ default: (await import("../NexusRoomScene")).NexusRoomScene }));
@@ -86,6 +87,7 @@ export function NexusPage() {
   const [screenStinger, setScreenStinger] = useState<ScreenStinger | null>(null);
   const [mapLocation, setMapLocation] = useState<MapLocationSelection | null>(null);
   const [activeWorldCamera, setActiveWorldCamera] = useState<WorldCameraId>("overview");
+  const [worldCameraControls, setWorldCameraControls] = useState(defaultWorldCameraControls);
   const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem("amx_ready_player_me_avatar") || DEFAULT_NEXUS_AVATAR_URL);
   const [avatarState, setAvatarState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [npcCommand, setNpcCommand] = useState<NpcCommand | null>(null);
@@ -198,8 +200,8 @@ export function NexusPage() {
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} runwayElement={runwayElement} mediaFit={mediaFit} locationPanel={locationPanel} screenProgram={screenProgram} screenStinger={screenStinger} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
-        <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>{activeWorldCamera === "overview" ? "NEXUS CONTROL ROOM" : `${activeWorldCamera.toUpperCase()} CAMERA / LIVE`}</b>{avatarState !== "idle" && <small className={`scene-avatar-state ${avatarState}`}>AVATAR {avatarState.toUpperCase()} / NPC {npcState.action.toUpperCase()}</small>}</div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} runwayElement={runwayElement} mediaFit={mediaFit} locationPanel={locationPanel} screenProgram={screenProgram} screenStinger={screenStinger} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
+        <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>{activeWorldCamera === "overview" ? "NEXUS CONTROL ROOM" : `${activeWorldCamera === "briefing" ? "STAGE RIGHT" : activeWorldCamera.toUpperCase()} CAMERA / LIVE`}</b>{avatarState !== "idle" && <small className={`scene-avatar-state ${avatarState}`}>AVATAR {avatarState.toUpperCase()} / NPC {npcState.action.toUpperCase()}</small>}</div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">
         <div className="nexus-console-tabs" role="tablist" aria-label="Room console view">{([
@@ -207,7 +209,7 @@ export function NexusPage() {
         ] as const).map(([id, label, Icon]) => <button key={id} className={roomConsoleView === id ? "active" : ""} onClick={() => setRoomConsoleView(id)}><Icon/><span>{label}</span>{id === "npc" && <i className={npcState.moving ? "moving" : ""}/>}</button>)}</div>
         <div className="nexus-console-body">
           <div className="nexus-console-view" hidden={roomConsoleView !== "npc" && roomConsoleView !== "vision"}>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial controls</span></div>}><SpatialPresenceConsole view={roomConsoleView === "vision" ? "vision" : "npc"} agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} captureWorld={captureWorld} avatarUrl={avatarUrl} onAvatarUrl={updateAvatar} npcState={npcState} onNpcCommand={setNpcCommand}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial controls</span></div>}><SpatialPresenceConsole view={roomConsoleView === "vision" ? "vision" : "npc"} agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCameraControl={(control) => setWorldCameraControls((current) => ({ ...current, [activeWorldCamera]: normalizeWorldCameraControl(control) }))} captureWorld={captureWorld} avatarUrl={avatarUrl} onAvatarUrl={updateAvatar} npcState={npcState} onNpcCommand={setNpcCommand}/></Suspense>
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "pod"}>
             <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>
