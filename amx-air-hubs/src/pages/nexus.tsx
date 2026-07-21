@@ -15,6 +15,7 @@ import { Metric, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
 import { DEFAULT_NEXUS_AVATAR_URL } from "../avatar-presets";
 import { DEFAULT_NPC_STATE, type NpcCommand, type NpcRuntimeState } from "../npc-controller";
+import { normalizeNexusGlobeLevel, normalizeNexusVfxPreset, type NexusGlobeLevel, type NexusVfxPreset } from "../nexus-vfx";
 import { NexusBroadcastConsole } from "../NexusBroadcastConsole";
 import { defaultWorldCameraControls, normalizeWorldCameraControl } from "../world-camera-control";
 import { normalizeScreenLayoutMode, normalizeScreenWallFit, normalizeScreenWallFormat } from "../screen-wall";
@@ -96,6 +97,8 @@ export function NexusPage() {
   const [roomConsoleView, setRoomConsoleView] = useState<RoomConsoleView>("npc");
   const [roomCode, setRoomCode] = useState(() => localStorage.getItem("amx_nexus_room") || "NEXUS1");
   const [lightPreset, setLightPreset] = useState<LightPreset>("mission");
+  const [vfxPreset, setVfxPreset] = useState<NexusVfxPreset>(() => normalizeNexusVfxPreset(localStorage.getItem("amx_nexus_vfx_preset")));
+  const [globeLevel, setGlobeLevel] = useState<NexusGlobeLevel>(() => normalizeNexusGlobeLevel(localStorage.getItem("amx_nexus_globe_level")));
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [sceneStreams, setSceneStreams] = useState<MediaStream[]>([]);
   const [mediaElement, setMediaElement] = useState<HTMLVideoElement | null>(null);
@@ -131,6 +134,14 @@ export function NexusPage() {
   }, []);
   const bindRunwayVideo = useCallback((video: HTMLVideoElement | null) => {
     setRunwayElement(video);
+  }, []);
+  const updateVfxPreset = useCallback((preset: NexusVfxPreset) => {
+    setVfxPreset(preset);
+    localStorage.setItem("amx_nexus_vfx_preset", preset);
+  }, []);
+  const updateGlobeLevel = useCallback((level: NexusGlobeLevel) => {
+    setGlobeLevel(level);
+    localStorage.setItem("amx_nexus_globe_level", level);
   }, []);
   useEffect(() => () => {
     if (stingerTimerRef.current !== null) window.clearTimeout(stingerTimerRef.current);
@@ -256,7 +267,7 @@ export function NexusPage() {
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} runwayElement={runwayElement} mediaFit={mediaFit} locationPanel={locationPanel} screenProgram={screenProgram} screenStinger={screenStinger} screenMode={screenMode} screenWallSource={screenWallSource} screenWallFit={screenWallFit} screenWallFormat={screenWallFormat} anchors={geo.projectedAnchors} lightPreset={lightPreset} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} runwayElement={runwayElement} mediaFit={mediaFit} locationPanel={locationPanel} screenProgram={screenProgram} screenStinger={screenStinger} screenMode={screenMode} screenWallSource={screenWallSource} screenWallFit={screenWallFit} screenWallFormat={screenWallFormat} anchors={geo.projectedAnchors} lightPreset={lightPreset} vfxPreset={vfxPreset} globeLevel={globeLevel} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
         <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>{activeWorldCamera === "overview" ? "NEXUS CONTROL ROOM" : `${activeWorldCamera === "briefing" ? "STAGE RIGHT" : activeWorldCamera.toUpperCase()} CAMERA / LIVE`}</b>{avatarState !== "idle" && <small className={`scene-avatar-state ${avatarState}`}>AVATAR {avatarState.toUpperCase()} / NPC {npcState.action.toUpperCase()}</small>}</div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">
@@ -274,7 +285,7 @@ export function NexusPage() {
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "media"}>
             <div className="nexus-content-deck"><div className="content-deck-title"><span className="eyebrow">WORLD CONTENT DECK</span><b>Production routing</b></div>
-              <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing production switcher</span></div>}><NexusProductionSwitcher roomCode={roomCode} mode={screenMode} wallSource={screenWallSource} wallFit={screenWallFit} wallFormat={screenWallFormat} program={screenProgram} available={screenSourcesAvailable} transitioning={Boolean(screenStinger)} onMode={updateScreenMode} onWallFit={updateScreenWallFit} onWallFormat={updateScreenWallFormat} onTakeWall={takeScreenWall} onTake={takeScreen} onTakeLayout={(next, transition) => takeScreenProgram(next, transition, SCREEN_IDS)}/></Suspense>
+              <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing production switcher</span></div>}><NexusProductionSwitcher roomCode={roomCode} mode={screenMode} wallSource={screenWallSource} wallFit={screenWallFit} wallFormat={screenWallFormat} vfxPreset={vfxPreset} globeLevel={globeLevel} program={screenProgram} available={screenSourcesAvailable} transitioning={Boolean(screenStinger)} onMode={updateScreenMode} onWallFit={updateScreenWallFit} onWallFormat={updateScreenWallFormat} onVfxPreset={updateVfxPreset} onGlobeLevel={updateGlobeLevel} onTakeWall={takeScreenWall} onTake={takeScreen} onTakeLayout={(next, transition) => takeScreenProgram(next, transition, SCREEN_IDS)}/></Suspense>
               <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing media player</span></div>}><NexusMediaPlayer onPanelVideo={bindPanelVideo}/></Suspense>
               <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing location map</span></div>}><GoogleLocationPanel agent={crew[0]} roomCode={roomCode} onSelection={setMapLocation} onPublishAnchor={publishMapAnchor}/></Suspense>
             </div>

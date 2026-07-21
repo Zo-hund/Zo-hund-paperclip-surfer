@@ -4,6 +4,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { GeoAnchor } from "./geospatial";
 import { DEFAULT_NPC_STATE, NPC_WAYPOINTS, waypointFor, type NpcAction, type NpcCommand, type NpcDirection, type NpcRuntimeState, type NpcWaypointId } from "./npc-controller";
+import { NEXUS_GLOBE_LEVELS, NEXUS_VFX_PARTICLES, type NexusGlobeLevel, type NexusVfxPreset } from "./nexus-vfx";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 import { DEFAULT_WORLD_CAMERA_CONTROL, WORLD_CAMERA_POSES, WORLD_CAMERA_RIG_LAYER, normalizeWorldCameraControl, type WorldCameraControl, type WorldCameraId } from "./world-camera-control";
 import { SCREEN_WALL_FORMATS, type ScreenLayoutMode, type ScreenWallFit, type ScreenWallFormat } from "./screen-wall";
@@ -52,6 +53,8 @@ interface Props {
   locationPanel?: LocationPanelData | null;
   anchors: GeoAnchor[];
   lightPreset: LightPreset;
+  vfxPreset?: NexusVfxPreset;
+  globeLevel?: NexusGlobeLevel;
   reducedMotion?: boolean;
   avatarUrl?: string;
   npcCommand?: NpcCommand | null;
@@ -70,6 +73,55 @@ function responsiveRoomFov(aspect: number) {
   if (aspect >= referenceAspect) return baseFov;
   const verticalRadians = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(baseFov) / 2) * referenceAspect / Math.max(0.55, aspect));
   return Math.min(62, THREE.MathUtils.radToDeg(verticalRadians));
+}
+
+interface NexusVfxRuntime {
+  group: THREE.Group;
+  geometry: THREE.BufferGeometry;
+  material: THREE.PointsMaterial;
+  positions: Float32Array;
+  seeds: Float32Array;
+  basePosition: THREE.Vector3;
+  currentShift: number;
+}
+
+function createHologramParticles(center: THREE.Vector3): NexusVfxRuntime {
+  const count = NEXUS_VFX_PARTICLES.show;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const seeds = new Float32Array(count * 4);
+  const palette = [new THREE.Color(0x55e6ff), new THREE.Color(0xff55d7), new THREE.Color(0xffd36a)];
+  for (let index = 0; index < count; index += 1) {
+    const angle = ((index * 0.61803398875) % 1) * Math.PI * 2;
+    const radius = 0.62 + ((index * 37) % 100) / 100 * 1.28;
+    const height = (((index * 53) % 100) / 100 - 0.5) * 2.3;
+    const phase = ((index * 71) % 100) / 100 * Math.PI * 2;
+    seeds.set([angle, radius, height, phase], index * 4);
+    positions.set([Math.cos(angle) * radius, height, Math.sin(angle) * radius], index * 3);
+    const color = palette[index % palette.length];
+    colors.set([color.r, color.g, color.b], index * 3);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setDrawRange(0, NEXUS_VFX_PARTICLES.ambient);
+  const material = new THREE.PointsMaterial({
+    size: 0.045,
+    transparent: true,
+    opacity: 0.68,
+    vertexColors: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  });
+  const points = new THREE.Points(geometry, material);
+  points.name = "Nexus_Hologram_Particles";
+  points.frustumCulled = false;
+  const group = new THREE.Group();
+  group.name = "Nexus_VFX_Particle_System";
+  group.position.copy(center);
+  group.add(points);
+  return { group, geometry, material, positions, seeds, basePosition: center.clone(), currentShift: 0 };
 }
 
 type ScreenName = ProductionScreenId;
@@ -529,12 +581,14 @@ function npcSnapshot(npc: NpcSceneRuntime): NpcRuntimeState {
   };
 }
 
-export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, screenMode = "triple", screenWallSource = "amx-air", screenWallFit = "contain", screenWallFormat = "production", locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, screenMode = "triple", screenWallSource = "amx-air", screenWallFit = "contain", screenWallFormat = "production", locationPanel, anchors, lightPreset, vfxPreset = "ambient", globeLevel = "center", reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
   const screenWallRef = useRef<THREE.Mesh | null>(null);
   const lightRefs = useRef<THREE.Light[]>([]);
+  const hologramTargetsRef = useRef<Array<{ object: THREE.Object3D; baseY: number }>>([]);
+  const vfxRuntimeRef = useRef<NexusVfxRuntime | null>(null);
   const anchorLayerRef = useRef<THREE.Group | null>(null);
   const avatarRef = useRef<THREE.Object3D | null>(null);
   const npcRuntimeRef = useRef<NpcSceneRuntime>({
@@ -558,6 +612,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   });
   const activeCameraRef = useRef<WorldCameraId>(activeWorldCamera);
   const cameraControlRef = useRef<WorldCameraControl>(normalizeWorldCameraControl(cameraControl));
+  const vfxPresetRef = useRef<NexusVfxPreset>(vfxPreset);
+  const globeLevelRef = useRef<NexusGlobeLevel>(globeLevel);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const onReadyRef = useRef(onReady);
@@ -572,6 +628,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   useEffect(() => { onNpcStateRef.current = onNpcState; }, [onNpcState]);
   useEffect(() => { activeCameraRef.current = activeWorldCamera; }, [activeWorldCamera]);
   useEffect(() => { cameraControlRef.current = normalizeWorldCameraControl(cameraControl); }, [cameraControl]);
+  useEffect(() => { vfxPresetRef.current = vfxPreset; }, [vfxPreset]);
+  useEffect(() => { globeLevelRef.current = globeLevel; }, [globeLevel]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -645,6 +703,17 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         screenRefs.current[name] = target && (target as THREE.Mesh).isMesh ? target as THREE.Mesh : null;
       });
       scene.add(model);
+      const hologramObjects = ["Nexus_Hologram", "HoloOrbit_A", "HoloOrbit_B", "HoloOrbit_C"]
+        .map((name) => model?.getObjectByName(name))
+        .filter(Boolean) as THREE.Object3D[];
+      hologramTargetsRef.current = hologramObjects.map((object) => ({ object, baseY: object.position.y }));
+      const hologram = model.getObjectByName("Nexus_Hologram");
+      if (hologram) {
+        const vfxRuntime = createHologramParticles(hologram.getWorldPosition(new THREE.Vector3()));
+        vfxRuntimeRef.current = vfxRuntime;
+        scene.add(vfxRuntime.group);
+        host.dataset.vfxParticles = String(NEXUS_VFX_PARTICLES.ambient);
+      }
       const screenMeshes = (Object.values(screenRefs.current).filter(Boolean) as THREE.Mesh[]);
       if (screenMeshes.length === 3) {
         const wallBounds = new THREE.Box3();
@@ -729,6 +798,37 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         camera.updateProjectionMatrix();
       }
       controls.update();
+      const vfx = vfxRuntimeRef.current;
+      if (vfx) {
+        const preset = vfxPresetRef.current;
+        const targetShift = NEXUS_GLOBE_LEVELS[globeLevelRef.current].offset;
+        vfx.currentShift = reducedMotion ? targetShift : THREE.MathUtils.lerp(vfx.currentShift, targetShift, Math.min(1, delta * 4.2));
+        hologramTargetsRef.current.forEach(({ object, baseY }) => { object.position.y = baseY + vfx.currentShift; });
+        vfx.group.position.y = vfx.basePosition.y + vfx.currentShift;
+        vfx.group.visible = preset !== "off";
+        const particleCount = preset === "show" ? NEXUS_VFX_PARTICLES.show : NEXUS_VFX_PARTICLES.ambient;
+        vfx.geometry.setDrawRange(0, particleCount);
+        vfx.material.opacity = preset === "show" ? 0.92 : 0.62;
+        vfx.material.size = preset === "show" ? 0.065 : 0.042;
+        if (preset !== "off" && !reducedMotion) {
+          const speed = preset === "show" ? 1.15 : 0.42;
+          for (let index = 0; index < particleCount; index += 1) {
+            const seedOffset = index * 4;
+            const positionOffset = index * 3;
+            const angle = vfx.seeds[seedOffset] + elapsed * speed * (0.36 + (index % 7) * 0.025);
+            const pulse = 1 + Math.sin(elapsed * (preset === "show" ? 3.1 : 1.4) + vfx.seeds[seedOffset + 3]) * (preset === "show" ? 0.12 : 0.04);
+            const radius = vfx.seeds[seedOffset + 1] * pulse;
+            vfx.positions[positionOffset] = Math.cos(angle) * radius;
+            vfx.positions[positionOffset + 1] = vfx.seeds[seedOffset + 2] + Math.sin(angle * 1.7 + vfx.seeds[seedOffset + 3]) * 0.16;
+            vfx.positions[positionOffset + 2] = Math.sin(angle) * radius;
+          }
+          (vfx.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+        }
+        host.dataset.vfxPreset = preset;
+        host.dataset.vfxParticles = String(preset === "off" ? 0 : particleCount);
+        host.dataset.globeLevel = globeLevelRef.current;
+        host.dataset.globeOffset = vfx.currentShift.toFixed(2);
+      }
       if (model && !reducedMotion) {
         const hologram = model.getObjectByName("Nexus_Hologram");
         if (hologram) hologram.rotation.y = elapsed * 0.3;
@@ -874,7 +974,13 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       void renderer.dispose();
       onCaptureReadyRef.current?.(null);
       if (avatarRef.current) disposeObject(avatarRef.current);
+      if (vfxRuntimeRef.current) {
+        vfxRuntimeRef.current.geometry.dispose();
+        vfxRuntimeRef.current.material.dispose();
+      }
       avatarRef.current = null;
+      vfxRuntimeRef.current = null;
+      hologramTargetsRef.current = [];
       sceneRef.current = null;
       anchorLayerRef.current = null;
       screenWallRef.current = null;

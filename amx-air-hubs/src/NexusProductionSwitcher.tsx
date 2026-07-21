@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Bot, Camera, Cast, CircleStop, Clapperboard, Columns3, Expand, MapPin, MonitorPlay, PanelsTopLeft, Radio, Sparkles, Users, Video } from "lucide-react";
+import { ArrowDownToLine, ArrowUpToLine, Bot, Camera, Cast, CircleStop, Clapperboard, Columns3, Expand, MapPin, Minus, MonitorPlay, PanelsTopLeft, Radio, Sparkles, Users, Video } from "lucide-react";
 import type { ProductionScreenId, ScreenLayoutMode, ScreenProgram, ScreenSourceId, ScreenTransitionStyle, ScreenWallFit, ScreenWallFormat } from "./NexusRoomScene";
+import type { NexusGlobeLevel, NexusVfxPreset } from "./nexus-vfx";
 import { SCREEN_WALL_FORMATS, screenWallCastHref } from "./screen-wall";
 
 interface Props {
@@ -9,12 +10,16 @@ interface Props {
   wallSource: ScreenSourceId;
   wallFit: ScreenWallFit;
   wallFormat: ScreenWallFormat;
+  vfxPreset: NexusVfxPreset;
+  globeLevel: NexusGlobeLevel;
   program: ScreenProgram;
   available: Partial<Record<ScreenSourceId, boolean>>;
   transitioning: boolean;
   onMode: (mode: ScreenLayoutMode) => void;
   onWallFit: (fit: ScreenWallFit) => void;
   onWallFormat: (format: ScreenWallFormat) => void;
+  onVfxPreset: (preset: NexusVfxPreset) => void;
+  onGlobeLevel: (level: NexusGlobeLevel) => void;
   onTakeWall: (source: ScreenSourceId, transition: ScreenTransitionStyle) => void;
   onTake: (targets: ProductionScreenId[], source: ScreenSourceId, transition: ScreenTransitionStyle) => void;
   onTakeLayout: (program: ScreenProgram, transition: ScreenTransitionStyle) => void;
@@ -49,7 +54,7 @@ const LAYOUTS: Array<{id:string;label:string;program:ScreenProgram}> = [
   {id:"brand",label:"Brand",program:{Screen_User:"amx-air",Screen_Agent_Left:"amx-labs",Screen_Agent_Right:"amx-air"}},
 ];
 
-export function NexusProductionSwitcher({roomCode,mode,wallSource,wallFit,wallFormat,program,available,transitioning,onMode,onWallFit,onWallFormat,onTakeWall,onTake,onTakeLayout}:Props) {
+export function NexusProductionSwitcher({roomCode,mode,wallSource,wallFit,wallFormat,vfxPreset,globeLevel,program,available,transitioning,onMode,onWallFit,onWallFormat,onVfxPreset,onGlobeLevel,onTakeWall,onTake,onTakeLayout}:Props) {
   const [target,setTarget]=useState<ProductionScreenId>("Screen_User");
   const [preview,setPreview]=useState<ScreenSourceId>("media");
   const [transition,setTransition]=useState<ScreenTransitionStyle>("amx-air");
@@ -69,6 +74,7 @@ export function NexusProductionSwitcher({roomCode,mode,wallSource,wallFit,wallFo
   const take=()=>mode==="wall"?onTakeWall(preview,transition):onTake([target],preview,transition);
   return <section className="nexus-production-switcher">
     <header><div><span className="eyebrow">SCREEN TRANSFORMER / {mode==="wall"?"1 WALL OUTPUT":"3 MESH OUTPUTS"}</span><h3>Screen control</h3></div><span className={`production-tally ${transitioning?"taking":""}`}><i/>{transitioning?"TAKING":"PROGRAM"}</span></header>
+    <div className="nexus-vfx-control"><header><Sparkles/><span><small>WORLD VFX</small><b>Hologram staging</b></span><i>{vfxPreset.toUpperCase()}</i></header><div className="nexus-vfx-control-grid"><div role="tablist" aria-label="Hologram particle effect">{(["off","ambient","show"] as NexusVfxPreset[]).map((preset)=><button key={preset} className={vfxPreset===preset?"active":""} onClick={()=>onVfxPreset(preset)}>{preset}</button>)}</div><div role="tablist" aria-label="Globe height">{(["low","center","high"] as NexusGlobeLevel[]).map((level)=>{const Icon=level==="low"?ArrowDownToLine:level==="high"?ArrowUpToLine:Minus;return <button key={level} className={globeLevel===level?"active":""} onClick={()=>onGlobeLevel(level)} title={`${level} globe position`}><Icon/><span>{level}</span></button>})}</div></div></div>
     <div className="screen-transformer-mode" role="tablist" aria-label="Screen layout mode"><button className={mode==="triple"?"active":""} onClick={()=>onMode("triple")}><Columns3/>Triple</button><button className={mode==="wall"?"active":""} onClick={()=>onMode("wall")}><PanelsTopLeft/>Wall</button></div>
     {mode==="triple"?<div className="production-bus-row">
       {SCREENS.map((screen)=><button key={screen.id} className={target===screen.id?"active":""} onClick={()=>setTarget(screen.id)} title={screen.label}><span>{screen.short}</span><b>{SOURCES.find((source)=>source.id===program[screen.id])?.short||"BLK"}</b><i/></button>)}
