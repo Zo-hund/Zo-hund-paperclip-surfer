@@ -15,6 +15,7 @@ import { Metric, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
 import { DEFAULT_NEXUS_AVATAR_URL } from "../avatar-presets";
 import { DEFAULT_NPC_STATE, type NpcCommand, type NpcRuntimeState } from "../npc-controller";
+import type { NexusRoomControl } from "../nexus-room-control";
 import { normalizeNexusGlobeLevel, normalizeNexusVfxPreset, type NexusGlobeLevel, type NexusVfxPreset } from "../nexus-vfx";
 import type { NexusXRProductionCue } from "../nexus-xr-production";
 import { normalizeNexusXRMode } from "../nexus-xr";
@@ -123,6 +124,7 @@ export function NexusPage() {
   const stingerTimerRef = useRef<number | null>(null);
   const stingerSequence = useRef(0);
   const runwayCommandSequence = useRef(0);
+  const roomControlRef = useRef<NexusRoomControl | null>(null);
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
   const [selectedAnchor, setSelectedAnchor] = useState<GeoAnchor | null>(null);
   const [rendererBackend, setRendererBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
@@ -160,9 +162,13 @@ export function NexusPage() {
     setRoomCode(safe);
     localStorage.setItem("amx_nexus_room", safe);
   };
+  const issueNpcCommand = useCallback((command: NpcCommand) => {
+    setNpcCommand(command);
+    void roomControlRef.current?.sendNpcCommand(command);
+  }, []);
   const issueRunwayNpcCommand = useCallback((command: Omit<NpcCommand, "id" | "agentId">) => {
-    setNpcCommand({ ...command, id: `runway-${Date.now()}-${++runwayCommandSequence.current}`, agentId: npcState.agentId || agents[0].id });
-  }, [npcState.agentId]);
+    issueNpcCommand({ ...command, id: `runway-${Date.now()}-${++runwayCommandSequence.current}`, agentId: npcState.agentId || agents[0].id });
+  }, [issueNpcCommand, npcState.agentId]);
   const publishMapAnchor = (location: MapLocationSelection) => {
     const anchor = geo.publishAnchor({
       label: location.label,
@@ -288,12 +294,12 @@ export function NexusPage() {
         ] as const).map(([id, label, Icon]) => <button key={id} className={roomConsoleView === id ? "active" : ""} onClick={() => setRoomConsoleView(id)}><Icon/><span>{label}</span>{id === "npc" && <i className={npcState.moving ? "moving" : ""}/>}</button>)}</div>
         <div className="nexus-console-body">
           <div className="nexus-console-view" hidden={roomConsoleView !== "npc" && roomConsoleView !== "vision"}>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial controls</span></div>}><SpatialPresenceConsole view={roomConsoleView === "vision" ? "vision" : "npc"} agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCameraControl={(control) => setWorldCameraControls((current) => ({ ...current, [activeWorldCamera]: normalizeWorldCameraControl(control) }))} captureWorld={captureWorld} avatarUrl={avatarUrl} onAvatarUrl={updateAvatar} npcState={npcState} onNpcCommand={setNpcCommand}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing spatial controls</span></div>}><SpatialPresenceConsole view={roomConsoleView === "vision" ? "vision" : "npc"} agents={crew} localStream={localStream} activeCamera={activeWorldCamera} onActiveCamera={setActiveWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCameraControl={(control) => setWorldCameraControls((current) => ({ ...current, [activeWorldCamera]: normalizeWorldCameraControl(control) }))} captureWorld={captureWorld} avatarUrl={avatarUrl} onAvatarUrl={updateAvatar} npcState={npcState} onNpcCommand={issueNpcCommand}/></Suspense>
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "pod"}>
             <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>
             <NexusBroadcastConsole roomCode={roomCode}/>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream} onSceneStreams={setSceneStreams}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream} onSceneStreams={setSceneStreams} onControlReady={(control) => { roomControlRef.current = control; }} onRemoteNpcCommand={(command) => setNpcCommand(command)}/></Suspense>
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "media"}>
             <div className="nexus-content-deck"><div className="content-deck-title"><span className="eyebrow">WORLD CONTENT DECK</span><b>Production routing</b></div>

@@ -100,6 +100,12 @@ The pod also publishes browser screen sharing through LiveKit. The share picker 
 
 LiveKit video surfaces retain their participant name, stable track ID, camera/screen source, local/remote ownership, and mute state. The AMX XR Stage uses this metadata for its ISO camera router instead of treating tracks as anonymous streams.
 
+### Nexus remote direction and communications
+
+The Nexus Pod uses two reliable LiveKit data topics alongside its voice, camera, and screen tracks: `amx.nexus.control.v1` for synchronized NPC direction and `amx.nexus.chat.v1` for bounded room chat. A desktop operator can move, stop, patrol, or cue the NPC while Quest and mobile participants see the same command execute in their local Three.js scene. Incoming control payloads are size-limited, schema-validated, de-duplicated, and accepted only from participants whose signed LiveKit metadata identifies them as an AMX operator. Chat accepts signed operators and agent participants, keeps only the latest 50 messages in browser memory, and is not persisted as a transcript.
+
+Open the same Nexus room code on each device, select **Pod**, and join the LiveKit room. Voice, video, screen share, text, participant presence, and remote NPC direction then use that room scope. Local NPC controls continue to work when LiveKit is unavailable, but they cannot synchronize to other devices until the Pod reconnects.
+
 If LiveKit is absent or fails, the component opens a private local camera preview and labels it `LOCAL VIDEO`.
 
 ## Runway Characters

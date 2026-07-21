@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Camera, CameraOff, Mic, MicOff, MonitorUp, Radio, Users, Video, Volume2, VolumeX, Wifi } from "lucide-react";
+import { Bot, Camera, CameraOff, Mic, MicOff, MonitorUp, Radio, Send, Users, Video, Volume2, VolumeX, Wifi } from "lucide-react";
 import {
   AudioPresets, LocalVideoTrack, RemoteVideoTrack, Room, RoomEvent, Track, VideoPresets, VideoQuality,
   type AudioCaptureOptions, type TrackPublishOptions, type VideoCaptureOptions,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
 } from "livekit-client";
 import type { Agent } from "./data";
+import type { NpcCommand } from "./npc-controller";
+import {
+  decodeNexusRoomMessage, encodeNexusRoomMessage, isOperatorMetadata, isRoomCommunicatorMetadata, NEXUS_CHAT_TOPIC, NEXUS_CONTROL_TOPIC,
+  type NexusChatMessage, type NexusRoomControl,
+} from "./nexus-room-control";
 import { countStageAudienceParticipants, stageFeedId } from "./stage-camera-routing";
 import { stageVideoDiagnostics, stageVideoProfile, type StageVideoDiagnostics, type StageVideoProfile } from "./stage-video";
 
@@ -58,6 +63,8 @@ interface Props {
   autoConnectProgram?: boolean;
   videoProfile?: StageVideoProfile;
   onCameraQuality?: (quality: StageVideoDiagnostics | null) => void;
+  onControlReady?: (control: NexusRoomControl | null) => void;
+  onRemoteNpcCommand?: (command: NpcCommand, senderName: string) => void;
   compact?: boolean;
 }
 
@@ -186,7 +193,7 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
   return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{resolution}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, videoProfile = "720p30", onCameraQuality, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, videoProfile = "720p30", onCameraQuality, onControlReady, onRemoteNpcCommand, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const videoConfig = useMemo(() => liveKitVideoConfig(videoProfile), [videoProfile]);
@@ -201,6 +208,9 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   const [programAudioState, setProgramAudioState] = useState<ProgramAudioState>("off");
   const [connectionQuality, setConnectionQuality] = useState("unknown");
   const [activeSpeaker, setActiveSpeaker] = useState("");
+  const [participantNames, setParticipantNames] = useState<string[]>(["You"]);
+  const [chatMessages, setChatMessages] = useState<NexusChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
   const roomRef = useRef<Room | null>(null);
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const programTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -213,6 +223,9 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   const onCameraQualityRef = useRef(onCameraQuality);
   const onMicrophoneStateRef = useRef(onMicrophoneState);
   const onVoiceLevelRef = useRef(onVoiceLevel);
+  const onControlReadyRef = useRef(onControlReady);
+  const onRemoteNpcCommandRef = useRef(onRemoteNpcCommand);
+  const receivedRoomMessageIdsRef = useRef(new Set<string>());
   const appliedVideoProfileRef = useRef(videoProfile);
   useEffect(() => { onLocalStreamRef.current = onLocalStream; }, [onLocalStream]);
   useEffect(() => { onSceneStreamsRef.current = onSceneStreams; }, [onSceneStreams]);
@@ -221,6 +234,8 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   useEffect(() => { onCameraQualityRef.current = onCameraQuality; }, [onCameraQuality]);
   useEffect(() => { onMicrophoneStateRef.current = onMicrophoneState; }, [onMicrophoneState]);
   useEffect(() => { onVoiceLevelRef.current = onVoiceLevel; }, [onVoiceLevel]);
+  useEffect(() => { onControlReadyRef.current = onControlReady; }, [onControlReady]);
+  useEffect(() => { onRemoteNpcCommandRef.current = onRemoteNpcCommand; }, [onRemoteNpcCommand]);
   useEffect(() => { onCameraState?.(cameraState); }, [cameraState, onCameraState]);
   useEffect(() => { onMicrophoneStateRef.current?.(microphoneState); }, [microphoneState]);
   useEffect(() => { sessionStorage.setItem("amx_participant", identity); }, [identity]);
@@ -249,6 +264,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
   }, []);
 
   const disconnect = useCallback(() => {
+    onControlReadyRef.current?.(null);
     fallbackStreamRef.current?.getTracks().forEach((track) => track.stop());
     fallbackStreamRef.current = null;
     void roomRef.current?.disconnect();
@@ -265,6 +281,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     setProgramAudioState("off");
     setConnectionQuality("unknown");
     setActiveSpeaker("");
+    setParticipantNames(["You"]);
     setStatus("idle");
     setMessage("Camera and room media are off");
     onLocalStreamRef.current?.(null);
@@ -405,10 +422,27 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         },
       });
       roomRef.current = room;
-      const updateCount = () => setParticipantCount(countStageAudienceParticipants(room.remoteParticipants.values(), 1));
+      const updateCount = () => {
+        setParticipantCount(countStageAudienceParticipants(room.remoteParticipants.values(), 1));
+        setParticipantNames(["You", ...Array.from(room.remoteParticipants.values()).map((participant) => participant.name || participant.identity).slice(0, 12)]);
+      };
       room.on(RoomEvent.ParticipantConnected, updateCount);
       room.on(RoomEvent.ParticipantDisconnected, updateCount);
       room.on(RoomEvent.ParticipantMetadataChanged, updateCount);
+      room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+        if (!participant) return;
+        const roomMessage = decodeNexusRoomMessage(payload);
+        if (!roomMessage || roomMessage.senderId !== participant.identity) return;
+        if (receivedRoomMessageIdsRef.current.has(roomMessage.id)) return;
+        receivedRoomMessageIdsRef.current.add(roomMessage.id);
+        if (receivedRoomMessageIdsRef.current.size > 200) receivedRoomMessageIdsRef.current.delete(receivedRoomMessageIdsRef.current.values().next().value as string);
+        if (topic === NEXUS_CONTROL_TOPIC && roomMessage.kind === "npc-command" && isOperatorMetadata(participant.metadata)) {
+          onRemoteNpcCommandRef.current?.(roomMessage.command, participant.name || participant.identity);
+        }
+        if (topic === NEXUS_CHAT_TOPIC && roomMessage.kind === "chat" && isRoomCommunicatorMetadata(participant.metadata)) {
+          setChatMessages((current) => [...current, { ...roomMessage, senderName: participant.name || roomMessage.senderName }].slice(-50));
+        }
+      });
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         if (track.kind === Track.Kind.Video) {
           const screen = publication.source === Track.Source.ScreenShare;
@@ -451,6 +485,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         updateCount();
       });
       room.on(RoomEvent.Disconnected, () => {
+        onControlReadyRef.current?.(null);
         programTrackRef.current = null;
         closeStudioVoiceEngine(voiceEngineRef.current);
         voiceEngineRef.current = null;
@@ -463,10 +498,21 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
         setScreenShareState("off");
         setPlaybackState("off");
         setProgramAudioState("off");
+        setParticipantNames(["You"]);
         onLocalStreamRef.current?.(null);
         onProgramAudioStateRef.current?.("off");
       });
       await room.connect(credentials.serverUrl, credentials.participantToken);
+      onControlReadyRef.current?.({
+        connected: true,
+        sendNpcCommand: async (command) => {
+          if (roomRef.current !== room) return false;
+          await room.localParticipant.publishData(encodeNexusRoomMessage({
+            id: crypto.randomUUID(), kind: "npc-command", senderId: identity, sentAt: Date.now(), command,
+          }), { reliable: true, topic: NEXUS_CONTROL_TOPIC });
+          return true;
+        },
+      });
       try {
         await room.startAudio();
         setPlaybackState(room.canPlaybackAudio ? "ready" : "blocked");
@@ -710,6 +756,22 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     catch { setPlaybackState("blocked"); }
   }, []);
 
+  const sendChat = useCallback(async () => {
+    const text = chatInput.trim().slice(0, 500);
+    const room = roomRef.current;
+    if (!text || !room || status !== "livekit") return;
+    const chat: NexusChatMessage = {
+      id: crypto.randomUUID(), kind: "chat", senderId: identity, senderName: "AMX Explorer", text, sentAt: Date.now(),
+    };
+    try {
+      await room.localParticipant.publishData(encodeNexusRoomMessage(chat), { reliable: true, topic: NEXUS_CHAT_TOPIC });
+      setChatMessages((current) => [...current, chat].slice(-50));
+      setChatInput("");
+    } catch {
+      setMessage("The room message could not be delivered");
+    }
+  }, [chatInput, identity, status]);
+
   const live = status === "livekit" || status === "local";
   const cameraDiagnostics = surfaces.find((surface) => surface.local && surface.source === "camera" && !surface.muted);
   return <section className={`livekit-pod ${compact ? "compact" : ""}`} data-transport={status} data-camera-state={cameraState} data-microphone-state={microphoneState} data-voice-profile="studio-48khz" data-screen-state={screenShareState} data-video-profile={videoProfile} data-camera-resolution={cameraDiagnostics?.width && cameraDiagnostics.height ? `${cameraDiagnostics.width}x${cameraDiagnostics.height}` : "pending"} data-video-feeds={surfaces.filter((surface) => !surface.muted).length}>
@@ -717,6 +779,13 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
     <div className="pod-screen-grid">
       {surfaces.length ? surfaces.map((surface) => <PodVideoTile key={surface.id} surface={surface}/>) : <div className="pod-camera-off"><CameraOff/><span>Your screen is private until you join</span></div>}
       {agents.slice(0, compact ? 2 : 3).map((agent) => <div className="pod-agent-screen" key={agent.id} style={{ "--agent-screen": agent.color } as React.CSSProperties}><span><Bot/></span><b>{agent.name}</b><small>{agent.role}</small><i>AGENT READY</i></div>)}
+    </div>
+    <div className="pod-comms" data-connected={status === "livekit"}>
+      <header><span><Wifi/><b>METAVERSE COMMS</b></span><small>{participantNames.join(" / ")}</small></header>
+      <div className="pod-chat-log" aria-live="polite">
+        {chatMessages.length ? chatMessages.slice(-6).map((chat) => <p key={chat.id}><b>{chat.senderId === identity ? "YOU" : chat.senderName}</b><span>{chat.text}</span></p>) : <p className="empty"><span>Join the room for voice, video, text, and synchronized NPC direction.</span></p>}
+      </div>
+      <form onSubmit={(event) => { event.preventDefault(); void sendChat(); }}><input aria-label="Room message" maxLength={500} disabled={status !== "livekit"} value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder={status === "livekit" ? "Message everyone in the room" : "Join pod to open communications"}/><button aria-label="Send room message" title="Send message" disabled={status !== "livekit" || !chatInput.trim()}><Send/></button></form>
     </div>
     <div ref={audioHostRef} className="pod-audio-host"/>
     <div className="livekit-pod-foot">
