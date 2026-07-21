@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { Glasses, LoaderCircle, LogOut } from "lucide-react";
 import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { GeoAnchor } from "./geospatial";
 import { DEFAULT_NPC_STATE, NPC_WAYPOINTS, waypointFor, type NpcAction, type NpcCommand, type NpcDirection, type NpcRuntimeState, type NpcWaypointId } from "./npc-controller";
 import { NEXUS_GLOBE_LEVELS, NEXUS_VFX_PARTICLES, type NexusGlobeLevel, type NexusVfxPreset } from "./nexus-vfx";
+import type { NexusXRMode } from "./nexus-xr";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 import { DEFAULT_WORLD_CAMERA_CONTROL, WORLD_CAMERA_POSES, WORLD_CAMERA_RIG_LAYER, normalizeWorldCameraControl, type WorldCameraControl, type WorldCameraId } from "./world-camera-control";
 import { SCREEN_WALL_FORMATS, type ScreenLayoutMode, type ScreenWallFit, type ScreenWallFormat } from "./screen-wall";
@@ -55,6 +57,7 @@ interface Props {
   lightPreset: LightPreset;
   vfxPreset?: NexusVfxPreset;
   globeLevel?: NexusGlobeLevel;
+  xrMode?: NexusXRMode;
   reducedMotion?: boolean;
   avatarUrl?: string;
   npcCommand?: NpcCommand | null;
@@ -122,6 +125,15 @@ function createHologramParticles(center: THREE.Vector3): NexusVfxRuntime {
   group.position.copy(center);
   group.add(points);
   return { group, geometry, material, positions, seeds, basePosition: center.clone(), currentShift: 0 };
+}
+
+function controllerRay(color: number) {
+  const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]);
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.86 });
+  const ray = new THREE.Line(geometry, material);
+  ray.name = "Nexus_XR_Controller_Ray";
+  ray.scale.z = 4;
+  return ray;
 }
 
 type ScreenName = ProductionScreenId;
@@ -581,7 +593,7 @@ function npcSnapshot(npc: NpcSceneRuntime): NpcRuntimeState {
   };
 }
 
-export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, screenMode = "triple", screenWallSource = "amx-air", screenWallFit = "contain", screenWallFormat = "production", locationPanel, anchors, lightPreset, vfxPreset = "ambient", globeLevel = "center", reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, screenMode = "triple", screenWallSource = "amx-air", screenWallFit = "contain", screenWallFormat = "production", locationPanel, anchors, lightPreset, vfxPreset = "ambient", globeLevel = "center", xrMode = "none", reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
@@ -614,8 +626,12 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   const cameraControlRef = useRef<WorldCameraControl>(normalizeWorldCameraControl(cameraControl));
   const vfxPresetRef = useRef<NexusVfxPreset>(vfxPreset);
   const globeLevelRef = useRef<NexusGlobeLevel>(globeLevel);
+  const startXRRef = useRef<() => Promise<void>>(async () => undefined);
+  const endXRRef = useRef<() => Promise<void>>(async () => undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [xrState, setXrState] = useState<"preview" | "entering" | "live" | "error">("preview");
+  const [xrMessage, setXrMessage] = useState("");
   const onReadyRef = useRef(onReady);
   const onBackendRef = useRef(onBackend);
   const onCaptureReadyRef = useRef(onCaptureReady);
@@ -636,23 +652,30 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     if (!host) return;
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x02070d);
+    scene.background = xrMode === "mr" ? null : new THREE.Color(0x02070d);
     scene.fog = new THREE.FogExp2(0x02070d, 0.025);
     const initialAspect = host.clientWidth / Math.max(1, host.clientHeight);
     const camera = new THREE.PerspectiveCamera(responsiveRoomFov(initialAspect), initialAspect, 0.05, 100);
     camera.position.set(0, 4.15, 9.4);
     const renderer = new THREE.WebGPURenderer({
       antialias: true,
+      alpha: xrMode === "mr",
       powerPreference: "high-performance",
-      forceWebGL: forceWebGLDiagnostic(),
+      forceWebGL: xrMode !== "none" || forceWebGLDiagnostic(),
     });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.82;
+    renderer.xr.enabled = xrMode !== "none";
+    if (xrMode !== "none") renderer.xr.setReferenceSpaceType("local-floor");
     renderer.domElement.className = "nexus-room-canvas";
     host.appendChild(renderer.domElement);
+    const playerRig = new THREE.Group();
+    playerRig.name = "Nexus_XR_Player_Rig";
+    playerRig.add(camera);
+    scene.add(playerRig);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 1.55, -1.2);
     controls.enableDamping = true;
@@ -675,6 +698,48 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     anchorLayer.name = "Realtime_Geo_Anchors";
     anchorLayerRef.current = anchorLayer;
     scene.add(anchorLayer);
+    const xrControllers = xrMode === "none" ? [] : [0, 1].map((index) => {
+      const controller = renderer.xr.getController(index);
+      controller.add(controllerRay(index === 0 ? 0x55e6ff : 0xff55d7));
+      playerRig.add(controller);
+      return controller;
+    });
+    let xrSession: XRSession | null = null;
+    let snapTurnReady = true;
+
+    startXRRef.current = async () => {
+      const xr = (navigator as Navigator & { xr?: { isSessionSupported: (kind: string) => Promise<boolean>; requestSession: (kind: string, options: unknown) => Promise<XRSession> } }).xr;
+      const sessionMode = xrMode === "vr" ? "immersive-vr" : "immersive-ar";
+      setXrState("entering");
+      setXrMessage("");
+      try {
+        if (xrMode === "none" || !xr || !(await xr.isSessionSupported(sessionMode))) throw new Error(`${sessionMode} is unavailable in this browser`);
+        const session = await xr.requestSession(sessionMode, {
+          requiredFeatures: ["local-floor"],
+          optionalFeatures: ["bounded-floor", "hand-tracking", "layers", "dom-overlay"],
+          domOverlay: { root: document.body },
+        });
+        xrSession = session;
+        playerRig.position.set(0, 0, xrMode === "mr" ? 4.2 : 5.6);
+        playerRig.rotation.set(0, 0, 0);
+        await renderer.xr.setSession(session);
+        host.dataset.xrSession = "live";
+        setXrState("live");
+        session.addEventListener("end", () => {
+          xrSession = null;
+          playerRig.position.set(0, 0, 0);
+          camera.position.set(0, 4.15, 9.4);
+          lastCameraControl = "";
+          host.dataset.xrSession = "ended";
+          setXrState("preview");
+        }, { once: true });
+      } catch (sessionError) {
+        host.dataset.xrSession = "error";
+        setXrMessage(sessionError instanceof Error ? sessionError.message : "Nexus WebXR could not start");
+        setXrState("error");
+      }
+    };
+    endXRRef.current = async () => { if (xrSession) await xrSession.end(); };
 
     let model: THREE.Object3D | null = null;
     const loader = new GLTFLoader();
@@ -756,6 +821,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     let lastCameraControl = "";
     let previousElapsed = 0;
     const worldUp = new THREE.Vector3(0, 1, 0);
+    const xrForward = new THREE.Vector3();
+    const xrRight = new THREE.Vector3();
     const panQuaternion = new THREE.Quaternion();
     const render = () => {
       const currentFrame = frame++;
@@ -767,7 +834,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       const selectedCamera = activeCameraRef.current;
       const currentControl = cameraControlRef.current;
       const cameraControlKey = `${selectedCamera}:${currentControl.pan}:${currentControl.tilt}:${currentControl.zoom}`;
-      if (selectedCamera !== lastWorldCamera || cameraControlKey !== lastCameraControl) {
+      if (!renderer.xr.isPresenting && (selectedCamera !== lastWorldCamera || cameraControlKey !== lastCameraControl)) {
         if (selectedCamera === "overview") {
           if (selectedCamera !== lastWorldCamera) camera.position.set(0, 4.15, 9.4);
           controls.target.set(currentControl.pan / 15, 1.55 + currentControl.tilt / 16, -1.2);
@@ -797,7 +864,30 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         host.dataset.cameraZoom = currentControl.zoom.toFixed(1);
         camera.updateProjectionMatrix();
       }
-      controls.update();
+      if (renderer.xr.isPresenting && xrSession) {
+        controls.enabled = false;
+        camera.getWorldDirection(xrForward);
+        xrForward.y = 0;
+        if (xrForward.lengthSq() > 0.001) xrForward.normalize();
+        xrRight.crossVectors(xrForward, worldUp).normalize();
+        Array.from(xrSession.inputSources).forEach((source) => {
+          const axes = source.gamepad?.axes || [];
+          const axisX = Math.abs(axes[2] || 0) > Math.abs(axes[0] || 0) ? axes[2] || 0 : axes[0] || 0;
+          const axisY = Math.abs(axes[3] || 0) > Math.abs(axes[1] || 0) ? axes[3] || 0 : axes[1] || 0;
+          if (source.handedness === "left") {
+            if (Math.abs(axisY) > 0.18) playerRig.position.addScaledVector(xrForward, -axisY * delta * 2.2);
+            if (Math.abs(axisX) > 0.18) playerRig.position.addScaledVector(xrRight, axisX * delta * 2.2);
+          }
+          if (source.handedness === "right") {
+            if (Math.abs(axisX) > 0.72 && snapTurnReady) {
+              playerRig.rotation.y -= Math.sign(axisX) * THREE.MathUtils.degToRad(30);
+              snapTurnReady = false;
+            } else if (Math.abs(axisX) < 0.32) snapTurnReady = true;
+          }
+        });
+        host.dataset.xrInputSources = String(xrSession.inputSources.length);
+        host.dataset.xrLocomotion = `${playerRig.position.x.toFixed(2)},${playerRig.position.z.toFixed(2)},${THREE.MathUtils.radToDeg(playerRig.rotation.y).toFixed(0)}`;
+      } else controls.update();
       const vfx = vfxRuntimeRef.current;
       if (vfx) {
         const preset = vfxPresetRef.current;
@@ -921,7 +1011,8 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         renderer.render(scene, captureCamera);
         return new Promise<Blob | null>((resolve) => renderer.domElement.toBlob(resolve, "image/jpeg", 0.86));
       });
-      animate();
+      if (xrMode === "none") animate();
+      else renderer.setAnimationLoop(render);
     }).catch((initError: unknown) => {
       if (disposed) return;
       setLoading(false);
@@ -971,6 +1062,14 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       renderer.domElement.removeEventListener("dblclick", moveNpcFromPointer);
       host.removeEventListener("keydown", moveNpcFromKey);
       controls.dispose();
+      renderer.setAnimationLoop(null);
+      if (xrSession) void xrSession.end().catch(() => undefined);
+      xrControllers.forEach((controller) => controller.traverse((object) => {
+        if ((object as THREE.Line).isLine) {
+          (object as THREE.Line).geometry.dispose();
+          ((object as THREE.Line).material as THREE.Material).dispose();
+        }
+      }));
       void renderer.dispose();
       onCaptureReadyRef.current?.(null);
       if (avatarRef.current) disposeObject(avatarRef.current);
@@ -986,9 +1085,11 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       screenWallRef.current = null;
       screenRefs.current = { Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null };
       lightRefs.current = [];
+      startXRRef.current = async () => undefined;
+      endXRRef.current = async () => undefined;
       if (host.contains(renderer.domElement)) host.removeChild(renderer.domElement);
     };
-  }, [reducedMotion]);
+  }, [reducedMotion, xrMode]);
 
   useEffect(() => {
     if (!npcCommand) return;
@@ -1167,5 +1268,6 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   return <div className="nexus-room-scene" ref={hostRef} data-media-source={mediaElement ? "connected" : "idle"} aria-label="Interactive Three.js Nexus control room">
     {loading && <div className="nexus-scene-loading"><span/><b>Loading Blender control room</b></div>}
     {error && <div className="nexus-scene-error">{error}</div>}
+    {xrMode !== "none" && !loading && <div className={`nexus-xr-gate ${xrState}`}><button onClick={() => void (xrState === "live" ? endXRRef.current() : startXRRef.current())} disabled={xrState === "entering"}>{xrState === "entering" ? <LoaderCircle className="spin"/> : xrState === "live" ? <LogOut/> : <Glasses/>}<span>{xrState === "live" ? "Exit Nexus XR" : xrState === "entering" ? "Opening Nexus XR" : `Enter Nexus ${xrMode.toUpperCase()}`}</span></button><small>{xrMessage || (xrState === "live" ? "Left stick move / right stick snap turn" : "Quest controllers and local-floor tracking")}</small></div>}
   </div>;
 }

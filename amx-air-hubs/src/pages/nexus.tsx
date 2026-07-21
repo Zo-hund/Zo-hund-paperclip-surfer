@@ -16,6 +16,7 @@ import { useAMX } from "../AppContext";
 import { DEFAULT_NEXUS_AVATAR_URL } from "../avatar-presets";
 import { DEFAULT_NPC_STATE, type NpcCommand, type NpcRuntimeState } from "../npc-controller";
 import { normalizeNexusGlobeLevel, normalizeNexusVfxPreset, type NexusGlobeLevel, type NexusVfxPreset } from "../nexus-vfx";
+import { normalizeNexusXRMode } from "../nexus-xr";
 import { NexusBroadcastConsole } from "../NexusBroadcastConsole";
 import { defaultWorldCameraControls, normalizeWorldCameraControl } from "../world-camera-control";
 import { normalizeScreenLayoutMode, normalizeScreenWallFit, normalizeScreenWallFormat } from "../screen-wall";
@@ -124,6 +125,7 @@ export function NexusPage() {
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
   const [selectedAnchor, setSelectedAnchor] = useState<GeoAnchor | null>(null);
   const [rendererBackend, setRendererBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
+  const xrMode = normalizeNexusXRMode(new URLSearchParams(window.location.search).get("xr"));
   const geo = useGeoAnchors(roomCode);
   const telemetry = useNexusTelemetry();
   const crew = agents.slice(0, 4);
@@ -267,7 +269,7 @@ export function NexusPage() {
 
     {tab === "room" && <div className="nexus-command-layout">
       <section className="nexus-scene-band">
-        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} runwayElement={runwayElement} mediaFit={mediaFit} locationPanel={locationPanel} screenProgram={screenProgram} screenStinger={screenStinger} screenMode={screenMode} screenWallSource={screenWallSource} screenWallFit={screenWallFit} screenWallFormat={screenWallFormat} anchors={geo.projectedAnchors} lightPreset={lightPreset} vfxPreset={vfxPreset} globeLevel={globeLevel} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
+        <Suspense fallback={<div className="nexus-scene-loading"><span/><b>Preparing spatial renderer</b></div>}><NexusRoomScene localStream={localStream} sceneStreams={sceneStreams} mediaElement={mediaElement} runwayElement={runwayElement} mediaFit={mediaFit} locationPanel={locationPanel} screenProgram={screenProgram} screenStinger={screenStinger} screenMode={screenMode} screenWallSource={screenWallSource} screenWallFit={screenWallFit} screenWallFormat={screenWallFormat} anchors={geo.projectedAnchors} lightPreset={lightPreset} vfxPreset={vfxPreset} globeLevel={globeLevel} xrMode={xrMode} reducedMotion={settings.reducedMotion} avatarUrl={avatarUrl} npcCommand={npcCommand} activeWorldCamera={activeWorldCamera} cameraControl={worldCameraControls[activeWorldCamera]} onCaptureReady={(capture) => { worldCaptureRef.current = capture; }} onAvatarState={setAvatarState} onNpcState={setNpcState} onBackend={setRendererBackend}/></Suspense>
         <div className="nexus-scene-overlay"><div><span className="eyebrow">BLENDER GLB / {rendererBackend === "webgpu" ? "WEBGPU" : rendererBackend === "webgl2" ? "WEBGL2 FALLBACK" : "GPU INIT"}</span><b>{activeWorldCamera === "overview" ? "NEXUS CONTROL ROOM" : `${activeWorldCamera === "briefing" ? "STAGE RIGHT" : activeWorldCamera.toUpperCase()} CAMERA / LIVE`}</b>{avatarState !== "idle" && <small className={`scene-avatar-state ${avatarState}`}>AVATAR {avatarState.toUpperCase()} / NPC {npcState.action.toUpperCase()}</small>}</div><div className="scene-light-controls" aria-label="Room light preset"><Lightbulb/>{(["standby", "mission", "focus"] as LightPreset[]).map((preset) => <button key={preset} className={lightPreset === preset ? "active" : ""} onClick={() => setLightPreset(preset)}>{preset === "focus" ? <Sun/> : preset}</button>)}</div></div>
       </section>
       <aside className="nexus-room-console">

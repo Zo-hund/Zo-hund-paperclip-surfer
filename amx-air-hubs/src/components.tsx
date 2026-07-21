@@ -13,6 +13,7 @@ import { useMemberAuth } from "./member-auth";
 import { modeRoute } from "./immersive";
 import { detectInputCapabilities, type InputCapabilities } from "./interaction";
 import { resolveSpatialAccess, type SpatialAccessMode } from "./xr-access";
+import { nexusSpatialRoute } from "./nexus-xr";
 
 const emptySpatialCapabilities: InputCapabilities = {
   methods: ["mouse", "keyboard"], webXR: false, immersiveAR: false, immersiveVR: false,
@@ -69,12 +70,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         {nav.slice(0,5).map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={20}/><span>{label}</span></NavLink>)}
       </nav>
       {accessibilityOpen && <AccessibilityPanel onClose={() => setAccessibilityOpen(false)}/>}
-      {xrAccessOpen && <XRAccessPanel missionId={activeMission.id} onClose={() => setXrAccessOpen(false)}/>}
+      {xrAccessOpen && <XRAccessPanel missionId={activeMission.id} pathname={location.pathname} onClose={() => setXrAccessOpen(false)}/>}
     </div>
   );
 }
 
-function XRAccessPanel({ missionId, onClose }: { missionId: string; onClose: () => void }) {
+function XRAccessPanel({ missionId, pathname, onClose }: { missionId: string; pathname: string; onClose: () => void }) {
   const navigate = useNavigate();
   const [capabilities, setCapabilities] = useState<InputCapabilities>(emptySpatialCapabilities);
   const [checking, setChecking] = useState(true);
@@ -91,7 +92,7 @@ function XRAccessPanel({ missionId, onClose }: { missionId: string; onClose: () 
   const launch = (mode: SpatialAccessMode) => {
     const route = resolveSpatialAccess(mode, capabilities);
     onClose();
-    navigate(modeRoute(route.resolved, missionId));
+    navigate(pathname === "/nexus" ? nexusSpatialRoute(mode, route.resolved) : modeRoute(route.resolved, missionId));
   };
   return <div className="modal-backdrop" onMouseDown={onClose}><aside className="xr-access-panel" onMouseDown={(event) => event.stopPropagation()} aria-label="Spatial access">
     <header><div><span className="eyebrow">SPATIAL ACCESS / DEVICE ROUTER</span><h2>Enter spatial mode</h2></div><button className="icon-button" onClick={onClose} aria-label="Close spatial access"><X/></button></header>
@@ -106,7 +107,7 @@ function XRAccessPanel({ missionId, onClose }: { missionId: string; onClose: () 
       </button>; })}
     </div>
     <div className="xr-access-capabilities"><span><Camera/>{capabilities.camera ? "CAMERA" : "NO CAMERA"}</span><span><Glasses/>{capabilities.webXR ? "WEBXR" : "WEB FALLBACK"}</span><span><Move3d/>{capabilities.handTracking ? "HANDS" : "TOUCH / POINTER"}</span></div>
-    <footer><span><b>ACTIVE MISSION</b><small>{missionId.replace(/-/g, " ")}</small></span><Link className="button secondary compact" to="/settings/comfort" onClick={onClose}><Settings2/>Comfort</Link></footer>
+    <footer><span><b>{pathname === "/nexus" ? "ACTIVE ROOM" : "ACTIVE MISSION"}</b><small>{pathname === "/nexus" ? "Nexus control room" : missionId.replace(/-/g, " ")}</small></span><Link className="button secondary compact" to="/settings/comfort" onClick={onClose}><Settings2/>Comfort</Link></footer>
   </aside></div>;
 }
 
