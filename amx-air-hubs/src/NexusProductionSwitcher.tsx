@@ -1,18 +1,20 @@
 import { useMemo, useState } from "react";
 import { Bot, Camera, Cast, CircleStop, Clapperboard, Columns3, Expand, MapPin, MonitorPlay, PanelsTopLeft, Radio, Sparkles, Users, Video } from "lucide-react";
-import type { ProductionScreenId, ScreenLayoutMode, ScreenProgram, ScreenSourceId, ScreenTransitionStyle, ScreenWallFit } from "./NexusRoomScene";
-import { screenWallCastHref } from "./screen-wall";
+import type { ProductionScreenId, ScreenLayoutMode, ScreenProgram, ScreenSourceId, ScreenTransitionStyle, ScreenWallFit, ScreenWallFormat } from "./NexusRoomScene";
+import { SCREEN_WALL_FORMATS, screenWallCastHref } from "./screen-wall";
 
 interface Props {
   roomCode: string;
   mode: ScreenLayoutMode;
   wallSource: ScreenSourceId;
   wallFit: ScreenWallFit;
+  wallFormat: ScreenWallFormat;
   program: ScreenProgram;
   available: Partial<Record<ScreenSourceId, boolean>>;
   transitioning: boolean;
   onMode: (mode: ScreenLayoutMode) => void;
   onWallFit: (fit: ScreenWallFit) => void;
+  onWallFormat: (format: ScreenWallFormat) => void;
   onTakeWall: (source: ScreenSourceId, transition: ScreenTransitionStyle) => void;
   onTake: (targets: ProductionScreenId[], source: ScreenSourceId, transition: ScreenTransitionStyle) => void;
   onTakeLayout: (program: ScreenProgram, transition: ScreenTransitionStyle) => void;
@@ -47,7 +49,7 @@ const LAYOUTS: Array<{id:string;label:string;program:ScreenProgram}> = [
   {id:"brand",label:"Brand",program:{Screen_User:"amx-air",Screen_Agent_Left:"amx-labs",Screen_Agent_Right:"amx-air"}},
 ];
 
-export function NexusProductionSwitcher({roomCode,mode,wallSource,wallFit,program,available,transitioning,onMode,onWallFit,onTakeWall,onTake,onTakeLayout}:Props) {
+export function NexusProductionSwitcher({roomCode,mode,wallSource,wallFit,wallFormat,program,available,transitioning,onMode,onWallFit,onWallFormat,onTakeWall,onTake,onTakeLayout}:Props) {
   const [target,setTarget]=useState<ProductionScreenId>("Screen_User");
   const [preview,setPreview]=useState<ScreenSourceId>("media");
   const [transition,setTransition]=useState<ScreenTransitionStyle>("amx-air");
@@ -70,7 +72,7 @@ export function NexusProductionSwitcher({roomCode,mode,wallSource,wallFit,progra
     <div className="screen-transformer-mode" role="tablist" aria-label="Screen layout mode"><button className={mode==="triple"?"active":""} onClick={()=>onMode("triple")}><Columns3/>Triple</button><button className={mode==="wall"?"active":""} onClick={()=>onMode("wall")}><PanelsTopLeft/>Wall</button></div>
     {mode==="triple"?<div className="production-bus-row">
       {SCREENS.map((screen)=><button key={screen.id} className={target===screen.id?"active":""} onClick={()=>setTarget(screen.id)} title={screen.label}><span>{screen.short}</span><b>{SOURCES.find((source)=>source.id===program[screen.id])?.short||"BLK"}</b><i/></button>)}
-    </div>:<div className="production-wall-bus"><PanelsTopLeft/><span><small>ONE SCREEN WALL / FULL VIEW</small><b>{current?.label||"Black"}</b></span><i>3840 x 1080</i></div>}
+    </div>:<><div className="production-wall-bus"><PanelsTopLeft/><span><small>ONE SCREEN WALL / {SCREEN_WALL_FORMATS[wallFormat].ratio}</small><b>{current?.label||"Black"}</b></span><i>{SCREEN_WALL_FORMATS[wallFormat].resolution}</i></div><div className="screen-wall-formats" role="tablist" aria-label="Screen wall viewing format">{(Object.entries(SCREEN_WALL_FORMATS) as Array<[ScreenWallFormat, (typeof SCREEN_WALL_FORMATS)[ScreenWallFormat]]>).map(([id,format])=><button key={id} className={wallFormat===id?"active":""} onClick={()=>onWallFormat(id)}><span>{format.ratio}</span>{format.label}</button>)}</div></>}
     <div className="production-preview"><div><span>PROGRAM / {mode==="wall"?"WALL":SCREENS.find((screen)=>screen.id===target)?.short}</span><b>{current?.label}</b></div><Video/><div><span>PREVIEW</span><b>{SOURCES.find((source)=>source.id===preview)?.label}</b></div></div>
     <div className="production-source-grid">{SOURCES.map(({id,label,short,icon:Icon})=><button key={id} className={preview===id?"preview":""} disabled={available[id]===false} onClick={()=>setPreview(id)} title={label}><Icon/><span>{short}</span><i/></button>)}</div>
     <div className="production-transition-row"><div role="tablist" aria-label="Screen transition">{(["cut","dip","amx-air","amx-labs"] as ScreenTransitionStyle[]).map((style)=><button key={style} className={transition===style?"active":""} onClick={()=>setTransition(style)}>{style==="amx-air"?"AIR":style==="amx-labs"?"LABS":style}</button>)}</div><button className="production-take" disabled={transitioning} onClick={take}><Radio/>TAKE</button></div>

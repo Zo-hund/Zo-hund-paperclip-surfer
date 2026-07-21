@@ -6,10 +6,10 @@ import type { GeoAnchor } from "./geospatial";
 import { DEFAULT_NPC_STATE, NPC_WAYPOINTS, waypointFor, type NpcAction, type NpcCommand, type NpcDirection, type NpcRuntimeState, type NpcWaypointId } from "./npc-controller";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 import { DEFAULT_WORLD_CAMERA_CONTROL, WORLD_CAMERA_POSES, WORLD_CAMERA_RIG_LAYER, normalizeWorldCameraControl, type WorldCameraControl, type WorldCameraId } from "./world-camera-control";
-import type { ScreenLayoutMode, ScreenWallFit } from "./screen-wall";
+import { SCREEN_WALL_FORMATS, type ScreenLayoutMode, type ScreenWallFit, type ScreenWallFormat } from "./screen-wall";
 
 export type { WorldCameraControl, WorldCameraId } from "./world-camera-control";
-export type { ScreenLayoutMode, ScreenWallFit } from "./screen-wall";
+export type { ScreenLayoutMode, ScreenWallFit, ScreenWallFormat } from "./screen-wall";
 
 export type LightPreset = "mission" | "focus" | "standby";
 export type VideoFit = "contain" | "cover";
@@ -48,6 +48,7 @@ interface Props {
   screenMode?: ScreenLayoutMode;
   screenWallSource?: ScreenSourceId;
   screenWallFit?: ScreenWallFit;
+  screenWallFormat?: ScreenWallFormat;
   locationPanel?: LocationPanelData | null;
   anchors: GeoAnchor[];
   lightPreset: LightPreset;
@@ -528,7 +529,7 @@ function npcSnapshot(npc: NpcSceneRuntime): NpcRuntimeState {
   };
 }
 
-export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, screenMode = "triple", screenWallSource = "amx-air", screenWallFit = "contain", locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
+export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, runwayElement, mediaFit = "contain", screenProgram, screenStinger, screenMode = "triple", screenWallSource = "amx-air", screenWallFit = "contain", screenWallFormat = "production", locationPanel, anchors, lightPreset, reducedMotion, avatarUrl, npcCommand, activeWorldCamera = "overview", cameraControl = DEFAULT_WORLD_CAMERA_CONTROL, onReady, onBackend, onCaptureReady, onAvatarState, onNpcState }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const screenRefs = useRef<Record<ScreenName, THREE.Mesh | null>>({ Screen_User: null, Screen_Agent_Left: null, Screen_Agent_Right: null });
@@ -650,7 +651,9 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         screenMeshes.forEach((mesh) => wallBounds.union(new THREE.Box3().setFromObject(mesh)));
         const wallSize = wallBounds.getSize(new THREE.Vector3());
         const wallCenter = wallBounds.getCenter(new THREE.Vector3());
-        const wallGeometry = new THREE.PlaneGeometry(wallSize.x + 0.18, Math.max(2.08, wallSize.y + 0.18));
+        const wallWidth = wallSize.x + 0.18;
+        const wallHeight = wallWidth / SCREEN_WALL_FORMATS.production.aspect;
+        const wallGeometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
         const wallMaterial = new THREE.MeshBasicMaterial({ color: 0x02070d, toneMapped: false, side: THREE.DoubleSide });
         const wall = new THREE.Mesh(wallGeometry, wallMaterial);
         wall.name = "Screen_Wall";
@@ -658,9 +661,10 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         wall.rotation.set(0, Math.PI, Math.PI);
         wall.renderOrder = 5;
         wall.visible = false;
+        wall.userData.wallWidth = wallWidth;
         scene.add(wall);
         screenWallRef.current = wall;
-        host.dataset.screenWall = `${wallSize.x.toFixed(2)}x${Math.max(2.08, wallSize.y + 0.18).toFixed(2)}`;
+        host.dataset.screenWall = `${wallWidth.toFixed(2)}x${wallHeight.toFixed(2)}`;
       }
       const bounds = new THREE.Box3().setFromObject(model);
       const size = bounds.getSize(new THREE.Vector3());
@@ -1017,6 +1021,18 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   }, [anchors, loading]);
 
   useEffect(() => {
+    const wall = screenWallRef.current;
+    const host = hostRef.current;
+    if (!wall || !host) return;
+    const wallWidth = Number(wall.userData.wallWidth) || 9.27;
+    const wallHeight = wallWidth / SCREEN_WALL_FORMATS[screenWallFormat].aspect;
+    wall.geometry.dispose();
+    wall.geometry = new THREE.PlaneGeometry(wallWidth, wallHeight);
+    host.dataset.screenWall = `${wallWidth.toFixed(2)}x${wallHeight.toFixed(2)}`;
+    host.dataset.screenWallFormat = screenWallFormat;
+  }, [loading, screenWallFormat]);
+
+  useEffect(() => {
     const cleanups:Array<()=>void>=[];
     const streams=[sceneStreams[0]||localStream,sceneStreams[1],sceneStreams[2]];
     const screenMeshes = Object.values(screenRefs.current).filter(Boolean) as THREE.Mesh[];
@@ -1038,9 +1054,9 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
         catch { cleanups.push(bindBrandSurface(mesh,"black")); }
       });
     }
-    if(hostRef.current){hostRef.current.dataset.screenMode=screenMode;hostRef.current.dataset.screenWallSource=screenWallSource;hostRef.current.dataset.screenWallFit=screenWallFit;hostRef.current.dataset.screenPrograms=Object.entries(screenProgram).map(([screen,source])=>`${screen}:${source}`).join(",");hostRef.current.dataset.screenStinger=screenStinger?.brand||"idle"}
+    if(hostRef.current){hostRef.current.dataset.screenMode=screenMode;hostRef.current.dataset.screenWallSource=screenWallSource;hostRef.current.dataset.screenWallFit=screenWallFit;hostRef.current.dataset.screenWallFormat=screenWallFormat;hostRef.current.dataset.screenPrograms=Object.entries(screenProgram).map(([screen,source])=>`${screen}:${source}`).join(",");hostRef.current.dataset.screenStinger=screenStinger?.brand||"idle"}
     return()=>{cleanups.forEach((cleanup)=>cleanup());screenMeshes.forEach((mesh)=>{mesh.visible=true});if(wall)wall.visible=false};
-  }, [loading, localStream, locationPanel, mediaElement, mediaFit, runwayElement, sceneStreams, screenMode, screenProgram, screenStinger, screenWallFit, screenWallSource]);
+  }, [loading, localStream, locationPanel, mediaElement, mediaFit, runwayElement, sceneStreams, screenMode, screenProgram, screenStinger, screenWallFit, screenWallFormat, screenWallSource]);
 
   return <div className="nexus-room-scene" ref={hostRef} data-media-source={mediaElement ? "connected" : "idle"} aria-label="Interactive Three.js Nexus control room">
     {loading && <div className="nexus-scene-loading"><span/><b>Loading Blender control room</b></div>}
