@@ -20,6 +20,8 @@ test("Quest controller rays execute cues with haptics and console toggling", () 
   assert.match(sceneSource, /getControllerGrip\(index\)/);
   assert.match(sceneSource, /controller\.userData\.inputSource = source/);
   assert.match(sceneSource, /playerRig\.add\(controller, grip\)/);
+  assert.match(sceneSource, /ray\.renderOrder = 110/);
+  assert.match(sceneSource, /mesh\.renderOrder = 100/);
 });
 
 test("XR production cues drive the existing Nexus state", () => {

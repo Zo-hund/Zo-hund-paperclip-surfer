@@ -131,10 +131,11 @@ function createHologramParticles(center: THREE.Vector3): NexusVfxRuntime {
 
 function controllerRay(color: number) {
   const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]);
-  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.86 });
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.86, depthTest: false, depthWrite: false });
   const ray = new THREE.Line(geometry, material);
   ray.name = "Nexus_XR_Controller_Ray";
   ray.scale.z = 4;
+  ray.renderOrder = 110;
   return ray;
 }
 
@@ -195,13 +196,15 @@ function createXRProductionPanel() {
   group.rotation.y = -0.4;
   const backing = new THREE.Mesh(
     new THREE.PlaneGeometry(3.35, 2.5),
-    new THREE.MeshBasicMaterial({ color: 0x02070d, transparent: true, opacity: 0.94, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({ color: 0x02070d, transparent: true, opacity: 0.94, side: THREE.DoubleSide, depthTest: false, depthWrite: false }),
   );
+  backing.renderOrder = 98;
   group.add(backing);
   const header = new THREE.Mesh(
     new THREE.PlaneGeometry(3.12, 0.22),
-    new THREE.MeshBasicMaterial({ map: productionPanelTexture("AMX XR CONTROL", "SCREENS / A/V / ROBOTICS / PRODUCTION"), transparent: true }),
+    new THREE.MeshBasicMaterial({ map: productionPanelTexture("AMX XR CONTROL", "SCREENS / A/V / ROBOTICS / PRODUCTION"), transparent: true, depthTest: false, depthWrite: false, toneMapped: false }),
   );
+  header.renderOrder = 99;
   header.position.set(0, 1.08, 0.012);
   group.add(header);
   const buttons: XRProductionButton[] = NEXUS_XR_PRODUCTION_CONTROLS.map((control, index) => {
@@ -210,12 +213,16 @@ function createXRProductionPanel() {
       color: 0xffffff,
       transparent: true,
       opacity: 0.92,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.21), material);
     const column = index % 4;
     const row = Math.floor(index / 4);
     mesh.position.set((column - 1.5) * 0.79, 0.78 - row * 0.25, 0.018);
     mesh.name = `XR_Cue_${control.id}`;
+    mesh.renderOrder = 100;
     mesh.userData.xrProductionCue = control.cue;
     group.add(mesh);
     return { mesh, cue: control.cue };
