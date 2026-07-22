@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, Clapperboard, Focus, Glasses, Headphones, Maximize2, MessageSquare, Radio, RotateCcw, Users, Video, Wifi } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, Clapperboard, Focus, Glasses, Headphones, Maximize2, MessageSquare, Mic, MicOff, Radio, RotateCcw, Users, Video, Wifi } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAMX } from "../AppContext";
 import { agents } from "../data";
@@ -8,7 +8,7 @@ import type { StageVenueLayout } from "../stage-events";
 import { useStageProduction } from "../stage-production";
 import { stageCameraMotionPreset } from "../stage-camera-motion";
 import { useStageVenuePresence } from "../stage-venue-presence";
-import { nextStageCue, type StageVenueOperatorCommand, type VenueFollowTarget } from "../stage-venue-production";
+import { nextStageCue, venueCommandFromVoice, type StageVenueOperatorCommand, type VenueFollowTarget } from "../stage-venue-production";
 import type { StageVenueControls, StageVenueXRMode } from "../StageVenueWorld";
 import type { NexusRoomControl } from "../nexus-room-control";
 import type { NpcCommand } from "../npc-controller";
@@ -17,6 +17,19 @@ import "../stage-venue.css";
 const StageVenueWorld = lazy(async () => ({ default: (await import("../StageVenueWorld")).StageVenueWorld }));
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
 const layouts: StageVenueLayout[] = ["theater", "arena", "expo-hall"];
+
+interface VenueSpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: { results: { length: number; [index: number]: { [index: number]: { transcript: string } } } }) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+}
+
+type VenueSpeechRecognitionConstructor = new () => VenueSpeechRecognition;
 
 function venueLayout(value?: string): StageVenueLayout {
   return layouts.includes(value as StageVenueLayout) ? value as StageVenueLayout : "theater";
@@ -38,12 +51,16 @@ export function StageVenuePage() {
   const presence = useStageVenuePresence(room, layout, member.profile);
   const controlsRef = useRef<StageVenueControls | null>(null);
   const roomControlRef = useRef<NexusRoomControl | null>(null);
+  const recognitionRef = useRef<VenueSpeechRecognition | null>(null);
+  const voiceControlRef = useRef<() => void>(() => undefined);
   const [mode, setMode] = useState<StageVenueXRMode>("web");
   const [status, setStatus] = useState("Browser venue ready");
   const [commsOpen, setCommsOpen] = useState(false);
   const [operatorOpen, setOperatorOpen] = useState(false);
   const [followTarget, setFollowTarget] = useState<VenueFollowTarget>("off");
   const [npcCommand, setNpcCommand] = useState<NpcCommand | null>(null);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("Say a camera, show, crew, or agent command");
   const onReady = useCallback((controls: StageVenueControls | null) => { controlsRef.current = controls; }, []);
 
   const enter = async (nextMode: StageVenueXRMode) => {
@@ -54,6 +71,7 @@ export function StageVenuePage() {
 
   const runOperatorCommand = useCallback((command: StageVenueOperatorCommand) => {
     if (!isOperator) { setStatus("Operator membership is required for production controls."); return; }
+    if (command.kind === "voice") { voiceControlRef.current(); return; }
     if (command.kind === "shot") production.update({ shot: command.shot });
     if (command.kind === "motion") {
       const preset = stageCameraMotionPreset(command.motion);
@@ -79,6 +97,29 @@ export function StageVenuePage() {
     }
     setStatus(`${command.kind.toUpperCase()} command sent to ${room}.`);
   }, [isOperator, production]);
+
+  const toggleVoiceControl = useCallback(() => {
+    if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null; setVoiceListening(false); return; }
+    const speechWindow = window as unknown as { SpeechRecognition?: VenueSpeechRecognitionConstructor; webkitSpeechRecognition?: VenueSpeechRecognitionConstructor };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!Recognition) { setStatus("Voice commands are unavailable in this browser. Use the controller or operator panel."); return; }
+    const recognition = new Recognition();
+    recognition.continuous = false; recognition.interimResults = false; recognition.lang = "en-US";
+    recognition.onresult = (event) => {
+      const transcript = event.results[event.results.length - 1]?.[0]?.transcript?.trim() || "";
+      setVoiceTranscript(transcript || "No command heard");
+      const command = venueCommandFromVoice(transcript);
+      if (command) runOperatorCommand(command);
+      else setStatus(`Voice command not recognized: ${transcript || "no speech"}`);
+    };
+    recognition.onerror = (event) => setStatus(event.error === "not-allowed" ? "Microphone permission is required for voice control." : `Voice control error: ${event.error}`);
+    recognition.onend = () => { recognitionRef.current = null; setVoiceListening(false); };
+    recognitionRef.current = recognition;
+    try { recognition.start(); setVoiceListening(true); setVoiceTranscript("Listening..."); setStatus("Voice control listening for one production command."); }
+    catch { recognitionRef.current = null; setVoiceListening(false); setStatus("Voice control could not start. Check microphone permission."); }
+  }, [runOperatorCommand]);
+  voiceControlRef.current = toggleVoiceControl;
+  useEffect(() => () => recognitionRef.current?.stop(), []);
 
   return <main className="stage-venue-page" data-layout={layout} data-xr-mode={mode}>
     <Suspense fallback={<div className="stage-venue-loading"><span/><b>Building {venueLabel(layout)}</b></div>}>
@@ -123,6 +164,7 @@ export function StageVenuePage() {
           <button onClick={() => runOperatorCommand({ kind: "crew", action: "call" })}><Users/><span>Call crew</span></button>
           <button onClick={() => runOperatorCommand({ kind: "crew", action: "hold" })}><Users/><span>Hold crew</span></button>
         </div>
+        <button className={`stage-venue-voice ${voiceListening ? "active" : ""}`} onClick={toggleVoiceControl} aria-pressed={voiceListening}>{voiceListening ? <MicOff/> : <Mic/>}<span>{voiceTranscript}</span></button>
       </aside>
     </>}
 

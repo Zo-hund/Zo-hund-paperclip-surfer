@@ -25,6 +25,9 @@ describe("member WebXR venues", () => {
     assert.match(world, /squeezestart/);
     assert.match(world, /VenueOperatorConsole/);
     assert.match(world, /resolveVenueMovement/);
+    assert.match(world, /ControllerLaser_/);
+    assert.match(world, /TrackedController_/);
+    assert.match(world, /controller\.visible = true/);
   });
 
   test("connects operator camera, agent, and human-team production controls", async () => {
@@ -36,6 +39,10 @@ describe("member WebXR venues", () => {
     assert.match(world, /followTargetRef/);
     assert.match(controls, /kind: "crew"/);
     assert.match(controls, /resolveVenueMovement/);
+    assert.match(controls, /venueCommandFromVoice/);
+    assert.match(controls, /phrase\.includes\("agent"\)/);
+    assert.match(page, /webkitSpeechRecognition/);
+    assert.match(page, /Voice control listening for one production command/);
   });
 
   test("bounds and throttles shared member poses", async () => {

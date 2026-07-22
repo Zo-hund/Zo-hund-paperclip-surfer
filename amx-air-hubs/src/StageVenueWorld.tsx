@@ -126,13 +126,14 @@ const OPERATOR_BUTTONS: { label: string; command: StageVenueOperatorCommand }[] 
   { label: "CALL CREW", command: { kind: "crew", action: "call" } },
   { label: "HOLD CREW", command: { kind: "crew", action: "hold" } },
   { label: "NPC PATROL", command: { kind: "npc", action: "patrol" } },
+  { label: "VOICE CONTROL", command: { kind: "voice", action: "toggle" } },
 ];
 
 function operatorPanel() {
   const group = new THREE.Group();
   group.name = "VenueOperatorConsole";
   group.visible = false;
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(4.35, 3.05), new THREE.MeshBasicMaterial({ color: 0x030a0f, transparent: true, opacity: .94, side: THREE.DoubleSide }));
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(4.35, 3.6), new THREE.MeshBasicMaterial({ color: 0x030a0f, transparent: true, opacity: .94, side: THREE.DoubleSide }));
   group.add(back);
   const buttons = OPERATOR_BUTTONS.map((control, index) => {
     const canvas = document.createElement("canvas"); canvas.width = 384; canvas.height = 128;
@@ -140,7 +141,7 @@ function operatorPanel() {
     if (context) { context.fillStyle = "#0b2029"; context.fillRect(0, 0, 384, 128); context.strokeStyle = "#55e6ff"; context.lineWidth = 5; context.strokeRect(3, 3, 378, 122); context.fillStyle = "#effbfc"; context.font = "700 28px Arial"; context.textAlign = "center"; context.textBaseline = "middle"; context.fillText(control.label, 192, 64); }
     const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.25, .43), new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide }));
-    mesh.position.set((index % 3 - 1) * 1.35, 1.08 - Math.floor(index / 3) * .55, .02);
+    mesh.position.set((index % 3 - 1) * 1.35, 1.35 - Math.floor(index / 3) * .55, .02);
     mesh.userData.operatorCommand = control.command;
     group.add(mesh);
     return mesh;
@@ -285,9 +286,26 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
     };
     const controllers = [0, 1].map((index) => {
       const controller = renderer.xr.getController(index);
-      const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -5)]), new THREE.LineBasicMaterial({ color: index ? COLORS.magenta : COLORS.cyan }));
-      controller.addEventListener("connected", (event) => { controller.userData.inputSource = (event as THREE.Event & { data: XRInputSource }).data; });
-      controller.add(ray); controller.addEventListener("selectstart", select); controller.addEventListener("squeezestart", toggleConsole); scene.add(controller); return controller;
+      controller.visible = false;
+      const beamMaterial = new THREE.LineBasicMaterial({ color: index ? COLORS.magenta : COLORS.cyan, transparent: true, opacity: .95, depthTest: false });
+      const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -.055), new THREE.Vector3(0, 0, -6)]), beamMaterial);
+      ray.name = `ControllerLaser_${index}`; ray.renderOrder = 20;
+      const shell = new THREE.Group(); shell.name = `TrackedController_${index}`;
+      const shellColor = index ? COLORS.magenta : COLORS.cyan;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(.12, .09, .22), new THREE.MeshStandardMaterial({ color: 0x142a34, emissive: shellColor, emissiveIntensity: .28, metalness: .42, roughness: .42 }));
+      body.position.set(0, -.035, .065); body.rotation.x = -.12;
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(.065, 14, 10), new THREE.MeshStandardMaterial({ color: shellColor, emissive: shellColor, emissiveIntensity: .55, roughness: .34 }));
+      nose.scale.set(1, .68, .72); nose.position.set(0, -.015, -.02);
+      const handIndicator = new THREE.Mesh(new THREE.TorusGeometry(.055, .012, 8, 20), new THREE.MeshBasicMaterial({ color: shellColor, depthTest: false }));
+      handIndicator.position.z = -.015; handIndicator.visible = false;
+      shell.add(body, nose, handIndicator); controller.add(shell, ray);
+      controller.addEventListener("connected", (event) => {
+        const source = (event as THREE.Event & { data: XRInputSource }).data;
+        controller.userData.inputSource = source; controller.visible = true;
+        body.visible = !source.hand; nose.visible = !source.hand; handIndicator.visible = Boolean(source.hand);
+      });
+      controller.addEventListener("disconnected", () => { controller.visible = false; controller.userData.inputSource = null; });
+      controller.addEventListener("selectstart", select); controller.addEventListener("squeezestart", toggleConsole); scene.add(controller); return controller;
     });
 
     const move = (forward: number, right: number) => {
