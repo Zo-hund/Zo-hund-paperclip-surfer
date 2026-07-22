@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import type { StageVenueLayout } from "./stage-events";
 import type { StageProductionState } from "./stage-production";
 import type { StageVenuePose } from "./stage-venue-presence";
@@ -234,23 +236,71 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
     };
 
     const remoteAvatars = new Map<string, THREE.Group>();
+    const avatarMixers = new Map<string, THREE.AnimationMixer>();
+    const avatarLoader = new GLTFLoader();
+    const avatarAssets = new Map<string, Promise<{ scene: THREE.Group; animations: THREE.AnimationClip[] }>>();
+    const loadAvatarAsset = (url: string) => {
+      let request = avatarAssets.get(url);
+      if (!request) {
+        request = avatarLoader.loadAsync(url).then((gltf) => ({ scene: gltf.scene, animations: gltf.animations }));
+        avatarAssets.set(url, request);
+      }
+      return request;
+    };
+    const installAvatarModel = async (id: string, avatar: THREE.Group, url: string) => {
+      avatar.userData.requestedAvatar = url;
+      try {
+        const asset = await loadAvatarAsset(url);
+        if (remoteAvatars.get(id) !== avatar || avatar.userData.requestedAvatar !== url) return;
+        const previous = avatar.getObjectByName("MemberAvatarModel");
+        if (previous) avatar.remove(previous);
+        avatarMixers.get(id)?.stopAllAction(); avatarMixers.delete(id);
+        const model = cloneSkeleton(asset.scene) as THREE.Group;
+        model.name = "MemberAvatarModel"; model.rotation.y = Math.PI;
+        const bounds = new THREE.Box3().setFromObject(model);
+        const size = bounds.getSize(new THREE.Vector3());
+        model.scale.setScalar(size.y > 0 ? 1.72 / size.y : 1);
+        const scaledBounds = new THREE.Box3().setFromObject(model);
+        model.position.y = -scaledBounds.min.y;
+        model.traverse((object) => { if (object instanceof THREE.Mesh) { object.castShadow = true; object.frustumCulled = true; } });
+        avatar.add(model);
+        if (asset.animations.length) {
+          const mixer = new THREE.AnimationMixer(model); mixer.clipAction(asset.animations[0]).play(); avatarMixers.set(id, mixer);
+        }
+        const fallback = avatar.getObjectByName("MemberAvatarFallback"); if (fallback) fallback.visible = false;
+        avatar.userData.loadedAvatar = url;
+      } catch {
+        avatar.userData.requestedAvatar = "";
+        const fallback = avatar.getObjectByName("MemberAvatarFallback"); if (fallback) fallback.visible = true;
+      }
+    };
     const syncAvatars = () => {
       const activeIds = new Set(participantsRef.current.map((participant) => participant.id));
-      remoteAvatars.forEach((avatar, id) => { if (!activeIds.has(id)) { scene.remove(avatar); remoteAvatars.delete(id); } });
+      remoteAvatars.forEach((avatar, id) => { if (!activeIds.has(id)) { avatarMixers.get(id)?.stopAllAction(); avatarMixers.delete(id); scene.remove(avatar); remoteAvatars.delete(id); } });
+      const detailedIds = new Set([...participantsRef.current].sort((a, b) => Math.hypot(a.position[0] - player.position.x, a.position[2] - player.position.z) - Math.hypot(b.position[0] - player.position.x, b.position[2] - player.position.z)).slice(0, 12).map((participant) => participant.id));
       participantsRef.current.forEach((participant) => {
         let avatar = remoteAvatars.get(participant.id);
         if (!avatar) {
           avatar = new THREE.Group();
           const color = new THREE.Color(participant.color);
+          const fallback = new THREE.Group(); fallback.name = "MemberAvatarFallback";
           const body = new THREE.Mesh(new THREE.CapsuleGeometry(.25, .75, 5, 10), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: .24, roughness: .55 }));
           body.position.y = 1.1;
           const head = new THREE.Mesh(new THREE.SphereGeometry(.2, 16, 12), new THREE.MeshStandardMaterial({ color: 0xd7a27e, roughness: .82 }));
           head.position.y = 1.78;
-          avatar.add(body, head, avatarLabel(participant.name, participant.color));
+          fallback.add(body, head); avatar.add(fallback, avatarLabel(participant.name, participant.color));
+          avatar.position.set(...participant.position);
           remoteAvatars.set(participant.id, avatar); scene.add(avatar);
         }
-        avatar.position.set(...participant.position);
-        avatar.rotation.y = participant.yaw;
+        avatar.position.lerp(new THREE.Vector3(...participant.position), reducedMotion ? 1 : .3);
+        const yawDelta = Math.atan2(Math.sin(participant.yaw - avatar.rotation.y), Math.cos(participant.yaw - avatar.rotation.y));
+        avatar.rotation.y += yawDelta * (reducedMotion ? 1 : .3);
+        const fallback = avatar.getObjectByName("MemberAvatarFallback");
+        const model = avatar.getObjectByName("MemberAvatarModel");
+        const showDetailed = detailedIds.has(participant.id) && Boolean(participant.avatarUrl);
+        if (fallback) fallback.visible = !showDetailed || !model;
+        if (model) model.visible = showDetailed && avatar.userData.loadedAvatar === participant.avatarUrl;
+        if (showDetailed && participant.avatarUrl && avatar.userData.requestedAvatar !== participant.avatarUrl) void installAvatarModel(participant.id, avatar, participant.avatarUrl);
       });
     };
 
@@ -409,6 +459,7 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
         }
       }
       syncAvatars();
+      avatarMixers.forEach((mixer) => mixer.update(delta));
       const followedParticipant = followTargetRef.current === "crew" ? participantsRef.current[1] || participantsRef.current[0] : participantsRef.current[0];
       const followPosition = followTargetRef.current === "agent" || !followedParticipant
         ? npcRoot.position.clone().add(new THREE.Vector3(0, 1.45, 0))

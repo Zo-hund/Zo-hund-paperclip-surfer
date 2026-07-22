@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getMemberDataClient, type MemberProfile } from "./member-auth";
 import type { StageVenueLayout } from "./stage-events";
+import { normalizeMemberAvatarUrl } from "./member-avatar";
 
 export interface StageVenuePose {
   id: string;
   name: string;
   color: string;
+  avatarUrl: string | null;
   position: [number, number, number];
   yaw: number;
   updatedAt: number;
@@ -24,6 +26,7 @@ export function normalizeStageVenuePose(value: Partial<StageVenuePose> | undefin
     id,
     name: String(value.name || "Member").replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 48) || "Member",
     color,
+    avatarUrl: normalizeMemberAvatarUrl(value.avatarUrl),
     position: [bounded(value.position[0], -28, 28), bounded(value.position[1], 0, 3), bounded(value.position[2], -28, 28)],
     yaw: bounded(value.yaw, -Math.PI * 2, Math.PI * 2),
     updatedAt: bounded(value.updatedAt, 0, Date.now() + 60_000) || Date.now(),
@@ -37,12 +40,14 @@ export function useStageVenuePresence(roomCode: string, layout: StageVenueLayout
   const memberId = useMemo(() => `member-${String(profile?.id || sessionStorage.getItem("amx_participant") || crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48)}`, [profile?.id]);
   const name = profile?.display_name || "AMX Member";
   const color = PALETTE[Math.abs([...memberId].reduce((total, character) => total + character.charCodeAt(0), 0)) % PALETTE.length];
+  const avatarUrl = normalizeMemberAvatarUrl(profile?.avatar_model_url);
   const [participants, setParticipants] = useState<StageVenuePose[]>([]);
   const [transport, setTransport] = useState<"connecting" | "websocket" | "local mesh" | "offline">("connecting");
-  const poseRef = useRef<StageVenuePose>({ id: memberId, name, color, position: [0, 0, 8], yaw: Math.PI, updatedAt: Date.now() });
+  const poseRef = useRef<StageVenuePose>({ id: memberId, name, color, avatarUrl, position: [0, 0, 8], yaw: Math.PI, updatedAt: Date.now() });
   const localRef = useRef<BroadcastChannel | null>(null);
   const realtimeRef = useRef<RealtimeChannel | null>(null);
   const lastPublishRef = useRef(0);
+  useEffect(() => { poseRef.current = { ...poseRef.current, name, color, avatarUrl, updatedAt: Date.now() }; }, [avatarUrl, color, name]);
 
   const receive = useCallback((candidate: Partial<StageVenuePose>) => {
     const pose = normalizeStageVenuePose(candidate);
@@ -98,14 +103,14 @@ export function useStageVenuePresence(roomCode: string, layout: StageVenueLayout
     const now = Date.now();
     if (now - lastPublishRef.current < 100) return;
     lastPublishRef.current = now;
-    const pose = normalizeStageVenuePose({ id: memberId, name, color, position, yaw, updatedAt: now });
+    const pose = normalizeStageVenuePose({ id: memberId, name, color, avatarUrl, position, yaw, updatedAt: now });
     if (!pose) return;
     poseRef.current = pose;
     if (realtimeRef.current) {
       void realtimeRef.current.send({ type: "broadcast", event: "pose", payload: pose });
       void realtimeRef.current.track(pose);
     } else localRef.current?.postMessage(pose);
-  }, [color, memberId, name]);
+  }, [avatarUrl, color, memberId, name]);
 
   return { participantId: memberId, participants, transport, publishPose };
 }

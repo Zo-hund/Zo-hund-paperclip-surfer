@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { LockKeyhole, ShieldAlert } from "lucide-react";
+import { normalizeMemberAvatarUrl } from "./member-avatar";
 
 export type MembershipRole = "member" | "trainer" | "operator";
 export type MembershipStatus = "active" | "pending" | "suspended";
@@ -13,6 +14,7 @@ export interface MemberProfile {
   display_name: string;
   handle: string | null;
   avatar_url: string | null;
+  avatar_model_url: string | null;
   organization: string;
   membership_role: MembershipRole;
   membership_status: MembershipStatus;
@@ -25,6 +27,7 @@ interface ProfileUpdate {
   display_name: string;
   handle: string | null;
   avatar_url: string | null;
+  avatar_model_url?: string | null;
   profile_visibility: ProfileVisibility;
 }
 
@@ -250,12 +253,13 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
       setError("");
       if (!session) throw new Error("Sign in before updating your profile.");
       const client = await requireClient();
-      const payload = {
-        ...update,
+      const payload: { display_name: string; handle: string | null; avatar_url: string | null; avatar_model_url?: string | null; profile_visibility: ProfileVisibility } = {
         display_name: update.display_name.trim(),
         handle: update.handle?.trim().toLowerCase() || null,
         avatar_url: update.avatar_url?.trim() || null,
+        profile_visibility: update.profile_visibility,
       };
+      if (update.avatar_model_url !== undefined) payload.avatar_model_url = normalizeMemberAvatarUrl(update.avatar_model_url);
       const { error: updateError } = await client.from("member_profiles").update(payload).eq("id", session.user.id);
       if (updateError) { setError(updateError.message); throw updateError; }
       await refreshProfile(client, session.user.id);

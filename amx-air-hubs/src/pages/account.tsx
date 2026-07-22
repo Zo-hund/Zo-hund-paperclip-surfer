@@ -7,6 +7,7 @@ import {
 import { MembershipCard3D } from "../MembershipCard3D";
 import { PageHeader, StatusPill } from "../components";
 import { uploadIdentityImage } from "../identity-media";
+import { MEMBER_AVATAR_PRESETS, memberAvatarPreset, normalizeMemberAvatarUrl } from "../member-avatar";
 import { publicMemberPath, useMemberAuth, type MemberProfile, type ProfileVisibility } from "../member-auth";
 
 type AccountMode = "signin" | "create" | "recover";
@@ -146,6 +147,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
   const [handle, setHandle] = useState(profile.handle || "");
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url || "");
   const [externalAvatarUrl, setExternalAvatarUrl] = useState(() => /^https?:\/\//i.test(profile.avatar_url || "") ? profile.avatar_url || "" : "");
+  const [avatarModelUrl, setAvatarModelUrl] = useState(profile.avatar_model_url || "");
   const [visibility, setVisibility] = useState<ProfileVisibility>(profile.profile_visibility);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -161,6 +163,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
     setHandle(profile.handle || "");
     setAvatarUrl(profile.avatar_url || "");
     setExternalAvatarUrl(/^https?:\/\//i.test(profile.avatar_url || "") ? profile.avatar_url || "" : "");
+    setAvatarModelUrl(profile.avatar_model_url || "");
     setVisibility(profile.profile_visibility);
   }, [profile]);
 
@@ -168,8 +171,10 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
     event.preventDefault();
     setBusy(true);
     setNotice("");
+    const normalizedAvatarModel = normalizeMemberAvatarUrl(avatarModelUrl);
+    if (avatarModelUrl.trim() && !normalizedAvatarModel) { setNotice("Use a built-in avatar or a models.readyplayer.me GLB URL."); setBusy(false); return; }
     try {
-      await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: externalAvatarUrl.trim() || avatarUrl || null, profile_visibility: visibility });
+      await auth.updateProfile({ display_name: displayName, handle: handle || null, avatar_url: externalAvatarUrl.trim() || avatarUrl || null, avatar_model_url: normalizedAvatarModel, profile_visibility: visibility });
       setNotice("Member profile updated.");
     } catch {
       // The provider exposes the safe Auth error in this view.
@@ -258,6 +263,11 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
         <div className="member-photo-editor">
           <div className="member-photo-preview">{externalAvatarUrl || avatarUrl ? <img src={externalAvatarUrl || avatarUrl} alt="Profile preview"/> : <UserRound/>}</div>
           <div><b>Profile photo</b><small>PNG, JPEG, or WebP. Up to 5 MB.</small><span className="member-photo-actions"><label className={`button secondary ${photoBusy ? "disabled" : ""}`}><ImagePlus/>{photoBusy ? "Uploading..." : avatarUrl ? "Replace photo" : "Upload photo"}<input disabled={photoBusy} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadPhoto}/></label>{avatarUrl && <button type="button" className="icon-button" title="Remove profile photo" aria-label="Remove profile photo" disabled={photoBusy} onClick={() => void removePhoto()}><Trash2/></button>}</span></div>
+        </div>
+        <div className="member-avatar-model-editor">
+          <div><UserRound/><span><b>World avatar</b><small>{memberAvatarPreset(avatarModelUrl)?.label || (avatarModelUrl ? "Ready Player Me" : "Default member body")}</small></span></div>
+          <label><span>Built-in body</span><select value={memberAvatarPreset(avatarModelUrl)?.url || ""} onChange={(event) => setAvatarModelUrl(event.target.value)}><option value="">Default member body</option>{MEMBER_AVATAR_PRESETS.map((preset) => <option key={preset.id} value={preset.url}>{preset.label}</option>)}</select></label>
+          <label><span>Ready Player Me GLB</span><input value={avatarModelUrl} maxLength={500} onChange={(event) => setAvatarModelUrl(event.target.value)} placeholder="https://models.readyplayer.me/...glb"/></label>
         </div>
         <label><span>Display name</span><input required minLength={2} maxLength={80} value={displayName} onChange={(event) => setDisplayName(event.target.value)}/></label>
         <label><span>Public handle</span><input pattern="[a-z0-9][a-z0-9_-]{2,29}" maxLength={30} value={handle} onChange={(event) => setHandle(event.target.value.toLowerCase())} placeholder="amx-member"/></label>
