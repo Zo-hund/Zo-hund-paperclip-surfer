@@ -3,6 +3,8 @@ import * as THREE from "three";
 import type { StageVenueLayout } from "./stage-events";
 import type { StageProductionState } from "./stage-production";
 import type { StageVenuePose } from "./stage-venue-presence";
+import type { NpcCommand, NpcRuntimeState } from "./npc-controller";
+import { isSafeVenuePoint, resolveVenueMovement, type StageVenueOperatorCommand, type VenueCollider, type VenueFollowTarget } from "./stage-venue-production";
 
 export type StageVenueXRMode = "web" | "ar" | "vr" | "mr";
 export interface StageVenueControls {
@@ -17,6 +19,10 @@ interface Props {
   production: StageProductionState;
   participants: StageVenuePose[];
   reducedMotion?: boolean;
+  operator?: boolean;
+  npcCommand?: NpcCommand | null;
+  followTarget?: VenueFollowTarget;
+  onOperatorCommand?: (command: StageVenueOperatorCommand) => void;
   onPose: (position: [number, number, number], yaw: number) => void;
   onReady: (controls: StageVenueControls | null) => void;
 }
@@ -55,6 +61,7 @@ function avatarLabel(name: string, color: string) {
 }
 
 function buildVenue(root: THREE.Group, layout: StageVenueLayout) {
+  const colliders: VenueCollider[] = [{ minX: -7.5, maxX: 7.5, minZ: -13.8, maxZ: -8.45 }];
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: 0x071218, metalness: .25, roughness: .78 }));
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -73,6 +80,7 @@ function buildVenue(root: THREE.Group, layout: StageVenueLayout) {
     for (let row = 0; row < 5; row += 1) for (let column = 0; column < 9; column += 1) {
       const seat = box(root, [.72, .55, .72], [(column - 4) * 1.15, .32 + row * .08, -5 + row * 1.75], row === 0 ? 0x6b5524 : 0x16303a);
       seat.rotation.y = 0;
+      colliders.push({ minX: seat.position.x - .42, maxX: seat.position.x + .42, minZ: seat.position.z - .42, maxZ: seat.position.z + .42 });
     }
   } else if (layout === "arena") {
     for (let index = 0; index < 32; index += 1) {
@@ -80,6 +88,7 @@ function buildVenue(root: THREE.Group, layout: StageVenueLayout) {
       const radius = index % 2 ? 8.4 : 10;
       const seat = box(root, [.7, .56, .7], [Math.sin(angle) * radius, .34, -3 + Math.cos(angle) * radius], index < 8 ? 0x6b5524 : 0x222940);
       seat.rotation.y = angle;
+      colliders.push({ minX: seat.position.x - .42, maxX: seat.position.x + .42, minZ: seat.position.z - .42, maxZ: seat.position.z + .42 });
     }
     const ring = new THREE.Mesh(new THREE.TorusGeometry(6.2, .08, 10, 80), new THREE.MeshBasicMaterial({ color: COLORS.magenta }));
     ring.rotation.x = Math.PI / 2; ring.position.set(0, .08, -3); root.add(ring);
@@ -94,22 +103,69 @@ function buildVenue(root: THREE.Group, layout: StageVenueLayout) {
       box(group, [4.6, 2.7, .18], [0, 1.5, -1.82], boothColors[index], boothColors[index]);
       box(group, [1.8, 1, .8], [0, .5, -.7], 0x1b3039);
       root.add(group);
+      colliders.push({ minX: group.position.x - 2.45, maxX: group.position.x + 2.45, minZ: group.position.z - 2, maxZ: group.position.z + 2 });
     }
   }
 
-  return floor;
+  return { floor, colliders };
 }
 
-export function StageVenueWorld({ layout, production, participants, reducedMotion, onPose, onReady }: Props) {
+const OPERATOR_BUTTONS: { label: string; command: StageVenueOperatorCommand }[] = [
+  { label: "WIDE", command: { kind: "shot", shot: "wide" } },
+  { label: "HOST", command: { kind: "shot", shot: "host" } },
+  { label: "AUDIENCE", command: { kind: "shot", shot: "audience" } },
+  { label: "CRANE", command: { kind: "shot", shot: "crane" } },
+  { label: "FOLLOW HOST", command: { kind: "follow", target: "host" } },
+  { label: "FOLLOW CREW", command: { kind: "follow", target: "crew" } },
+  { label: "CRANE REVEAL", command: { kind: "motion", motion: "crane-reveal" } },
+  { label: "DOLLY PUSH", command: { kind: "motion", motion: "dolly-push" } },
+  { label: "GO LIVE", command: { kind: "show", action: "go-live" } },
+  { label: "NEXT CUE", command: { kind: "show", action: "next-cue" } },
+  { label: "NPC STAGE", command: { kind: "npc", action: "stage" } },
+  { label: "NPC WAVE", command: { kind: "npc", action: "wave" } },
+  { label: "CALL CREW", command: { kind: "crew", action: "call" } },
+  { label: "HOLD CREW", command: { kind: "crew", action: "hold" } },
+  { label: "NPC PATROL", command: { kind: "npc", action: "patrol" } },
+];
+
+function operatorPanel() {
+  const group = new THREE.Group();
+  group.name = "VenueOperatorConsole";
+  group.visible = false;
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(4.35, 3.05), new THREE.MeshBasicMaterial({ color: 0x030a0f, transparent: true, opacity: .94, side: THREE.DoubleSide }));
+  group.add(back);
+  const buttons = OPERATOR_BUTTONS.map((control, index) => {
+    const canvas = document.createElement("canvas"); canvas.width = 384; canvas.height = 128;
+    const context = canvas.getContext("2d");
+    if (context) { context.fillStyle = "#0b2029"; context.fillRect(0, 0, 384, 128); context.strokeStyle = "#55e6ff"; context.lineWidth = 5; context.strokeRect(3, 3, 378, 122); context.fillStyle = "#effbfc"; context.font = "700 28px Arial"; context.textAlign = "center"; context.textBaseline = "middle"; context.fillText(control.label, 192, 64); }
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.25, .43), new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide }));
+    mesh.position.set((index % 3 - 1) * 1.35, 1.08 - Math.floor(index / 3) * .55, .02);
+    mesh.userData.operatorCommand = control.command;
+    group.add(mesh);
+    return mesh;
+  });
+  return { group, buttons };
+}
+
+export function StageVenueWorld({ layout, production, participants, reducedMotion, operator = false, npcCommand, followTarget = "off", onOperatorCommand, onPose, onReady }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const participantsRef = useRef(participants);
   const productionRef = useRef(production);
   const onPoseRef = useRef(onPose);
   const onReadyRef = useRef(onReady);
+  const operatorRef = useRef(operator);
+  const npcCommandRef = useRef(npcCommand);
+  const followTargetRef = useRef(followTarget);
+  const onOperatorCommandRef = useRef(onOperatorCommand);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
   useEffect(() => { productionRef.current = production; }, [production]);
   useEffect(() => { onPoseRef.current = onPose; }, [onPose]);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  useEffect(() => { operatorRef.current = operator; }, [operator]);
+  useEffect(() => { npcCommandRef.current = npcCommand; }, [npcCommand]);
+  useEffect(() => { followTargetRef.current = followTarget; }, [followTarget]);
+  useEffect(() => { onOperatorCommandRef.current = onOperatorCommand; }, [onOperatorCommand]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -138,12 +194,43 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
     const cyan = new THREE.PointLight(COLORS.cyan, 34, 30); cyan.position.set(-7, 7, -8); scene.add(cyan);
     const magenta = new THREE.PointLight(COLORS.magenta, 28, 26); magenta.position.set(7, 5, -5); scene.add(magenta);
     const venue = new THREE.Group(); scene.add(venue);
-    const floor = buildVenue(venue, layout);
+    const { floor, colliders } = buildVenue(venue, layout);
 
     const programCanvas = document.createElement("canvas"); programCanvas.width = 1280; programCanvas.height = 720;
     const programTexture = new THREE.CanvasTexture(programCanvas); programTexture.colorSpace = THREE.SRGBColorSpace;
     const programScreen = new THREE.Mesh(new THREE.PlaneGeometry(12.7, 5), new THREE.MeshBasicMaterial({ map: programTexture, toneMapped: false }));
     programScreen.position.set(0, 4, -12.84); venue.add(programScreen);
+
+    const npcRoot = new THREE.Group();
+    npcRoot.position.set(-2.1, 0, -7.4);
+    const npcColor = new THREE.Color(COLORS.magenta);
+    const npcBody = new THREE.Mesh(new THREE.CapsuleGeometry(.3, .9, 6, 12), new THREE.MeshStandardMaterial({ color: npcColor, emissive: npcColor, emissiveIntensity: .3, roughness: .46 }));
+    npcBody.position.y = 1.12;
+    const npcHead = new THREE.Mesh(new THREE.SphereGeometry(.23, 18, 14), new THREE.MeshStandardMaterial({ color: 0x263e48, emissive: COLORS.cyan, emissiveIntensity: .55 }));
+    npcHead.position.y = 1.88;
+    npcRoot.add(npcBody, npcHead, avatarLabel("JAZ / PRODUCTION AGENT", "#ff63de"));
+    scene.add(npcRoot);
+    const npcState: NpcRuntimeState & { target: THREE.Vector3; lastCommand: string; actionUntil: number } = {
+      agentId: "jaz", behavior: "hold", action: "idle", moving: false, waypoint: "stage", position: [-2.1, 0, -7.4], speed: 1.15,
+      target: new THREE.Vector3(-2.1, 0, -7.4), lastCommand: "", actionUntil: 0,
+    };
+
+    const productionCamera = new THREE.Group();
+    const cameraBody = box(productionCamera, [.56, .36, .72], [0, 0, 0], 0x182b34, COLORS.cyan);
+    const cameraLens = new THREE.Mesh(new THREE.CylinderGeometry(.13, .18, .28, 16), new THREE.MeshStandardMaterial({ color: 0x071218, emissive: COLORS.cyan, emissiveIntensity: .34 }));
+    cameraLens.rotation.x = Math.PI / 2; cameraLens.position.z = -.46; productionCamera.add(cameraLens);
+    productionCamera.position.set(4.8, 2.2, 1.5); scene.add(productionCamera);
+    cameraBody.name = "ProductionCameraRig";
+
+    const xrConsole = operatorPanel();
+    scene.add(xrConsole.group);
+    const placeConsole = () => {
+      const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+      const position = camera.getWorldPosition(new THREE.Vector3()).addScaledVector(direction, 1.8);
+      xrConsole.group.position.copy(position);
+      xrConsole.group.quaternion.copy(camera.getWorldQuaternion(new THREE.Quaternion()));
+      xrConsole.group.position.y -= .2;
+    };
 
     const remoteAvatars = new Map<string, THREE.Group>();
     const syncAvatars = () => {
@@ -168,26 +255,46 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
 
     const floorRaycaster = new THREE.Raycaster();
     const controllerMatrix = new THREE.Matrix4();
-    const teleport = (event: THREE.Event & { target: THREE.Object3D }) => {
-      const controller = event.target;
+    const controllerRay = (controller: THREE.Object3D) => {
       controllerMatrix.identity().extractRotation(controller.matrixWorld);
       floorRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
       floorRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(controllerMatrix);
+    };
+    const pulse = (controller: THREE.Object3D) => {
+      const gamepad = (controller.userData.inputSource as XRInputSource | undefined)?.gamepad;
+      const actuator = gamepad?.hapticActuators?.[0];
+      if (actuator) void actuator.pulse(.55, 42);
+    };
+    const select = (event: THREE.Event & { target: THREE.Object3D }) => {
+      const controller = event.target;
+      controllerRay(controller);
+      if (operatorRef.current && xrConsole.group.visible) {
+        const button = floorRaycaster.intersectObjects(xrConsole.buttons, false)[0];
+        const command = button?.object.userData.operatorCommand as StageVenueOperatorCommand | undefined;
+        if (command) { onOperatorCommandRef.current?.(command); pulse(controller); return; }
+      }
       const hit = floorRaycaster.intersectObject(floor, false)[0];
       if (!hit) return;
-      player.position.x = Math.max(-26, Math.min(26, hit.point.x));
-      player.position.z = Math.max(-24, Math.min(24, hit.point.z));
+      if (isSafeVenuePoint(hit.point, colliders)) { player.position.x = hit.point.x; player.position.z = hit.point.z; pulse(controller); }
+    };
+    const toggleConsole = () => {
+      if (!operatorRef.current) return;
+      xrConsole.group.visible = !xrConsole.group.visible;
+      if (xrConsole.group.visible) placeConsole();
+      mount.dataset.operatorConsole = xrConsole.group.visible ? "visible" : "hidden";
     };
     const controllers = [0, 1].map((index) => {
       const controller = renderer.xr.getController(index);
       const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -5)]), new THREE.LineBasicMaterial({ color: index ? COLORS.magenta : COLORS.cyan }));
-      controller.add(ray); controller.addEventListener("select", teleport); scene.add(controller); return controller;
+      controller.addEventListener("connected", (event) => { controller.userData.inputSource = (event as THREE.Event & { data: XRInputSource }).data; });
+      controller.add(ray); controller.addEventListener("selectstart", select); controller.addEventListener("squeezestart", toggleConsole); scene.add(controller); return controller;
     });
 
-    const clampPlayer = () => { player.position.x = Math.max(-27, Math.min(27, player.position.x)); player.position.z = Math.max(-25, Math.min(25, player.position.z)); };
     const move = (forward: number, right: number) => {
       const direction = new THREE.Vector3(right, 0, -forward).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
-      player.position.addScaledVector(direction, .55); clampPlayer();
+      const desired = player.position.clone().addScaledVector(direction, .55);
+      const resolved = resolveVenueMovement(player.position, desired, colliders);
+      player.position.set(resolved.x, 0, resolved.z);
     };
     const turn = (direction: -1 | 1) => { player.rotation.y -= direction * Math.PI / 6; };
     const recenter = () => { player.position.set(0, 0, 9); player.rotation.set(0, 0, 0); };
@@ -202,7 +309,7 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
       scene.background = sessionMode === "immersive-ar" ? null : background;
       session.addEventListener("end", () => { scene.background = background; });
       await renderer.xr.setSession(session);
-      return `${mode.toUpperCase()} active. Left stick moves, right stick snap-turns, and either trigger teleports.`;
+      return `${mode.toUpperCase()} active. Left stick moves, right stick snap-turns, trigger selects or teleports${operatorRef.current ? ", and grip opens production controls" : ""}.`;
     };
     onReadyRef.current({ enter, move, turn, recenter });
 
@@ -234,6 +341,39 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
           }
         }
       }
+      const command = npcCommandRef.current;
+      if (command && command.id !== npcState.lastCommand) {
+        npcState.lastCommand = command.id;
+        npcState.agentId = command.agentId;
+        if (command.kind === "move") {
+          const targets = { entry: [0, 0, 9], stage: [-2.1, 0, -7.4], media: [-5.5, 0, -8], rack: [8.5, 0, -1], briefing: [0, 0, 3] } as const;
+          const target = command.position || (command.waypoint ? targets[command.waypoint] : targets.stage);
+          npcState.target.set(target[0], target[1], target[2]); npcState.waypoint = command.waypoint || "custom"; npcState.behavior = "hold";
+        } else if (command.kind === "action" && command.action) {
+          npcState.action = command.action; npcState.actionUntil = clock.elapsedTime + (command.action === "talk" ? 5 : 3);
+        } else if (command.kind === "behavior" && command.behavior) npcState.behavior = command.behavior;
+        else if (command.kind === "stop") { npcState.behavior = "hold"; npcState.target.copy(npcRoot.position); }
+        else if (command.kind === "speed" && command.speed) npcState.speed = command.speed;
+      }
+      if (npcState.behavior === "patrol" && npcRoot.position.distanceTo(npcState.target) < .08) {
+        const patrolTarget = npcState.target.z < 0 ? new THREE.Vector3(5.5, 0, 5) : new THREE.Vector3(-5.5, 0, -7.2);
+        npcState.target.copy(patrolTarget);
+      }
+      const npcDelta = npcState.target.clone().sub(npcRoot.position); npcDelta.y = 0;
+      npcState.moving = npcDelta.lengthSq() > .008;
+      if (npcState.moving) {
+        const step = Math.min(npcDelta.length(), npcState.speed * delta);
+        npcRoot.position.addScaledVector(npcDelta.normalize(), step);
+        npcRoot.rotation.y = Math.atan2(npcDelta.x, npcDelta.z);
+        npcState.action = "walk";
+      } else if (npcState.action === "walk" || (npcState.actionUntil && clock.elapsedTime >= npcState.actionUntil)) npcState.action = "idle";
+      if (!reducedMotion) {
+        npcBody.rotation.z = npcState.action === "wave" ? Math.sin(clock.elapsedTime * 7) * .14 : 0;
+        npcHead.rotation.y = npcState.action === "talk" ? Math.sin(clock.elapsedTime * 5) * .16 : 0;
+        npcRoot.position.y = npcState.moving ? Math.abs(Math.sin(clock.elapsedTime * 8)) * .035 : 0;
+      }
+      npcState.position = [npcRoot.position.x, 0, npcRoot.position.z];
+
       const current = productionRef.current;
       if (current.revision !== lastProgramRevision) {
         lastProgramRevision = current.revision;
@@ -251,6 +391,26 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
         }
       }
       syncAvatars();
+      const followedParticipant = followTargetRef.current === "crew" ? participantsRef.current[1] || participantsRef.current[0] : participantsRef.current[0];
+      const followPosition = followTargetRef.current === "agent" || !followedParticipant
+        ? npcRoot.position.clone().add(new THREE.Vector3(0, 1.45, 0))
+        : new THREE.Vector3(...followedParticipant.position).add(new THREE.Vector3(0, 1.45, 0));
+      const cameraOffsets: Record<StageProductionState["shot"], THREE.Vector3> = {
+        wide: new THREE.Vector3(6.5, 3.2, 7.5), host: new THREE.Vector3(2.6, 1.9, 3.8), audience: new THREE.Vector3(-8, 3.8, 7), crane: new THREE.Vector3(7.5, 7.5, 10),
+      };
+      const cameraTarget = followTargetRef.current === "off" ? new THREE.Vector3(0, 1.8, -7) : followPosition;
+      const desiredCameraPosition = cameraTarget.clone().add(cameraOffsets[current.shot]);
+      if (current.cameraMotion.id === "crane-reveal") desiredCameraPosition.y += 1.8 + Math.sin(clock.elapsedTime * current.cameraMotion.speed) * 1.2;
+      if (current.cameraMotion.id === "dolly-push") desiredCameraPosition.lerp(cameraTarget, .28 + Math.sin(clock.elapsedTime * current.cameraMotion.speed) * .08);
+      productionCamera.position.lerp(desiredCameraPosition, reducedMotion ? 1 : Math.min(1, delta * 2.4));
+      productionCamera.lookAt(cameraTarget);
+      if (xrConsole.group.visible) {
+        controllers.forEach((controller) => {
+          controllerRay(controller);
+          const hovered = floorRaycaster.intersectObjects(xrConsole.buttons, false)[0]?.object;
+          xrConsole.buttons.forEach((button) => { button.scale.setScalar(button === hovered ? 1.06 : 1); });
+        });
+      }
       if (!reducedMotion) venue.rotation.y = Math.sin(clock.elapsedTime * .18) * .002;
       onPoseRef.current([player.position.x, 0, player.position.z], player.rotation.y);
       renderer.render(scene, camera);
@@ -261,7 +421,7 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
     return () => {
       onReadyRef.current(null); renderer.setAnimationLoop(null); observer.disconnect();
       window.removeEventListener("keydown", keydown); window.removeEventListener("keyup", keyup);
-      controllers.forEach((controller) => controller.removeEventListener("select", teleport));
+      controllers.forEach((controller) => { controller.removeEventListener("selectstart", select); controller.removeEventListener("squeezestart", toggleConsole); });
       scene.traverse((object) => { if (!(object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points || object instanceof THREE.Sprite)) return; const geometry = "geometry" in object ? object.geometry as THREE.BufferGeometry : null; geometry?.dispose(); const source = "material" in object ? object.material as THREE.Material | THREE.Material[] : []; (Array.isArray(source) ? source : [source]).forEach((entry) => entry?.dispose()); });
       programTexture.dispose(); renderer.dispose(); renderer.domElement.remove();
     };

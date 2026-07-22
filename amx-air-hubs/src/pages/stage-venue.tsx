@@ -1,13 +1,17 @@
 import { lazy, Suspense, useCallback, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronLeft, Glasses, Headphones, Maximize2, MessageSquare, RotateCcw, Users, Wifi } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, Clapperboard, Focus, Glasses, Headphones, Maximize2, MessageSquare, Radio, RotateCcw, Users, Video, Wifi } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAMX } from "../AppContext";
 import { agents } from "../data";
 import { useMemberAuth } from "../member-auth";
 import type { StageVenueLayout } from "../stage-events";
 import { useStageProduction } from "../stage-production";
+import { stageCameraMotionPreset } from "../stage-camera-motion";
 import { useStageVenuePresence } from "../stage-venue-presence";
+import { nextStageCue, type StageVenueOperatorCommand, type VenueFollowTarget } from "../stage-venue-production";
 import type { StageVenueControls, StageVenueXRMode } from "../StageVenueWorld";
+import type { NexusRoomControl } from "../nexus-room-control";
+import type { NpcCommand } from "../npc-controller";
 import "../stage-venue.css";
 
 const StageVenueWorld = lazy(async () => ({ default: (await import("../StageVenueWorld")).StageVenueWorld }));
@@ -27,14 +31,19 @@ export function StageVenuePage() {
   const [search] = useSearchParams();
   const layout = venueLayout(venueId);
   const room = (search.get("room") || "AMXSTAGE").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "AMXSTAGE";
-  const production = useStageProduction(room, { readOnly: true });
   const member = useMemberAuth();
+  const isOperator = member.profile?.membership_role === "operator";
+  const production = useStageProduction(room, { readOnly: !isOperator });
   const { settings } = useAMX();
   const presence = useStageVenuePresence(room, layout, member.profile);
   const controlsRef = useRef<StageVenueControls | null>(null);
+  const roomControlRef = useRef<NexusRoomControl | null>(null);
   const [mode, setMode] = useState<StageVenueXRMode>("web");
   const [status, setStatus] = useState("Browser venue ready");
   const [commsOpen, setCommsOpen] = useState(false);
+  const [operatorOpen, setOperatorOpen] = useState(false);
+  const [followTarget, setFollowTarget] = useState<VenueFollowTarget>("off");
+  const [npcCommand, setNpcCommand] = useState<NpcCommand | null>(null);
   const onReady = useCallback((controls: StageVenueControls | null) => { controlsRef.current = controls; }, []);
 
   const enter = async (nextMode: StageVenueXRMode) => {
@@ -43,9 +52,37 @@ export function StageVenuePage() {
     catch (error) { setStatus(error instanceof Error ? error.message : `${nextMode.toUpperCase()} could not start`); }
   };
 
+  const runOperatorCommand = useCallback((command: StageVenueOperatorCommand) => {
+    if (!isOperator) { setStatus("Operator membership is required for production controls."); return; }
+    if (command.kind === "shot") production.update({ shot: command.shot });
+    if (command.kind === "motion") {
+      const preset = stageCameraMotionPreset(command.motion);
+      production.update({ shot: preset.baseShot, cameraMotion: { ...production.state.cameraMotion, id: command.motion, startedAt: Date.now() } });
+    }
+    if (command.kind === "follow") setFollowTarget(command.target);
+    if (command.kind === "show") {
+      if (command.action === "go-live") production.update({ live: true, cue: production.state.cue === "standby" ? "opening" : production.state.cue });
+      if (command.action === "standby") production.update({ live: false, cue: "standby" });
+      if (command.action === "next-cue") production.update({ cue: nextStageCue(production.state.cue) });
+    }
+    if (command.kind === "crew") {
+      production.update({ cue: command.action === "call" ? "speaker" : command.action === "clear" ? "close" : "standby" });
+    }
+    if (command.kind === "npc") {
+      const base = { id: crypto.randomUUID(), agentId: "jaz", cue: `Venue operator: ${command.action}` };
+      const next: NpcCommand = command.action === "stage" ? { ...base, kind: "move", waypoint: "stage", arrivalAction: "wave" }
+        : command.action === "patrol" || command.action === "follow" ? { ...base, kind: "behavior", behavior: "patrol" }
+          : command.action === "hold" ? { ...base, kind: "stop" }
+            : { ...base, kind: "action", action: command.action };
+      setNpcCommand(next);
+      void roomControlRef.current?.sendNpcCommand(next);
+    }
+    setStatus(`${command.kind.toUpperCase()} command sent to ${room}.`);
+  }, [isOperator, production]);
+
   return <main className="stage-venue-page" data-layout={layout} data-xr-mode={mode}>
     <Suspense fallback={<div className="stage-venue-loading"><span/><b>Building {venueLabel(layout)}</b></div>}>
-      <StageVenueWorld key={layout} layout={layout} production={production.state} participants={presence.participants} reducedMotion={settings.reducedMotion} onPose={presence.publishPose} onReady={onReady}/>
+      <StageVenueWorld key={layout} layout={layout} production={production.state} participants={presence.participants} reducedMotion={settings.reducedMotion} operator={isOperator} npcCommand={npcCommand} followTarget={followTarget} onOperatorCommand={runOperatorCommand} onPose={presence.publishPose} onReady={onReady}/>
     </Suspense>
 
     <header className="stage-venue-header">
@@ -68,6 +105,27 @@ export function StageVenuePage() {
       <small>{status}</small>
     </section>
 
+    {isOperator && <>
+      <button className={`stage-venue-operator-toggle ${operatorOpen ? "active" : ""}`} onClick={() => setOperatorOpen((current) => !current)} aria-expanded={operatorOpen} aria-controls="venue-operator" title="Production controls"><Clapperboard/><span>Operator</span></button>
+      <aside id="venue-operator" className={`stage-venue-operator ${operatorOpen ? "open" : ""}`} aria-hidden={!operatorOpen}>
+        <header><div><span>XR OPERATOR / {room}</span><b>{production.state.live ? "ON AIR" : "STANDBY"}</b></div><Radio className={production.state.live ? "live" : ""}/></header>
+        <div className="stage-venue-operator-grid" aria-label="Production camera shots">
+          {(["wide", "host", "audience", "crane"] as const).map((shot) => <button key={shot} className={production.state.shot === shot ? "active" : ""} onClick={() => runOperatorCommand({ kind: "shot", shot })}><Video/><span>{shot}</span></button>)}
+        </div>
+        <div className="stage-venue-operator-grid" aria-label="Camera follow controls">
+          {(["off", "host", "crew", "agent"] as VenueFollowTarget[]).map((target) => <button key={target} className={followTarget === target ? "active" : ""} onClick={() => runOperatorCommand({ kind: "follow", target })}><Focus/><span>{target}</span></button>)}
+        </div>
+        <div className="stage-venue-operator-grid compact" aria-label="Show and agent controls">
+          <button onClick={() => runOperatorCommand({ kind: "show", action: production.state.live ? "standby" : "go-live" })}><Radio/><span>{production.state.live ? "Standby" : "Go live"}</span></button>
+          <button onClick={() => runOperatorCommand({ kind: "show", action: "next-cue" })}><Clapperboard/><span>Next cue</span></button>
+          <button onClick={() => runOperatorCommand({ kind: "npc", action: "stage" })}><Bot/><span>Agent stage</span></button>
+          <button onClick={() => runOperatorCommand({ kind: "npc", action: "wave" })}><Bot/><span>Agent wave</span></button>
+          <button onClick={() => runOperatorCommand({ kind: "crew", action: "call" })}><Users/><span>Call crew</span></button>
+          <button onClick={() => runOperatorCommand({ kind: "crew", action: "hold" })}><Users/><span>Hold crew</span></button>
+        </div>
+      </aside>
+    </>}
+
     <div className="stage-venue-mobile-controls" aria-label="Venue movement controls">
       <button onClick={() => controlsRef.current?.turn(-1)} aria-label="Turn left" title="Turn left"><RotateCcw/></button>
       <div><button onClick={() => controlsRef.current?.move(1, 0)} aria-label="Move forward"><ArrowUp/></button><span><button onClick={() => controlsRef.current?.move(0, -1)} aria-label="Move left"><ArrowLeft/></button><button onClick={() => controlsRef.current?.move(-1, 0)} aria-label="Move backward"><ArrowDown/></button><button onClick={() => controlsRef.current?.move(0, 1)} aria-label="Move right"><ArrowRight/></button></span></div>
@@ -76,7 +134,7 @@ export function StageVenuePage() {
 
     <button className={`stage-venue-comms-toggle ${commsOpen ? "active" : ""}`} onClick={() => setCommsOpen((current) => !current)} aria-expanded={commsOpen} aria-controls="venue-comms"><Headphones/><span>Room comms</span><MessageSquare/></button>
     <aside id="venue-comms" className={`stage-venue-comms ${commsOpen ? "open" : ""}`} aria-hidden={!commsOpen}>
-      <Suspense fallback={<div className="stage-venue-comms-loading">Preparing voice and video</div>}><LiveKitPod compact roomCode={room} agents={agents.slice(0, 2)} clientType="venue-member" participantName={member.profile?.display_name || "AMX Member"}/></Suspense>
+      <Suspense fallback={<div className="stage-venue-comms-loading">Preparing voice and video</div>}><LiveKitPod compact roomCode={room} agents={agents.slice(0, 2)} clientType={isOperator ? "operator" : "venue-member"} participantName={member.profile?.display_name || "AMX Member"} onControlReady={(control) => { roomControlRef.current = control; }} onRemoteNpcCommand={setNpcCommand}/></Suspense>
     </aside>
   </main>;
 }

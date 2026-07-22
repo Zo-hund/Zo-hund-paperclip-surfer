@@ -5,10 +5,11 @@ import { describe, test } from "node:test";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 describe("member WebXR venues", () => {
-  test("protects the venue route and keeps Stage production read-only", async () => {
+  test("protects the venue route and grants production writes only to operators", async () => {
     const [app, page] = await Promise.all([read("src/App.tsx"), read("src/pages/stage-venue.tsx")]);
     assert.match(app, /path="\/venues\/:venueId" element={<RequireMember>/);
-    assert.match(page, /useStageProduction\(room, \{ readOnly: true \}\)/);
+    assert.match(page, /membership_role === "operator"/);
+    assert.match(page, /useStageProduction\(room, \{ readOnly: !isOperator \}\)/);
     assert.match(page, /\["theater", "arena", "expo-hall"\]/);
   });
 
@@ -21,6 +22,20 @@ describe("member WebXR venues", () => {
     assert.match(world, /"hand-tracking"/);
     assert.match(world, /getController\(index\)/);
     assert.match(world, /snap-turns/);
+    assert.match(world, /squeezestart/);
+    assert.match(world, /VenueOperatorConsole/);
+    assert.match(world, /resolveVenueMovement/);
+  });
+
+  test("connects operator camera, agent, and human-team production controls", async () => {
+    const [page, world, controls] = await Promise.all([read("src/pages/stage-venue.tsx"), read("src/StageVenueWorld.tsx"), read("src/stage-venue-production.ts")]);
+    assert.match(page, /clientType=\{isOperator \? "operator" : "venue-member"\}/);
+    assert.match(page, /sendNpcCommand\(next\)/);
+    assert.match(page, /onRemoteNpcCommand=\{setNpcCommand\}/);
+    assert.match(world, /ProductionCameraRig/);
+    assert.match(world, /followTargetRef/);
+    assert.match(controls, /kind: "crew"/);
+    assert.match(controls, /resolveVenueMovement/);
   });
 
   test("bounds and throttles shared member poses", async () => {
@@ -34,7 +49,7 @@ describe("member WebXR venues", () => {
 
   test("requests authenticated member media credentials", async () => {
     const [page, pod, worker, controls] = await Promise.all([read("src/pages/stage-venue.tsx"), read("src/LiveKitPod.tsx"), read("worker.js"), read("src/nexus-room-control.ts")]);
-    assert.match(page, /clientType="venue-member"/);
+    assert.match(page, /"operator" : "venue-member"/);
     assert.match(pod, /clientType\?: "operator" \| "venue-member"/);
     assert.match(worker, /publicLiveKitRoomAllowed\(env, room\)/);
     assert.match(worker, /clientType = "venue-member"/);
