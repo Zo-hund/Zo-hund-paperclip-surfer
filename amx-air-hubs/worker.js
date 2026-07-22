@@ -1209,9 +1209,6 @@ async function initialize(db) {
 
 async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
-  if (request.method === "GET" && url.pathname === "/api/health") {
-    return reply({ ok: true, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() });
-  }
   if (!allowRequest(request)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
   if (!publicApiRequest(request, url)) await verifyMemberRequest(request, env, requiredMemberRoles(url));
   if (request.method === "GET" && url.pathname === "/api/ready") {
@@ -1694,6 +1691,10 @@ export default {
     const url = new URL(request.url);
     const incomingRequestId = request.headers.get("X-Request-ID");
     const requestId = incomingRequestId && /^[a-zA-Z0-9_-]{8,120}$/.test(incomingRequestId) ? incomingRequestId : crypto.randomUUID();
+    if (["GET", "HEAD"].includes(request.method) && url.pathname === "/api/health") {
+      const response = json({ ok: true, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, 200, requestId);
+      return request.method === "HEAD" ? new Response(null, { status: 200, headers: response.headers }) : response;
+    }
     if (url.pathname.startsWith("/api/")) {
       const startedAt = Date.now();
       try {
