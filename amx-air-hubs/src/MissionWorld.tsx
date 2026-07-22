@@ -12,6 +12,7 @@ import {
   type MissionWorldProgress,
 } from "./mission-world-data";
 import { applyMissionReward } from "./mission-world/gamification";
+import { MISSION_WORLD_FEATURES } from "./mission-world/features";
 import { allLessonsComplete, createMissionRuntime, formatMissionTime, objectiveProgress } from "./mission-world/mission-engine";
 import { LEADERBOARD_SCOPES, multiplayerStatus, SESSION_MODES } from "./mission-world/multiplayer";
 import { issueMissionWorldProof } from "./mission-world/opprrc";
@@ -19,36 +20,45 @@ import { approveSimulation, completeLesson, recordAttempt, recordSimulationRun, 
 import { EMPTY_SIMULATION_CONFIGURATION, runMissionSimulation, SIMULATOR_SCENARIOS, type SimulationConfiguration } from "./mission-world/simulator";
 import type { LeaderboardScope, MissionRuntimeState, XRCapabilities } from "./mission-world/types";
 import { detectXRCapabilities } from "./mission-world/xr-capabilities";
+import { pathfinderCollectibles, pathfinderGroup } from "./mission-world/pathfinder";
 import "./mission-world.css";
 import "./mission-world-entry.css";
 
-function MissionWorldScene({ activeId, builderActive, reducedMotion, onPortal, onBuilt }: {
+type ExperienceMode = "web" | "ar" | "vr" | "mr";
+type XRLauncher = (mode: ExperienceMode) => Promise<string>;
+
+function MissionWorldScene({ activeId, builderActive, reducedMotion, onPortal, onBuilt, onXRReady }: {
   activeId: MissionWorldId;
   builderActive: boolean;
   reducedMotion: boolean;
   onPortal: (id: MissionWorldId) => void;
   onBuilt: (count: number) => void;
+  onXRReady: (launcher: XRLauncher | null) => void;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef(activeId);
   const builderRef = useRef(builderActive);
   const onPortalRef = useRef(onPortal);
   const onBuiltRef = useRef(onBuilt);
+  const onXRReadyRef = useRef(onXRReady);
 
   useEffect(() => { activeRef.current = activeId; }, [activeId]);
   useEffect(() => { builderRef.current = builderActive; }, [builderActive]);
   useEffect(() => { onPortalRef.current = onPortal; }, [onPortal]);
   useEffect(() => { onBuiltRef.current = onBuilt; }, [onBuilt]);
+  useEffect(() => { onXRReadyRef.current = onXRReady; }, [onXRReady]);
 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x02070b);
+    const worldBackground = new THREE.Color(0x02070b);
+    scene.background = worldBackground;
     scene.fog = new THREE.FogExp2(0x02070b, 0.022);
     const camera = new THREE.PerspectiveCamera(52, mount.clientWidth / mount.clientHeight, 0.1, 180);
     camera.position.set(0, 13, 25);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance", preserveDrawingBuffer: true });
+    renderer.xr.enabled = true;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -123,6 +133,16 @@ function MissionWorldScene({ activeId, builderActive, reducedMotion, onPortal, o
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const built: THREE.Mesh[] = [];
+    const placeStructure = (point: THREE.Vector3) => {
+      if (!builderRef.current) return;
+      const geometries = [new THREE.BoxGeometry(1, 1, 1), new THREE.SphereGeometry(0.62, 24, 16), new THREE.CylinderGeometry(0.58, 0.58, 1.2, 24)];
+      const mesh = new THREE.Mesh(geometries[built.length % geometries.length], new THREE.MeshStandardMaterial({ color: [0x55e6ff, 0xff75d8, 0x5ee4a8][built.length % 3], metalness: 0.35, roughness: 0.28 }));
+      mesh.position.set(Math.round(point.x), 0.62, Math.round(point.z));
+      mesh.castShadow = true;
+      world.add(mesh);
+      built.push(mesh);
+      onBuiltRef.current(built.length);
+    };
     const pointerDown = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
@@ -132,20 +152,62 @@ function MissionWorldScene({ activeId, builderActive, reducedMotion, onPortal, o
         onPortalRef.current(portalHit.object.userData.missionId as MissionWorldId);
         return;
       }
-      if (!builderRef.current) return;
       const floorHit = raycaster.intersectObject(floor, false)[0];
       if (!floorHit) return;
-      const geometries = [new THREE.BoxGeometry(1, 1, 1), new THREE.SphereGeometry(0.62, 24, 16), new THREE.CylinderGeometry(0.58, 0.58, 1.2, 24)];
-      const mesh = new THREE.Mesh(geometries[built.length % geometries.length], new THREE.MeshStandardMaterial({ color: [0x55e6ff, 0xff75d8, 0x5ee4a8][built.length % 3], metalness: 0.35, roughness: 0.28 }));
-      mesh.position.set(Math.round(floorHit.point.x), 0.62, Math.round(floorHit.point.z));
-      mesh.castShadow = true;
-      world.add(mesh);
-      built.push(mesh);
-      onBuiltRef.current(built.length);
+      placeStructure(floorHit.point);
     };
     renderer.domElement.addEventListener("pointerdown", pointerDown);
 
-    let frameId = 0;
+    const controllerRaycaster = new THREE.Raycaster();
+    const controllerMatrix = new THREE.Matrix4();
+    const selectWithController = (event: THREE.Event & { target: THREE.Object3D }) => {
+      const controller = event.target;
+      controllerMatrix.identity().extractRotation(controller.matrixWorld);
+      controllerRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+      controllerRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(controllerMatrix);
+      const portalHit = controllerRaycaster.intersectObjects(portalMeshes, false)[0];
+      if (portalHit) {
+        onPortalRef.current(portalHit.object.userData.missionId as MissionWorldId);
+        return;
+      }
+      const floorHit = controllerRaycaster.intersectObject(floor, false)[0];
+      if (floorHit) placeStructure(floorHit.point);
+    };
+    const controllers = [0, 1].map((index) => {
+      const controller = renderer.xr.getController(index);
+      const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -4)]), new THREE.LineBasicMaterial({ color: 0x8ef5ff }));
+      ray.name = "XR pointer";
+      controller.add(ray);
+      controller.addEventListener("select", selectWithController);
+      scene.add(controller);
+      return controller;
+    });
+
+    const launchXR: XRLauncher = async (mode) => {
+      if (mode === "web") {
+        await renderer.xr.getSession()?.end();
+        return "Web 3D mode active. Drag to orbit and select portals directly.";
+      }
+      if (!MISSION_WORLD_FEATURES.webXR) return "Immersive mode is disabled for this release.";
+      if (!window.isSecureContext) return "WebXR requires HTTPS or localhost.";
+      if (!navigator.xr) return "This browser does not expose WebXR. Web 3D remains available.";
+      const sessionMode: XRSessionMode = mode === "vr" ? "immersive-vr" : "immersive-ar";
+      if (!await navigator.xr.isSessionSupported(sessionMode)) return `${mode.toUpperCase()} is not supported by this device and browser.`;
+      await renderer.xr.getSession()?.end();
+      const overlayRoot = mount.closest(".mission-world-page") as Element;
+      const options = {
+        requiredFeatures: ["local-floor"],
+        optionalFeatures: ["bounded-floor", "hand-tracking", "hit-test", "anchors", "dom-overlay"],
+        domOverlay: { root: overlayRoot },
+      } as XRSessionInit;
+      const session = await navigator.xr.requestSession(sessionMode, options);
+      if (sessionMode === "immersive-ar") scene.background = null;
+      session.addEventListener("end", () => { scene.background = worldBackground; });
+      await renderer.xr.setSession(session);
+      return `${mode.toUpperCase()} session active. Use either controller trigger to select portals and place builder objects.`;
+    };
+    onXRReadyRef.current(launchXR);
+
     const clock = new THREE.Clock();
     const render = () => {
       const time = clock.getElapsedTime();
@@ -161,9 +223,8 @@ function MissionWorldScene({ activeId, builderActive, reducedMotion, onPortal, o
       });
       controls.update();
       renderer.render(scene, camera);
-      frameId = requestAnimationFrame(render);
     };
-    render();
+    renderer.setAnimationLoop(render);
     const resize = () => {
       if (!mount.clientWidth || !mount.clientHeight) return;
       camera.aspect = mount.clientWidth / mount.clientHeight;
@@ -173,12 +234,14 @@ function MissionWorldScene({ activeId, builderActive, reducedMotion, onPortal, o
     const observer = new ResizeObserver(resize);
     observer.observe(mount);
     return () => {
-      cancelAnimationFrame(frameId);
+      onXRReadyRef.current(null);
+      renderer.setAnimationLoop(null);
       observer.disconnect();
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
+      controllers.forEach((controller) => controller.removeEventListener("select", selectWithController));
       controls.dispose();
       scene.traverse((object) => {
-        if (!(object instanceof THREE.Mesh)) return;
+        if (!(object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points)) return;
         object.geometry.dispose();
         const materials = Array.isArray(object.material) ? object.material : [object.material];
         materials.forEach((material) => material.dispose());
@@ -201,6 +264,8 @@ export function MissionWorldPage() {
   const [runtime, setRuntime] = useState<MissionRuntimeState>(() => createMissionRuntime("ai"));
   const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("individual");
   const [xrCapabilities, setXRCapabilities] = useState<XRCapabilities | null>(null);
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>("web");
+  const [xrStatus, setXRStatus] = useState("Web 3D mode active.");
   const [simulationConfig, setSimulationConfig] = useState<SimulationConfiguration>(() => readMissionWorldProgress().simulations.ai?.configuration || EMPTY_SIMULATION_CONFIGURATION);
   const [sequence, setSequence] = useState<string[]>([]);
   const [builtCount, setBuiltCount] = useState(0);
@@ -208,6 +273,7 @@ export function MissionWorldPage() {
   const [feedback, setFeedback] = useState("Choose an answer to run the simulation.");
   const [toast, setToast] = useState("");
   const startedAt = useRef(Date.now());
+  const xrLauncher = useRef<XRLauncher | null>(null);
   const activeWorld = MISSION_WORLDS.find((world) => world.id === activeId) || MISSION_WORLDS[0];
   const scenario = SIMULATOR_SCENARIOS[activeId];
   const simulationRecord = progress.simulations[activeId];
@@ -221,6 +287,7 @@ export function MissionWorldPage() {
   const domainBuildReady = activeWorld.activity === "builder" ? builtCount >= 3 : activeWorld.activity === "sequence" ? sequence.join("|") === activeWorld.sequence?.join("|") : true;
   const configurationMatchesRun = JSON.stringify(simulationRecord?.configuration) === JSON.stringify(simulationConfig);
   const canComplete = Boolean(simulationRecord?.approved && simulationResult?.deploymentEligible && configurationMatchesRun && domainBuildReady);
+  const group = pathfinderGroup(progress);
 
   const selectWorld = useCallback((id: MissionWorldId) => {
     setActiveId(id);
@@ -235,6 +302,17 @@ export function MissionWorldPage() {
   useEffect(() => {
     detectXRCapabilities().then(setXRCapabilities);
   }, []);
+
+  const registerXRLauncher = useCallback((launcher: XRLauncher | null) => { xrLauncher.current = launcher; }, []);
+  const selectExperienceMode = async (mode: ExperienceMode) => {
+    setExperienceMode(mode);
+    try {
+      setXRStatus(await xrLauncher.current?.(mode) || "The 3D scene is still loading.");
+    } catch (error) {
+      setExperienceMode("web");
+      setXRStatus(error instanceof Error ? error.message : "The immersive session could not start. Web 3D remains available.");
+    }
+  };
 
   useEffect(() => {
     const timer = window.setInterval(() => setRuntime((current) => ({ ...current, elapsedSeconds: Math.floor((Date.now() - current.startedAt) / 1000) })), 1000);
@@ -338,7 +416,8 @@ export function MissionWorldPage() {
     trackEvent("mission_world_rewarded", { missionId: evidenceProof.missionId, role });
     setRuntime((current) => ({ ...current, status: "passed" }));
     setFeedback("Simulation passed. OPPRRC evidence and certificate are ready in your Proof Wallet.");
-    setToast(`+${rewardXP} XP / +${rewardCoins} AMX Coins / ${activeWorld.badge}`);
+    const collectible = pathfinderCollectibles(next).find((item) => item.missionId === activeId);
+    setToast(`+${rewardXP} XP / +${rewardCoins} AMX Coins / ${collectible?.name || activeWorld.badge}`);
     window.setTimeout(() => setToast(""), 3200);
   };
 
@@ -360,7 +439,7 @@ export function MissionWorldPage() {
   const plannedSpend = selectedResources.reduce((total, entry) => total + entry.cost, 0);
   const plannedMinutes = selectedResources.reduce((total, entry) => total + entry.minutes, 0);
   return <div className="mission-world-page">
-    <MissionWorldScene key={sceneRevision} activeId={activeId} builderActive={activeId === "builder" && capstoneUnlocked} reducedMotion={settings.reducedMotion} onPortal={selectWorld} onBuilt={setBuiltCount}/>
+    <MissionWorldScene key={sceneRevision} activeId={activeId} builderActive={activeId === "builder" && capstoneUnlocked} reducedMotion={settings.reducedMotion} onPortal={selectWorld} onBuilt={setBuiltCount} onXRReady={registerXRLauncher}/>
     <header className="mission-world-hud mission-world-topbar">
       <div><Link className="mission-world-exit" to="/missions" aria-label="Exit Mission World" title="Exit Mission World"><X/></Link><span className="eyebrow">AMX AIR HUBS / LEARN - BUILD - EARN</span><h1>Mission World</h1></div>
       <div className="mission-world-stats"><span><b>{level}</b><small>LEVEL</small></span><span><b>{progress.xp}</b><small>WORLD XP</small></span><span><b>{progress.coins}</b><small>AMX COINS</small></span><span><b>{totalLessons}/30</b><small>CHECKPOINTS</small></span><span><b>{progress.completed.length}/5</b><small>CAPSTONES</small></span></div>
@@ -396,14 +475,16 @@ export function MissionWorldPage() {
     </aside>
 
     <aside className="mission-world-hud mission-world-vault">
-      <header><span><Award/><b>Rewards Vault</b></span><strong>{rank}</strong></header>
+      <header><span><Award/><b>Rewards Vault</b></span><strong>{group.current} / {rank}</strong></header>
       <div className="mission-world-xp"><span style={{ width: `${(progress.xp % 250) / 2.5}%` }}/></div>
       <small>{nextLevelXP} XP to Level {level + 1}</small>
       <div className="mission-world-badges">{MISSION_WORLD_BADGES.map((badge) => <span key={badge} className={progress.badges.includes(badge) ? "unlocked" : ""} title={badge}><Trophy/></span>)}</div>
       <div className="mission-world-modes" role="group" aria-label="Mission World session mode">{SESSION_MODES.map((mode) => <button key={mode.id} className={progress.mode === mode.id ? "active" : ""} onClick={() => setMode(mode.id)} title={mode.description}>{mode.id === "solo" ? <Gamepad2/> : <Users/>}{mode.label}</button>)}</div>
       <small className="mission-world-network">{multiplayerStatus(progress.mode)}</small>
+      <div className="mission-world-experience-modes" role="group" aria-label="Mission World display mode">{(["web", "ar", "vr", "mr"] as ExperienceMode[]).map((mode) => <button key={mode} className={experienceMode === mode ? "active" : ""} disabled={mode !== "web" && !MISSION_WORLD_FEATURES.webXR} onClick={() => void selectExperienceMode(mode)}>{mode.toUpperCase()}</button>)}</div>
+      <small className="mission-world-xr-status" aria-live="polite">{xrStatus}</small>
       <details><summary>Leaderboard / platform</summary><select aria-label="Leaderboard scope" value={leaderboardScope} onChange={(event) => setLeaderboardScope(event.target.value as LeaderboardScope)}>{LEADERBOARD_SCOPES.map((scope) => <option key={scope}>{scope}</option>)}</select>{leaderboardScope === "individual" ? <span className="active"><b>1. {member.profile?.display_name || "You"}</b><small>{progress.xp} XP</small></span> : <p>Connect a Skill Pod or organization API to load the {leaderboardScope} board.</p>}<p><Cpu/> WebXR {xrCapabilities?.webXR ? "ready" : "not detected"} / VR {xrCapabilities?.immersiveVR ? "ready" : "off"} / AR {xrCapabilities?.immersiveAR ? "ready" : "off"} / OPPRRC ready</p></details>
-      <footer><Link to="/wallet"><LockKeyhole/>Proof wallet</Link><button onClick={resetProgress} title="Reset Mission World progress"><RotateCcw/></button></footer>
+      <footer><Link to="/profile"><Award/>Passport</Link><Link to="/wallet"><LockKeyhole/>Proof wallet</Link><button onClick={resetProgress} title="Reset Mission World progress"><RotateCcw/></button></footer>
     </aside>
     <div className={`mission-world-toast ${toast ? "show" : ""}`} aria-live="polite"><Sparkles/><span><b>Reward secured</b><small>{toast}</small></span><button onClick={() => setToast("")} aria-label="Dismiss reward"><X/></button></div>
   </div>;

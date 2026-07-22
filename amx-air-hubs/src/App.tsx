@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Route, Routes } from "react-router-dom";
 import { AppShell } from "./components";
 import { CompletePage, HomePage, AgentsPage, MissionRunPage, MissionsPage, PreRunPage, RoleSelectPage } from "./pages/core";
@@ -21,6 +21,10 @@ import {
 } from "./pages/immersive";
 
 const MissionWorldPage = lazy(async () => ({ default: (await import("./MissionWorld")).MissionWorldPage }));
+const PathfinderPassportPage = lazy(async () => ({ default: (await import("./PathfinderPassport")).PathfinderPassportPage }));
+const PathfinderCredentialPage = lazy(async () => ({ default: (await import("./PathfinderPassport")).PathfinderCredentialPage }));
+
+const deferred = (element: ReactNode) => <Suspense fallback={<div className="scene-loading" aria-label="Loading Pathfinder profile"/>}>{element}</Suspense>;
 
 function ShellRoutes() {
   return <AppShell><Routes>
@@ -37,6 +41,12 @@ function ShellRoutes() {
     <Route path="/mission/:id/pre" element={<RequireMember><PreRunPage/></RequireMember>}/>
     <Route path="/mission/:id/complete" element={<RequireMember><CompletePage/></RequireMember>}/>
     <Route path="/wallet" element={<RequireMember><WalletPage/></RequireMember>}/>
+    <Route path="/profile" element={<RequireMember>{deferred(<PathfinderPassportPage/>)}</RequireMember>}/>
+    <Route path="/profile/collectibles" element={<RequireMember>{deferred(<PathfinderPassportPage view="collectibles"/>)}</RequireMember>}/>
+    <Route path="/profile/evidence" element={<RequireMember>{deferred(<PathfinderPassportPage view="evidence"/>)}</RequireMember>}/>
+    <Route path="/profile/credentials" element={<RequireMember>{deferred(<PathfinderPassportPage view="credentials"/>)}</RequireMember>}/>
+    <Route path="/profile/deployments" element={<RequireMember>{deferred(<PathfinderPassportPage view="deployments"/>)}</RequireMember>}/>
+    <Route path="/profile/toolbelt" element={<RequireMember>{deferred(<PathfinderPassportPage/>)}</RequireMember>}/>
     <Route path="/marketplace" element={<RequireMember><MarketplacePage/></RequireMember>}/>
     <Route path="/pods" element={<RequireMember><PodsPage/></RequireMember>}/>
     <Route path="/partners" element={<RequireMember><PartnerPortalPage/></RequireMember>}/>
@@ -80,6 +90,7 @@ export default function App() {
     <Route path="/vr/pods/:podId" element={<RequireMember><ModeExperiencePage mode="vr"/></RequireMember>}/>
     <Route path="/mr/workspace/:workspaceId" element={<RequireMember><ModeExperiencePage mode="mr"/></RequireMember>}/>
     <Route path="/watch/:roomCode" element={<StageLiveViewerPage/>}/>
+    <Route path="/proof/:credentialId" element={deferred(<PathfinderCredentialPage/>)}/>
     <Route path="/partner/:organizationId/:campaignSlug" element={<PartnerCampaignResolverPage/>}/>
     <Route path="/scan/*" element={<ScanResolver/>}/>
     <Route path="/sponsor/*" element={<SponsorResolver/>}/>

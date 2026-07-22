@@ -71,3 +71,19 @@ Each unique completion creates a signed OPPRRC record through the platform runti
 - `opprrc.ts` issues lesson-scoped proof and the bounded Three.js evidence frame.
 
 Co-op and team selections are recorded in proof and analytics. Live participants, invitations, voice, and shared leaderboard rows continue through Skill Pods; Mission World does not claim synchronized multiplayer unless a Pod room is active. Non-individual boards intentionally show a connection state until an organization API or Skill Pod supplies real records.
+
+## Pathfinder passport
+
+Mission World feeds a connected XRT Pathfinder identity rather than a second reward store. `/profile` presents the member's Explorer, Builder, or Ambassador group, Know/Do/Be evidence, Create/Curate/Connect scores, unlocked physical/digital-twin collectibles, and field-deployment readiness. The focused views are `/profile/collectibles`, `/profile/evidence`, `/profile/credentials`, `/profile/toolbelt`, and `/profile/deployments`.
+
+Builder requires at least half of the 30 checkpoints plus two approved capstones. Ambassador requires all five capstones, an average approved score of 85 or higher, and team-mode evidence. These labels are computed from normalized saved progress and cannot be directly selected.
+
+Each approved mission can issue a deterministic credential link at `/proof/:credentialId`. This route is public, but browser-local records are not portable proof: a recipient without the corresponding record sees an unavailable state. Production-wide public verification requires persisting the credential and its OPPRRC attestation in the configured backend.
+
+The deployment gate remains intentionally blocked until AI, XR, automation, hardware/spatial, privacy, communication, industry simulation, trainer approval, OPPRRC, and supervised workshop evidence all exist. A local completion never invents supervised field evidence.
+
+## Immersive modes
+
+The Rewards Vault provides Web, AR, VR, and MR display controls. Web uses orbit and pointer input. VR requests `immersive-vr`; AR and MR request `immersive-ar`, clear the scene background for passthrough, and request local-floor plus optional hit-test, anchors, hand tracking, bounded-floor, and DOM overlay capabilities. Quest controllers receive visible rays and trigger selection for portals and World Builder placement. Unsupported devices stay in Web 3D and show a specific capability message.
+
+Set `VITE_ENABLE_MISSION_WEBXR=false` to remove immersive launch during a staged rollout. `VITE_ENABLE_MISSION_MULTIPLAYER=false` is the default because choosing co-op or teams records collaboration scope but does not claim live synchronization until a Skill Pod transport is connected.
