@@ -77,6 +77,12 @@ describe("member WebXR venues", () => {
     assert.match(world, /stageProgramMediaPosition\(media\)/);
     assert.match(production, /programMedia: StageProgramMediaState/);
     assert.match(deck, /X-AMX-Media-Purpose": "stage-video"/);
+    assert.match(deck, /HOT-LOAD LIBRARY/);
+    assert.match(deck, /READY IN PREVIEW/);
+    assert.match(deck, /TAKEN TO PROGRAM \+ WEBXR/);
+    const stage = await read("src/pages/stage.tsx");
+    assert.match(stage, /stage-live-input-bank/);
+    assert.match(stage, /quickTakeFeed/);
     assert.match(worker, /mediaPurpose === "stage-video"/);
     assert.match(worker, /isSharedStageVideo/);
   });
