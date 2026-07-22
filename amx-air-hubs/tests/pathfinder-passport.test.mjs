@@ -9,6 +9,7 @@ const world = await read("src/MissionWorld.tsx");
 const routes = await read("src/App.tsx");
 const proof = await read("src/mission-world/opprrc.ts");
 const flags = await read("src/mission-world/features.ts");
+const agentRuntime = await read("src/agent-runtime.ts");
 
 test("Pathfinder groups require real learning, approved simulations, and team mastery", () => {
   assert.match(pathfinder, /approved\.length >= 2 && know >= 50/);
@@ -53,4 +54,16 @@ test("progressive flags and organization-scoped proof prevent capability overcla
   assert.match(flags, /realtimeMultiplayer.*false/);
   assert.match(proof, /amx_active_tenant/);
   assert.match(proof, /tenant:\$\{tenantId\}/);
+});
+
+test("new arrivals receive replayable guidance backed by active mission context", () => {
+  assert.match(world, /amxMissionWorldTourV1/);
+  assert.equal((world.match(/title: "/g) || []).length >= 6, true);
+  for (const label of ["EXPLORE", "KNOW", "DO", "BE", "WEB \/ AR \/ VR \/ MR", "AGENT CONTEXT"]) assert.match(world, new RegExp(label));
+  assert.match(world, /How Mission World works/);
+  assert.match(world, /sendAgentRequest\(missionAgent/);
+  assert.match(world, /Checkpoints complete:/);
+  assert.match(world, /Human approval:/);
+  assert.match(world, /do not claim approval or completion/);
+  assert.match(agentRuntime, /transport: "local" as const/);
 });

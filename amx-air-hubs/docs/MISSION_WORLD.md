@@ -87,3 +87,9 @@ The deployment gate remains intentionally blocked until AI, XR, automation, hard
 The Rewards Vault provides Web, AR, VR, and MR display controls. Web uses orbit and pointer input. VR requests `immersive-vr`; AR and MR request `immersive-ar`, clear the scene background for passthrough, and request local-floor plus optional hit-test, anchors, hand tracking, bounded-floor, and DOM overlay capabilities. Quest controllers receive visible rays and trigger selection for portals and World Builder placement. Unsupported devices stay in Web 3D and show a specific capability message.
 
 Set `VITE_ENABLE_MISSION_WEBXR=false` to remove immersive launch during a staged rollout. `VITE_ENABLE_MISSION_MULTIPLAYER=false` is the default because choosing co-op or teams records collaboration scope but does not claim live synchronization until a Skill Pod transport is connected.
+
+## Arrival guidance
+
+New browser profiles receive a six-step, keyboard-accessible `How Mission World Works` overlay covering world selection, Know checkpoints, Do simulations, Be accountability, Web/AR/VR/MR access, and contextual agents. Completing or closing the introduction stores `amxMissionWorldTourV1`; the question-mark control in the top bar replays it at any time.
+
+Every world assigns its catalog agent to a compact guide inside the existing mission briefing rail. Deterministic guidance responds immediately to checkpoint, simulation, consequence, approval, and completion state. `Ask <agent>` sends a bounded mission summary to the existing Agent Runtime and displays whether the answer came from the remote or local transport. The prompt explicitly prevents an agent from claiming human approval or mission completion, and the guide cannot alter simulation or proof state.

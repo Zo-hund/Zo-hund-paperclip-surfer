@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Award, BadgeCheck, BookOpen, Bot, Box, Check, Clock3, Cpu, Gamepad2, Gauge, LockKeyhole, Play, RotateCcw, ShieldCheck, Sparkles, Trophy, Users, Wrench, X, Zap } from "lucide-react";
+import { ArrowLeft, ArrowRight, Award, BadgeCheck, BookOpen, Bot, Box, Check, Clock3, Cpu, Gamepad2, Gauge, HelpCircle, LoaderCircle, LockKeyhole, Play, RotateCcw, Send, ShieldCheck, Sparkles, Trophy, Users, Wrench, X, Zap } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useAMX } from "./AppContext";
+import { sendAgentRequest, type RuntimeTransport } from "./agent-runtime";
+import { agents } from "./data";
 import { useMemberAuth } from "./member-auth";
 import { awardBadge, trackEvent } from "./platform";
 import {
@@ -26,6 +28,35 @@ import "./mission-world-entry.css";
 
 type ExperienceMode = "web" | "ar" | "vr" | "mr";
 type XRLauncher = (mode: ExperienceMode) => Promise<string>;
+const MISSION_WORLD_TOUR_KEY = "amxMissionWorldTourV1";
+const TOUR_STEPS = [
+  { title: "Choose a mission world", label: "EXPLORE", body: "Use the five portal buttons to move between AI, XR, Robotics, Automations, and World Builder. Your progress is saved in this browser." },
+  { title: "Learn to know", label: "KNOW", body: "Open each checkpoint, practice the DO task, and complete all six to unlock that world's client capstone." },
+  { title: "Build a real solution", label: "DO", body: "Take a professional role, equip tools and safeguards, write a plan, then test it against a changing client scenario." },
+  { title: "Review before deployment", label: "BE", body: "Read the score and consequences. Passing work still needs a human Pit Stop approval before proof can be issued." },
+  { title: "Enter your preferred mode", label: "WEB / AR / VR / MR", body: "Use Web on any device or launch an immersive mode when supported. In Quest, controller triggers select portals and place builder objects." },
+  { title: "Ask your mission guide", label: "AGENT CONTEXT", body: "Your assigned AMX agent reads only the active mission state you send and recommends the next useful action. Guidance never grants approval for you." },
+] as const;
+
+function MissionWorldTour({ step, onStep, onClose }: { step: number; onStep: (step: number) => void; onClose: () => void }) {
+  const actionRef = useRef<HTMLButtonElement>(null);
+  const item = TOUR_STEPS[step];
+  useEffect(() => {
+    actionRef.current?.focus();
+    const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [onClose, step]);
+  return <div className="mission-world-tour-backdrop" role="presentation">
+    <section className="mission-world-tour" role="dialog" aria-modal="true" aria-labelledby="mission-world-tour-title">
+      <header><span className="eyebrow">HOW MISSION WORLD WORKS</span><button onClick={onClose} aria-label="Close introduction" title="Close introduction"><X/></button></header>
+      <div className="mission-world-tour-mark"><span>{step + 1}</span><small>{item.label}</small></div>
+      <h2 id="mission-world-tour-title">{item.title}</h2><p>{item.body}</p>
+      <div className="mission-world-tour-progress" aria-label={`Step ${step + 1} of ${TOUR_STEPS.length}`}>{TOUR_STEPS.map((_, index) => <i key={index} className={index <= step ? "active" : ""}/>)}</div>
+      <footer><button disabled={step === 0} onClick={() => onStep(step - 1)}><ArrowLeft/>Back</button><button ref={actionRef} className="primary" onClick={() => step === TOUR_STEPS.length - 1 ? onClose() : onStep(step + 1)}>{step === TOUR_STEPS.length - 1 ? "Enter Mission World" : "Next"}{step < TOUR_STEPS.length - 1 && <ArrowRight/>}</button></footer>
+    </section>
+  </div>;
+}
 
 function MissionWorldScene({ activeId, builderActive, reducedMotion, onPortal, onBuilt, onXRReady }: {
   activeId: MissionWorldId;
@@ -272,6 +303,10 @@ export function MissionWorldPage() {
   const [sceneRevision, setSceneRevision] = useState(0);
   const [feedback, setFeedback] = useState("Choose an answer to run the simulation.");
   const [toast, setToast] = useState("");
+  const [tourOpen, setTourOpen] = useState(() => localStorage.getItem(MISSION_WORLD_TOUR_KEY) !== "complete");
+  const [tourStep, setTourStep] = useState(0);
+  const [agentGuidance, setAgentGuidance] = useState<{ text: string; transport: RuntimeTransport } | null>(null);
+  const [agentWorking, setAgentWorking] = useState(false);
   const startedAt = useRef(Date.now());
   const xrLauncher = useRef<XRLauncher | null>(null);
   const activeWorld = MISSION_WORLDS.find((world) => world.id === activeId) || MISSION_WORLDS[0];
@@ -288,6 +323,18 @@ export function MissionWorldPage() {
   const configurationMatchesRun = JSON.stringify(simulationRecord?.configuration) === JSON.stringify(simulationConfig);
   const canComplete = Boolean(simulationRecord?.approved && simulationResult?.deploymentEligible && configurationMatchesRun && domainBuildReady);
   const group = pathfinderGroup(progress);
+  const missionAgent = agents.find((agent) => agent.id === activeWorld.agentId) || agents[0];
+  const nextGuidance = completed
+    ? `Open another portal or visit your Pathfinder Passport to review ${activeWorld.badge}.`
+    : !capstoneUnlocked
+      ? `Practice ${activeLesson.practice.toLowerCase()} Then complete checkpoint ${lessonIndex + 1} of ${activeWorld.lessons.length}.`
+      : !simulationResult
+        ? `Assign a ${scenario.roles[0]} role, equip a tool and safeguards, write a clear plan, then run the client simulation.`
+        : !simulationResult.deploymentEligible
+          ? `Your ${simulationResult.score} score is blocked. Resolve ${simulationResult.consequences[0] || "the highlighted consequence"} and run an improved configuration.`
+          : !simulationRecord?.approved
+            ? "The run is review-ready. Inspect the consequences, then ask a human trainer or operator to record Pit Stop approval."
+            : "Approval is recorded. Complete the mission to issue tenant-scoped OPPRRC proof and unlock the collectible.";
 
   const selectWorld = useCallback((id: MissionWorldId) => {
     setActiveId(id);
@@ -295,6 +342,7 @@ export function MissionWorldPage() {
     setRuntime(createMissionRuntime(id));
     setSimulationConfig(progress.simulations[id]?.configuration || EMPTY_SIMULATION_CONFIGURATION);
     setSequence([]);
+    setAgentGuidance(null);
     setFeedback("Choose an answer to run the simulation.");
     startedAt.current = Date.now();
   }, [progress.simulations]);
@@ -304,6 +352,18 @@ export function MissionWorldPage() {
   }, []);
 
   const registerXRLauncher = useCallback((launcher: XRLauncher | null) => { xrLauncher.current = launcher; }, []);
+  const closeTour = useCallback(() => { localStorage.setItem(MISSION_WORLD_TOUR_KEY, "complete"); setTourOpen(false); }, []);
+  const replayTour = () => { setTourStep(0); setTourOpen(true); };
+  const askMissionAgent = async () => {
+    setAgentWorking(true);
+    try {
+      const response = await sendAgentRequest(missionAgent, `Guide the learner to the next safe, concrete action. Mission: ${activeWorld.title}. Client: ${scenario.client}. Active checkpoint: ${activeLesson.title}. Checkpoints complete: ${lessonProgress.complete}/${lessonProgress.total}. Session mode: ${progress.mode}. Display mode: ${experienceMode}. Simulation score: ${simulationResult?.score ?? "not run"}. Deployment eligible: ${Boolean(simulationResult?.deploymentEligible)}. Human approval: ${Boolean(simulationRecord?.approved)}. Current system recommendation: ${nextGuidance} Keep the response under 80 words and do not claim approval or completion.`, [], "text");
+      setAgentGuidance({ text: response.text, transport: response.transport });
+      trackEvent("mission_world_agent_guidance", { missionId: `mission-world-${activeId}`, role });
+    } finally {
+      setAgentWorking(false);
+    }
+  };
   const selectExperienceMode = async (mode: ExperienceMode) => {
     setExperienceMode(mode);
     try {
@@ -441,7 +501,7 @@ export function MissionWorldPage() {
   return <div className="mission-world-page">
     <MissionWorldScene key={sceneRevision} activeId={activeId} builderActive={activeId === "builder" && capstoneUnlocked} reducedMotion={settings.reducedMotion} onPortal={selectWorld} onBuilt={setBuiltCount} onXRReady={registerXRLauncher}/>
     <header className="mission-world-hud mission-world-topbar">
-      <div><Link className="mission-world-exit" to="/missions" aria-label="Exit Mission World" title="Exit Mission World"><X/></Link><span className="eyebrow">AMX AIR HUBS / LEARN - BUILD - EARN</span><h1>Mission World</h1></div>
+      <div><Link className="mission-world-exit" to="/missions" aria-label="Exit Mission World" title="Exit Mission World"><X/></Link><button className="mission-world-help" onClick={replayTour} aria-label="How Mission World works" title="How Mission World works"><HelpCircle/></button><span className="eyebrow">AMX AIR HUBS / LEARN - BUILD - EARN</span><h1>Mission World</h1></div>
       <div className="mission-world-stats"><span><b>{level}</b><small>LEVEL</small></span><span><b>{progress.xp}</b><small>WORLD XP</small></span><span><b>{progress.coins}</b><small>AMX COINS</small></span><span><b>{totalLessons}/30</b><small>CHECKPOINTS</small></span><span><b>{progress.completed.length}/5</b><small>CAPSTONES</small></span></div>
     </header>
 
@@ -452,6 +512,7 @@ export function MissionWorldPage() {
     <aside className="mission-world-hud mission-world-briefing" style={{ "--world-color": activeWorld.color } as React.CSSProperties}>
       <header><div><span className="eyebrow">{completed ? "MISSION COMPLETE" : capstoneUnlocked ? "CAPSTONE UNLOCKED" : "LEARNING ACTIVE"}</span><h2>{activeWorld.title}</h2></div><b><Clock3/> {formatMissionTime(runtime.elapsedSeconds)}</b></header>
       <p>{activeWorld.description}</p>
+      <section className="mission-world-agent-guide"><header><span><Bot/><b>{missionAgent.name} / {missionAgent.role}</b></span><small>{agentGuidance?.transport || "context ready"}</small></header><p>{agentGuidance?.text || nextGuidance}</p><button disabled={agentWorking} onClick={() => void askMissionAgent()}>{agentWorking ? <LoaderCircle className="spin"/> : <Send/>}{agentWorking ? "Building guidance" : `Ask ${missionAgent.name}`}</button></section>
       <div className="mission-world-lesson-rail" aria-label={`${activeWorld.title} learning checkpoints`}>
         {activeWorld.lessons.map((lesson, index) => <button key={lesson.id} className={`${lessonIndex === index ? "active" : ""} ${progress.lessons[activeId]?.includes(lesson.id) ? "complete" : ""}`} onClick={() => setLessonIndex(index)} title={lesson.title}>{progress.lessons[activeId]?.includes(lesson.id) ? <Check/> : index + 1}</button>)}
       </div>
@@ -487,5 +548,6 @@ export function MissionWorldPage() {
       <footer><Link to="/profile"><Award/>Passport</Link><Link to="/wallet"><LockKeyhole/>Proof wallet</Link><button onClick={resetProgress} title="Reset Mission World progress"><RotateCcw/></button></footer>
     </aside>
     <div className={`mission-world-toast ${toast ? "show" : ""}`} aria-live="polite"><Sparkles/><span><b>Reward secured</b><small>{toast}</small></span><button onClick={() => setToast("")} aria-label="Dismiss reward"><X/></button></div>
+    {tourOpen && <MissionWorldTour step={tourStep} onStep={setTourStep} onClose={closeTour}/>}
   </div>;
 }
