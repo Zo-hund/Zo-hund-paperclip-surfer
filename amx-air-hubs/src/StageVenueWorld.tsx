@@ -229,10 +229,10 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
     scene.add(xrConsole.group);
     const placeConsole = () => {
       const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
-      const position = camera.getWorldPosition(new THREE.Vector3()).addScaledVector(direction, 1.8);
+      const position = camera.getWorldPosition(new THREE.Vector3()).addScaledVector(direction, 2.6);
       xrConsole.group.position.copy(position);
       xrConsole.group.quaternion.copy(camera.getWorldQuaternion(new THREE.Quaternion()));
-      xrConsole.group.position.y -= .2;
+      xrConsole.group.position.y -= .12;
     };
 
     const remoteAvatars = new Map<string, THREE.Group>();
@@ -323,6 +323,7 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
         const button = floorRaycaster.intersectObjects(xrConsole.buttons, false)[0];
         const command = button?.object.userData.operatorCommand as StageVenueOperatorCommand | undefined;
         if (command) { onOperatorCommandRef.current?.(command); pulse(controller); return; }
+        if (floorRaycaster.intersectObject(xrConsole.group.children[0], false).length) return;
       }
       const hit = floorRaycaster.intersectObject(floor, false)[0];
       if (!hit) return;
@@ -332,14 +333,22 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
       if (!operatorRef.current) return;
       xrConsole.group.visible = !xrConsole.group.visible;
       if (xrConsole.group.visible) placeConsole();
+      controllerGrips.forEach((grip) => {
+        const source = grip.userData.inputSource as XRInputSource | undefined;
+        grip.visible = Boolean(source && !source.hand && !xrConsole.group.visible);
+      });
       mount.dataset.operatorConsole = xrConsole.group.visible ? "visible" : "hidden";
     };
+    const controllerGrips: THREE.Group[] = [];
     const controllers = [0, 1].map((index) => {
       const controller = renderer.xr.getController(index);
+      const grip = renderer.xr.getControllerGrip(index);
       controller.visible = false;
+      grip.visible = false;
       const beamMaterial = new THREE.LineBasicMaterial({ color: index ? COLORS.magenta : COLORS.cyan, transparent: true, opacity: .95, depthTest: false });
       const ray = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -.055), new THREE.Vector3(0, 0, -6)]), beamMaterial);
       ray.name = `ControllerLaser_${index}`; ray.renderOrder = 20;
+      controller.userData.ray = ray;
       const shell = new THREE.Group(); shell.name = `TrackedController_${index}`;
       const shellColor = index ? COLORS.magenta : COLORS.cyan;
       const body = new THREE.Mesh(new THREE.BoxGeometry(.12, .09, .22), new THREE.MeshStandardMaterial({ color: 0x142a34, emissive: shellColor, emissiveIntensity: .28, metalness: .42, roughness: .42 }));
@@ -348,14 +357,15 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
       nose.scale.set(1, .68, .72); nose.position.set(0, -.015, -.02);
       const handIndicator = new THREE.Mesh(new THREE.TorusGeometry(.055, .012, 8, 20), new THREE.MeshBasicMaterial({ color: shellColor, depthTest: false }));
       handIndicator.position.z = -.015; handIndicator.visible = false;
-      shell.add(body, nose, handIndicator); controller.add(shell, ray);
+      shell.add(body, nose); grip.add(shell); controller.add(handIndicator, ray);
       controller.addEventListener("connected", (event) => {
         const source = (event as THREE.Event & { data: XRInputSource }).data;
-        controller.userData.inputSource = source; controller.visible = true;
-        body.visible = !source.hand; nose.visible = !source.hand; handIndicator.visible = Boolean(source.hand);
+        controller.userData.inputSource = source; grip.userData.inputSource = source; controller.visible = true;
+        grip.visible = !source.hand && !xrConsole.group.visible; handIndicator.visible = Boolean(source.hand);
       });
-      controller.addEventListener("disconnected", () => { controller.visible = false; controller.userData.inputSource = null; });
-      controller.addEventListener("selectstart", select); controller.addEventListener("squeezestart", toggleConsole); scene.add(controller); return controller;
+      controller.addEventListener("disconnected", () => { controller.visible = false; grip.visible = false; controller.userData.inputSource = null; grip.userData.inputSource = null; });
+      controller.addEventListener("selectstart", select); controller.addEventListener("squeezestart", toggleConsole);
+      controllerGrips.push(grip); scene.add(controller, grip); return controller;
     });
 
     const move = (forward: number, right: number) => {
@@ -474,11 +484,17 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
       productionCamera.position.lerp(desiredCameraPosition, reducedMotion ? 1 : Math.min(1, delta * 2.4));
       productionCamera.lookAt(cameraTarget);
       if (xrConsole.group.visible) {
+        const hoveredButtons = new Set<THREE.Object3D>();
         controllers.forEach((controller) => {
           controllerRay(controller);
-          const hovered = floorRaycaster.intersectObjects(xrConsole.buttons, false)[0]?.object;
-          xrConsole.buttons.forEach((button) => { button.scale.setScalar(button === hovered ? 1.06 : 1); });
+          const hovered = floorRaycaster.intersectObjects(xrConsole.buttons, false)[0];
+          if (hovered) hoveredButtons.add(hovered.object);
+          const ray = controller.userData.ray as THREE.Line | undefined;
+          if (ray) ray.scale.z = Math.max(.08, Math.min(1, (hovered?.distance || 6) / 6));
         });
+        xrConsole.buttons.forEach((button) => { button.scale.setScalar(hoveredButtons.has(button) ? 1.06 : 1); });
+      } else {
+        controllers.forEach((controller) => { const ray = controller.userData.ray as THREE.Line | undefined; if (ray) ray.scale.z = 1; });
       }
       if (!reducedMotion) venue.rotation.y = Math.sin(clock.elapsedTime * .18) * .002;
       onPoseRef.current([player.position.x, 0, player.position.z], player.rotation.y);

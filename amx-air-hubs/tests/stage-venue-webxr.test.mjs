@@ -28,6 +28,9 @@ describe("member WebXR venues", () => {
     assert.match(world, /ControllerLaser_/);
     assert.match(world, /TrackedController_/);
     assert.match(world, /controller\.visible = true/);
+    assert.match(world, /getControllerGrip\(index\)/);
+    assert.match(world, /grip\.visible = !source\.hand && !xrConsole\.group\.visible/);
+    assert.match(world, /intersectObject\(xrConsole\.group\.children\[0\], false\)/);
   });
 
   test("connects operator camera, agent, and human-team production controls", async () => {
