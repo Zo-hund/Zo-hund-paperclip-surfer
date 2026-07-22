@@ -10,6 +10,7 @@ type RuntimeReadiness = {
   optionalMissing: string[];
   components: Record<string, boolean>;
   roomTransport: "durable-object" | "supabase" | "local-only";
+  deploymentTier?: "staging" | "production";
   service: string;
   version: string;
   requestId: string;
@@ -25,7 +26,10 @@ const componentLabels: Record<string, { label: string; detail: string }> = {
   mcp: { label: "MCP gateway", detail: "Allowlisted external tool execution" },
   plugins: { label: "Plugin gateway", detail: "Server-side plugin execution" },
   livekit: { label: "LiveKit", detail: "Multi-user camera and room audio" },
+  runway: { label: "Runway avatars", detail: "Realtime generative avatar sessions" },
   "proof-signing": { label: "Proof signing", detail: "Server-side HMAC attestation" },
+  telemetry: { label: "DCIM telemetry", detail: "Authenticated physical-system data ingestion" },
+  observability: { label: "Operations alerts", detail: "Production incident notification and heartbeat" },
 };
 
 const componentIcons: Record<string, typeof Activity> = {
@@ -38,6 +42,9 @@ const componentIcons: Record<string, typeof Activity> = {
   plugins: Wrench,
   "proof-signing": ShieldCheck,
   livekit: Radio,
+  runway: Activity,
+  telemetry: Activity,
+  observability: ShieldCheck,
 };
 
 function localReadiness(): RuntimeReadiness {
@@ -47,7 +54,7 @@ function localReadiness(): RuntimeReadiness {
     mode: "degraded",
     required: [],
     missingRequired: [],
-    optionalMissing: ["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "proof-signing"],
+    optionalMissing: ["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "runway", "proof-signing", "telemetry", "observability"],
     components: {
       database: Boolean(config?.persistenceConfigured),
       media: Boolean(config?.mediaStorageConfigured),
@@ -57,7 +64,10 @@ function localReadiness(): RuntimeReadiness {
       mcp: false,
       plugins: false,
       livekit: Boolean(config?.livekitConfigured),
+      runway: false,
       "proof-signing": false,
+      telemetry: false,
+      observability: false,
     },
     roomTransport: config?.roomTransport || "local-only",
     service: "amx-air-hubs",
@@ -95,7 +105,7 @@ export function RuntimeStatusPage() {
   const mode = status?.mode || "degraded";
   return <div className="page runtime-status-page">
     <div className="section-wrap"><PageHeader eyebrow="OPERATIONS / RUNTIME" title="Production status" description="Deployment readiness, durable services, and external integration state." actions={<button type="button" className="icon-button" onClick={() => void refresh()} disabled={loading} aria-label="Refresh runtime status" title="Refresh runtime status"><RefreshCw/></button>}/></div>
-    <section className="runtime-status-band"><div className="section-wrap"><div><span className="eyebrow">READINESS</span><b>{loading ? "CHECKING" : status?.requestId === "browser-preview" ? "LOCAL PREVIEW" : status?.ready ? "READY" : "ACTION REQUIRED"}</b></div><StatusPill tone={mode === "full" ? "green" : mode === "not-ready" ? "gold" : "cyan"}>{mode}</StatusPill><span>ROOMS / {status?.roomTransport || "checking"}</span><span>VERSION / {status?.version || "checking"}</span></div></section>
+    <section className="runtime-status-band"><div className="section-wrap"><div><span className="eyebrow">READINESS</span><b>{loading ? "CHECKING" : status?.requestId === "browser-preview" ? "LOCAL PREVIEW" : status?.ready ? "READY" : "ACTION REQUIRED"}</b></div><StatusPill tone={mode === "full" ? "green" : mode === "not-ready" ? "gold" : "cyan"}>{mode}</StatusPill><span>{status?.deploymentTier || "staging"} / {status?.roomTransport || "checking"}</span><span>VERSION / {status?.version || "checking"}</span></div></section>
     <div className="section-wrap">
       {error ? <div className="runtime-status-notice"><Activity/><span>{error}</span></div> : null}
       <section className="runtime-component-grid" aria-live="polite">{Object.entries(status?.components || {}).map(([name, configured]) => {

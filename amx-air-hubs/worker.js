@@ -9,7 +9,8 @@ const MAX_AGENT_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const MAX_GATEWAY_RESPONSE_BYTES = 2 * 1024 * 1024;
-const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "runway", "proof-signing", "telemetry"]);
+const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "runway", "proof-signing", "telemetry", "observability"]);
+const PRODUCTION_REQUIRED_SERVICES = [...REQUIRED_SERVICE_NAMES];
 const DATA_CENTER_ADAPTERS = new Set(["redfish", "snmp", "modbus", "dcim"]);
 const MEDIA_TYPES = new Set([
   "application/json", "application/octet-stream", "application/pdf", "model/gltf+json", "model/gltf-binary",
@@ -130,6 +131,24 @@ function safeLabel(value, fallback = "") {
   return String(value || fallback).replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 180);
 }
 
+async function notifyOps(env, event, fields = {}) {
+  if (!serviceUrlConfigured(env.OPS_ALERT_WEBHOOK_URL, ["https:"])) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    await fetch(env.OPS_ALERT_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(env.OPS_ALERT_WEBHOOK_TOKEN ? { Authorization: `Bearer ${env.OPS_ALERT_WEBHOOK_TOKEN}` } : {}) },
+      body: JSON.stringify({ service: "amx-air-hubs", version: SERVICE_VERSION, event, timestamp: new Date().toISOString(), ...fields }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    logEvent("warn", "ops.alert_failed", { event, error: error instanceof Error ? error.message : "Alert delivery failed" });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function assetCacheControl(pathname) {
   return /^\/assets\/.+-[a-zA-Z0-9_-]{6,}\.(?:css|js|mjs|wasm|woff2?|png|jpe?g|webp|avif|svg)$/i.test(pathname)
     ? "public, max-age=31536000, immutable"
@@ -218,7 +237,7 @@ async function verifyMemberRequest(request, env, roles) {
     if (!profile || profile.membership_status !== "active") throw new HttpError(403, "An active member profile is required");
     if (!roles.includes(profile.membership_role)) throw new HttpError(403, "This member role cannot access the requested operation");
 
-    const verified = { user: { id: user.id, email: user.email || "" }, profile, expiresAt: Date.now() + 30_000 };
+    const verified = { user: { id: user.id, email: user.email || "" }, profile, accessToken: token, expiresAt: Date.now() + 30_000 };
     if (memberSessionCache.size > 500) memberSessionCache.clear();
     memberSessionCache.set(cacheKey, verified);
     return verified;
@@ -229,6 +248,26 @@ async function verifyMemberRequest(request, env, roles) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function tenantAuthorizationRequired(env) {
+  const setting = String(env.TENANT_AUTHORIZATION_REQUIRED || "").trim().toLowerCase();
+  return setting === "true" || String(env.DEPLOYMENT_TIER || "").trim().toLowerCase() === "production";
+}
+
+async function verifyTenantAccess(member, env, tenantId) {
+  if (!tenantAuthorizationRequired(env) || !member || member.profile.membership_role === "operator") return;
+  const supabaseUrl = String(env.SUPABASE_URL || "").replace(/\/$/, "");
+  const url = new URL(`${supabaseUrl}/rest/v1/partner_memberships`);
+  url.searchParams.set("select", "organization_id");
+  url.searchParams.set("organization_id", `eq.${tenantId}`);
+  url.searchParams.set("user_id", `eq.${member.user.id}`);
+  url.searchParams.set("status", "eq.active");
+  url.searchParams.set("limit", "1");
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${member.accessToken}`, apikey: env.SUPABASE_PUBLISHABLE_KEY, Accept: "application/json" } });
+  if (!response.ok) throw new HttpError(503, "Tenant authorization is unavailable");
+  const memberships = await response.json();
+  if (!Array.isArray(memberships) || !memberships.length) throw new HttpError(403, "This member does not belong to the requested organization");
 }
 
 function podInviteStatus(row, now = Date.now()) {
@@ -299,7 +338,9 @@ function serviceUrlConfigured(value, protocols) {
 }
 
 function runtimeReadiness(env) {
-  const required = new Set(String(env.REQUIRED_SERVICES || "").split(",").map((item) => item.trim().toLowerCase()).filter((item) => REQUIRED_SERVICE_NAMES.has(item)));
+  const configuredRequired = String(env.REQUIRED_SERVICES || "").split(",").map((item) => item.trim().toLowerCase()).filter((item) => REQUIRED_SERVICE_NAMES.has(item));
+  const production = String(env.DEPLOYMENT_TIER || "").trim().toLowerCase() === "production";
+  const required = new Set(production ? PRODUCTION_REQUIRED_SERVICES : configuredRequired);
   const configured = {
     database: Boolean(env.DB),
     media: Boolean(env.MEDIA),
@@ -312,6 +353,7 @@ function runtimeReadiness(env) {
     runway: Boolean(String(env.RUNWAYML_API_SECRET || "").trim()),
     "proof-signing": Boolean(env.PROOF_SIGNING_SECRET),
     telemetry: Boolean(env.DB && env.DCIM_INGEST_TOKEN),
+    observability: serviceUrlConfigured(env.OPS_ALERT_WEBHOOK_URL, ["https:"]) && Boolean(String(env.OPS_HEARTBEAT_TOKEN || "").trim()),
   };
   const missingRequired = [...required].filter((name) => !configured[name]);
   const optionalMissing = Object.entries(configured).filter(([, value]) => !value).map(([name]) => name);
@@ -323,6 +365,7 @@ function runtimeReadiness(env) {
     optionalMissing,
     components: configured,
     roomTransport: env.ROOMS ? "durable-object" : configured.realtime ? "supabase" : "local-only",
+    deploymentTier: production ? "production" : "staging",
   };
 }
 
@@ -552,9 +595,22 @@ async function ensureLiveKitAgentDispatch(env, room, requestId) {
     clearTimeout(timeout);
   }
 }
-function allowRequest(request, limit = 120, namespace = "api") {
+async function allowRequest(request, env, limit = 120, namespace = "api") {
   const key = `${namespace}:${request.headers.get("CF-Connecting-IP") || "local"}`;
   const now = Date.now();
+  if (env.DB) {
+    try {
+      await initialize(env.DB);
+      const bucketKey = await sha256(key);
+      const windowStart = Math.floor(now / 60_000) * 60_000;
+      await env.DB.prepare("INSERT INTO api_rate_limits (bucket_key, window_start, request_count, expires_at) VALUES (?, ?, 1, ?) ON CONFLICT(bucket_key) DO UPDATE SET request_count = CASE WHEN api_rate_limits.window_start = excluded.window_start THEN api_rate_limits.request_count + 1 ELSE 1 END, window_start = excluded.window_start, expires_at = excluded.expires_at")
+        .bind(bucketKey, windowStart, new Date(windowStart + 120_000).toISOString()).run();
+      const row = await env.DB.prepare("SELECT request_count FROM api_rate_limits WHERE bucket_key = ? LIMIT 1").bind(bucketKey).first();
+      if (Number.isFinite(Number(row?.request_count))) return Number(row.request_count) <= limit;
+    } catch (error) {
+      logEvent("warn", "rate_limit.durable_fallback", { namespace, error: error instanceof Error ? error.message : "Durable rate limiter unavailable" });
+    }
+  }
   if (rateBuckets.size > 10_000) {
     for (const [bucketKey, value] of rateBuckets) if (now - value.start > 60_000) rateBuckets.delete(bucketKey);
   }
@@ -1186,7 +1242,7 @@ async function initialize(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS pod_invites (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, owner_token_hash TEXT NOT NULL, tenant_id TEXT NOT NULL, tenant_name TEXT NOT NULL, tenant_color TEXT NOT NULL, pod_id TEXT NOT NULL, room_code TEXT NOT NULL, mission_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, host_name TEXT NOT NULL, guest_role TEXT NOT NULL, max_uses INTEGER NOT NULL, use_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS pod_invites_lookup_idx ON pod_invites (token, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS pod_invites_pod_idx ON pod_invites (tenant_id, pod_id, created_at)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS media_objects (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, file_name TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, object_key TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS media_objects (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_user_id TEXT, visibility TEXT NOT NULL DEFAULT 'private', purpose TEXT, file_name TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, object_key TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS media_tenant_idx ON media_objects (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL, transport TEXT NOT NULL, content_kind TEXT NOT NULL, attachment_count INTEGER NOT NULL, status TEXT NOT NULL, request_id TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS agent_runs_tenant_idx ON agent_runs (tenant_id, created_at)"),
@@ -1200,6 +1256,8 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS project_learning_lookup_idx ON project_learning_state (tenant_id, project_id, learner_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS stage_workflows (tenant_id TEXT NOT NULL, room_code TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL, PRIMARY KEY (tenant_id, room_code))"),
     db.prepare("CREATE INDEX IF NOT EXISTS stage_workflows_updated_idx ON stage_workflows (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS api_rate_limits (bucket_key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, request_count INTEGER NOT NULL, expires_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS api_rate_limits_expiry_idx ON api_rate_limits (expires_at)"),
   ]).catch((error) => {
     databaseInitialization = undefined;
     throw error;
@@ -1209,8 +1267,8 @@ async function initialize(db) {
 
 async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
-  if (!allowRequest(request)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
-  if (!publicApiRequest(request, url)) await verifyMemberRequest(request, env, requiredMemberRoles(url));
+  if (!await allowRequest(request, env)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
+  const member = !publicApiRequest(request, url) ? await verifyMemberRequest(request, env, requiredMemberRoles(url)) : null;
   if (request.method === "GET" && url.pathname === "/api/ready") {
     const readiness = await probeReadiness(env);
     return reply({ ...readiness, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, readiness.ready ? 200 : 503);
@@ -1226,6 +1284,7 @@ async function handleApi(request, env, url, requestId) {
       mediaStorageConfigured: readiness.components.media,
       roomTransport: readiness.roomTransport,
       deploymentMode: readiness.mode,
+      deploymentTier: readiness.deploymentTier,
       version: SERVICE_VERSION,
     });
   }
@@ -1289,6 +1348,7 @@ async function handleApi(request, env, url, requestId) {
   if (request.method === "POST" && url.pathname === "/api/pod-invites") {
     if (!env.DB) return reply({ error: "Durable invite storage is not configured", requestId }, 503);
     const input = validatePodInvite(await readJson(request, 32 * 1024));
+    await verifyTenantAccess(member, env, input.tenantId);
     await initialize(env.DB);
     const id = `invite-${crypto.randomUUID()}`;
     const token = base64Url(crypto.getRandomValues(new Uint8Array(24)));
@@ -1337,6 +1397,7 @@ async function handleApi(request, env, url, requestId) {
   if (request.method === "GET" && url.pathname === "/api/telemetry/data-center") {
     const tenantId = safeId(url.searchParams.get("tenantId"));
     if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+    await verifyTenantAccess(member, env, tenantId);
     if (!env.DB) return reply({ item: null, persisted: false, requestId });
     await initialize(env.DB);
     const row = await env.DB.prepare("SELECT payload FROM data_center_telemetry WHERE tenant_id = ? ORDER BY observed_at DESC LIMIT 1").bind(tenantId).first();
@@ -1358,6 +1419,7 @@ async function handleApi(request, env, url, requestId) {
     const projectId = safeId(url.searchParams.get("projectId"));
     const learnerId = safeId(url.searchParams.get("learnerId"));
     if (!tenantId || !projectId || !learnerId) return reply({ error: "tenantId, projectId, and learnerId are required", requestId }, 400);
+    await verifyTenantAccess(member, env, tenantId);
     if (!env.DB) return reply({ item: null, persisted: false, requestId });
     await initialize(env.DB);
     const row = await env.DB.prepare("SELECT payload FROM project_learning_state WHERE tenant_id = ? AND project_id = ? AND learner_id = ? ORDER BY updated_at DESC LIMIT 1")
@@ -1366,11 +1428,13 @@ async function handleApi(request, env, url, requestId) {
   }
   if (request.method === "PUT" && url.pathname === "/api/learning/projects/state") {
     const item = validateProjectLearningState(await readJson(request, 256 * 1024));
+    await verifyTenantAccess(member, env, item.tenantId);
     await persistProjectLearningState(env, item);
     return reply({ item, persisted: Boolean(env.DB), requestId });
   }
   if (request.method === "POST" && url.pathname === "/api/agents/respond") {
     const payload = sanitizeAgentPayload(await readJson(request, MAX_AGENT_BODY_BYTES));
+    await verifyTenantAccess(member, env, payload.tenantId);
     if (!payload.text && !payload.attachments.length) return reply({ error: "Text or an attachment is required", requestId }, 400);
     if (!runtimeReadiness(env).components.agent) {
       const fallback = localAgentResult(payload);
@@ -1436,18 +1500,20 @@ async function handleApi(request, env, url, requestId) {
     const id = crypto.randomUUID();
     const fileName = safeLabel(request.headers.get("X-AMX-Filename"), `attachment-${id}`);
     const tenantId = safeId(request.headers.get("X-AMX-Tenant"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    const ownerUserId = safeId(member?.user?.id);
     const requestedPurpose = safeId(request.headers.get("X-AMX-Media-Purpose"));
     const identityPurpose = ["profile-avatar", "partner-logo"].includes(requestedPurpose) ? requestedPurpose : "";
     const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
     const visibility = request.headers.get("X-AMX-Visibility") === "public" && identityPurpose && publicImageTypes.has(contentType) ? "public" : "private";
     const createdAt = new Date().toISOString();
-    await env.MEDIA.put(id, body, { httpMetadata: { contentType }, customMetadata: { fileName, tenantId, createdAt, visibility, purpose: identityPurpose } });
+    await env.MEDIA.put(id, body, { httpMetadata: { contentType }, customMetadata: { fileName, tenantId, ownerUserId, createdAt, visibility, purpose: identityPurpose } });
     let metadataPersisted = false;
     if (env.DB) {
       try {
         await initialize(env.DB);
-        await env.DB.prepare("INSERT INTO media_objects (id, tenant_id, file_name, content_type, size_bytes, object_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(id, tenantId, fileName, contentType, body.byteLength, id, createdAt).run();
+        await env.DB.prepare("INSERT INTO media_objects (id, tenant_id, owner_user_id, visibility, purpose, file_name, content_type, size_bytes, object_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(id, tenantId, ownerUserId || null, visibility, identityPurpose || null, fileName, contentType, body.byteLength, id, createdAt).run();
         metadataPersisted = true;
       } catch (error) {
         logEvent("warn", "media.metadata_failed", { requestId, id, error: error instanceof Error ? error.message : "Media metadata persistence failed" });
@@ -1463,7 +1529,11 @@ async function handleApi(request, env, url, requestId) {
     const object = await env.MEDIA.get(id);
     if (!object) return reply({ error: "Media not found", requestId }, 404);
     const isPublicIdentityImage = object.customMetadata?.visibility === "public" && ["profile-avatar", "partner-logo"].includes(object.customMetadata?.purpose);
-    if (!isPublicIdentityImage) await verifyMemberRequest(request, env, requiredMemberRoles(url));
+    if (!isPublicIdentityImage) {
+      const viewer = await verifyMemberRequest(request, env, requiredMemberRoles(url));
+      const ownerUserId = safeId(object.customMetadata?.ownerUserId);
+      if (ownerUserId && viewer?.user?.id !== ownerUserId && viewer?.profile?.membership_role !== "operator") throw new HttpError(403, "This private media belongs to another member");
+    }
     const headers = new Headers(capabilityHeaders({ "Cache-Control": isPublicIdentityImage ? "public, max-age=3600, stale-while-revalidate=86400" : "private, no-store", "X-Request-ID": requestId }));
     object.writeHttpMetadata?.(headers);
     headers.set("Content-Type", headers.get("Content-Type") || object.httpMetadata?.contentType || "application/octet-stream");
@@ -1475,6 +1545,10 @@ async function handleApi(request, env, url, requestId) {
     if (!env.MEDIA) return reply({ error: "Media storage is not configured", requestId }, 503);
     const id = safeId(url.pathname.split("/").pop());
     if (!id) return reply({ error: "Media id is required", requestId }, 400);
+    const object = await env.MEDIA.get(id);
+    if (!object) return reply({ error: "Media not found", requestId }, 404);
+    const ownerUserId = safeId(object.customMetadata?.ownerUserId);
+    if (ownerUserId && member?.user?.id !== ownerUserId && member?.profile?.membership_role !== "operator") throw new HttpError(403, "This media belongs to another member");
     await env.MEDIA.delete(id);
     if (env.DB) {
       try {
@@ -1490,7 +1564,7 @@ async function handleApi(request, env, url, requestId) {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
       return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);
     }
-    if (!allowRequest(request, 30, "livekit-viewer")) return reply({ error: "Viewer token rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
+    if (!await allowRequest(request, env, 30, "livekit-viewer")) return reply({ error: "Viewer token rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
     let serverUrl;
     try {
       const parsed = new URL(env.LIVEKIT_URL);
@@ -1619,6 +1693,7 @@ async function handleApi(request, env, url, requestId) {
     if (!env.DB) return reply({ items: [], persisted: false, requestId });
     await initialize(env.DB);
     const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
     const roomCode = safeId(url.searchParams.get("room")).toUpperCase().slice(0, 64);
     if (!roomCode) return reply({ error: "Room code is required", requestId }, 400);
     const result = await env.DB.prepare("SELECT payload FROM geo_anchors WHERE tenant_id = ? AND room_code = ? ORDER BY updated_at ASC LIMIT 100").bind(tenantId, roomCode).all();
@@ -1627,6 +1702,7 @@ async function handleApi(request, env, url, requestId) {
   }
   if (request.method === "POST" && url.pathname === "/api/anchors") {
     const anchor = validateAnchorPayload(await readJson(request, 96 * 1024));
+    await verifyTenantAccess(member, env, anchor.tenantId);
     await persistAnchor(env, anchor);
     return reply({ item: anchor, persisted: Boolean(env.DB), requestId }, 201);
   }
@@ -1636,6 +1712,7 @@ async function handleApi(request, env, url, requestId) {
     if (env.DB) {
       await initialize(env.DB);
       const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+      await verifyTenantAccess(member, env, tenantId);
       await env.DB.prepare("DELETE FROM geo_anchors WHERE id = ? AND tenant_id = ?").bind(id, tenantId).run();
     }
     return new Response(null, { status: 204, headers: capabilityHeaders({ "Cache-Control": "no-store", "X-Request-ID": requestId }) });
@@ -1644,6 +1721,7 @@ async function handleApi(request, env, url, requestId) {
     if (!env.DB) return reply({ items: [], persisted: false, requestId });
     await initialize(env.DB);
     const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
     const roomCode = safeId(url.searchParams.get("room")).toUpperCase().slice(0, 64);
     if (!roomCode) return reply({ error: "Room code is required", requestId }, 400);
     const result = await env.DB.prepare("SELECT id, twin_id, room_code, event_type, payload, created_at FROM digital_twin_events WHERE tenant_id = ? AND room_code = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId, roomCode).all();
@@ -1652,6 +1730,7 @@ async function handleApi(request, env, url, requestId) {
   }
   if (request.method === "POST" && url.pathname === "/api/twins/events") {
     const event = validateTwinEvent(await readJson(request, 128 * 1024));
+    await verifyTenantAccess(member, env, event.tenantId);
     await persistTwinEvent(env, event);
     return reply({ item: event, persisted: Boolean(env.DB), requestId }, 201);
   }
@@ -1667,6 +1746,7 @@ async function handleApi(request, env, url, requestId) {
     if (!id || !["proof:create", "proof:update", "proof:complete", "analytics:event"].includes(type)) return reply({ error: "Unsupported sync item", requestId }, 400);
     if (type.startsWith("proof:")) {
       const proof = await attestProof(validateProofPayload(item.payload), env);
+      await verifyTenantAccess(member, env, proof.tenantId);
       await persistProof(env, proof);
     } else {
       await persistAnalytics(env, validateAnalyticsEvent(item.payload));
@@ -1677,6 +1757,7 @@ async function handleApi(request, env, url, requestId) {
     if (!env.DB) return reply({ items: [], persisted: false, requestId });
     await initialize(env.DB);
     const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
     const result = await env.DB.prepare("SELECT payload FROM proof_records WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all();
     const items = result.results.flatMap((row) => {
       try { return [JSON.parse(row.payload)]; } catch { return []; }
@@ -1687,7 +1768,7 @@ async function handleApi(request, env, url, requestId) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, context) {
     const url = new URL(request.url);
     const incomingRequestId = request.headers.get("X-Request-ID");
     const requestId = incomingRequestId && /^[a-zA-Z0-9_-]{8,120}$/.test(incomingRequestId) ? incomingRequestId : crypto.randomUUID();
@@ -1704,6 +1785,7 @@ export default {
       } catch (error) {
         const status = error instanceof HttpError ? error.status : 500;
         logEvent(status >= 500 ? "error" : "warn", "api.error", { requestId, method: request.method, path: url.pathname, status, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : "Unknown API error" });
+        if (status >= 500) context?.waitUntil?.(notifyOps(env, "api.error", { requestId, method: request.method, path: url.pathname, status }));
         return json({ error: status >= 500 ? "Internal service error" : error.message, requestId }, status, requestId);
       }
     }
@@ -1724,6 +1806,7 @@ export default {
       mediaStorageConfigured: readiness.components.media,
       roomTransport: readiness.roomTransport,
       deploymentMode: readiness.mode,
+      deploymentTier: readiness.deploymentTier,
       version: SERVICE_VERSION,
     }).replace(/</g, "\\u003c");
     const nonce = base64Url(crypto.getRandomValues(new Uint8Array(18)));

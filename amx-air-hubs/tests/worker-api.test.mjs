@@ -31,6 +31,7 @@ function memoryBucket() {
       };
     },
     async delete(id) { objects.delete(id); },
+    async list() { return { objects: [...objects.keys()].map((key) => ({ key })) }; },
   };
 }
 
@@ -146,6 +147,36 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(body.ready, false);
     assert.equal(body.mode, "not-ready");
     assert.deepEqual(body.missingRequired, ["database", "media", "livekit"]);
+  });
+
+  test("requires every advertised component in production tier", async () => {
+    Object.assign(env, {
+      DEPLOYMENT_TIER: "production",
+      DB: memoryDatabase(),
+      MEDIA: memoryBucket(),
+      SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      AGENT_RUNTIME_URL: "https://agents.example.com",
+      MCP_GATEWAY_URL: "https://mcp.example.com",
+      PLUGIN_GATEWAY_URL: "https://plugins.example.com",
+      LIVEKIT_URL: "wss://livekit.example.com",
+      LIVEKIT_API_KEY: "key",
+      LIVEKIT_API_SECRET: "secret",
+      RUNWAYML_API_SECRET: "runway-secret",
+      PROOF_SIGNING_SECRET: "proof-secret",
+      DCIM_INGEST_TOKEN: "dcim-secret",
+      OPS_ALERT_WEBHOOK_URL: "https://alerts.example.com/amx",
+      OPS_HEARTBEAT_TOKEN: "heartbeat-secret",
+    });
+    const response = await worker.fetch(request("/api/ready"), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.ready, true);
+    assert.equal(body.mode, "full");
+    assert.equal(body.deploymentTier, "production");
+    assert.deepEqual(body.missingRequired, []);
+    assert.equal(body.required.length, 12);
   });
 
   test("requires a verified member session for private APIs", async () => {
@@ -654,6 +685,34 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(publicDownload.status, 200);
     assert.match(publicDownload.headers.get("Cache-Control"), /^public/);
     assert.equal(privateDownload.status, 401);
+  });
+
+  test("prevents one member from reading or deleting another member's private media", async (context) => {
+    Object.assign(env, {
+      MEMBER_AUTH_REQUIRED: "true",
+      SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      MEDIA: memoryBucket(),
+    });
+    context.mock.method(globalThis, "fetch", async (input, init = {}) => {
+      const token = String(init.headers?.Authorization || "");
+      const userId = token.includes("owner.token.value") ? "owner-user" : "other-user";
+      if (String(input).includes("/auth/v1/user")) return Response.json({ id: userId, email: `${userId}@example.com` });
+      return Response.json([{ id: userId, member_code: `AMX-${userId}`, membership_role: "member", membership_status: "active" }]);
+    });
+    const upload = await worker.fetch(request("/api/media", {
+      method: "POST",
+      headers: { "Content-Type": "image/png", Cookie: "amx_member_session=owner.token.value" },
+      body: new Uint8Array([1, 2, 3]),
+    }), env);
+    const stored = await upload.json();
+    const otherHeaders = { Cookie: "amx_member_session=other.token.value" };
+    const download = await worker.fetch(request(stored.url, { headers: otherHeaders }), env);
+    const removal = await worker.fetch(request(stored.url, { method: "DELETE", headers: otherHeaders }), env);
+
+    assert.equal(upload.status, 201);
+    assert.equal(download.status, 403);
+    assert.equal(removal.status, 403);
   });
 
   test("stores Stage audio with its playable content type", async () => {
