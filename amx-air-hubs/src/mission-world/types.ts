@@ -20,7 +20,7 @@ export interface MissionWorldDefinition {
   badge: string;
   color: string;
   agentId: string;
-  activity: "choice" | "sequence" | "builder";
+  activity: "simulator" | "sequence" | "builder";
   prompt: string;
   options?: string[];
   correct?: string;
@@ -42,7 +42,16 @@ export interface MissionWorldProgress {
   lessons: Partial<Record<MissionWorldId, string[]>>;
   attempts: Partial<Record<MissionWorldId, number>>;
   unlocks: string[];
+  simulations: Partial<Record<MissionWorldId, MissionSimulationRecord>>;
   lastCompletedAt?: string;
+}
+
+export interface MissionSimulationRecord {
+  configuration: SimulationConfiguration;
+  runs: number;
+  bestScore: number;
+  approved: boolean;
+  lastResult?: SimulationResult;
 }
 
 export interface MissionRuntimeState {
@@ -61,3 +70,4 @@ export interface XRCapabilities {
   gamepads: boolean;
   camera: boolean;
 }
+import type { SimulationConfiguration, SimulationResult } from "./simulator";

@@ -22,7 +22,7 @@ export function missionWorldAsMission(world: MissionWorldDefinition): Mission {
     access: { type: "member", price: 0, paymentRequired: false, x402Enabled: false },
     objective: world.objective,
     steps: world.lessons.map((lesson, index) => ({ id: lesson.id, title: lesson.title, body: lesson.brief, prompt: lesson.practice, xp: index === world.lessons.length - 1 ? world.xp : 0 })),
-    quiz: { question: world.prompt, options: world.options || world.sequence || ["Build complete"], correct: world.options?.indexOf(world.correct || "") ?? 0 },
+    quiz: { question: world.prompt, options: world.sequence || world.objectives, correct: 0 },
     published: true,
     color: world.color,
   };

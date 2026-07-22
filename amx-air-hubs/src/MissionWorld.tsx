@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Award, BadgeCheck, BookOpen, Bot, Box, Check, Clock3, Coins, Cpu, Gamepad2, LockKeyhole, RotateCcw, ShieldCheck, Sparkles, Trophy, Users, X, Zap } from "lucide-react";
+import { Award, BadgeCheck, BookOpen, Bot, Box, Check, Clock3, Cpu, Gamepad2, Gauge, LockKeyhole, Play, RotateCcw, ShieldCheck, Sparkles, Trophy, Users, Wrench, X, Zap } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useAMX } from "./AppContext";
@@ -15,7 +15,8 @@ import { applyMissionReward } from "./mission-world/gamification";
 import { allLessonsComplete, createMissionRuntime, formatMissionTime, objectiveProgress } from "./mission-world/mission-engine";
 import { LEADERBOARD_SCOPES, multiplayerStatus, SESSION_MODES } from "./mission-world/multiplayer";
 import { issueMissionWorldProof } from "./mission-world/opprrc";
-import { completeLesson, recordAttempt, saveMissionWorldProgress } from "./mission-world/progress-store";
+import { approveSimulation, completeLesson, recordAttempt, recordSimulationRun, saveMissionWorldProgress } from "./mission-world/progress-store";
+import { EMPTY_SIMULATION_CONFIGURATION, runMissionSimulation, SIMULATOR_SCENARIOS, type SimulationConfiguration } from "./mission-world/simulator";
 import type { LeaderboardScope, MissionRuntimeState, XRCapabilities } from "./mission-world/types";
 import { detectXRCapabilities } from "./mission-world/xr-capabilities";
 import "./mission-world.css";
@@ -200,7 +201,7 @@ export function MissionWorldPage() {
   const [runtime, setRuntime] = useState<MissionRuntimeState>(() => createMissionRuntime("ai"));
   const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("individual");
   const [xrCapabilities, setXRCapabilities] = useState<XRCapabilities | null>(null);
-  const [answer, setAnswer] = useState("");
+  const [simulationConfig, setSimulationConfig] = useState<SimulationConfiguration>(() => readMissionWorldProgress().simulations.ai?.configuration || EMPTY_SIMULATION_CONFIGURATION);
   const [sequence, setSequence] = useState<string[]>([]);
   const [builtCount, setBuiltCount] = useState(0);
   const [sceneRevision, setSceneRevision] = useState(0);
@@ -208,25 +209,28 @@ export function MissionWorldPage() {
   const [toast, setToast] = useState("");
   const startedAt = useRef(Date.now());
   const activeWorld = MISSION_WORLDS.find((world) => world.id === activeId) || MISSION_WORLDS[0];
+  const scenario = SIMULATOR_SCENARIOS[activeId];
+  const simulationRecord = progress.simulations[activeId];
+  const simulationResult = simulationRecord?.lastResult;
   const completed = progress.completed.includes(activeId);
   const level = missionWorldLevel(progress.xp);
   const rank = missionWorldRank(level);
   const lessonProgress = objectiveProgress(activeWorld, progress);
   const capstoneUnlocked = allLessonsComplete(activeWorld, progress);
   const activeLesson = activeWorld.lessons[Math.min(lessonIndex, activeWorld.lessons.length - 1)];
-  const canComplete = activeWorld.activity === "builder" ? builtCount >= 3
-    : activeWorld.activity === "sequence" ? sequence.join("|") === activeWorld.sequence?.join("|")
-      : answer === activeWorld.correct;
+  const domainBuildReady = activeWorld.activity === "builder" ? builtCount >= 3 : activeWorld.activity === "sequence" ? sequence.join("|") === activeWorld.sequence?.join("|") : true;
+  const configurationMatchesRun = JSON.stringify(simulationRecord?.configuration) === JSON.stringify(simulationConfig);
+  const canComplete = Boolean(simulationRecord?.approved && simulationResult?.deploymentEligible && configurationMatchesRun && domainBuildReady);
 
   const selectWorld = useCallback((id: MissionWorldId) => {
     setActiveId(id);
     setLessonIndex(0);
     setRuntime(createMissionRuntime(id));
-    setAnswer("");
+    setSimulationConfig(progress.simulations[id]?.configuration || EMPTY_SIMULATION_CONFIGURATION);
     setSequence([]);
     setFeedback("Choose an answer to run the simulation.");
     startedAt.current = Date.now();
-  }, []);
+  }, [progress.simulations]);
 
   useEffect(() => {
     detectXRCapabilities().then(setXRCapabilities);
@@ -238,9 +242,11 @@ export function MissionWorldPage() {
   }, [activeId]);
 
   const setMode = (mode: MissionWorldMode) => {
-    const next = { ...progress, mode };
+    const currentSimulation = progress.simulations[activeId];
+    const next = { ...progress, mode, simulations: currentSimulation ? { ...progress.simulations, [activeId]: { ...currentSimulation, approved: false } } : progress.simulations };
     setProgress(next);
     saveMissionWorldProgress(next);
+    if (currentSimulation) setFeedback("Session mode changed. Run the simulation again to recalculate teamwork and approval.");
     trackEvent("mission_world_mode_selected", { missionId: `mission-world-${activeId}`, role });
   };
 
@@ -267,13 +273,45 @@ export function MissionWorldPage() {
     setFeedback(message);
   };
 
+  const toggleTool = (id: string) => setSimulationConfig((current) => ({ ...current, toolIds: current.toolIds.includes(id) ? current.toolIds.filter((item) => item !== id) : [...current.toolIds, id] }));
+  const toggleSafeguard = (id: string) => setSimulationConfig((current) => ({ ...current, safeguardIds: current.safeguardIds.includes(id) ? current.safeguardIds.filter((item) => item !== id) : [...current.safeguardIds, id] }));
+
+  const runSimulation = () => {
+    const planWords = simulationConfig.plan.trim().split(/\s+/).filter(Boolean).length;
+    if (!simulationConfig.role || planWords < 6 || simulationConfig.toolIds.length === 0) {
+      failAttempt("Assign a professional role, equip at least one tool, and write a plan of six or more words before testing.");
+      return;
+    }
+    if (!domainBuildReady) {
+      failAttempt(activeWorld.activity === "builder" ? "Build at least three world structures before running the learner-flow simulation." : "Program the complete Sense, Plan, Act control loop before running the robot.");
+      return;
+    }
+    const run = (simulationRecord?.runs || 0) + 1;
+    const result = runMissionSimulation(scenario, simulationConfig, progress.mode, run);
+    const next = recordSimulationRun(progress, activeId, simulationConfig, result);
+    setProgress(next);
+    saveMissionWorldProgress(next);
+    setRuntime((current) => ({ ...current, attempts: result.run, status: result.deploymentEligible ? "ready" : "retry" }));
+    setFeedback(result.deploymentEligible ? `Simulation scored ${result.score}. Review the evidence and request human approval.` : `Simulation scored ${result.score}. Deployment is blocked; improve the configuration and run again.`);
+    trackEvent("mission_world_simulation_run", { missionId: `mission-world-${activeId}`, role });
+  };
+
+  const approveDeployment = () => {
+    if (!simulationResult?.deploymentEligible) return;
+    const next = approveSimulation(progress, activeId);
+    setProgress(next);
+    saveMissionWorldProgress(next);
+    setFeedback("Pit Stop approval recorded. The solution can now be deployed and captured as OPPRRC evidence.");
+    trackEvent("mission_world_deployment_approved", { missionId: `mission-world-${activeId}`, role });
+  };
+
   const complete = () => {
     if (!capstoneUnlocked) {
       setFeedback(`Complete all ${activeWorld.lessons.length} learning checkpoints to unlock the capstone.`);
       return;
     }
     if (!canComplete) {
-      setFeedback(activeWorld.activity === "builder" ? "Place at least three structures on the grid." : "That simulation is not complete yet. Try the mission sequence again.");
+      setFeedback("Run an eligible solution, review its consequences, and record human Pit Stop approval before deployment.");
       return;
     }
     if (completed) {
@@ -292,7 +330,9 @@ export function MissionWorldPage() {
     if (first) awardBadge("First Launch");
     if (last) awardBadge("Mission Master");
     const canvas = document.querySelector<HTMLCanvasElement>(".mission-world-canvas");
-    const evidenceProof = issueMissionWorldProof({ world: activeWorld, role, rewardXP, startedAt: startedAt.current, mode: progress.mode, completedLessons: next.lessons[activeId] || [], canvas });
+    const simulation = next.simulations[activeId];
+    if (!simulation) return;
+    const evidenceProof = issueMissionWorldProof({ world: activeWorld, role, rewardXP, startedAt: startedAt.current, mode: progress.mode, completedLessons: next.lessons[activeId] || [], simulation, canvas });
     setLatestProof(evidenceProof);
     refreshRewards();
     trackEvent("mission_world_rewarded", { missionId: evidenceProof.missionId, role });
@@ -305,7 +345,7 @@ export function MissionWorldPage() {
   const resetProgress = () => {
     setProgress(EMPTY_MISSION_WORLD_PROGRESS);
     saveMissionWorldProgress(EMPTY_MISSION_WORLD_PROGRESS);
-    setAnswer("");
+    setSimulationConfig(EMPTY_SIMULATION_CONFIGURATION);
     setSequence([]);
     setBuiltCount(0);
     setLessonIndex(0);
@@ -316,6 +356,9 @@ export function MissionWorldPage() {
 
   const nextLevelXP = 250 - (progress.xp % 250);
   const totalLessons = MISSION_WORLDS.reduce((total, world) => total + (progress.lessons[world.id]?.length || 0), 0);
+  const selectedResources = [...scenario.tools.filter((entry) => simulationConfig.toolIds.includes(entry.id)), ...scenario.safeguards.filter((entry) => simulationConfig.safeguardIds.includes(entry.id))];
+  const plannedSpend = selectedResources.reduce((total, entry) => total + entry.cost, 0);
+  const plannedMinutes = selectedResources.reduce((total, entry) => total + entry.minutes, 0);
   return <div className="mission-world-page">
     <MissionWorldScene key={sceneRevision} activeId={activeId} builderActive={activeId === "builder" && capstoneUnlocked} reducedMotion={settings.reducedMotion} onPortal={selectWorld} onBuilt={setBuiltCount}/>
     <header className="mission-world-hud mission-world-topbar">
@@ -337,10 +380,16 @@ export function MissionWorldPage() {
       <button className="mission-world-checkpoint" onClick={markLessonComplete}>{progress.lessons[activeId]?.includes(activeLesson.id) ? <Check/> : <Zap/>}{progress.lessons[activeId]?.includes(activeLesson.id) ? "Checkpoint complete / next" : "Complete checkpoint"}</button>
       <div className="mission-world-capstone"><span><b>CAPSTONE</b><small>{lessonProgress.complete}/{lessonProgress.total} checkpoints / difficulty {activeWorld.difficulty}</small></span><strong>{capstoneUnlocked ? `+${activeWorld.xp} XP` : "LOCKED"}</strong></div>
       <div className={`mission-world-capstone-body ${capstoneUnlocked ? "unlocked" : ""}`} aria-disabled={!capstoneUnlocked}>
-        <div className="mission-world-objective"><Bot/><span><b>{activeWorld.agentId.toUpperCase()} OBJECTIVE</b><small>{capstoneUnlocked ? activeWorld.prompt : "Finish the learning path to activate this simulation."}</small></span></div>
-        {activeWorld.activity === "choice" && <div className="mission-world-options">{activeWorld.options?.map((option) => <button key={option} disabled={!capstoneUnlocked} className={answer === option ? "selected" : ""} onClick={() => { setAnswer(option); if (option === activeWorld.correct) { setRuntime((current) => ({ ...current, status: "ready" })); setFeedback("Correct. The simulation is ready to certify."); } else failAttempt("That path fails the safety or governance check. Review the lesson and retry."); }}><span>{answer === option ? <Check/> : <ShieldCheck/>}</span>{option}</button>)}</div>}
+        <div className="mission-world-client"><Bot/><span><b>{scenario.client}</b><small>{capstoneUnlocked ? scenario.need : "Finish the learning path to activate this client mission."}</small></span></div>
+        <div className="mission-world-resources"><span><b>{plannedSpend}/{scenario.budget}</b><small>CREDITS</small></span><span><b>{plannedMinutes}/{scenario.timeLimit}</b><small>MINUTES</small></span><span><b>{simulationRecord?.runs || 0}</b><small>RUNS</small></span><span><b>{simulationRecord?.bestScore || 0}</b><small>BEST</small></span></div>
+        <label className="mission-world-role"><span>PROFESSIONAL ROLE</span><select disabled={!capstoneUnlocked} value={simulationConfig.role} onChange={(event) => setSimulationConfig((current) => ({ ...current, role: event.target.value as SimulationConfiguration["role"] }))}><option value="">Assign responsibility</option>{scenario.roles.map((roleName) => <option key={roleName}>{roleName}</option>)}</select></label>
+        <div className="mission-world-toolbelt"><span><Wrench/> EQUIP TOOLBELT</span>{scenario.tools.map((entry) => <button key={entry.id} disabled={!capstoneUnlocked} className={simulationConfig.toolIds.includes(entry.id) ? "equipped" : ""} aria-pressed={simulationConfig.toolIds.includes(entry.id)} onClick={() => toggleTool(entry.id)} title={entry.purpose}><b>{entry.label}</b><small>{entry.cost} cr / {entry.minutes} min</small></button>)}</div>
+        <div className="mission-world-safeguards"><span><ShieldCheck/> SAFETY AND GOVERNANCE</span>{scenario.safeguards.map((entry) => <button key={entry.id} disabled={!capstoneUnlocked} className={simulationConfig.safeguardIds.includes(entry.id) ? "equipped" : ""} aria-pressed={simulationConfig.safeguardIds.includes(entry.id)} onClick={() => toggleSafeguard(entry.id)}><i>{entry.critical ? "REQUIRED" : "CONTROL"}</i><b>{entry.label}</b><small>{entry.cost} cr</small></button>)}</div>
+        <label className="mission-world-plan"><span>SOLUTION PLAN</span><textarea disabled={!capstoneUnlocked} maxLength={2000} value={simulationConfig.plan} onChange={(event) => setSimulationConfig((current) => ({ ...current, plan: event.target.value }))} placeholder={scenario.requiredOutcome}/></label>
         {activeWorld.activity === "sequence" && <div className="mission-world-sequence"><div>{activeWorld.sequence?.map((phase) => <button key={phase} disabled={!capstoneUnlocked || sequence.includes(phase)} onClick={() => { const next = [...sequence, phase]; setSequence(next); if (next.join("|") === activeWorld.sequence?.join("|")) { setRuntime((current) => ({ ...current, status: "ready" })); setFeedback("Sense, Plan, Act is ready to certify."); } else if (next.length === 3) failAttempt("Sequence incorrect. Reset the control loop and retry."); else setFeedback("Add the next rover phase."); }}>{phase}</button>)}</div><output>{sequence.length ? sequence.join(" -> ") : "Select the first phase"}</output><button className="icon-button" onClick={() => setSequence([])} aria-label="Reset sequence" title="Reset sequence"><RotateCcw/></button></div>}
         {activeWorld.activity === "builder" && <div className="mission-world-builder"><Box/><span><b>{builtCount}/3 structures placed</b><small>{capstoneUnlocked ? "Click open grid positions in the 3D world." : "Builder grid unlocks after all checkpoints."}</small></span></div>}
+        <button className="mission-world-run" disabled={!capstoneUnlocked} onClick={runSimulation}><Play/>Run simulation</button>
+        {simulationResult && <section className="mission-world-results"><header><span><Gauge/><b>{simulationResult.score}</b><small>{simulationResult.level}</small></span><strong className={simulationResult.deploymentEligible ? "pass" : "blocked"}>{simulationResult.deploymentEligible ? "REVIEW READY" : "DEPLOYMENT BLOCKED"}</strong></header><div>{Object.entries(simulationResult.scores).map(([dimension, value]) => <span key={dimension}><small>{dimension.replace(/([A-Z])/g, " $1")}</small><b>{Number(value)}</b></span>)}</div><p><b>DYNAMIC EVENT / {simulationResult.event.label}</b>{simulationResult.event.detail}</p>{simulationResult.strengths.map((item) => <p className="strength" key={item}><Check/>{item}</p>)}{simulationResult.consequences.map((item) => <p className="consequence" key={item}><X/>{item}</p>)}<button disabled={!simulationResult.deploymentEligible || !configurationMatchesRun || simulationRecord?.approved} onClick={approveDeployment}><ShieldCheck/>{simulationRecord?.approved ? "Pit Stop approved" : "Approve at human Pit Stop"}</button></section>}
       </div>
       <output className={canComplete ? "ready" : ""}>{feedback}</output>
       <button className="mission-world-complete" disabled={!capstoneUnlocked || !canComplete} onClick={complete}>{completed ? <BadgeCheck/> : <Zap/>}{completed ? "Run again" : "Complete and issue proof"}</button>

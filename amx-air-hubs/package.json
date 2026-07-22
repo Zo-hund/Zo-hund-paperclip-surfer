@@ -14,7 +14,7 @@
     "build": "tsc -b && vite build && node scripts/build-worker.mjs",
     "preview": "vite preview --config vite.preview.config.ts --host 0.0.0.0",
     "typecheck": "tsc -b",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
     "verify": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {

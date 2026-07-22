@@ -12,6 +12,7 @@ const engine = await read("src/mission-world/mission-engine.ts");
 const multiplayer = await read("src/mission-world/multiplayer.ts");
 const xr = await read("src/mission-world/xr-capabilities.ts");
 const proof = await read("src/mission-world/opprrc.ts");
+const simulator = await read("src/mission-world/simulator.ts");
 const world = await read("src/MissionWorld.tsx");
 const routes = await read("src/App.tsx");
 const runway = await read("src/pages/core.tsx");
@@ -77,4 +78,37 @@ test("Three.js capstones are gated by lessons and use real scene interaction", (
   assert.match(world, /allLessonsComplete\(activeWorld, progress\)/);
   assert.match(world, /activeId === "builder" && capstoneUnlocked/);
   assert.match(world, /builtCount >= 3/);
+});
+
+test("capstones are real client simulators rather than answer-choice trivia", () => {
+  assert.equal((simulator.match(/client: "/g) || []).length, 5);
+  for (const client of ["Northside Community Network", "Regional Career Collaborative", "East Hall Community Center", "AMX XR Event Operations", "Neighborhood Learning Lab"]) assert.match(simulator, new RegExp(client));
+  assert.match(simulator, /budget: 90/);
+  assert.match(simulator, /timeLimit: 75/);
+  assert.match(simulator, /ProfessionalRole/);
+  assert.match(world, /Assign responsibility/);
+  assert.match(world, /Run simulation/);
+  assert.doesNotMatch(world, /activeWorld\.activity === "choice"/);
+});
+
+test("weighted scoring cannot bypass critical safety failures", () => {
+  assert.match(simulator, /outcomeQuality \* \.30/);
+  assert.match(simulator, /technicalAccuracy \* \.20/);
+  assert.match(simulator, /safety \* \.15/);
+  assert.match(simulator, /efficiency \* \.10/);
+  assert.match(simulator, /creativity \* \.10/);
+  assert.match(simulator, /teamwork \* \.10/);
+  assert.match(simulator, /evidenceQuality \* \.05/);
+  assert.match(simulator, /entry\.critical && !configuration\.safeguardIds\.includes/);
+  assert.match(simulator, /score >= 70 && criticalFailures\.length === 0 && requiredCoverage === 1 && eventHandled/);
+});
+
+test("runs inject consequences, persist improvement evidence, and require approval", () => {
+  assert.match(simulator, /events\[\(Math\.max\(1, run\) - 1\) % scenario\.events\.length\]/);
+  assert.match(simulator, /The configured system could not recover/);
+  assert.match(progress, /recordSimulationRun/);
+  assert.match(progress, /bestScore: Math\.max/);
+  assert.match(progress, /approveSimulation/);
+  assert.match(world, /Approve at human Pit Stop/);
+  for (const field of ["role:", "score:", "tool:", "safety:", "event:", "approval:"]) assert.match(proof, new RegExp(field));
 });
