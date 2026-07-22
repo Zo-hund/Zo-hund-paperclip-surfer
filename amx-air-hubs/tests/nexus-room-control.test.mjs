@@ -18,10 +18,19 @@ test("LiveKit carries reliable room chat and operator-only NPC commands", () => 
   assert.match(pod, /isOperatorMetadata\(participant\.metadata\)/);
   assert.match(pod, /reliable: true, topic: NEXUS_CONTROL_TOPIC/);
   assert.match(pod, /reliable: true, topic: NEXUS_CHAT_TOPIC/);
+  assert.match(pod, /reliable: true, topic: NEXUS_SESSION_TOPIC/);
+  assert.match(pod, /isRoomCommunicatorMetadata\(participant\.metadata\)/);
 });
 
 test("local Nexus NPC controls publish while remote commands do not echo", () => {
   assert.match(page, /roomControlRef\.current\?\.sendNpcCommand\(command\)/);
   assert.match(page, /onNpcCommand=\{issueNpcCommand\}/);
   assert.match(page, /onRemoteNpcCommand=\{\(command\) => setNpcCommand\(command\)\}/);
+});
+
+test("multiplayer session packets are bounded and connected to the Nexus studio", () => {
+  assert.match(protocol, /deliverable\.code\.length <= 10_000/);
+  assert.match(protocol, /\["solo", "co-op", "teams"\]/);
+  assert.match(page, /<MetaverseStudio roomCode=\{roomCode\}/);
+  assert.match(page, /onSessionMessage=\{setSessionMessage\}/);
 });

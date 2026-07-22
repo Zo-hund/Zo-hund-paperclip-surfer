@@ -1,7 +1,9 @@
 import type { NpcCommand } from "./npc-controller";
+import type { MetaverseSessionState } from "./metaverse-session";
 
 export const NEXUS_CONTROL_TOPIC = "amx.nexus.control.v1";
 export const NEXUS_CHAT_TOPIC = "amx.nexus.chat.v1";
+export const NEXUS_SESSION_TOPIC = "amx.nexus.session.v1";
 
 export type NexusChatMessage = {
   id: string;
@@ -20,11 +22,21 @@ export type NexusNpcMessage = {
   command: NpcCommand;
 };
 
-export type NexusRoomMessage = NexusChatMessage | NexusNpcMessage;
+export type NexusSessionMessage = {
+  id: string;
+  kind: "session-request" | "session-state";
+  senderId: string;
+  senderName: string;
+  sentAt: number;
+  state?: MetaverseSessionState;
+};
+
+export type NexusRoomMessage = NexusChatMessage | NexusNpcMessage | NexusSessionMessage;
 
 export interface NexusRoomControl {
   connected: boolean;
   sendNpcCommand: (command: NpcCommand) => Promise<boolean>;
+  sendSessionMessage: (message: Omit<NexusSessionMessage, "id" | "senderId" | "sentAt">) => Promise<boolean>;
 }
 
 const encoder = new TextEncoder();
@@ -65,6 +77,16 @@ export function decodeNexusRoomMessage(payload: Uint8Array): NexusRoomMessage | 
       return boundedString(message.senderName, 80) && boundedString(message.text, 500) ? message as NexusChatMessage : null;
     }
     if (message.kind === "npc-command") return isNpcCommand(message.command) ? message as NexusNpcMessage : null;
+    if (message.kind === "session-request") return boundedString(message.senderName, 80) ? message as NexusSessionMessage : null;
+    if (message.kind === "session-state") {
+      const state = message.state as Partial<MetaverseSessionState> | undefined;
+      const deliverable = state?.deliverable;
+      const validMode = ["solo", "co-op", "teams"].includes(String(state?.mode));
+      const validStatus = ["lobby", "building", "review", "showcase-ready"].includes(String(state?.status));
+      const validEvent = ["showcase", "summit", "conference", "expo"].includes(String(state?.eventType));
+      const validDeliverable = deliverable && boundedString(deliverable.id, 128) && boundedString(deliverable.title, 120) && typeof deliverable.code === "string" && deliverable.code.length <= 10_000 && Number.isFinite(deliverable.revision) && Number.isFinite(deliverable.updatedAt) && boundedString(deliverable.updatedBy, 80);
+      return boundedString(message.senderName, 80) && validMode && validStatus && validEvent && validDeliverable ? message as NexusSessionMessage : null;
+    }
     return null;
   } catch {
     return null;

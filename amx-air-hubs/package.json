@@ -12,7 +12,7 @@
     "reference:status": "iwsdk reference status",
     "reference:warmup": "iwsdk reference warmup",
     "build": "tsc -b && vite build && node scripts/build-worker.mjs",
-    "preview": "vite preview --host 0.0.0.0",
+    "preview": "vite preview --config vite.preview.config.ts --host 0.0.0.0",
     "typecheck": "tsc -b",
     "test": "node --test tests/*.test.mjs",
     "verify": "pnpm typecheck && pnpm test && pnpm build"

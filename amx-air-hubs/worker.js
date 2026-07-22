@@ -173,7 +173,7 @@ function publicApiRequest(request, url) {
 }
 
 function requiredMemberRoles(url) {
-  if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/")) return ["operator"];
+  if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   return ["member", "trainer", "operator"];
 }
 
@@ -1505,6 +1505,25 @@ async function handleApi(request, env, url, requestId) {
     const name = safeLabel(body.name, clientType === "stage-monitor" ? "AMX Stage Router" : "AMX Stage Viewer").slice(0, 80);
     const participantToken = await createLiveKitToken(env, room, identity, name, "viewer", clientType);
     return reply({ serverUrl, participantToken, identity, room, role: "viewer", clientType, expiresIn: 900, agentDispatch: { configured: false, dispatched: false }, requestId });
+  }
+  if (request.method === "POST" && url.pathname === "/api/livekit/monitor-token") {
+    if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);
+    if (!liveKitOperatorHostAllowed(env, url)) return reply({ error: "Stage monitor tokens are restricted to the private operator host", requestId }, 403);
+    let serverUrl;
+    try {
+      const parsed = new URL(env.LIVEKIT_URL);
+      if (!["wss:", "ws:"].includes(parsed.protocol)) throw new Error("LiveKit URL must use WebSocket transport");
+      serverUrl = parsed.toString().replace(/\/$/, "");
+    } catch (error) {
+      return reply({ error: error instanceof Error ? error.message : "Invalid LiveKit URL", requestId }, 500);
+    }
+    const body = await readJson(request, 16 * 1024);
+    const room = safeId(body.room).toUpperCase().slice(0, 64);
+    if (!room) return reply({ error: "Room is required", requestId }, 400);
+    const identity = `stage-monitor-${crypto.randomUUID().slice(0, 18)}`;
+    const name = safeLabel(body.name, "AMX Stage Router").slice(0, 80);
+    const participantToken = await createLiveKitToken(env, room, identity, name, "viewer", "stage-monitor");
+    return reply({ serverUrl, participantToken, identity, room, role: "viewer", clientType: "stage-monitor", expiresIn: 900, agentDispatch: { configured: false, dispatched: false }, requestId });
   }
   if (request.method === "POST" && url.pathname === "/api/livekit/token") {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {

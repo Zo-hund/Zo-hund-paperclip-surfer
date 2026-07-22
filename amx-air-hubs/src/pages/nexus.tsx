@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, Bot, Box, BrainCircuit, Camera, Cpu, Crosshair, Database, Gauge, Lightbulb,
+  Activity, Bot, Box, BrainCircuit, Camera, Code2, Cpu, Crosshair, Database, Gauge, Lightbulb,
   LocateFixed, MapPin, MonitorPlay, Radio, RefreshCw, Router, Satellite, ScanLine, Server, Sun, Users, Video, Wifi, Zap,
 } from "lucide-react";
 import { agents } from "../data";
@@ -15,7 +15,7 @@ import { Metric, StatusPill } from "../components";
 import { useAMX } from "../AppContext";
 import { DEFAULT_NEXUS_AVATAR_URL } from "../avatar-presets";
 import { DEFAULT_NPC_STATE, type NpcCommand, type NpcRuntimeState } from "../npc-controller";
-import type { NexusRoomControl } from "../nexus-room-control";
+import type { NexusRoomControl, NexusSessionMessage } from "../nexus-room-control";
 import { normalizeNexusGlobeLevel, normalizeNexusVfxPreset, type NexusGlobeLevel, type NexusVfxPreset } from "../nexus-vfx";
 import type { NexusXRProductionCue } from "../nexus-xr-production";
 import { normalizeNexusXRMode } from "../nexus-xr";
@@ -26,6 +26,7 @@ import { normalizeScreenLayoutMode, normalizeScreenWallFit, normalizeScreenWallF
 const LiveKitPod = lazy(async () => ({ default: (await import("../LiveKitPod")).LiveKitPod }));
 const NexusRoomScene = lazy(async () => ({ default: (await import("../NexusRoomScene")).NexusRoomScene }));
 const SpatialPresenceConsole = lazy(async () => ({ default: (await import("../SpatialPresenceConsole")).SpatialPresenceConsole }));
+const MetaverseStudio = lazy(async () => ({ default: (await import("../MetaverseStudio")).MetaverseStudio }));
 const DigitalTwinLab = lazy(async () => ({ default: (await import("../DigitalTwinLab")).DigitalTwinLab }));
 const NexusMediaPlayer = lazy(async () => ({ default: (await import("../NexusMediaPlayer")).NexusMediaPlayer }));
 const NexusProductionSwitcher = lazy(async () => ({ default: (await import("../NexusProductionSwitcher")).NexusProductionSwitcher }));
@@ -125,6 +126,8 @@ export function NexusPage() {
   const stingerSequence = useRef(0);
   const runwayCommandSequence = useRef(0);
   const roomControlRef = useRef<NexusRoomControl | null>(null);
+  const [roomControl, setRoomControl] = useState<NexusRoomControl | null>(null);
+  const [sessionMessage, setSessionMessage] = useState<NexusSessionMessage | null>(null);
   const [anchorLabel, setAnchorLabel] = useState("Nexus waypoint");
   const [selectedAnchor, setSelectedAnchor] = useState<GeoAnchor | null>(null);
   const [rendererBackend, setRendererBackend] = useState<"initializing" | "webgpu" | "webgl2">("initializing");
@@ -299,7 +302,8 @@ export function NexusPage() {
           <div className="nexus-console-view" hidden={roomConsoleView !== "pod"}>
             <div className="nexus-room-code"><label htmlFor="nexus-room-code">ROOM CHANNEL</label><input id="nexus-room-code" value={roomCode} onChange={(event) => updateRoom(event.target.value)}/><small>Anchors and media use this room scope.</small></div>
             <NexusBroadcastConsole roomCode={roomCode}/>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream} onSceneStreams={setSceneStreams} onControlReady={(control) => { roomControlRef.current = control; }} onRemoteNpcCommand={(command) => setNpcCommand(command)}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing room media</span></div>}><LiveKitPod compact roomCode={roomCode} agents={crew} onLocalStream={setLocalStream} onSceneStreams={setSceneStreams} onControlReady={(control) => { roomControlRef.current = control; setRoomControl(control); }} onRemoteNpcCommand={(command) => setNpcCommand(command)} onSessionMessage={setSessionMessage}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Code2/><span>Preparing multiplayer studio</span></div>}><MetaverseStudio roomCode={roomCode} control={roomControl} incoming={sessionMessage}/></Suspense>
           </div>
           <div className="nexus-console-view" hidden={roomConsoleView !== "media"}>
             <div className="nexus-content-deck"><div className="content-deck-title"><span className="eyebrow">WORLD CONTENT DECK</span><b>Production routing</b></div>

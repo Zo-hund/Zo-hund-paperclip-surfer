@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Armchair, ArrowUpToLine, Bot, CalendarRange, Camera, CameraOff, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2, LockKeyhole,
-  ListChecks, Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Smartphone, Sparkles, Users, Video, Volume2, Wifi,
+  Armchair, ArrowUpToLine, Bot, CalendarRange, Camera, CameraOff, Check, ChevronRight, CircleDot, CircleStop, Clapperboard, Crown, Disc3, Film, Headphones, Link2, LockKeyhole,
+  ListChecks, Megaphone, Mic2, Minus, MonitorPlay, Music2, Pause, Play, Plus, Podcast, Radio, RadioTower, RefreshCw, Smartphone, Sparkles, Users, Video, Volume2, Wifi, X,
 } from "lucide-react";
 import type { CaptureState, LiveVideoFeed, ProgramAudioState } from "../LiveKitPod";
 import type { StageFeedMonitorStatus } from "../StageFeedMonitor";
@@ -17,7 +17,8 @@ import { StageStudioMixer } from "../StageStudioMixer";
 import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
 import { getActiveTenant } from "../operations";
 import { STAGE_DECK_PRESETS, applyStageScoreCue, normalizeStageScore, stageAudioTrackId, type StageScoreState } from "../stage-audio";
-import { stageEventPreset } from "../stage-events";
+import { createStageSeats, stageEventPreset, type StageEventFormat } from "../stage-events";
+import { useShowcasePromotions, type ShowcasePromotion } from "../showcase-promotions";
 import { reviseStageShowWorkflow, stageWorkflowReadiness, type StageShowWorkflow as StageShowWorkflowState } from "../stage-show-workflow";
 import { selectStageProgramFeed, sortStageVideoFeeds } from "../stage-camera-routing";
 import {
@@ -80,15 +81,43 @@ function CameraFeedPreview({ feed }: { feed: LiveVideoFeed | null }) {
   return <video ref={ref} autoPlay muted playsInline className={feed.local ? "local" : ""}/>;
 }
 
+function useStageProgramBridge(program: MediaStream | null, promotedRoom: MediaStream | null) {
+  const [stream, setStream] = useState<MediaStream | null>(program);
+  useEffect(() => {
+    const sources = [program, promotedRoom].filter((candidate): candidate is MediaStream => Boolean(candidate?.getAudioTracks().some((track) => track.readyState === "live")));
+    if (sources.length < 2) { setStream(sources[0] || null); return; }
+    const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) { setStream(program || promotedRoom); return; }
+    const context = new AudioContextConstructor({ latencyHint: "interactive", sampleRate: 48_000 });
+    const destination = context.createMediaStreamDestination();
+    const nodes = sources.map((source) => {
+      const node = context.createMediaStreamSource(source);
+      const gain = context.createGain();
+      gain.gain.value = 1;
+      node.connect(gain).connect(destination);
+      return { node, gain };
+    });
+    void context.resume().catch(() => undefined);
+    setStream(destination.stream);
+    return () => {
+      nodes.forEach(({ node, gain }) => { node.disconnect(); gain.disconnect(); });
+      void context.close();
+    };
+  }, [program, promotedRoom]);
+  return stream;
+}
+
 export function AMXXRStagePage() {
   const { settings, activeMission } = useAMX();
   const launch = useMemo(() => stageLaunchConfig(window.location.search), []);
   const [view, setView] = useState<ConsoleView>(() => launch.openAudio ? "audio" : "workflow");
   const [roomCode, setRoomCode] = useState(() => launch.room || localStorage.getItem("amx_stage_room") || "AMXSTAGE");
   const production = useStageProduction(roomCode);
+  const showcasePromotions = useShowcasePromotions();
   const soundscapeRuntime = useStageSoundscape(production.state.audio);
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
+  const [promotedRoomAudio, setPromotedRoomAudio] = useState<MediaStream | null>(null);
   const [feedMonitorStatus, setFeedMonitorStatus] = useState<StageFeedMonitorStatus>("connecting");
   const [cameraMediaState, setCameraMediaState] = useState<CaptureState>("off");
   const [microphoneMediaState, setMicrophoneMediaState] = useState<CaptureState>("off");
@@ -123,6 +152,8 @@ export function AMXXRStagePage() {
     return { ...camera, route: configuredRoute, feed: selectStageProgramFeed(orderedVideoFeeds, camera.id, configuredRoute) };
   }), [orderedVideoFeeds, production.state.cameraRoutes]);
   const programChannel = cameraChannels.find((camera) => camera.id === production.state.shot) || cameraChannels[0];
+  const monitoredRoom = production.state.event.status !== "draft" && production.state.event.sourceRoom && production.state.connectedPods.includes(production.state.event.sourceRoom) ? production.state.event.sourceRoom : production.room;
+  const stageProgramStream = useStageProgramBridge(soundscapeRuntime.programStream, monitoredRoom === production.room ? null : promotedRoomAudio);
 
   useEffect(() => {
     if (launchAppliedRef.current || !launch.fromNexus || production.room !== roomCode) return;
@@ -329,6 +360,24 @@ export function AMXXRStagePage() {
     setView("audience");
     trackEvent("stage_room_promoted", { campaignId: production.state.event.id, locationTag: pod });
   };
+  const reviewShowcase = (request: ShowcasePromotion, approved: boolean) => {
+    showcasePromotions.review(request.id, approved ? "approved" : "declined");
+    if (!approved) return;
+    const format: StageEventFormat = request.eventType === "expo" ? "expo" : request.eventType === "summit" || request.eventType === "conference" ? "summit" : "xr-con";
+    const preset = stageEventPreset(format);
+    production.update({
+      mode: "metaverse",
+      connectedPods: Array.from(new Set([...production.state.connectedPods, request.roomCode])).slice(-8),
+      event: { ...production.state.event, title: request.title, format, venueLayout: preset.venueLayout, status: "published", sourceRoom: request.roomCode, ticketTiers: preset.ticketTiers.map((tier) => ({ ...tier })), seats: createStageSeats(format) },
+      sponsor: { id: request.organizationId, name: request.organizationName, headline: `${preset.label} / ${request.title}`, cta: request.organizationTags.map((tag) => `#${tag}`).join(" ").slice(0, 42) || "ENTER THE SHOWCASE", accent: preset.accent },
+      generalSeats: 0,
+      vipSeats: 0,
+      cue: "demo",
+      shot: "wide",
+    });
+    setView("audience");
+    trackEvent("stage_showcase_approved", { campaignId: request.id, locationTag: request.roomCode });
+  };
   const addSponsor = () => {
     if (!sponsorDraft.name.trim() || !sponsorDraft.headline.trim()) return;
     const sponsor: SponsorCreative = { ...sponsorDraft, id: `sponsor-${crypto.randomUUID().slice(0, 8)}`, name: sponsorDraft.name.trim(), headline: sponsorDraft.headline.trim(), cta: sponsorDraft.cta.trim() || "VISIT THE SPONSOR" };
@@ -367,7 +416,7 @@ export function AMXXRStagePage() {
 
   const seatsTotal = production.state.generalSeats + production.state.vipSeats;
   return <div className="page amx-stage-page">
-    <Suspense fallback={null}><StageFeedMonitor roomCode={production.room} onStatus={setFeedMonitorStatus} onVideoFeeds={setVideoFeeds}/></Suspense>
+    <Suspense fallback={null}><StageFeedMonitor roomCode={monitoredRoom} onStatus={setFeedMonitorStatus} onVideoFeeds={setVideoFeeds} onAudioStream={setPromotedRoomAudio}/></Suspense>
     <header className="stage-workspace-bar">
       <div className="stage-title"><span className="eyebrow">AMX XR STAGE / LIVE PRODUCTION</span><h1>Show control</h1></div>
       <div className="stage-show-status"><span className={production.state.live ? "live" : "ready"}><i/>{production.state.live ? "ON AIR" : "READY"}</span><span><Camera/>{production.state.shot.toUpperCase()} / {programChannel.feed && !programChannel.feed.muted ? programChannel.feed.name : "VIRTUAL"}</span><span><Video/>{STAGE_VIDEO_PROFILES.find((profile) => profile.id === production.state.video.outputProfile)?.shortLabel}</span><span><Users/>{seatsTotal} seated</span><span><Link2/>{production.state.connectedPods.length} pods</span><span><Wifi/>{production.transport}</span></div>
@@ -402,8 +451,9 @@ export function AMXXRStagePage() {
           </div>
 
           <div className="stage-console-view" hidden={view !== "collab"}>
+            <section className="stage-control-section stage-showcase-queue"><header><div><span className="eyebrow">XR SHOWCASE INBOX</span><h2>Room promotion approvals</h2></div><span className={`stage-sync-state ${showcasePromotions.pending.length ? "audio-live" : ""}`}><i/>{showcasePromotions.pending.length} PENDING</span></header>{showcasePromotions.pending.length === 0 ? <p className="stage-showcase-empty"><RadioTower/>Live pod requests from summits, conferences, expos, and showcases appear here.</p> : <div className="stage-showcase-list">{showcasePromotions.pending.map((request) => <article key={request.id}><div><span><b>{request.title}</b><small>{request.organizationName} / {request.roomCode} / {request.mode}</small></span><div>{request.organizationTags.map((tag) => <i key={tag}>#{tag}</i>)}</div></div><footer><span>{request.eventType.toUpperCase()} / REV {request.deliverableRevision}</span><button className="decline" onClick={() => reviewShowcase(request, false)} aria-label={`Decline ${request.title}`} title={`Decline ${request.title}`}><X/></button><button className="approve" onClick={() => reviewShowcase(request, true)}><Check/>APPROVE TO STAGE</button></footer></article>)}</div>}</section>
             <section className="stage-control-section"><header><div><span className="eyebrow">CROSS-POD CONNECTION</span><h2>Linked showcases</h2></div><span className="stage-sync-state"><i/>{production.transport}</span></header><label className="stage-room-field">Stage room<input value={roomCode} onChange={(event) => changeRoom(event.target.value)}/></label><div className="stage-pod-link"><input value={podDraft} onChange={(event) => setPodDraft(event.target.value)} placeholder="POD CODE"/><button onClick={linkPod} disabled={!podDraft.trim()}><Link2/>Link</button></div><div className="stage-pod-list">{production.state.connectedPods.map((pod) => <div key={pod} className={production.state.event.sourceRoom === pod ? "promoted" : ""}><span><i/><b>{pod}</b><small>{production.state.event.sourceRoom === pod ? "promoted event source" : "stage cue bus linked"}</small></span><span className="stage-pod-actions"><button onClick={() => promotePod(pod)} aria-label={`Promote ${pod} to stage`} title={`Promote ${pod} to stage`}><ArrowUpToLine/></button><button onClick={() => unlinkPod(pod)} aria-label={`Unlink ${pod}`} title={`Unlink ${pod}`}><Minus/></button></span></div>)}</div></section>
-            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onCameraState={setCameraMediaState} programAudioStream={soundscapeRuntime.programStream} onProgramAudioState={setProgramAudioState} microphoneEnabled={production.state.audio.voiceEnabled && !production.state.audio.masterMuted} microphoneGain={production.state.audio.voiceGain} onMicrophoneEnabledChange={(voiceEnabled) => updateAudio({ voiceEnabled })} onMicrophoneState={setMicrophoneMediaState} onVoiceLevel={setVoiceLevel} autoConnectProgram videoProfile={production.state.video.captureProfile} onCameraQuality={setCameraQuality}/></Suspense>
+            <Suspense fallback={<div className="pod-camera-off"><Radio/><span>Preparing stage media</span></div>}><LiveKitPod compact roomCode={production.room} agents={crew} onCameraState={setCameraMediaState} programAudioStream={stageProgramStream} onProgramAudioState={setProgramAudioState} microphoneEnabled={production.state.audio.voiceEnabled && !production.state.audio.masterMuted} microphoneGain={production.state.audio.voiceGain} onMicrophoneEnabledChange={(voiceEnabled) => updateAudio({ voiceEnabled })} onMicrophoneState={setMicrophoneMediaState} onVoiceLevel={setVoiceLevel} autoConnectProgram videoProfile={production.state.video.captureProfile} onCameraQuality={setCameraQuality}/></Suspense>
           </div>
 
           <div className="stage-console-view stage-audio-console" hidden={view !== "audio"}>

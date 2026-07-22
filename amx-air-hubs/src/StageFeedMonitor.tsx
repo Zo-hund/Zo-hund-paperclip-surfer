@@ -12,6 +12,7 @@ interface Props {
   roomCode: string;
   onStatus: (status: StageFeedMonitorStatus) => void;
   onVideoFeeds: (feeds: LiveVideoFeed[]) => void;
+  onAudioStream?: (stream: MediaStream | null) => void;
 }
 
 type MonitoredFeed = {
@@ -20,7 +21,7 @@ type MonitoredFeed = {
   track: RemoteVideoTrack;
 };
 
-export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
+export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds, onAudioStream }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "AMXSTAGE";
   const [status, setStatus] = useState<StageFeedMonitorStatus>("connecting");
 
@@ -32,8 +33,14 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
     let tokenRequest: AbortController | null = null;
     const room = new Room({ adaptiveStream: false, dynacast: true, disconnectOnPageLeave: true });
     const feeds = new Map<string, MonitoredFeed>();
+    const audioTracks = new Map<string, MediaStreamTrack>();
     const commit = () => {
       if (!disposed) onVideoFeeds([...feeds.values()].map((entry) => entry.feed));
+    };
+    const commitAudio = () => {
+      if (disposed) return;
+      const tracks = [...audioTracks.values()].filter((track) => track.readyState === "live");
+      onAudioStream?.(tracks.length ? new MediaStream(tracks) : null);
     };
     const updateStatus = (next: StageFeedMonitorStatus) => {
       if (disposed) return;
@@ -65,7 +72,8 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
     };
     const subscribePublication = (publication: RemoteTrackPublication) => {
       const video = publication.kind === Track.Kind.Video;
-      publication.setSubscribed(video);
+      const audio = publication.kind === Track.Kind.Audio;
+      publication.setSubscribed(video || audio);
       if (video) publication.setVideoQuality(VideoQuality.HIGH);
     };
     const subscribePublishedVideo = () => {
@@ -81,11 +89,17 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
       if (track.kind === Track.Kind.Video) addFeed(track as RemoteVideoTrack, publication, participant);
+      if (track.kind === Track.Kind.Audio) {
+        audioTracks.set(publication.trackSid, track.mediaStreamTrack);
+        commitAudio();
+      }
     });
     room.on(RoomEvent.TrackPublished, subscribePublication);
     room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
       feeds.forEach((entry, id) => { if (entry.track === track) feeds.delete(id); });
+      audioTracks.forEach((mediaTrack, id) => { if (mediaTrack === track.mediaStreamTrack) audioTracks.delete(id); });
       commit();
+      commitAudio();
     });
     room.on(RoomEvent.TrackMuted, (publication) => setMuted(publication.track, true));
     room.on(RoomEvent.TrackUnmuted, (publication) => setMuted(publication.track, false));
@@ -101,7 +115,9 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
     });
     room.on(RoomEvent.Disconnected, () => {
       feeds.clear();
+      audioTracks.clear();
       commit();
+      commitAudio();
       updateStatus("unavailable");
       scheduleRetry();
     });
@@ -118,7 +134,7 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
       tokenRequest?.abort();
       tokenRequest = new AbortController();
       try {
-        const response = await fetch("/api/livekit/viewer-token", {
+        const response = await fetch("/api/livekit/monitor-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ room: safeRoom, name: "AMX Stage Router", clientType: "stage-monitor" }),
@@ -145,10 +161,12 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds }: Props) {
       tokenRequest?.abort();
       window.clearTimeout(retryTimer);
       feeds.clear();
+      audioTracks.clear();
       onVideoFeeds([]);
+      onAudioStream?.(null);
       void room.disconnect();
     };
-  }, [onStatus, onVideoFeeds, safeRoom]);
+  }, [onAudioStream, onStatus, onVideoFeeds, safeRoom]);
 
   return <span className="stage-feed-monitor" data-status={status} data-room={safeRoom} hidden/>;
 }
