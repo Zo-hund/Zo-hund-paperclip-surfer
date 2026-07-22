@@ -1529,7 +1529,9 @@ async function handleApi(request, env, url, requestId) {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
       return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);
     }
-    if (!liveKitOperatorHostAllowed(env, url)) return reply({ error: "LiveKit participant tokens are restricted to the private operator host", requestId }, 403);
+    const body = await readJson(request, 16 * 1024);
+    const venueMember = body.clientType === "venue-member";
+    if (!liveKitOperatorHostAllowed(env, url) && !venueMember) return reply({ error: "LiveKit participant tokens are restricted to the private operator host", requestId }, 403);
     let serverUrl;
     try {
       const parsed = new URL(env.LIVEKIT_URL);
@@ -1538,14 +1540,21 @@ async function handleApi(request, env, url, requestId) {
     } catch (error) {
       return reply({ error: error instanceof Error ? error.message : "Invalid LiveKit URL", requestId }, 500);
     }
-    const body = await readJson(request, 16 * 1024);
     const room = safeId(body.room).toUpperCase().slice(0, 64);
-    const identity = safeId(body.identity).slice(0, 64);
-    const name = safeLabel(body.name, identity || "AMX Explorer").slice(0, 80);
+    let identity = safeId(body.identity).slice(0, 64);
+    let name = safeLabel(body.name, identity || "AMX Explorer").slice(0, 80);
+    let clientType = "operator";
+    if (venueMember) {
+      const verified = await verifyMemberRequest(request, env, ["member", "trainer", "operator"]);
+      if (!publicLiveKitRoomAllowed(env, room)) return reply({ error: "This room is not available to venue members", requestId }, 403);
+      identity = `member-${safeId(verified?.profile?.id || verified?.profile?.member_code || crypto.randomUUID()).slice(0, 52)}`;
+      name = safeLabel(body.name, verified?.profile?.member_code || "AMX Member").slice(0, 80);
+      clientType = "venue-member";
+    } else await verifyMemberRequest(request, env, ["operator"]);
     if (!room || !identity) return reply({ error: "Room and identity are required", requestId }, 400);
-    const participantToken = await createLiveKitToken(env, room, identity, name, "participant", "operator");
-    const agentDispatch = await ensureLiveKitAgentDispatch(env, room, requestId);
-    return reply({ serverUrl, participantToken, room, role: "participant", expiresIn: 900, agentDispatch, requestId });
+    const participantToken = await createLiveKitToken(env, room, identity, name, "participant", clientType);
+    const agentDispatch = venueMember ? { configured: false, dispatched: false } : await ensureLiveKitAgentDispatch(env, room, requestId);
+    return reply({ serverUrl, participantToken, identity, room, role: "participant", clientType, expiresIn: 900, agentDispatch, requestId });
   }
   if (request.method === "POST" && url.pathname.startsWith("/api/livekit/egress/dj/")) {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) return reply({ error: "LiveKit is not configured on this stage", configured: false, requestId }, 503);

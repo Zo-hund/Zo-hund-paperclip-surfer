@@ -775,6 +775,38 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal((await response.json()).error, "LiveKit participant tokens are restricted to the private operator host");
   });
 
+  test("issues room-scoped publisher credentials to an authenticated venue member", async (context) => {
+    Object.assign(env, {
+      MEMBER_AUTH_REQUIRED: "true",
+      SUPABASE_URL: "https://project.supabase.co",
+      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",
+      LIVEKIT_API_KEY: "livekit-key",
+      LIVEKIT_API_SECRET: "livekit-secret",
+      LIVEKIT_OPERATOR_HOSTS: "operators.example",
+      PUBLIC_LIVEKIT_ROOMS: "AMXSTAGE",
+    });
+    context.mock.method(globalThis, "fetch", async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/v1/user")) return Response.json({ id: "00000000-0000-4000-8000-000000000091", email: "venue@example.com" });
+      return Response.json([{ id: "00000000-0000-4000-8000-000000000091", member_code: "AMX-00000091", membership_role: "member", membership_status: "active" }]);
+    });
+    const response = await worker.fetch(request("/api/livekit/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: "amx_member_session=venue.member.signature", "CF-Connecting-IP": crypto.randomUUID() },
+      body: JSON.stringify({ room: "AMXSTAGE", identity: "spoofed-identity", name: "Venue Member", clientType: "venue-member" }),
+    }), env);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.clientType, "venue-member");
+    assert.equal(body.identity, "member-00000000-0000-4000-8000-000000000091");
+    assert.equal(body.agentDispatch.dispatched, false);
+    const tokenPayload = JSON.parse(Buffer.from(body.participantToken.split(".")[1], "base64url").toString("utf8"));
+    assert.equal(tokenPayload.identity, body.identity);
+    assert.equal(JSON.parse(tokenPayload.metadata).clientType, "venue-member");
+  });
+
   test("keeps DJ stream destinations server-only and requires complete broadcast configuration", async () => {
     Object.assign(env, {
       LIVEKIT_URL: "wss://zohund-amx.livekit.cloud",

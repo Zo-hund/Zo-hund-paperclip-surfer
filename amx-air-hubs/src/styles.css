@@ -545,6 +545,7 @@ code { color: var(--cyan); font-family: "Space Mono", Consolas, monospace; font-
 @media(orientation:landscape) and (max-height:560px) and (max-width:760px){
   .amx-stage-page{height:calc(100dvh - 48px - 64px - env(safe-area-inset-bottom))}.stage-command-layout{height:calc(100dvh - 48px - 46px - 64px - env(safe-area-inset-bottom));grid-template-columns:minmax(0,1fr) minmax(310px,48vw)}
 }
+.stage-venue-entry{height:28px;display:flex;align-items:center;gap:5px;border:1px solid #3a6874;padding:0 8px;color:var(--cyan);white-space:nowrap}.stage-venue-entry svg{width:13px}@media(max-width:1100px){.stage-venue-entry{display:none}}
 
 /* Event seat manager */
 .stage-console-tabs{grid-template-columns:repeat(5,1fr)}

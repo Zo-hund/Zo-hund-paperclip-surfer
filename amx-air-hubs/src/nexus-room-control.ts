@@ -105,7 +105,7 @@ export function isOperatorMetadata(metadata?: string) {
 export function isRoomCommunicatorMetadata(metadata?: string) {
   try {
     const value = JSON.parse(metadata || "{}") as Record<string, unknown>;
-    return value.app === "amx-air-hubs" && (value.clientType === "operator" || value.role === "agent");
+    return value.app === "amx-air-hubs" && (value.clientType === "operator" || value.clientType === "venue-member" || value.role === "agent");
   } catch {
     return false;
   }

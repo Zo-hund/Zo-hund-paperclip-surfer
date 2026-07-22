@@ -49,6 +49,8 @@ type VideoSurface = {
 interface Props {
   roomCode: string;
   agents: Agent[];
+  clientType?: "operator" | "venue-member";
+  participantName?: string;
   onLocalStream?: (stream: MediaStream | null) => void;
   onSceneStreams?: (streams: MediaStream[]) => void;
   onVideoFeeds?: (feeds: LiveVideoFeed[]) => void;
@@ -194,7 +196,7 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
   return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{resolution}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, videoProfile = "720p30", onCameraQuality, onControlReady, onRemoteNpcCommand, onSessionMessage, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, clientType = "operator", participantName = "AMX Explorer", onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, videoProfile = "720p30", onCameraQuality, onControlReady, onRemoteNpcCommand, onSessionMessage, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const videoConfig = useMemo(() => liveKitVideoConfig(videoProfile), [videoProfile]);
@@ -395,7 +397,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       const response = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: safeRoom, identity, name: "AMX Explorer" }),
+        body: JSON.stringify({ room: safeRoom, identity, name: participantName, clientType }),
       });
       const credentials = await response.json().catch(() => ({})) as { serverUrl?: string; participantToken?: string; error?: string; agentDispatch?: { configured?: boolean; dispatched?: boolean; agentName?: string } };
       if (!response.ok || !credentials.serverUrl || !credentials.participantToken) {
@@ -603,7 +605,7 @@ export function LiveKitPod({ roomCode, agents, onLocalStream, onSceneStreams, on
       }
       await openLocalPreview(error instanceof Error ? `Local self-view live; ${error.message}` : undefined);
     }
-  }, [addVideoTrack, identity, microphoneEnabled, microphoneGain, openLocalPreview, safeRoom, videoConfig, videoProfile]);
+  }, [addVideoTrack, clientType, identity, microphoneEnabled, microphoneGain, openLocalPreview, participantName, safeRoom, videoConfig, videoProfile]);
 
   useEffect(() => {
     if (!autoConnectProgram || programAudioStream || status !== "error") return;

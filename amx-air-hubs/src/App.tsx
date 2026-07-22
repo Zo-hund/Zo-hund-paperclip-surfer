@@ -13,6 +13,7 @@ import { RuntimeStatusPage } from "./pages/runtime-status";
 import { PodInvitePage } from "./pages/invites";
 import { AccountPage, PublicMemberProfilePage } from "./pages/account";
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
+import { StageVenuePage } from "./pages/stage-venue";
 import { RequireMember } from "./member-auth";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
@@ -90,6 +91,7 @@ export default function App() {
     <Route path="/vr/pods/:podId" element={<RequireMember><ModeExperiencePage mode="vr"/></RequireMember>}/>
     <Route path="/mr/workspace/:workspaceId" element={<RequireMember><ModeExperiencePage mode="mr"/></RequireMember>}/>
     <Route path="/watch/:roomCode" element={<StageLiveViewerPage/>}/>
+    <Route path="/venues/:venueId" element={<RequireMember><StageVenuePage/></RequireMember>}/>
     <Route path="/proof/:credentialId" element={deferred(<PathfinderCredentialPage/>)}/>
     <Route path="/partner/:organizationId/:campaignSlug" element={<PartnerCampaignResolverPage/>}/>
     <Route path="/scan/*" element={<ScanResolver/>}/>

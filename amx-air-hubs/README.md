@@ -58,6 +58,8 @@ pnpm --filter @amx/air-hubs verify
 
 ## Documentation
 
+- [Stage WebXR venues](docs/STAGE_WEBXR_VENUES.md)
+
 - [Architecture](docs/ARCHITECTURE.md)
 - [Integrations](docs/INTEGRATIONS.md)
 - [API Reference](docs/API.md)
