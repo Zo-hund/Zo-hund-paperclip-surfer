@@ -130,6 +130,12 @@ function safeLabel(value, fallback = "") {
   return String(value || fallback).replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 180);
 }
 
+function assetCacheControl(pathname) {
+  return /^\/assets\/.+-[a-zA-Z0-9_-]{6,}\.(?:css|js|mjs|wasm|woff2?|png|jpe?g|webp|avif|svg)$/i.test(pathname)
+    ? "public, max-age=31536000, immutable"
+    : null;
+}
+
 function safeHexColor(value, fallback = "#55e6ff") {
   return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : fallback;
 }
@@ -1203,11 +1209,11 @@ async function initialize(db) {
 
 async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
-  if (!allowRequest(request)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
-  if (!publicApiRequest(request, url)) await verifyMemberRequest(request, env, requiredMemberRoles(url));
   if (request.method === "GET" && url.pathname === "/api/health") {
     return reply({ ok: true, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() });
   }
+  if (!allowRequest(request)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
+  if (!publicApiRequest(request, url)) await verifyMemberRequest(request, env, requiredMemberRoles(url));
   if (request.method === "GET" && url.pathname === "/api/ready") {
     const readiness = await probeReadiness(env);
     return reply({ ...readiness, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, readiness.ready ? 200 : 503);
@@ -1704,6 +1710,8 @@ export default {
     if (response.status !== 404 || url.pathname.includes(".")) {
       const headers = new Headers(response.headers);
       Object.entries(capabilityHeaders()).forEach(([key, value]) => headers.set(key, value));
+      const cacheControl = request.method === "GET" ? assetCacheControl(url.pathname) : null;
+      if (cacheControl && response.ok) headers.set("Cache-Control", cacheControl);
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }
     const readiness = runtimeReadiness(env);
