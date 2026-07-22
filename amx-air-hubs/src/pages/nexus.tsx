@@ -259,13 +259,30 @@ export function NexusPage() {
   }, [settings.reducedMotion]);
   const runXRProductionCue = useCallback((cue: NexusXRProductionCue) => {
     if (cue.kind === "screen") {
-      if (screenMode === "wall") takeScreenWall(cue.source, "cut");
-      else takeScreen(["Screen_User"], cue.source, "cut");
+      if (cue.target === "wall") {
+        updateScreenMode("wall");
+        takeScreenWall(cue.source, "cut");
+      } else {
+        updateScreenMode("triple");
+        const target: ProductionScreenId = cue.target === "left" ? "Screen_Agent_Left" : cue.target === "right" ? "Screen_Agent_Right" : "Screen_User";
+        takeScreen([target], cue.source, "cut");
+      }
+    } else if (cue.kind === "media") {
+      if (cue.action === "open") { setRoomConsoleView("media"); return; }
+      if (!mediaElement) { setRoomConsoleView("media"); return; }
+      if (cue.action === "play") void mediaElement.play().catch(() => setRoomConsoleView("media"));
+      else if (cue.action === "pause") mediaElement.pause();
+      else mediaElement.muted = cue.action === "mute";
     } else if (cue.kind === "camera") setActiveWorldCamera(cue.camera);
     else if (cue.kind === "light") setLightPreset(cue.preset);
     else if (cue.kind === "vfx") updateVfxPreset(cue.preset);
-    else issueRunwayNpcCommand({ kind: "action", action: cue.action });
-  }, [issueRunwayNpcCommand, screenMode, takeScreen, takeScreenWall, updateVfxPreset]);
+    else if (cue.kind === "npc") issueRunwayNpcCommand({ kind: "action", action: cue.action });
+    else if (cue.action === "home") issueRunwayNpcCommand({ kind: "move", waypoint: "stage" });
+    else if (cue.action === "rack") issueRunwayNpcCommand({ kind: "move", waypoint: "rack", arrivalAction: "inspect" });
+    else if (cue.action === "inspect") issueRunwayNpcCommand({ kind: "action", action: "inspect" });
+    else if (cue.action === "patrol") issueRunwayNpcCommand({ kind: "behavior", behavior: "patrol" });
+    else issueRunwayNpcCommand({ kind: "stop" });
+  }, [issueRunwayNpcCommand, mediaElement, takeScreen, takeScreenWall, updateScreenMode, updateVfxPreset]);
   const addAnchor = () => {
     if (geo.locationStatus !== "ready") geo.requestLocation();
     const index = geo.anchors.length;

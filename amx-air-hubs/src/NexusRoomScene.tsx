@@ -138,6 +138,24 @@ function controllerRay(color: number) {
   return ray;
 }
 
+function controllerShell(color: number) {
+  const shell = new THREE.Group();
+  shell.name = "Nexus_XR_Controller_Grip";
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.1, 0.08, 0.2),
+    new THREE.MeshStandardMaterial({ color: 0x10242e, emissive: color, emissiveIntensity: 0.28, metalness: 0.38, roughness: 0.44 }),
+  );
+  body.position.set(0, -0.035, 0.04);
+  body.rotation.x = -0.14;
+  const emitter = new THREE.Mesh(
+    new THREE.SphereGeometry(0.045, 12, 8),
+    new THREE.MeshBasicMaterial({ color, toneMapped: false }),
+  );
+  emitter.position.set(0, 0, -0.055);
+  shell.add(body, emitter);
+  return shell;
+}
+
 interface XRProductionButton {
   mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   cue: NexusXRProductionCue;
@@ -173,18 +191,18 @@ function productionPanelTexture(label: string, detail = "") {
 function createXRProductionPanel() {
   const group = new THREE.Group();
   group.name = "Nexus_XR_Production_Console";
-  group.position.set(0.88, 1.2, -2);
+  group.position.set(0.35, 1.2, -2.8);
   group.rotation.y = -0.4;
   const backing = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.08, 1.5),
+    new THREE.PlaneGeometry(3.35, 2.5),
     new THREE.MeshBasicMaterial({ color: 0x02070d, transparent: true, opacity: 0.94, side: THREE.DoubleSide }),
   );
   group.add(backing);
   const header = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.9, 0.2),
-    new THREE.MeshBasicMaterial({ map: productionPanelTexture("AMX XR PRODUCTION", "TRIGGER TAKE / GRIP HIDE"), transparent: true }),
+    new THREE.PlaneGeometry(3.12, 0.22),
+    new THREE.MeshBasicMaterial({ map: productionPanelTexture("AMX XR CONTROL", "SCREENS / A/V / ROBOTICS / PRODUCTION"), transparent: true }),
   );
-  header.position.set(0, 0.52, 0.012);
+  header.position.set(0, 1.08, 0.012);
   group.add(header);
   const buttons: XRProductionButton[] = NEXUS_XR_PRODUCTION_CONTROLS.map((control, index) => {
     const material = new THREE.MeshBasicMaterial({
@@ -193,10 +211,10 @@ function createXRProductionPanel() {
       transparent: true,
       opacity: 0.92,
     });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.59, 0.2), material);
-    const column = index % 3;
-    const row = Math.floor(index / 3);
-    mesh.position.set((column - 1) * 0.64, 0.29 - row * 0.225, 0.018);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.21), material);
+    const column = index % 4;
+    const row = Math.floor(index / 4);
+    mesh.position.set((column - 1.5) * 0.79, 0.78 - row * 0.25, 0.018);
     mesh.name = `XR_Cue_${control.id}`;
     mesh.userData.xrProductionCue = control.cue;
     group.add(mesh);
@@ -696,7 +714,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   const cameraControlRef = useRef<WorldCameraControl>(normalizeWorldCameraControl(cameraControl));
   const vfxPresetRef = useRef<NexusVfxPreset>(vfxPreset);
   const globeLevelRef = useRef<NexusGlobeLevel>(globeLevel);
-  const xrProductionStateRef = useRef<NexusXRProductionState>({ screenSource: screenMode === "wall" ? screenWallSource : screenProgram.Screen_User, camera: activeWorldCamera, light: lightPreset, vfx: vfxPreset, npcAction: DEFAULT_NPC_STATE.action });
+  const xrProductionStateRef = useRef<NexusXRProductionState>({ screenSource: screenMode === "wall" ? screenWallSource : screenProgram.Screen_User, screenMode, camera: activeWorldCamera, light: lightPreset, vfx: vfxPreset, npcAction: DEFAULT_NPC_STATE.action });
   const startXRRef = useRef<() => Promise<void>>(async () => undefined);
   const endXRRef = useRef<() => Promise<void>>(async () => undefined);
   const [loading, setLoading] = useState(true);
@@ -722,6 +740,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
   useEffect(() => {
     xrProductionStateRef.current = {
       screenSource: screenMode === "wall" ? screenWallSource : screenProgram.Screen_User,
+      screenMode,
       camera: activeWorldCamera,
       light: lightPreset,
       vfx: vfxPreset,
@@ -782,9 +801,27 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     scene.add(anchorLayer);
     const xrControllers = xrMode === "none" ? [] : [0, 1].map((index) => {
       const controller = renderer.xr.getController(index);
+      const grip = renderer.xr.getControllerGrip(index);
+      const color = index === 0 ? 0x55e6ff : 0xff55d7;
       controller.userData.inputIndex = index;
-      controller.add(controllerRay(index === 0 ? 0x55e6ff : 0xff55d7));
-      playerRig.add(controller);
+      controller.visible = false;
+      grip.visible = false;
+      controller.add(controllerRay(color));
+      grip.add(controllerShell(color));
+      controller.addEventListener("connected", (event) => {
+        const source = (event as THREE.Event & { data: XRInputSource }).data;
+        controller.userData.inputSource = source;
+        grip.userData.inputSource = source;
+        controller.visible = true;
+        grip.visible = !source.hand;
+      });
+      controller.addEventListener("disconnected", () => {
+        controller.visible = false;
+        grip.visible = false;
+        controller.userData.inputSource = null;
+        grip.userData.inputSource = null;
+      });
+      playerRig.add(controller, grip);
       return controller;
     });
     const xrProduction = createXRProductionPanel();
@@ -800,9 +837,9 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       xrPanelForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
       xrPanelRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
       xrProduction.group.position.copy(camera.position)
-        .addScaledVector(xrPanelForward, 2)
-        .addScaledVector(xrPanelRight, 0.88);
-      xrProduction.group.position.y -= 0.36;
+        .addScaledVector(xrPanelForward, 2.8)
+        .addScaledVector(xrPanelRight, 0.35);
+      xrProduction.group.position.y -= 0.25;
       xrProduction.group.quaternion.copy(camera.quaternion);
       xrProductionPlaced = true;
     };
@@ -815,9 +852,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
       return hit ? xrProduction.buttons.find(({ mesh }) => mesh === hit.object) || null : null;
     };
     const pulseController = (event: THREE.Event & { target?: THREE.Object3D }) => {
-      const input = renderer.xr.getSession()?.inputSources;
-      const controllerIndex = Number((event.target as THREE.Object3D)?.userData.inputIndex ?? -1);
-      const gamepad = controllerIndex >= 0 ? Array.from(input || [])[controllerIndex]?.gamepad : null;
+      const gamepad = ((event.target as THREE.Object3D)?.userData.inputSource as XRInputSource | undefined)?.gamepad;
       const actuator = gamepad?.hapticActuators?.[0];
       if (actuator && "pulse" in actuator) void actuator.pulse(0.55, 55).catch(() => undefined);
     };
