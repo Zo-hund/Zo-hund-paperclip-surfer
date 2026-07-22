@@ -19,7 +19,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Cue-follow show scoring with a shared beat clock, programmable Three.js lighting looks, safe music-synchronized VFX, and procedural transitions on the LiveKit program mix.
 - HLS/MP4/WebM media playback composited onto dedicated in-world Three.js display meshes with Fit and Fill modes.
 - Google Maps search, selection, shared geo anchors, and agent location context.
-- Selectable Three.js world cameras, consent-gated live vision scans, four Blender-prepared built-in avatars, and archived Ready Player Me GLB loading.
+- Selectable Three.js world, LiveKit Pod, and browser-visible external cameras with consent-gated agent vision, operator assignment, bounded realtime feedback, and human-approved MCP/skill tool calls.
 - NPC avatar direction with named room waypoints, D-pad and focused keyboard movement, double-click navigation, speed control, procedural actions, patrol behavior, and assigned-agent cues.
 - Runway Characters realtime avatars with microphone, camera, screen context, transcripts, in-world screen routing, and an AMX client-action toolbelt.
 - Tenant-branded 3D digital membership cards with profile QR verification and native sharing.
@@ -70,6 +70,7 @@ pnpm --filter @amx/air-hubs verify
 - [IWSDK Quest WebXR Runtime](docs/IWSDK_QUEST_WEBXR.md)
 - [Unity Quest Integration](docs/UNITY_QUEST_INTEGRATION.md)
 - [Multiplayer Metaverse Studio](docs/MULTIPLAYER_METAVERSE.md)
+- [Agent Vision Operations](docs/AGENT_VISION.md)
 
 ## Production Readiness
 
