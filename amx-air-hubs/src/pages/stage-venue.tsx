@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bot, ChevronLeft, Clapperboard, Focus, Glasses, Headphones, Maximize2, MessageSquare, Mic, MicOff, Radio, RotateCcw, Users, Video, Wifi } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useAMX } from "../AppContext";
@@ -12,6 +12,8 @@ import { nextStageCue, venueCommandFromVoice, type StageVenueOperatorCommand, ty
 import type { StageVenueControls, StageVenueXRMode } from "../StageVenueWorld";
 import type { NexusRoomControl } from "../nexus-room-control";
 import type { NpcCommand } from "../npc-controller";
+import type { LiveVideoFeed } from "../LiveKitPod";
+import { selectStageProgramFeed } from "../stage-camera-routing";
 import "../stage-venue.css";
 
 const StageVenueWorld = lazy(async () => ({ default: (await import("../StageVenueWorld")).StageVenueWorld }));
@@ -61,6 +63,8 @@ export function StageVenuePage() {
   const [npcCommand, setNpcCommand] = useState<NpcCommand | null>(null);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState("Say a camera, show, crew, or agent command");
+  const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
+  const programFeed = useMemo(() => selectStageProgramFeed(videoFeeds, production.state.shot, production.state.cameraRoutes[production.state.shot]), [production.state.cameraRoutes, production.state.shot, videoFeeds]);
   const onReady = useCallback((controls: StageVenueControls | null) => { controlsRef.current = controls; }, []);
 
   const enter = async (nextMode: StageVenueXRMode) => {
@@ -123,7 +127,7 @@ export function StageVenuePage() {
 
   return <main className="stage-venue-page" data-layout={layout} data-xr-mode={mode}>
     <Suspense fallback={<div className="stage-venue-loading"><span/><b>Building {venueLabel(layout)}</b></div>}>
-      <StageVenueWorld key={layout} layout={layout} production={production.state} participants={presence.participants} reducedMotion={settings.reducedMotion} operator={isOperator} npcCommand={npcCommand} followTarget={followTarget} onOperatorCommand={runOperatorCommand} onPose={presence.publishPose} onReady={onReady}/>
+      <StageVenueWorld key={layout} layout={layout} production={production.state} programFeed={programFeed} programMedia={production.state.programMedia} participants={presence.participants} reducedMotion={settings.reducedMotion} operator={isOperator} npcCommand={npcCommand} followTarget={followTarget} onOperatorCommand={runOperatorCommand} onPose={presence.publishPose} onReady={onReady}/>
     </Suspense>
 
     <header className="stage-venue-header">
@@ -176,7 +180,7 @@ export function StageVenuePage() {
 
     <button className={`stage-venue-comms-toggle ${commsOpen ? "active" : ""}`} onClick={() => setCommsOpen((current) => !current)} aria-expanded={commsOpen} aria-controls="venue-comms"><Headphones/><span>Room comms</span><MessageSquare/></button>
     <aside id="venue-comms" className={`stage-venue-comms ${commsOpen ? "open" : ""}`} aria-hidden={!commsOpen}>
-      <Suspense fallback={<div className="stage-venue-comms-loading">Preparing voice and video</div>}><LiveKitPod compact roomCode={room} agents={agents.slice(0, 2)} clientType={isOperator ? "operator" : "venue-member"} participantName={member.profile?.display_name || "AMX Member"} onControlReady={(control) => { roomControlRef.current = control; }} onRemoteNpcCommand={setNpcCommand}/></Suspense>
+      <Suspense fallback={<div className="stage-venue-comms-loading">Preparing voice and video</div>}><LiveKitPod compact autoJoin roomCode={room} agents={agents.slice(0, 2)} clientType={isOperator ? "operator" : "venue-member"} participantName={member.profile?.display_name || "AMX Member"} onVideoFeeds={setVideoFeeds} onControlReady={(control) => { roomControlRef.current = control; }} onRemoteNpcCommand={setNpcCommand}/></Suspense>
     </aside>
   </main>;
 }

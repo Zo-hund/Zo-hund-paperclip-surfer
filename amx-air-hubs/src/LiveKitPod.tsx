@@ -63,6 +63,7 @@ interface Props {
   onMicrophoneState?: (state: CaptureState) => void;
   onVoiceLevel?: (level: number) => void;
   autoConnectProgram?: boolean;
+  autoJoin?: boolean;
   videoProfile?: StageVideoProfile;
   onCameraQuality?: (quality: StageVideoDiagnostics | null) => void;
   onControlReady?: (control: NexusRoomControl | null) => void;
@@ -196,7 +197,7 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
   return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{resolution}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, clientType = "operator", participantName = "AMX Explorer", onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, videoProfile = "720p30", onCameraQuality, onControlReady, onRemoteNpcCommand, onSessionMessage, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, clientType = "operator", participantName = "AMX Explorer", onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, autoJoin = false, videoProfile = "720p30", onCameraQuality, onControlReady, onRemoteNpcCommand, onSessionMessage, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const videoConfig = useMemo(() => liveKitVideoConfig(videoProfile), [videoProfile]);
@@ -619,6 +620,11 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
     if (!autoConnectProgram || !programAudioStream || status !== "idle") return;
     void join(true);
   }, [autoConnectProgram, join, programAudioStream, status]);
+
+  useEffect(() => {
+    if (!autoJoin || status !== "idle") return;
+    void join(false);
+  }, [autoJoin, join, status]);
 
   useEffect(() => {
     if (appliedVideoProfileRef.current === videoProfile) return;

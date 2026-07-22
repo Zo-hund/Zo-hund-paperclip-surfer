@@ -2,11 +2,14 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
+import Hls from "hls.js";
 import type { StageVenueLayout } from "./stage-events";
 import type { StageProductionState } from "./stage-production";
 import type { StageVenuePose } from "./stage-venue-presence";
 import type { NpcCommand, NpcRuntimeState } from "./npc-controller";
 import { isSafeVenuePoint, resolveVenueMovement, type StageVenueOperatorCommand, type VenueCollider, type VenueFollowTarget } from "./stage-venue-production";
+import type { LiveVideoFeed } from "./LiveKitPod";
+import { stageProgramMediaPosition, type StageProgramMediaState } from "./stage-program-media";
 
 export type StageVenueXRMode = "web" | "ar" | "vr" | "mr";
 export interface StageVenueControls {
@@ -19,6 +22,8 @@ export interface StageVenueControls {
 interface Props {
   layout: StageVenueLayout;
   production: StageProductionState;
+  programFeed?: LiveVideoFeed | null;
+  programMedia: StageProgramMediaState;
   participants: StageVenuePose[];
   reducedMotion?: boolean;
   operator?: boolean;
@@ -151,10 +156,12 @@ function operatorPanel() {
   return { group, buttons };
 }
 
-export function StageVenueWorld({ layout, production, participants, reducedMotion, operator = false, npcCommand, followTarget = "off", onOperatorCommand, onPose, onReady }: Props) {
+export function StageVenueWorld({ layout, production, programFeed, programMedia, participants, reducedMotion, operator = false, npcCommand, followTarget = "off", onOperatorCommand, onPose, onReady }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const participantsRef = useRef(participants);
   const productionRef = useRef(production);
+  const programFeedRef = useRef(programFeed);
+  const programMediaRef = useRef(programMedia);
   const onPoseRef = useRef(onPose);
   const onReadyRef = useRef(onReady);
   const operatorRef = useRef(operator);
@@ -163,6 +170,8 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
   const onOperatorCommandRef = useRef(onOperatorCommand);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
   useEffect(() => { productionRef.current = production; }, [production]);
+  useEffect(() => { programFeedRef.current = programFeed; }, [programFeed]);
+  useEffect(() => { programMediaRef.current = programMedia; }, [programMedia]);
   useEffect(() => { onPoseRef.current = onPose; }, [onPose]);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   useEffect(() => { operatorRef.current = operator; }, [operator]);
@@ -203,6 +212,36 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
     const programTexture = new THREE.CanvasTexture(programCanvas); programTexture.colorSpace = THREE.SRGBColorSpace;
     const programScreen = new THREE.Mesh(new THREE.PlaneGeometry(12.7, 5), new THREE.MeshBasicMaterial({ map: programTexture, toneMapped: false }));
     programScreen.position.set(0, 4, -12.84); venue.add(programScreen);
+    const programVideo = document.createElement("video");
+    programVideo.autoplay = true; programVideo.playsInline = true; programVideo.crossOrigin = "anonymous";
+    let programSourceKey = "";
+    let programHls: Hls | null = null;
+    const clearProgramVideo = () => {
+      programHls?.destroy(); programHls = null; programVideo.pause(); programVideo.srcObject = null; programVideo.removeAttribute("src"); programVideo.load();
+    };
+    const syncProgramVideo = () => {
+      const media = programMediaRef.current;
+      const feed = programFeedRef.current;
+      const key = media.url && media.transport !== "stopped" ? `media:${media.url}` : feed && !feed.muted ? `feed:${feed.id}` : "";
+      if (key !== programSourceKey) {
+        clearProgramVideo(); programSourceKey = key;
+        if (key.startsWith("feed:") && feed) {
+          programVideo.muted = true; programVideo.srcObject = feed.stream; void programVideo.play().catch(() => undefined);
+        } else if (key.startsWith("media:")) {
+          programVideo.muted = media.muted;
+          const begin = () => { try { programVideo.currentTime = stageProgramMediaPosition(media); } catch { /* live streams are not seekable */ } if (media.transport === "playing") void programVideo.play().catch(() => undefined); };
+          programVideo.addEventListener("loadedmetadata", begin, { once: true });
+          if (/\.m3u8(?:$|[?#])/i.test(media.url) && Hls.isSupported()) { programHls = new Hls({ enableWorker: true, lowLatencyMode: true }); programHls.loadSource(media.url); programHls.attachMedia(programVideo); }
+          else { programVideo.src = media.url; programVideo.load(); }
+        }
+      }
+      if (key.startsWith("media:")) {
+        programVideo.muted = media.muted;
+        if (media.transport === "playing" && programVideo.paused) void programVideo.play().catch(() => undefined);
+        if (media.transport === "paused" && !programVideo.paused) programVideo.pause();
+      }
+      return Boolean(key && programVideo.readyState >= 2);
+    };
 
     const npcRoot = new THREE.Group();
     npcRoot.position.set(-2.1, 0, -7.4);
@@ -387,6 +426,7 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
       scene.background = sessionMode === "immersive-ar" ? null : background;
       session.addEventListener("end", () => { scene.background = background; });
       await renderer.xr.setSession(session);
+      if (programMediaRef.current.transport === "playing") void programVideo.play().catch(() => undefined);
       return `${mode.toUpperCase()} active. Left stick moves, right stick snap-turns, trigger selects or teleports${operatorRef.current ? ", and grip opens production controls" : ""}.`;
     };
     onReadyRef.current({ enter, move, turn, recenter });
@@ -453,18 +493,28 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
       npcState.position = [npcRoot.position.x, 0, npcRoot.position.z];
 
       const current = productionRef.current;
-      if (current.revision !== lastProgramRevision) {
+      const hasVideo = syncProgramVideo();
+      if (hasVideo || current.revision !== lastProgramRevision) {
         lastProgramRevision = current.revision;
         const context = programCanvas.getContext("2d");
         if (context) {
           context.fillStyle = "#030a0f"; context.fillRect(0, 0, programCanvas.width, programCanvas.height);
-          context.fillStyle = current.sponsor.accent; context.fillRect(0, 0, 20, programCanvas.height);
-          context.fillStyle = "#55e6ff"; context.font = "700 34px Arial"; context.fillText(`AMX XR STAGE / ${current.event.venueLayout.toUpperCase()}`, 70, 92);
-          context.fillStyle = "#f4fbfc"; context.font = "800 72px Arial"; context.fillText(current.event.title.slice(0, 31), 70, 205);
-          context.fillStyle = current.live ? "#ff6d73" : "#79eea8"; context.font = "700 34px Arial"; context.fillText(current.live ? "LIVE PROGRAM" : current.event.status.toUpperCase(), 70, 282);
-          context.fillStyle = "#a7bac0"; context.font = "600 30px Arial"; context.fillText(`${current.sponsor.name} / ${current.cue.toUpperCase()} / ${current.shot.toUpperCase()} CAMERA`, 70, 355);
-          context.fillStyle = current.sponsor.accent; context.font = "700 42px Arial"; context.fillText(current.sponsor.headline.slice(0, 44), 70, 520);
-          context.fillStyle = "#f4fbfc"; context.font = "700 28px Arial"; context.fillText(current.sponsor.cta.slice(0, 56), 70, 590);
+          if (hasVideo) {
+            const fit = programSourceKey.startsWith("media:") ? programMediaRef.current.fit : "cover";
+            const sourceAspect = (programVideo.videoWidth || 16) / (programVideo.videoHeight || 9); const targetAspect = programCanvas.width / programCanvas.height;
+            let width = programCanvas.width, height = programCanvas.height, x = 0, y = 0;
+            if ((fit === "contain") === (sourceAspect > targetAspect)) { height = width / sourceAspect; y = (programCanvas.height - height) / 2; }
+            else { width = height * sourceAspect; x = (programCanvas.width - width) / 2; }
+            context.drawImage(programVideo, x, y, width, height);
+          } else {
+            context.fillStyle = current.sponsor.accent; context.fillRect(0, 0, 20, programCanvas.height);
+            context.fillStyle = "#55e6ff"; context.font = "700 34px Arial"; context.fillText(`AMX XR STAGE / ${current.event.venueLayout.toUpperCase()}`, 70, 92);
+            context.fillStyle = "#f4fbfc"; context.font = "800 72px Arial"; context.fillText(current.event.title.slice(0, 31), 70, 205);
+            context.fillStyle = current.live ? "#ff6d73" : "#79eea8"; context.font = "700 34px Arial"; context.fillText(current.live ? "LIVE PROGRAM" : current.event.status.toUpperCase(), 70, 282);
+            context.fillStyle = "#a7bac0"; context.font = "600 30px Arial"; context.fillText(`${current.sponsor.name} / ${current.cue.toUpperCase()} / ${current.shot.toUpperCase()} CAMERA`, 70, 355);
+            context.fillStyle = current.sponsor.accent; context.font = "700 42px Arial"; context.fillText(current.sponsor.headline.slice(0, 44), 70, 520);
+            context.fillStyle = "#f4fbfc"; context.font = "700 28px Arial"; context.fillText(current.sponsor.cta.slice(0, 56), 70, 590);
+          }
           programTexture.needsUpdate = true;
         }
       }
@@ -508,7 +558,7 @@ export function StageVenueWorld({ layout, production, participants, reducedMotio
       window.removeEventListener("keydown", keydown); window.removeEventListener("keyup", keyup);
       controllers.forEach((controller) => { controller.removeEventListener("selectstart", select); controller.removeEventListener("squeezestart", toggleConsole); });
       scene.traverse((object) => { if (!(object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points || object instanceof THREE.Sprite)) return; const geometry = "geometry" in object ? object.geometry as THREE.BufferGeometry : null; geometry?.dispose(); const source = "material" in object ? object.material as THREE.Material | THREE.Material[] : []; (Array.isArray(source) ? source : [source]).forEach((entry) => entry?.dispose()); });
-      programTexture.dispose(); renderer.dispose(); renderer.domElement.remove();
+      clearProgramVideo(); programTexture.dispose(); renderer.dispose(); renderer.domElement.remove();
     };
   }, [layout, reducedMotion]);
 

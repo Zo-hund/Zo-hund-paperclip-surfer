@@ -1503,17 +1503,18 @@ async function handleApi(request, env, url, requestId) {
     await verifyTenantAccess(member, env, tenantId);
     const ownerUserId = safeId(member?.user?.id);
     const requestedPurpose = safeId(request.headers.get("X-AMX-Media-Purpose"));
-    const identityPurpose = ["profile-avatar", "partner-logo"].includes(requestedPurpose) ? requestedPurpose : "";
+    const mediaPurpose = ["profile-avatar", "partner-logo", "stage-video"].includes(requestedPurpose) ? requestedPurpose : "";
     const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-    const visibility = request.headers.get("X-AMX-Visibility") === "public" && identityPurpose && publicImageTypes.has(contentType) ? "public" : "private";
+    const visibility = request.headers.get("X-AMX-Visibility") === "public" && ["profile-avatar", "partner-logo"].includes(mediaPurpose) && publicImageTypes.has(contentType) ? "public"
+      : request.headers.get("X-AMX-Visibility") === "members" && mediaPurpose === "stage-video" && contentType.startsWith("video/") ? "members" : "private";
     const createdAt = new Date().toISOString();
-    await env.MEDIA.put(id, body, { httpMetadata: { contentType }, customMetadata: { fileName, tenantId, ownerUserId, createdAt, visibility, purpose: identityPurpose } });
+    await env.MEDIA.put(id, body, { httpMetadata: { contentType }, customMetadata: { fileName, tenantId, ownerUserId, createdAt, visibility, purpose: mediaPurpose } });
     let metadataPersisted = false;
     if (env.DB) {
       try {
         await initialize(env.DB);
         await env.DB.prepare("INSERT INTO media_objects (id, tenant_id, owner_user_id, visibility, purpose, file_name, content_type, size_bytes, object_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-          .bind(id, tenantId, ownerUserId || null, visibility, identityPurpose || null, fileName, contentType, body.byteLength, id, createdAt).run();
+          .bind(id, tenantId, ownerUserId || null, visibility, mediaPurpose || null, fileName, contentType, body.byteLength, id, createdAt).run();
         metadataPersisted = true;
       } catch (error) {
         logEvent("warn", "media.metadata_failed", { requestId, id, error: error instanceof Error ? error.message : "Media metadata persistence failed" });
@@ -1529,7 +1530,8 @@ async function handleApi(request, env, url, requestId) {
     const object = await env.MEDIA.get(id);
     if (!object) return reply({ error: "Media not found", requestId }, 404);
     const isPublicIdentityImage = object.customMetadata?.visibility === "public" && ["profile-avatar", "partner-logo"].includes(object.customMetadata?.purpose);
-    if (!isPublicIdentityImage) {
+    const isSharedStageVideo = object.customMetadata?.visibility === "members" && object.customMetadata?.purpose === "stage-video";
+    if (!isPublicIdentityImage && !isSharedStageVideo) {
       const viewer = await verifyMemberRequest(request, env, requiredMemberRoles(url));
       const ownerUserId = safeId(object.customMetadata?.ownerUserId);
       if (ownerUserId && viewer?.user?.id !== ownerUserId && viewer?.profile?.membership_role !== "operator") throw new HttpError(403, "This private media belongs to another member");

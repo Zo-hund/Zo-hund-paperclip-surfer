@@ -65,4 +65,19 @@ describe("member WebXR venues", () => {
     assert.match(worker, /clientType = "venue-member"/);
     assert.match(controls, /value\.clientType === "venue-member"/);
   });
+
+  test("transfers synchronized Stage media and LiveKit program feeds into the WebXR screen", async () => {
+    const [page, world, pod, production, deck, worker] = await Promise.all([read("src/pages/stage-venue.tsx"), read("src/StageVenueWorld.tsx"), read("src/LiveKitPod.tsx"), read("src/stage-production.ts"), read("src/StageProgramMediaDeck.tsx"), read("worker.js")]);
+    assert.match(page, /selectStageProgramFeed\(videoFeeds/);
+    assert.match(page, /<LiveKitPod compact autoJoin/);
+    assert.match(page, /programMedia=\{production\.state\.programMedia\}/);
+    assert.match(pod, /if \(!autoJoin \|\| status !== "idle"\) return/);
+    assert.match(world, /new Hls\(\{ enableWorker: true, lowLatencyMode: true \}\)/);
+    assert.match(world, /context\.drawImage\(programVideo/);
+    assert.match(world, /stageProgramMediaPosition\(media\)/);
+    assert.match(production, /programMedia: StageProgramMediaState/);
+    assert.match(deck, /X-AMX-Media-Purpose": "stage-video"/);
+    assert.match(worker, /mediaPurpose === "stage-video"/);
+    assert.match(worker, /isSharedStageVideo/);
+  });
 });
