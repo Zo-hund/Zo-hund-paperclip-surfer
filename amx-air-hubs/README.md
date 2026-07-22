@@ -10,6 +10,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Camera-based AR, LiveKit room media with verified mic/playback diagnostics, and local self-view fallback.
 - LiveKit screen sharing plus participant video routed into Blender-authored world displays.
 - LiveKit multiplayer creation sessions for solo, co-op, and team play with synchronized safe Three.js world blueprints, agent code review, organization tags, and governed XR Stage showcase promotion.
+- Native AMX Mission World with 30 persistent learning checkpoints, five gated Three.js capstones, a typed JSON mission engine, six-rank progression, toolbelt unlocks, retries and timers, OPPRRC evidence, XR capability diagnostics, and solo/co-op/team scope.
 - Three-bus Nexus production switcher with independent preview/program routing, whole-room layouts, persistent cues, and AMX Labs / AMX AIR HUBS.CC stingers.
 - AMX XR Stage with WebGPU venue cameras, routable LiveKit multicamera feeds, animated camera-operator NPCs, synchronized Summit/XR Con/Expo venues, Pod-to-stage promotion, tiered admission passes, audience/VIP seating, and governed sponsor slates.
 - Synchronized 720p30, 1080p30, and 1080p60 Stage profiles with actual camera-resolution diagnostics, LiveKit simulcast high-layer routing, and protected selectable RoomComposite egress.
@@ -71,6 +72,7 @@ pnpm --filter @amx/air-hubs verify
 - [Unity Quest Integration](docs/UNITY_QUEST_INTEGRATION.md)
 - [Multiplayer Metaverse Studio](docs/MULTIPLAYER_METAVERSE.md)
 - [Agent Vision Operations](docs/AGENT_VISION.md)
+- [AMX Mission World](docs/MISSION_WORLD.md)
 
 ## Production Readiness
 

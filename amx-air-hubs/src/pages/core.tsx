@@ -16,6 +16,7 @@ import {
 import { useGeoAnchors } from "../geospatial";
 import { recordActivePartnerCampaignEvent } from "../partner-platform";
 import { recordCampaignEvent } from "../operations";
+import "../mission-world-entry.css";
 
 const ARScene = lazy(() => import("../ARScene").then((module) => ({ default: module.ARScene })));
 const BrandScene = lazy(() => import("../BrandScene").then((module) => ({ default: module.BrandScene })));
@@ -79,6 +80,7 @@ export function MissionsPage() {
   const domains=["All",...new Set(missions.map((mission)=>mission.domain))];
   const visible=missions.filter((mission)=>(filter==="All"||mission.domain===filter)&&(mission.roles.includes(role)||role==="Admin"));
   return <div className="page section-wrap"><PageHeader eyebrow="MISSION RUNWAY" title="Choose your next run" description={`Showing missions configured for ${role} mode.`} actions={<Link to="/role" className="button secondary"><Users/>Change role</Link>}/>
+    <section className="mission-world-launch"><div><span className="eyebrow">NEW / PLAYABLE THREE.JS WORLD</span><h2>Enter AMX Mission World</h2><p>Complete 30 learning checkpoints, unlock five interactive capstones, build in 3D, earn AMX Coins, and issue OPPRRC skill proof.</p></div><div className="mission-world-launch-rewards"><span><Zap/><b>650</b><small>BASE XP</small></span><span><Trophy/><b>7</b><small>BADGES</small></span><span><Users/><b>3</b><small>MODES</small></span></div><Link className="button primary" to="/missions/world"><Play/>Play Mission World</Link></section>
     <div className="filter-row">{domains.map((domain)=><button key={domain} className={filter===domain?"active":""} onClick={()=>setFilter(domain)}>{domain}</button>)}</div>
     <div className="mission-grid">{visible.map((mission)=><MissionCard key={mission.id} mission={mission} onOpen={()=>{setActiveMissionId(mission.id);navigate(`/mission/${mission.id}/pre`)}}/>)}</div>
   </div>;

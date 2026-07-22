@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { AppShell } from "./components";
 import { CompletePage, HomePage, AgentsPage, MissionRunPage, MissionsPage, PreRunPage, RoleSelectPage } from "./pages/core";
@@ -18,6 +19,8 @@ import {
   ModeExperiencePage, ReplayPage, RoomLobbyPage, TeamMonitorPage, TeamProfilePage,
   TeamsPage, ToolbeltPage,
 } from "./pages/immersive";
+
+const MissionWorldPage = lazy(async () => ({ default: (await import("./MissionWorld")).MissionWorldPage }));
 
 function ShellRoutes() {
   return <AppShell><Routes>
@@ -64,6 +67,7 @@ function ShellRoutes() {
 
 export default function App() {
   return <Routes>
+    <Route path="/missions/world" element={<RequireMember><Suspense fallback={<div className="scene-loading" aria-label="Loading Mission World"/>}><MissionWorldPage/></Suspense></RequireMember>}/>
     <Route path="/mission/:id/run" element={<RequireMember><MissionRunPage/></RequireMember>}/>
     <Route path="/play/2d/:missionId" element={<RequireMember><ModeExperiencePage mode="2d"/></RequireMember>}/>
     <Route path="/play/3d/:missionId" element={<RequireMember><ModeExperiencePage mode="3d"/></RequireMember>}/>
