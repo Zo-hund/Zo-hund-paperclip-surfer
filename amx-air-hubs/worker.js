@@ -79,7 +79,7 @@ function htmlHeaders(nonce) {
       "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://*.googleapis.com https://*.ggpht.com",
       "media-src 'self' blob: https:",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' https: wss:",
+      "connect-src 'self' https: wss: http://127.0.0.1:59650 http://localhost:59650 ws://127.0.0.1:59650 ws://localhost:59650",
       "frame-src https://*.readyplayer.me",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
