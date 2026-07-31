@@ -205,7 +205,9 @@ export function StageLiveViewerPage() {
 
   const route = production.state.cameraRoutes[production.state.shot];
   const programFeed = useMemo(() => selectStageProgramFeed(feeds, production.state.shot, route), [feeds, production.state.shot, route]);
+  const programMedia = route?.startsWith("media:") ? production.state.programMedia : null;
   const showProgram = mode === "program" && Boolean(programFeed);
+  const showProgramMedia = mode === "program" && Boolean(programMedia?.url);
   const channelLive = production.state.live || status === "live";
 
   const enableAudio = async () => {
@@ -261,7 +263,8 @@ export function StageLiveViewerPage() {
         <AMXXRStageScene mode={production.state.mode} shot={production.state.shot} cameraMotion={production.state.cameraMotion} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programFeed} reducedMotion={matchMedia("(prefers-reduced-motion: reduce)").matches} portraitFraming onBackend={setBackend}/>
       </Suspense>
       {showProgram && programFeed && <ViewerProgramVideo feed={programFeed} motion={production.state.cameraMotion}/>}
-      {!programFeed && <div className="stage-viewer-waiting"><Clapperboard/><span><b>VIRTUAL PROGRAM</b><small>Live camera feed waiting</small></span></div>}
+      {showProgramMedia && programMedia && <video className="stage-viewer-program-video" src={programMedia.url} autoPlay={programMedia.transport === "playing"} muted={programMedia.muted} playsInline controls/>}
+      {!programFeed && !showProgramMedia && <div className="stage-viewer-waiting"><Clapperboard/><span><b>VIRTUAL PROGRAM</b><small>Live camera feed waiting</small></span></div>}
     </div>
 
     <header className="stage-viewer-topbar">
@@ -275,6 +278,7 @@ export function StageLiveViewerPage() {
       <h1>{production.state.event.title}</h1>
       <p>{production.state.sponsor.headline}</p>
     </section>
+    <section className="stage-viewer-tickets" aria-label="Event passes">{production.state.event.ticketTiers.map((tier) => <article key={tier.id}><span><b>{tier.label}</b><small>{tier.access}</small></span><strong>{tier.priceCents ? `$${(tier.priceCents / 100).toFixed(2)}` : "PASS"}</strong>{tier.checkoutUrl ? <a href={tier.checkoutUrl} target="_blank" rel="noreferrer">GET TICKET</a> : <span>COMING SOON</span>}{tier.priceCents ? Boolean(tier.resourceUrls?.length) && <small>{tier.resourceUrls?.length || 0} DOWNLOADS INCLUDED</small> : (tier.resourceUrls || []).map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">RESOURCE {index + 1}</a>)}</article>)}</section>
 
     <div className="stage-viewer-metrics">
       <span><Users/><b>{seatCounts.checkedIn}</b><small>CHECKED IN</small></span>
@@ -289,7 +293,7 @@ export function StageLiveViewerPage() {
 
     {!audioEnabled && <button className="stage-viewer-audio-gate" onClick={() => void enableAudio()}><Volume2/><span><b>LISTEN LIVE</b><small>{audioTrackCount ? `${audioTrackCount} LIVE FEED${audioTrackCount === 1 ? "" : "S"} + VENUE MIX` : "VOICE + VENUE MIX"}</small></span></button>}
 
-    <footer className="stage-viewer-sponsor"><i/><span><small>PRESENTED WITH</small><b>{production.state.sponsor.name}</b></span><strong>{production.state.sponsor.cta}</strong></footer>
+    <footer key={`${production.state.sponsor.id}-${production.state.updatedAt}`} className={`stage-viewer-sponsor sponsor-${production.state.sponsor.animation || "cut"}`}><i/>{production.state.sponsor.logoUrl && <img src={production.state.sponsor.logoUrl} alt=""/>}<span><small>PRESENTED WITH</small><b>{production.state.sponsor.name}</b></span><strong>{production.state.sponsor.cta}</strong></footer>
     <div ref={audioHostRef} className="stage-viewer-audio" aria-hidden="true"/>
     {notice && <button className="stage-viewer-notice" onClick={() => setNotice("")}><span>{notice}</span></button>}
     <div className="stage-viewer-health" data-status={status} data-renderer={backend} data-program-feed={programFeed?.id || "virtual"} data-program-resolution={programFeed?.width && programFeed.height ? `${programFeed.width}x${programFeed.height}` : "virtual"} data-output-profile={production.state.video.outputProfile} data-room={production.room} data-venue-audio={venueAudio.status} data-venue-program-level={venueAudio.levels.program.toFixed(3)} data-venue-ambience-level={venueAudio.levels.ambience.toFixed(3)}/>

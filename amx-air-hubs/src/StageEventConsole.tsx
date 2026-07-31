@@ -243,10 +243,13 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
         return <div key={tier.id} className={selectedTier === tier.id ? "selected" : ""}>
           <button className="stage-ticket-tier" onClick={() => setSelectedTier(tier.id)}><span><b>{tier.label}</b><small>{tier.access}</small></span><i className={pass?.status === "active" ? "active" : ""}/></button>
           <label><Users/><input aria-label={`${tier.label} capacity`} type="number" min="1" max="100" value={tier.capacity} onChange={(change) => updateCapacity(tier.id, Number(change.target.value))}/></label>
+          <label><span>$</span><input aria-label={`${tier.label} price`} type="number" min="0" step="1" value={(tier.priceCents || 0) / 100} onChange={(change) => updateEvent({ ticketTiers: event.ticketTiers.map((item) => item.id === tier.id ? { ...item, priceCents: Math.round(Math.max(0, Number(change.target.value)) * 100) } : item) })}/></label>
           <button className="stage-ticket-issue" disabled={busyTier === tier.id || pass?.status === "active"} onClick={() => void issuePass(tier.id)}>{pass?.status === "active" ? <TicketCheck/> : <QrCode/>}<span>{pass?.status === "active" ? `${pass.useCount}/${pass.maxUses}` : "Issue"}</span></button>
+          <input className="stage-ticket-checkout" aria-label={`${tier.label} checkout URL`} value={tier.checkoutUrl || ""} placeholder="HTTPS CHECKOUT LINK" onChange={(change) => updateEvent({ ticketTiers: event.ticketTiers.map((item) => item.id === tier.id ? { ...item, checkoutUrl: change.target.value } : item) })}/>
+          <input className="stage-ticket-resources" aria-label={`${tier.label} resource URLs`} value={(tier.resourceUrls || []).join(", ")} placeholder="RESOURCE LINKS, COMMA SEPARATED" onChange={(change) => updateEvent({ ticketTiers: event.ticketTiers.map((item) => item.id === tier.id ? { ...item, resourceUrls: change.target.value.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 8) } : item) })}/>
         </div>;
       })}</div>
-      <p className="stage-ticket-note"><ShieldCheck/>Admission credentials only. Paid checkout is not enabled.</p>
+      <p className="stage-ticket-note"><ShieldCheck/>Checkout links open your payment provider. Paid downloads remain hidden until fulfillment.</p>
     </section>
 
     {activePass && <section className="stage-control-section stage-pass-workspace">

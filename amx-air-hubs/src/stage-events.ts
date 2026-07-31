@@ -21,6 +21,9 @@ export interface StageTicketTier {
   label: string;
   access: string;
   capacity: number;
+  priceCents?: number;
+  checkoutUrl?: string;
+  resourceUrls?: string[];
 }
 
 export interface StageEventState {
@@ -173,6 +176,9 @@ export function normalizeStageEvent(value: Partial<StageEventState> | undefined,
       ...fallbackTier,
       ...saved,
       capacity: Math.max(1, Math.min(100, Math.round(Number(saved?.capacity) || fallbackTier.capacity))),
+      priceCents: Math.max(0, Math.min(1_000_000, Math.round(Number(saved?.priceCents) || 0))),
+      checkoutUrl: /^https:\/\//.test(String(saved?.checkoutUrl || "")) ? String(saved?.checkoutUrl).slice(0, 2048) : "",
+      resourceUrls: Array.isArray(saved?.resourceUrls) ? saved.resourceUrls.filter((url) => /^https:\/\//.test(String(url))).map(String).slice(0, 8) : [],
     };
   });
   const canonicalSeats = createStageSeats(preset.id, value?.seats?.length ? 0 : legacyHouse, value?.seats?.length ? 0 : legacyVip);

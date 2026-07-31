@@ -3,7 +3,7 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from "@supaba
 import { defaultStageEvent, normalizeStageEvent, type StageEventState } from "./stage-events";
 import { migrateLegacyStageCameraRoutes } from "./stage-camera-routing";
 import { DEFAULT_STAGE_CAMERA_MOTION, normalizeStageCameraMotion, type StageCameraMotionState } from "./stage-camera-motion";
-import { normalizeStageAudio, type StageAudioState } from "./stage-audio";
+import { normalizeStageAudio, type StageAudioState, type StageDeckTrack } from "./stage-audio";
 import { defaultStageShowWorkflow, normalizeStageShowWorkflow, type StageShowWorkflow } from "./stage-show-workflow";
 import { normalizeStageVideo, type StageVideoState } from "./stage-video";
 import { DEFAULT_STAGE_PROGRAM_MEDIA, normalizeStageProgramMedia, type StageProgramMediaState } from "./stage-program-media";
@@ -25,6 +25,11 @@ export interface SponsorCreative {
   headline: string;
   cta: string;
   accent: string;
+  logoUrl?: string;
+  mediaUrl?: string;
+  durationSeconds?: number;
+  animation?: "cut" | "fade" | "slide" | "pulse";
+  stingerTrack?: StageDeckTrack;
 }
 
 export interface StageProductionState {

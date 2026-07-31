@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import {
-  Accessibility, Activity, BadgeCheck, Bot, BriefcaseBusiness, ChevronRight, CircleUserRound, Download,
+  Accessibility, Activity, BadgeCheck, Bot, BriefcaseBusiness, Cable, ChevronRight, CircleUserRound, Download,
   Camera, Clapperboard, Cpu, Gamepad2, Glasses, Home, Layers, LayoutGrid, LogIn, Menu, Move3d, Radio, ScanLine, Settings2, ShieldCheck, ShoppingBag, Smartphone, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import type { Agent, Mission } from "./data";
@@ -39,6 +39,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/agents", label: "Agents", icon: Bot },
     { to: "/wallet", label: "Proof", icon: BadgeCheck },
     { to: "/control", label: "Control", icon: LayoutGrid },
+    ...(member.profile?.membership_role === "operator" ? [{ to: "/connections", label: "Connections", icon: Cable }] : []),
   ];
   const nav = member.session ? memberNav : [
     { to: "/", label: "Home", icon: Home },
