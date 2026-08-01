@@ -177,6 +177,37 @@ function bindProgramMedia(meshes: THREE.Mesh[], media: StageProgramMediaState) {
   return cleanup;
 }
 
+function bindUnavailableSlate(meshes: THREE.Mesh[], label: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1280;
+  canvas.height = 720;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = "#03080d";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.strokeStyle = "#d75363";
+    context.lineWidth = 12;
+    context.strokeRect(18, 18, canvas.width - 36, canvas.height - 36);
+    context.fillStyle = "#ff8793";
+    context.font = "800 48px Arial";
+    context.fillText("SOURCE UNAVAILABLE", 72, 300);
+    context.fillStyle = "#91a8ad";
+    context.font = "700 28px Arial";
+    context.fillText(label.toUpperCase().slice(0, 54), 72, 360);
+    context.fillText("OPERATOR REROUTE REQUIRED", 72, 420);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const previous = meshes.map((mesh) => mesh.material);
+  const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
+  meshes.forEach((mesh) => { mesh.material = material; });
+  return () => {
+    texture.dispose();
+    material.dispose();
+    meshes.forEach((mesh, index) => { if (mesh.material === material) mesh.material = previous[index]; });
+  };
+}
+
 function disposeObject(root: THREE.Object3D) {
   const textures = new Set<THREE.Texture>();
   const materials = new Set<THREE.Material>();
@@ -231,11 +262,13 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
       if (route.startsWith("feed:")) {
         const feed = videoFeeds.find((item) => `feed:${item.id}` === route);
         if (feed && !feed.muted) cleanups.push(bindStream(routeScreens, feed));
+        else cleanups.push(bindUnavailableSlate(routeScreens, route));
         return;
       }
       if (route.startsWith("media:")) {
         const asset = mediaLibrary.find((item) => `media:${item.id}` === route);
         if (asset) cleanups.push(bindProgramMedia(routeScreens, { ...programMedia, url: asset.url, name: asset.name, contentType: asset.contentType, fit: programMedia?.fit || "contain", muted: true, transport: "playing", startedAt: Date.now(), positionSeconds: 0 }));
+        else cleanups.push(bindUnavailableSlate(routeScreens, route));
       }
     });
     return () => cleanups.forEach((cleanup) => cleanup());

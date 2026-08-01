@@ -208,6 +208,14 @@ export function StageLiveViewerPage() {
   const programMedia = route?.startsWith("media:") ? production.state.programMedia : null;
   const showProgram = mode === "program" && Boolean(programFeed);
   const showProgramMedia = mode === "program" && Boolean(programMedia?.url);
+  const screenMediaLibrary = Object.values(production.state.screenMedia || {}).filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
+  const unavailableScreens = (["center","left","right"] as const).filter((screen) => {
+    const screenRoute = production.state.screenRoutes[screen] || "program";
+    if (screenRoute.startsWith("media:")) return !screenMediaLibrary.some((asset) => `media:${asset.id}` === screenRoute);
+    if (screenRoute.startsWith("feed:")) return !feeds.some((feed) => `feed:${feed.id}` === screenRoute && !feed.muted);
+    return false;
+  });
+  const programSourceUnavailable = mode === "program" && !showProgram && !showProgramMedia && Boolean(route && route !== "auto" && route !== "virtual");
   const channelLive = production.state.live || status === "live";
 
   const enableAudio = async () => {
@@ -260,11 +268,12 @@ export function StageLiveViewerPage() {
   return <main className={`stage-viewer-page ${showProgram ? "program-active" : "venue-active"}${displayWall ? " display-wall" : ""}`} style={{ "--viewer-accent": production.state.sponsor.accent } as React.CSSProperties}>
     <div className="stage-viewer-media" aria-label="AMX XR Stage live program">
       <Suspense fallback={<div className="stage-viewer-loading"><span/><b>OPENING AMX XR STAGE</b></div>}>
-        <AMXXRStageScene mode={production.state.mode} shot={production.state.shot} cameraMotion={production.state.cameraMotion} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programFeed} reducedMotion={matchMedia("(prefers-reduced-motion: reduce)").matches} portraitFraming onBackend={setBackend}/>
+        <AMXXRStageScene mode={production.state.mode} shot={production.state.shot} cameraMotion={production.state.cameraMotion} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programFeed} programMedia={programMedia} screenRoutes={production.state.screenRoutes} videoFeeds={feeds} mediaLibrary={screenMediaLibrary} reducedMotion={matchMedia("(prefers-reduced-motion: reduce)").matches} portraitFraming onBackend={setBackend}/>
       </Suspense>
       {showProgram && programFeed && <ViewerProgramVideo feed={programFeed} motion={production.state.cameraMotion}/>}
       {showProgramMedia && programMedia && <video className="stage-viewer-program-video" src={programMedia.url} autoPlay={programMedia.transport === "playing"} muted={programMedia.muted} playsInline controls/>}
-      {!programFeed && !showProgramMedia && <div className="stage-viewer-waiting"><Clapperboard/><span><b>VIRTUAL PROGRAM</b><small>Live camera feed waiting</small></span></div>}
+      {!programFeed && !showProgramMedia && mode === "program" && <div className={`stage-viewer-waiting ${programSourceUnavailable?"error":""}`}><Clapperboard/><span><b>{programSourceUnavailable?"PROGRAM SOURCE UNAVAILABLE":"VIRTUAL PROGRAM"}</b><small>{programSourceUnavailable?"The operator must restore or reroute this source.":"Switch to Venue for the rendered stage."}</small></span></div>}
+      {mode === "venue" && unavailableScreens.length>0 && <div className="stage-viewer-source-error" role="status"><Clapperboard/><span><b>SCREEN SOURCE UNAVAILABLE</b><small>{unavailableScreens.map((screen)=>screen.toUpperCase()).join(" + ")} retained without camera substitution</small></span></div>}
     </div>
 
     <header className="stage-viewer-topbar">

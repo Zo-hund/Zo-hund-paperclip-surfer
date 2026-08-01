@@ -489,13 +489,32 @@ export function AMXXRStagePage() {
     });
   };
   const routeVenueScreen = (screen: StageScreenId, route: string) => {
-    production.update({ screenRoutes: { ...production.state.screenRoutes, [screen]: route } });
+    const asset = route.startsWith("media:") ? videoLibrary.find((item) => `media:${item.id}` === route) : undefined;
+    const screenMedia = { ...production.state.screenMedia };
+    if (asset) screenMedia[screen] = { id: asset.id, name: asset.name, url: asset.url, contentType: asset.contentType };
+    else delete screenMedia[screen];
+    production.update({ screenRoutes: { ...production.state.screenRoutes, [screen]: route }, screenMedia });
     trackEvent("stage_screen_routed", { campaignId: route, locationTag: `${production.room}:${screen}` });
   };
   const routeAllVenueScreens = () => {
-    production.update({ screenRoutes: { center: allScreenRoute, left: allScreenRoute, right: allScreenRoute } });
+    const asset = allScreenRoute.startsWith("media:") ? videoLibrary.find((item) => `media:${item.id}` === allScreenRoute) : undefined;
+    const screenMedia = asset ? { center: { id: asset.id, name: asset.name, url: asset.url, contentType: asset.contentType }, left: { id: asset.id, name: asset.name, url: asset.url, contentType: asset.contentType }, right: { id: asset.id, name: asset.name, url: asset.url, contentType: asset.contentType } } : {};
+    production.update({ screenRoutes: { center: allScreenRoute, left: allScreenRoute, right: allScreenRoute }, screenMedia });
     trackEvent("stage_screens_routed_all", { campaignId: allScreenRoute, locationTag: production.room });
   };
+  useEffect(() => {
+    let changed = false;
+    const screenMedia = { ...production.state.screenMedia };
+    (["center", "left", "right"] as StageScreenId[]).forEach((screen) => {
+      const route = production.state.screenRoutes[screen];
+      if (!route?.startsWith("media:") || screenMedia[screen]) return;
+      const asset = videoLibrary.find((item) => `media:${item.id}` === route);
+      if (!asset) return;
+      screenMedia[screen] = { id: asset.id, name: asset.name, url: asset.url, contentType: asset.contentType };
+      changed = true;
+    });
+    if (changed) production.update({ screenMedia });
+  }, [production, production.state.screenMedia, production.state.screenRoutes, videoLibrary]);
   const quickTakeFeed = (route: string) => {
     const shot = production.state.shot;
     production.update({
