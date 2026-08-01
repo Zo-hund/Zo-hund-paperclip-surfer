@@ -13,6 +13,7 @@ import {
 } from "./nexus-room-control";
 import { countStageAudienceParticipants, stageFeedId } from "./stage-camera-routing";
 import { stageVideoDiagnostics, stageVideoProfile, type StageVideoDiagnostics, type StageVideoProfile } from "./stage-video";
+import type { StageSourceIdentity } from "./stage-source-identity";
 
 type PodStatus = "idle" | "connecting" | "livekit" | "local" | "error";
 export type CaptureState = "off" | "requesting" | "published" | "muted" | "blocked";
@@ -30,6 +31,7 @@ export type LiveVideoFeed = {
   height?: number;
   frameRate?: number;
   track?: LocalVideoTrack | RemoteVideoTrack;
+  identity?: StageSourceIdentity;
 };
 
 type VideoSurface = {

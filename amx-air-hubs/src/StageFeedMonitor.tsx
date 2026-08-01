@@ -5,6 +5,7 @@ import {
 } from "livekit-client";
 import type { LiveVideoFeed } from "./LiveKitPod";
 import { stageFeedId, stageMonitorRetryDelay } from "./stage-camera-routing";
+import { stageSourceIdentity } from "./stage-source-identity";
 
 export type StageFeedMonitorStatus = "connecting" | "live" | "unavailable";
 
@@ -51,13 +52,14 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds, onAudioStre
       const source = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
       const id = stageFeedId(participant.identity, source);
       const settings = track.mediaStreamTrack.getSettings();
+      const identity = stageSourceIdentity(participant.metadata, participant.name || participant.identity, source);
       feeds.set(id, {
         participantIdentity: participant.identity,
         track,
         feed: {
           id,
           participantIdentity: participant.identity,
-          name: source === "screen" ? `${participant.name || participant.identity} / screen` : participant.name || participant.identity,
+          name: source === "screen" ? `${identity.label} / screen` : identity.label,
           local: false,
           source,
           stream: new MediaStream([track.mediaStreamTrack]),
@@ -66,6 +68,7 @@ export function StageFeedMonitor({ roomCode, onStatus, onVideoFeeds, onAudioStre
           height: Math.round(Number(settings.height) || 0),
           frameRate: Math.round(Number(settings.frameRate) || 0),
           track,
+          identity,
         },
       });
       commit();

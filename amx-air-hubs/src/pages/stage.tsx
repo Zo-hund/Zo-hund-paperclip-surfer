@@ -68,6 +68,7 @@ import { StageStudioMixer } from "../StageStudioMixer";
 import { StageProgramMediaDeck } from "../StageProgramMediaDeck";
 import { StreamlabsControl } from "../StreamlabsControl";
 import { STAGE_MEDIA_ROUTE_EVENT, type StageMediaRouteAsset } from "../stage-media-routing";
+import { stageSourceHealth } from "../stage-source-identity";
 import { controlDjBroadcast, type DjBroadcastState } from "../dj-broadcast";
 import { getActiveTenant } from "../operations";
 import {
@@ -1309,9 +1310,9 @@ export function AMXXRStagePage() {
                         <span>
                           <b>{feed.name}</b>
                           <small>
-                            {feed.source}
-                            {feed.muted ? " / MUTED" : " / READY"}
+                            {feed.identity?.kind || feed.source} / {stageSourceHealth(feed).toUpperCase()}
                           </small>
+                          <small>{feed.identity?.location || "REMOTE"} / {feed.width || 0}x{feed.height || 0} / {feed.frameRate || 0} FPS</small>
                         </span>
                         <Zap />
                       </button>
