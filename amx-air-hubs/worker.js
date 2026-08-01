@@ -199,7 +199,7 @@ function publicApiRequest(request, url) {
 
 function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
-  if (url.pathname === "/api/decart/client-token") return ["operator"];
+  if (url.pathname.startsWith("/api/decart/")) return ["operator"];
   return ["member", "trainer", "operator"];
 }
 
@@ -1589,19 +1589,58 @@ async function handleApi(request, env, url, requestId) {
     if (!env.DECART_API_KEY) return reply({ error: "Decart realtime video is not configured", configured: false, requestId }, 503);
     if (!await allowRequest(request, env, 12, "decart-token")) return reply({ error: "AI camera session limit reached. Try again in one minute.", requestId }, 429, { "Retry-After": "60" });
     const body = await readJson(request, 8 * 1024);
-    if (body.model && body.model !== "lucy-2.5") return reply({ error: "This AI camera model is not approved", requestId }, 400);
+    const approvedModels = ["lucy-latest", "lucy-2.5", "lucy-restyle-latest", "lucy-restyle-2", "lucy-vton-latest", "lucy-vton-3", "lucy-2.1"];
+    const model = safeLabel(body.model, "lucy-latest").toLowerCase();
+    if (!approvedModels.includes(model)) return reply({ error: "This AI camera model is not approved", requestId }, 400);
     const origin = new URL(request.url).origin;
     const response = await fetch("https://api.decart.ai/v1/client/tokens", {
       method: "POST",
       headers: { "x-api-key": String(env.DECART_API_KEY), "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ expiresIn: 300, allowedModels: ["lucy-2.5"], allowedOrigins: [origin], constraints: { realtime: { maxSessionDuration: 1800 } }, metadata: { product: "amx-air-hubs", room: safeId(body.room || "AMXSTAGE").slice(0, 64) } }),
+      body: JSON.stringify({ expiresIn: 300, allowedModels: [model], allowedOrigins: [origin], constraints: { realtime: { maxSessionDuration: 1800 } }, metadata: { product: "amx-air-hubs", room: safeId(body.room || "AMXSTAGE").slice(0, 64) } }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.apiKey) {
       logEvent("error", "decart.token_failed", { requestId, status: response.status, detail: safeLabel(result?.detail || result?.message || "Token service unavailable", "Token service unavailable").slice(0, 160) });
       return reply({ error: response.status === 401 || response.status === 403 ? "Decart credentials were rejected" : "Decart realtime token could not be created", requestId }, response.status === 429 ? 429 : 502);
     }
-    return reply({ apiKey: result.apiKey, expiresAt: result.expiresAt, model: "lucy-2.5", requestId }, 200, { "Cache-Control": "no-store" });
+    return reply({ apiKey: result.apiKey, expiresAt: result.expiresAt, model, requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/decart/render") {
+    if (!env.DECART_API_KEY) return reply({ error: "Decart rendering is not configured", configured: false, requestId }, 503);
+    if (!await allowRequest(request, env, 6, "decart-render")) return reply({ error: "Render submission limit reached. Try again shortly.", requestId }, 429, { "Retry-After": "60" });
+    const form = await request.formData();
+    const source = form.get("data");
+    const prompt = safeLabel(form.get("prompt"), "").slice(0, 1000);
+    const model = safeLabel(form.get("model"), "lucy-latest").toLowerCase();
+    const approvedModels = ["lucy-latest", "lucy-2.5", "lucy-restyle-latest", "lucy-restyle-2", "lucy-vton-latest", "lucy-vton-3", "lucy-2.1", "lucy-clip-latest"];
+    if (!approvedModels.includes(model)) return reply({ error: "This render model is not approved", requestId }, 400);
+    if (!(source instanceof File) || !["video/mp4", "video/webm"].includes(source.type)) return reply({ error: "An MP4 or WebM source video is required", requestId }, 400);
+    if (source.size > 200 * 1024 * 1024) return reply({ error: "Source video exceeds the 200 MB Decart limit", requestId }, 413);
+    if (!prompt) return reply({ error: "A render prompt is required", requestId }, 400);
+    const upstreamForm = new FormData();
+    upstreamForm.set("data", source, source.name);
+    upstreamForm.set("prompt", prompt);
+    const reference = form.get("reference_image");
+    if (reference instanceof File && reference.size) {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(reference.type) || reference.size > 10 * 1024 * 1024) return reply({ error: "Reference image must be JPG, PNG, or WebP under 10 MB", requestId }, 400);
+      upstreamForm.set("reference_image", reference, reference.name);
+    }
+    const response = await fetch(`https://api.decart.ai/v1/jobs/${encodeURIComponent(model)}`, { method: "POST", headers: { "x-api-key": String(env.DECART_API_KEY), "Accept": "application/json" }, body: upstreamForm });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) return reply({ error: "Decart render submission failed", detail: safeLabel(result?.detail || result?.message, "Upstream request failed").slice(0, 180), requestId }, response.status === 429 ? 429 : 502);
+    return reply({ jobId: safeId(result.job_id), status: result.status || "pending", model, requestId }, 202, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "GET" && url.pathname.startsWith("/api/decart/render/")) {
+    if (!env.DECART_API_KEY) return reply({ error: "Decart rendering is not configured", requestId }, 503);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const jobId = safeId(parts[3]);
+    if (!jobId) return reply({ error: "Render job id is required", requestId }, 400);
+    const content = parts[4] === "content";
+    const response = await fetch(`https://api.decart.ai/v1/jobs/${encodeURIComponent(jobId)}${content ? "/content" : ""}`, { headers: { "x-api-key": String(env.DECART_API_KEY), "Accept": content ? "video/mp4" : "application/json" } });
+    if (!response.ok) return reply({ error: content ? "Rendered video is unavailable" : "Render status is unavailable", requestId }, response.status === 404 ? 404 : 502);
+    if (content) return new Response(response.body, { status: 200, headers: capabilityHeaders({ "Content-Type": response.headers.get("Content-Type") || "video/mp4", "Cache-Control": "private, no-store", "X-Request-ID": requestId }) });
+    const result = await response.json();
+    return reply({ jobId, status: result.status, error: result.error || null, requestId }, 200, { "Cache-Control": "no-store" });
   }
   if (request.method === "POST" && url.pathname === "/api/livekit/viewer-token") {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {
