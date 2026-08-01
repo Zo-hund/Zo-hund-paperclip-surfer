@@ -116,3 +116,8 @@ export async function revokePodInvite(token: string) {
 export function absoluteInviteUrl(invite: Pick<PodInvite, "joinPath">) {
   return `${window.location.origin}${invite.joinPath}`;
 }
+
+export function podInviteDestination(invite: Pick<PodInvite, "podId" | "roomCode" | "role" | "token">) {
+  const query = new URLSearchParams({ invite: invite.token, room: invite.roomCode, access: invite.role });
+  return `/rooms/${encodeURIComponent(invite.podId)}/lobby?${query.toString()}`;
+}
