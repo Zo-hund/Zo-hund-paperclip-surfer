@@ -40,6 +40,7 @@ import {
   RefreshCw,
   Smartphone,
   Sparkles,
+  Timer,
   Users,
   Video,
   Volume2,
@@ -1372,6 +1373,7 @@ export function AMXXRStagePage() {
                 <header><div><span className="eyebrow">VENUE DISPLAY MATRIX</span><h2>Three-screen routing</h2></div><MonitorPlay/></header>
                 <div className="stage-screen-all"><select aria-label="Source for all venue screens" value={allScreenRoute} onChange={(event)=>setAllScreenRoute(event.target.value)}><option value="program">PROGRAM OUTPUT</option><option value="sponsor">SPONSOR / EVENT BRAND</option><option value="virtual">VIRTUAL VENUE BRAND</option>{orderedVideoFeeds.map((feed)=><option key={`all-feed:${feed.id}`} value={`feed:${feed.id}`}>GUEST / MEMBER / {feed.name}</option>)}{videoLibrary.map((asset)=><option key={`all-media:${asset.id}`} value={`media:${asset.id}`}>MEDIA / {asset.name}</option>)}</select><button onClick={routeAllVenueScreens}><Zap/>ROUTE ALL</button></div>
                 <div className="stage-screen-grid">{(["center","left","right"] as StageScreenId[]).map((screen)=><label key={screen}><span>{screen.toUpperCase()} SCREEN</span><select value={production.state.screenRoutes[screen]||"program"} onChange={(event)=>routeVenueScreen(screen,event.target.value)}><option value="program">PROGRAM OUTPUT</option><option value="sponsor">SPONSOR / EVENT BRAND</option><option value="virtual">VIRTUAL VENUE BRAND</option>{orderedVideoFeeds.map((feed)=><option key={`${screen}-feed:${feed.id}`} value={`feed:${feed.id}`}>GUEST / MEMBER / {feed.name}</option>)}{videoLibrary.map((asset)=><option key={`${screen}-media:${asset.id}`} value={`media:${asset.id}`}>MEDIA / {asset.name}</option>)}</select></label>)}</div>
+                <div className="stage-pass-cue"><Timer/><label><span>PASS DISPLAY TIMER</span><select value={production.state.passOverlay.durationSeconds} onChange={(event)=>production.update({ passOverlay: { ...production.state.passOverlay, durationSeconds: Number(event.target.value) } })}><option value={10}>10 SEC</option><option value={15}>15 SEC</option><option value={30}>30 SEC</option><option value={60}>60 SEC</option></select></label><button onClick={()=>production.update({ passOverlay: { ...production.state.passOverlay, visible: true, startedAt: Date.now() } })}><Zap/>SHOW ON VIEWER</button><button className="secondary" onClick={()=>production.update({ passOverlay: { ...production.state.passOverlay, visible: false, startedAt: null } })}>HIDE</button></div>
                 <p>Route screens independently, or choose one source and route all three together.</p>
               </section>
               <StreamlabsControl room={production.room} />

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Clapperboard, Maximize2, MonitorPlay, Radio, Share2, Users, Volume2, VolumeX, Wifi } from "lucide-react";
+import { Box, Clapperboard, Maximize2, MonitorPlay, Radio, Share2, Ticket, Users, Volume2, VolumeX, Wifi, X } from "lucide-react";
 import {
   RemoteVideoTrack, Room, RoomEvent, Track, VideoQuality,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
@@ -79,6 +79,9 @@ export function StageLiveViewerPage() {
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioTrackCount, setAudioTrackCount] = useState(0);
   const [notice, setNotice] = useState("");
+  const [passesOpen, setPassesOpen] = useState(false);
+  const [dismissedPassStart, setDismissedPassStart] = useState<number | null>(null);
+  const [viewerNow, setViewerNow] = useState(Date.now());
   const [backend, setBackend] = useState<RendererBackend>("webgl2");
   const roomRef = useRef<Room | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
@@ -208,7 +211,7 @@ export function StageLiveViewerPage() {
   const programMedia = route?.startsWith("media:") ? production.state.programMedia : null;
   const showProgram = mode === "program" && Boolean(programFeed);
   const showProgramMedia = mode === "program" && Boolean(programMedia?.url);
-  const screenMediaLibrary = Object.values(production.state.screenMedia || {}).filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
+  const screenMediaLibrary = useMemo(() => Object.values(production.state.screenMedia || {}).filter((asset): asset is NonNullable<typeof asset> => Boolean(asset)), [production.state.screenMedia]);
   const unavailableScreens = (["center","left","right"] as const).filter((screen) => {
     const screenRoute = production.state.screenRoutes[screen] || "program";
     if (screenRoute.startsWith("media:")) return !screenMediaLibrary.some((asset) => `media:${asset.id}` === screenRoute);
@@ -217,6 +220,14 @@ export function StageLiveViewerPage() {
   });
   const programSourceUnavailable = mode === "program" && !showProgram && !showProgramMedia && Boolean(route && route !== "auto" && route !== "virtual");
   const channelLive = production.state.live || status === "live";
+  const passCueActive = Boolean(production.state.passOverlay.visible && production.state.passOverlay.startedAt && viewerNow < production.state.passOverlay.startedAt + production.state.passOverlay.durationSeconds * 1000 && dismissedPassStart !== production.state.passOverlay.startedAt);
+  const showPasses = passesOpen || passCueActive;
+
+  useEffect(() => {
+    if (!production.state.passOverlay.visible) return;
+    const timer = window.setInterval(() => setViewerNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [production.state.passOverlay.visible, production.state.passOverlay.startedAt]);
 
   const enableAudio = async () => {
     const room = roomRef.current;
@@ -279,7 +290,7 @@ export function StageLiveViewerPage() {
     <header className="stage-viewer-topbar">
       <div className="stage-viewer-brand"><img src="/brand/amx-air-hubs-brand.png" alt="AMX AIR Hubs"/><span><b>AMX AIR HUBS.CC</b><small>XR STAGE / LIVE</small></span></div>
       <div className={`stage-viewer-live ${channelLive ? "live" : "standby"}`}><i/><span>{production.state.live ? "LIVE" : "STANDBY"}</span></div>
-      <div className="stage-viewer-header-actions"><button onClick={() => void share()} aria-label="Share live viewer" title="Share live viewer"><Share2/></button><button onClick={() => void fullscreen()} aria-label="Toggle fullscreen" title="Toggle fullscreen"><Maximize2/></button></div>
+      <div className="stage-viewer-header-actions"><button className={showPasses ? "active" : ""} onClick={() => setPassesOpen((value)=>!value)} aria-label="Show event passes" title="Event passes"><Ticket/></button><button onClick={() => void share()} aria-label="Share live viewer" title="Share live viewer"><Share2/></button><button onClick={() => void fullscreen()} aria-label="Toggle fullscreen" title="Toggle fullscreen"><Maximize2/></button></div>
     </header>
 
     <section className="stage-viewer-title">
@@ -287,7 +298,7 @@ export function StageLiveViewerPage() {
       <h1>{production.state.event.title}</h1>
       <p>{production.state.sponsor.headline}</p>
     </section>
-    <section className="stage-viewer-tickets" aria-label="Event passes">{production.state.event.ticketTiers.map((tier) => <article key={tier.id}><span><b>{tier.label}</b><small>{tier.access}</small></span><strong>{tier.priceCents ? `$${(tier.priceCents / 100).toFixed(2)}` : "PASS"}</strong>{tier.checkoutUrl ? <a href={tier.checkoutUrl} target="_blank" rel="noreferrer">GET TICKET</a> : <span>COMING SOON</span>}{tier.priceCents ? Boolean(tier.resourceUrls?.length) && <small>{tier.resourceUrls?.length || 0} DOWNLOADS INCLUDED</small> : (tier.resourceUrls || []).map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">RESOURCE {index + 1}</a>)}</article>)}</section>
+    {showPasses && <section className="stage-viewer-tickets" aria-label="Event passes"><header><span><Ticket/><b>EVENT PASSES</b></span>{passCueActive && <small>{Math.max(1, Math.ceil(((production.state.passOverlay.startedAt || viewerNow) + production.state.passOverlay.durationSeconds * 1000 - viewerNow) / 1000))}S</small>}<button onClick={()=>{ setPassesOpen(false); setDismissedPassStart(production.state.passOverlay.startedAt); }} aria-label="Close event passes"><X/></button></header><div>{production.state.event.ticketTiers.map((tier) => <article key={tier.id}><span><b>{tier.label}</b><small>{tier.access}</small></span><strong>{tier.priceCents ? `$${(tier.priceCents / 100).toFixed(2)}` : "PASS"}</strong>{tier.checkoutUrl ? <a href={tier.checkoutUrl} target="_blank" rel="noreferrer">GET TICKET</a> : <span>COMING SOON</span>}{tier.priceCents ? Boolean(tier.resourceUrls?.length) && <small>{tier.resourceUrls?.length || 0} DOWNLOADS INCLUDED</small> : (tier.resourceUrls || []).map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">RESOURCE {index + 1}</a>)}</article>)}</div></section>}
 
     <div className="stage-viewer-metrics">
       <span><Users/><b>{seatCounts.checkedIn}</b><small>CHECKED IN</small></span>

@@ -41,3 +41,16 @@ test("live viewer renders synchronized venue routes without camera substitution"
   assert.match(scene, /function bindUnavailableSlate/);
   assert.match(scene, /OPERATOR REROUTE REQUIRED/);
 });
+
+test("sound toggles preserve screen textures and event passes use a timed drawer", async () => {
+  const production = await readFile(new URL("../src/stage-production.ts", import.meta.url), "utf8");
+  const stage = await readFile(new URL("../src/pages/stage.tsx", import.meta.url), "utf8");
+  const viewer = await readFile(new URL("../src/pages/stage-viewer.tsx", import.meta.url), "utf8");
+
+  assert.match(viewer, /const screenMediaLibrary = useMemo/);
+  assert.match(production, /normalizeStagePassOverlay/);
+  assert.match(stage, /PASS DISPLAY TIMER/);
+  assert.match(stage, /SHOW ON VIEWER/);
+  assert.match(viewer, /EVENT PASSES/);
+  assert.match(viewer, /dismissedPassStart/);
+});
