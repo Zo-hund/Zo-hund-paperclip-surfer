@@ -8,6 +8,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Three.js WebGPU renderer with WebGL fallback and WebXR session support.
 - Meta IWSDK Quest runtime with ECS inspection, IWER controller emulation, locomotion, grabbing, and Havok physics.
 - Camera-based AR, LiveKit room media with verified mic/playback diagnostics, and local self-view fallback.
+- Decart Lucy 2.5 realtime AI camera transformations with Worker-minted, origin-scoped client tokens and direct Stage screen/camera routing.
 - LiveKit screen sharing plus participant video routed into Blender-authored world displays.
 - LiveKit multiplayer creation sessions for solo, co-op, and team play with synchronized safe Three.js world blueprints, agent code review, organization tags, and governed XR Stage showcase promotion.
 - Native AMX Mission World with 30 persistent learning checkpoints and five real-client simulators where learners assign roles, configure costed toolbelts, plan solutions, run dynamic events, inspect weighted outcomes and consequences, improve, pass human approval, and capture OPPRRC evidence.
@@ -81,6 +82,10 @@ pnpm --filter @amx/air-hubs verify
 `GET /api/health` is the liveness probe. `GET /api/ready` evaluates the services listed in `REQUIRED_SERVICES`. The Control Center exposes the same state at `/control/runtime`.
 
 The private stage can run in `degraded` mode while optional Agent, MCP, Plugin, Supabase, LiveKit, and Runway integrations are absent. Configure them and add their names to `REQUIRED_SERVICES` when the deployment must fail closed without them.
+
+### Decart realtime AI camera
+
+Set the Worker-only `DECART_API_KEY` environment variable. Operators can then open Stage > Show, start the Decart Lucy 2.5 camera, update the visual prompt without reconnecting, and select `AI CAMERA / LUCY 2.5` from Live Camera Team or the three-screen routing matrix. The Worker mints a five-minute token restricted to Lucy 2.5 and the current site origin; the permanent key is never included in browser code.
 
 ## Source Layout
 

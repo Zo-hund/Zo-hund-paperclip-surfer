@@ -199,6 +199,7 @@ function publicApiRequest(request, url) {
 
 function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
+  if (url.pathname === "/api/decart/client-token") return ["operator"];
   return ["member", "trainer", "operator"];
 }
 
@@ -1583,6 +1584,24 @@ async function handleApi(request, env, url, requestId) {
       }
     }
     return new Response(null, { status: 204, headers: capabilityHeaders({ "Cache-Control": "no-store", "X-Request-ID": requestId }) });
+  }
+  if (request.method === "POST" && url.pathname === "/api/decart/client-token") {
+    if (!env.DECART_API_KEY) return reply({ error: "Decart realtime video is not configured", configured: false, requestId }, 503);
+    if (!await allowRequest(request, env, 12, "decart-token")) return reply({ error: "AI camera session limit reached. Try again in one minute.", requestId }, 429, { "Retry-After": "60" });
+    const body = await readJson(request, 8 * 1024);
+    if (body.model && body.model !== "lucy-2.5") return reply({ error: "This AI camera model is not approved", requestId }, 400);
+    const origin = new URL(request.url).origin;
+    const response = await fetch("https://api.decart.ai/v1/client/tokens", {
+      method: "POST",
+      headers: { "x-api-key": String(env.DECART_API_KEY), "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ expiresIn: 300, allowedModels: ["lucy-2.5"], allowedOrigins: [origin], constraints: { realtime: { maxSessionDuration: 1800 } }, metadata: { product: "amx-air-hubs", room: safeId(body.room || "AMXSTAGE").slice(0, 64) } }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.apiKey) {
+      logEvent("error", "decart.token_failed", { requestId, status: response.status, detail: safeLabel(result?.detail || result?.message || "Token service unavailable", "Token service unavailable").slice(0, 160) });
+      return reply({ error: response.status === 401 || response.status === 403 ? "Decart credentials were rejected" : "Decart realtime token could not be created", requestId }, response.status === 429 ? 429 : 502);
+    }
+    return reply({ apiKey: result.apiKey, expiresAt: result.expiresAt, model: "lucy-2.5", requestId }, 200, { "Cache-Control": "no-store" });
   }
   if (request.method === "POST" && url.pathname === "/api/livekit/viewer-token") {
     if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) {

@@ -7,6 +7,7 @@ import { loadConnections, saveConnection, setConnectionStatus, type ConnectionKi
 const catalog: Array<{ provider: string; name: string; kind: ConnectionKind; detail: string }> = [
   { provider: "openai", name: "OpenAI Agents", kind: "api", detail: "Agent reasoning, vision, voice, and tool calls" },
   { provider: "livekit", name: "LiveKit", kind: "api", detail: "Realtime rooms, voice, video, and agents" },
+  { provider: "decart", name: "Decart AI Video", kind: "api", detail: "Lucy 2.5 realtime transformed camera sources" },
   { provider: "supabase", name: "Supabase", kind: "api", detail: "Identity, realtime state, proof, and RLS" },
   { provider: "mcp", name: "MCP Gateway", kind: "mcp", detail: "Governed remote tools and resources" },
   { provider: "streamlabs", name: "Streamlabs", kind: "webhook", detail: "Broadcast scenes, sources, and show control" },

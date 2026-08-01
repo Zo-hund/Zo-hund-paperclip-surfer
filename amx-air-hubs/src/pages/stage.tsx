@@ -130,6 +130,9 @@ const LiveKitPod = lazy(async () => ({
 const StageFeedMonitor = lazy(async () => ({
   default: (await import("../StageFeedMonitor")).StageFeedMonitor,
 }));
+const DecartRealtimeCamera = lazy(async () => ({
+  default: (await import("../DecartRealtimeCamera")).DecartRealtimeCamera,
+}));
 
 type ConsoleView =
   | "workflow"
@@ -273,6 +276,7 @@ export function AMXXRStagePage() {
   const soundscapeRuntime = useStageSoundscape(production.state.audio);
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
+  const [decartFeed, setDecartFeed] = useState<LiveVideoFeed | null>(null);
   const [videoLibrary, setVideoLibrary] = useState<StageMediaAsset[]>([]);
   const [allScreenRoute, setAllScreenRoute] = useState("program");
   const [promotedRoomAudio, setPromotedRoomAudio] =
@@ -345,8 +349,8 @@ export function AMXXRStagePage() {
     [production.state.audio.library],
   );
   const orderedVideoFeeds = useMemo(
-    () => sortStageVideoFeeds(videoFeeds),
-    [videoFeeds],
+    () => sortStageVideoFeeds(decartFeed ? [...videoFeeds, decartFeed] : videoFeeds),
+    [decartFeed, videoFeeds],
   );
   const cameraChannels = useMemo(
     () =>
@@ -1369,6 +1373,7 @@ export function AMXXRStagePage() {
                 onUpdate={updateProgramMedia}
                 onLibraryChange={setVideoLibrary}
               />
+              <Suspense fallback={<div className="pod-camera-off"><Sparkles/><span>Preparing realtime AI camera</span></div>}><DecartRealtimeCamera onFeedChange={setDecartFeed}/></Suspense>
               <section className="stage-control-section stage-screen-matrix">
                 <header><div><span className="eyebrow">VENUE DISPLAY MATRIX</span><h2>Three-screen routing</h2></div><MonitorPlay/></header>
                 <div className="stage-screen-all"><select aria-label="Source for all venue screens" value={allScreenRoute} onChange={(event)=>setAllScreenRoute(event.target.value)}><option value="program">PROGRAM OUTPUT</option><option value="sponsor">SPONSOR / EVENT BRAND</option><option value="virtual">VIRTUAL VENUE BRAND</option>{orderedVideoFeeds.map((feed)=><option key={`all-feed:${feed.id}`} value={`feed:${feed.id}`}>GUEST / MEMBER / {feed.name}</option>)}{videoLibrary.map((asset)=><option key={`all-media:${asset.id}`} value={`media:${asset.id}`}>MEDIA / {asset.name}</option>)}</select><button onClick={routeAllVenueScreens}><Zap/>ROUTE ALL</button></div>
