@@ -4,6 +4,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { LiveVideoFeed } from "./LiveKitPod";
 import type { StageSeat, StageVenueLayout } from "./stage-events";
 import type { SponsorCreative, StageAudioState, StageMode, StageShot } from "./stage-production";
+import type { StageProgramMediaState } from "./stage-program-media";
 import { smoothCameraMotionProgress, stageCameraMotionPreset, stageCameraMotionProgress, type StageCameraMotionState } from "./stage-camera-motion";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
 
@@ -19,6 +20,7 @@ interface Props {
   live: boolean;
   audio: StageAudioState;
   programFeed?: LiveVideoFeed | null;
+  programMedia?: StageProgramMediaState | null;
   reducedMotion?: boolean;
   portraitFraming?: boolean;
   onBackend?: (backend: RendererBackend) => void;
@@ -121,30 +123,52 @@ function drawSponsorRibbon(canvas: HTMLCanvasElement, creative: SponsorCreative,
   context.fillText(label, 48, canvas.height / 2);
 }
 
-function bindStream(mesh: THREE.Mesh, feed: LiveVideoFeed) {
+function bindVideoToScreens(meshes: THREE.Mesh[], video: HTMLVideoElement, detach?: () => void) {
+  const texture = new THREE.VideoTexture(video);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  const previous = meshes.map((mesh) => mesh.material);
+  const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
+  meshes.forEach((mesh) => { mesh.material = material; });
+  void video.play().catch(() => undefined);
+  return () => {
+    video.pause();
+    detach?.();
+    video.removeAttribute("src");
+    video.load();
+    texture.dispose();
+    material.dispose();
+    meshes.forEach((mesh, index) => { if (mesh.material === material) mesh.material = previous[index]; });
+  };
+}
+
+function bindStream(meshes: THREE.Mesh[], feed: LiveVideoFeed) {
   const video = document.createElement("video");
   video.autoplay = true;
   video.muted = true;
   video.playsInline = true;
   if (feed.track) feed.track.attach(video);
   else video.srcObject = feed.stream;
-  const texture = new THREE.VideoTexture(video);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.generateMipmaps = false;
-  const previous = mesh.material;
-  const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
-  mesh.material = material;
-  void video.play().catch(() => undefined);
-  return () => {
-    video.pause();
+  return bindVideoToScreens(meshes, video, () => {
     if (feed.track) feed.track.detach(video);
     else video.srcObject = null;
-    texture.dispose();
-    material.dispose();
-    if (mesh.material === material) mesh.material = previous;
-  };
+  });
+}
+
+function bindProgramMedia(meshes: THREE.Mesh[], media: StageProgramMediaState) {
+  const video = document.createElement("video");
+  video.src = media.url;
+  video.autoplay = media.transport === "playing";
+  video.muted = true;
+  video.loop = true;
+  video.playsInline = true;
+  video.crossOrigin = "anonymous";
+  video.currentTime = Math.max(0, media.positionSeconds || 0);
+  const cleanup = bindVideoToScreens(meshes, video);
+  if (media.transport === "paused") video.pause();
+  return cleanup;
 }
 
 function disposeObject(root: THREE.Object3D) {
@@ -165,10 +189,10 @@ function disposeObject(root: THREE.Object3D) {
   materials.forEach((material) => material.dispose());
 }
 
-export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, reducedMotion, portraitFraming, onBackend }: Props) {
+export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, programMedia, reducedMotion, portraitFraming, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio });
-  const programScreenRef = useRef<THREE.Mesh | null>(null);
+  const programScreensRef = useRef<THREE.Mesh[]>([]);
   const [sceneGeneration, setSceneGeneration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -176,16 +200,17 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
 
   useEffect(() => {
     const host = hostRef.current;
-    const screen = programScreenRef.current;
+    const screens = programScreensRef.current;
     if (host) {
-      host.dataset.programFeed = programFeed?.name || "virtual";
+      host.dataset.programFeed = programFeed?.name || programMedia?.name || "virtual";
       host.dataset.programFeedId = programFeed?.id || "none";
-      host.dataset.programFeedSource = programFeed?.source || "virtual";
-      host.dataset.programFeedLive = String(Boolean(programFeed && !programFeed.muted));
+      host.dataset.programFeedSource = programFeed?.source || (programMedia ? "media-library" : "virtual");
+      host.dataset.programFeedLive = String(Boolean((programFeed && !programFeed.muted) || programMedia?.url));
     }
-    if (!screen || !programFeed || programFeed.muted) return;
-    return bindStream(screen, programFeed);
-  }, [programFeed, sceneGeneration]);
+    if (!screens.length) return;
+    if (programFeed && !programFeed.muted) return bindStream(screens, programFeed);
+    if (programMedia?.url) return bindProgramMedia(screens, programMedia);
+  }, [programFeed, programMedia, sceneGeneration]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -307,17 +332,17 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
     textures.push(sponsorTexture);
     const sponsorMaterial = new THREE.MeshBasicMaterial({ map: sponsorTexture, toneMapped: false, side: THREE.DoubleSide });
     materials.push(sponsorMaterial);
-    const programScreen = new THREE.Mesh(new THREE.PlaneGeometry(9.6, 3.15), sponsorMaterial);
-    programScreen.position.set(0, 4.15, -7.05);
-    programScreenRef.current = programScreen;
-    setSceneGeneration((generation) => generation + 1);
+    const programScreen = new THREE.Mesh(new THREE.PlaneGeometry(9.6, 5.4), sponsorMaterial);
+    programScreen.position.set(0, 4.25, -7.05);
     scene.add(programScreen);
-    const leftSponsor = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.38), sponsorMaterial);
+    const leftSponsor = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 2.36), sponsorMaterial);
     leftSponsor.position.set(-6.45, 3.2, -5.6);
     leftSponsor.rotation.y = 0.38;
     const rightSponsor = leftSponsor.clone();
     rightSponsor.position.x = 6.45;
     rightSponsor.rotation.y = -0.38;
+    programScreensRef.current = [programScreen, leftSponsor, rightSponsor];
+    setSceneGeneration((generation) => generation + 1);
     scene.add(leftSponsor, rightSponsor);
     const ribbonCanvas = document.createElement("canvas");
     ribbonCanvas.width = 2048;
@@ -733,7 +758,7 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
       cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
       brandImage.removeEventListener("load", refreshSponsor);
-      programScreenRef.current = null;
+      programScreensRef.current = [];
       const disposableTextures = new Set<THREE.Texture>(textures);
       const disposableMaterials = new Set<THREE.Material>(materials);
       scene.traverse((object) => {

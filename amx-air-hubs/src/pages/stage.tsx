@@ -1089,6 +1089,7 @@ export function AMXXRStagePage() {
               live={production.state.live}
               audio={production.state.audio}
               programFeed={programChannel.feed}
+              programMedia={programChannel.route.startsWith("media:") ? production.state.programMedia : null}
               reducedMotion={settings.reducedMotion}
               onBackend={setBackend}
             />
