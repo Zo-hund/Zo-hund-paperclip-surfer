@@ -23,11 +23,12 @@ interface Props {
   media: StageProgramMediaState;
   tenantId: string;
   onUpdate: (media: StageProgramMediaState) => void;
+  onLibraryChange?: (assets: StageMediaAsset[]) => void;
 }
 
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
 
-interface StageMediaAsset {
+export interface StageMediaAsset {
   id: string;
   name: string;
   url: string;
@@ -52,7 +53,7 @@ function readLibrary(tenantId: string): StageMediaAsset[] {
   }
 }
 
-export function StageProgramMediaDeck({ media, tenantId, onUpdate }: Props) {
+export function StageProgramMediaDeck({ media, tenantId, onUpdate, onLibraryChange }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [source, setSource] = useState(media.url);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
@@ -74,7 +75,8 @@ export function StageProgramMediaDeck({ media, tenantId, onUpdate }: Props) {
   }, [tenantId]);
   useEffect(() => {
     localStorage.setItem(mediaLibraryKey(tenantId), JSON.stringify(library));
-  }, [library, tenantId]);
+    onLibraryChange?.(library);
+  }, [library, onLibraryChange, tenantId]);
 
   const programAsset = useMemo<StageMediaAsset | null>(
     () =>

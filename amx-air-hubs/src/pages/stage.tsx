@@ -65,7 +65,7 @@ import {
   type StageWorkflowRuntimeCue,
 } from "../StageShowWorkflow";
 import { StageStudioMixer } from "../StageStudioMixer";
-import { StageProgramMediaDeck } from "../StageProgramMediaDeck";
+import { StageProgramMediaDeck, type StageMediaAsset } from "../StageProgramMediaDeck";
 import { StreamlabsControl } from "../StreamlabsControl";
 import { STAGE_MEDIA_ROUTE_EVENT, type StageMediaRouteAsset } from "../stage-media-routing";
 import { stageSourceHealth } from "../stage-source-identity";
@@ -176,7 +176,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function CameraFeedPreview({ feed }: { feed: LiveVideoFeed | null }) {
+function CameraFeedPreview({ feed, media }: { feed: LiveVideoFeed | null; media?: StageMediaAsset }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const video = ref.current;
@@ -187,6 +187,7 @@ function CameraFeedPreview({ feed }: { feed: LiveVideoFeed | null }) {
       video.srcObject = null;
     };
   }, [feed]);
+  if (media) return <video src={media.url} muted playsInline preload="metadata" />;
   if (!feed || feed.muted)
     return (
       <span className="stage-camera-empty">
@@ -270,6 +271,7 @@ export function AMXXRStagePage() {
   const soundscapeRuntime = useStageSoundscape(production.state.audio);
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
+  const [videoLibrary, setVideoLibrary] = useState<StageMediaAsset[]>([]);
   const [promotedRoomAudio, setPromotedRoomAudio] =
     useState<MediaStream | null>(null);
   const [feedMonitorStatus, setFeedMonitorStatus] =
@@ -348,9 +350,13 @@ export function AMXXRStagePage() {
       SHOTS.map((camera) => {
         const configuredRoute =
           production.state.cameraRoutes[camera.id] || "auto";
+        const mediaAsset = configuredRoute.startsWith("media:")
+          ? videoLibrary.find((asset) => `media:${asset.id}` === configuredRoute)
+          : undefined;
         return {
           ...camera,
           route: configuredRoute,
+          mediaAsset,
           feed: selectStageProgramFeed(
             orderedVideoFeeds,
             camera.id,
@@ -358,7 +364,7 @@ export function AMXXRStagePage() {
           ),
         };
       }),
-    [orderedVideoFeeds, production.state.cameraRoutes],
+    [orderedVideoFeeds, production.state.cameraRoutes, videoLibrary],
   );
   const programChannel =
     cameraChannels.find((camera) => camera.id === production.state.shot) ||
@@ -418,8 +424,11 @@ export function AMXXRStagePage() {
     trackEvent("stage_mode_changed", { locationTag: production.room });
   };
   const takeShot = (shot: StageShot) => {
+    const channel = cameraChannels.find((camera) => camera.id === shot);
+    const mediaAsset = channel?.mediaAsset;
     production.update({
       shot,
+      ...(mediaAsset ? { programMedia: { ...production.state.programMedia, url: mediaAsset.url, name: mediaAsset.name, contentType: mediaAsset.contentType, transport: "playing" as const, startedAt: Date.now(), positionSeconds: 0 } } : {}),
       cameraMotion: {
         ...production.state.cameraMotion,
         id: "static",
@@ -427,9 +436,9 @@ export function AMXXRStagePage() {
         startedAt: null,
       },
     });
-    const feed = cameraChannels.find((camera) => camera.id === shot)?.feed;
+    const feed = channel?.feed;
     trackEvent("stage_camera_taken", {
-      campaignId: feed?.id,
+      campaignId: mediaAsset?.id || feed?.id,
       locationTag: production.room,
     });
   };
@@ -1324,6 +1333,7 @@ export function AMXXRStagePage() {
                 media={production.state.programMedia}
                 tenantId={tenantId}
                 onUpdate={updateProgramMedia}
+                onLibraryChange={setVideoLibrary}
               />
               <StreamlabsControl room={production.room} />
               <section className="stage-control-section">
@@ -1372,7 +1382,7 @@ export function AMXXRStagePage() {
                 </header>
                 <div className="stage-shot-grid">
                   {cameraChannels.map(
-                    ({ id, label, detail, icon: Icon, route, feed }) => (
+                    ({ id, label, detail, icon: Icon, route, feed, mediaAsset }) => (
                       <div
                         key={id}
                         className={`stage-camera-channel ${production.state.shot === id ? "active" : ""} ${feed && !feed.muted ? "feed-ready" : ""}`}
@@ -1382,13 +1392,15 @@ export function AMXXRStagePage() {
                           onClick={() => takeShot(id)}
                         >
                           <span className="stage-camera-preview">
-                            <CameraFeedPreview feed={feed} />
+                            <CameraFeedPreview feed={feed} media={mediaAsset} />
                           </span>
                           <Icon />
                           <span className="stage-camera-name">
                             <b>{label}</b>
                             <small>
-                              {feed
+                              {mediaAsset
+                                ? `${mediaAsset.name} / media library`
+                                : feed
                                 ? `${feed.name}${feed.muted ? " / muted" : ""}`
                                 : route !== "auto" && route !== "virtual"
                                   ? "Feed offline"
@@ -1416,15 +1428,21 @@ export function AMXXRStagePage() {
                                     : "4"
                               : ""}
                           </option>
-                          <option value="virtual">VIRTUAL SHOT</option>
+                          <option value="virtual">VIRTUAL SHOT / 3D VENUE</option>
                           {route !== "auto" &&
                             route !== "virtual" &&
+                            !route.startsWith("media:") &&
                             !orderedVideoFeeds.some(
                               (candidate) => candidate.id === route,
                             ) && <option value={route}>FEED OFFLINE</option>}
                           {orderedVideoFeeds.map((candidate) => (
                             <option key={candidate.id} value={candidate.id}>
                               {candidate.name} / {candidate.source}
+                            </option>
+                          ))}
+                          {videoLibrary.map((asset) => (
+                            <option key={`media:${asset.id}`} value={`media:${asset.id}`}>
+                              MEDIA / {asset.name}
                             </option>
                           ))}
                         </select>
