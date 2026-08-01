@@ -39,12 +39,14 @@ export interface CreatePodInviteInput {
 interface InviteResponse {
   invite: PodInvite;
   ownerToken?: string;
+  zkode?: string;
   requestId?: string;
   error?: string;
 }
 
 const OWNER_KEYS = "amx_pod_invite_owner_keys";
 const OWNED_INVITES = "amx_owned_pod_invites";
+const INVITE_ZKODES = "amx_pod_invite_zkodes";
 
 function ownerKeys(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(OWNER_KEYS) || "{}"); }
@@ -53,6 +55,17 @@ function ownerKeys(): Record<string, string> {
 
 function rememberOwnerToken(token: string, ownerToken: string) {
   localStorage.setItem(OWNER_KEYS, JSON.stringify({ ...ownerKeys(), [token]: ownerToken }));
+}
+
+function rememberZkode(token: string, zkode: string) {
+  let values: Record<string, string> = {};
+  try { values = JSON.parse(localStorage.getItem(INVITE_ZKODES) || "{}"); } catch { /* reset invalid local data */ }
+  localStorage.setItem(INVITE_ZKODES, JSON.stringify({ ...values, [token]: zkode }));
+}
+
+export function getOwnedInviteZkode(token: string) {
+  try { return (JSON.parse(localStorage.getItem(INVITE_ZKODES) || "{}") as Record<string, string>)[token] || ""; }
+  catch { return ""; }
 }
 
 function ownedInvites(): Record<string, PodInvite> {
@@ -82,6 +95,7 @@ export async function createPodInvite(input: CreatePodInviteInput) {
     body: JSON.stringify(input),
   }));
   if (body.ownerToken) rememberOwnerToken(body.invite.token, body.ownerToken);
+  if (body.zkode) rememberZkode(body.invite.token, body.zkode);
   return storeOwnedPodInvite(body.invite);
 }
 
@@ -89,11 +103,11 @@ export async function resolvePodInvite(token: string) {
   return (await parseResponse(await fetch(`/api/pod-invites/${encodeURIComponent(token)}`))).invite;
 }
 
-export async function acceptPodInvite(token: string) {
+export async function acceptPodInvite(token: string, zkode: string, accessToken: string) {
   return (await parseResponse(await fetch(`/api/pod-invites/${encodeURIComponent(token)}/accept`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ zkode }),
   }))).invite;
 }
 

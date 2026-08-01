@@ -59,7 +59,7 @@ function memoryDatabase() {
   };
 }
 
-function podInviteDatabase(row) {
+function podInviteDatabase(row, zkodeHash = "") {
   const writes = [];
   return {
     writes,
@@ -69,7 +69,11 @@ function podInviteDatabase(row) {
           return {
             async run() { writes.push({ sql, values }); return { success: true, meta: { changes: 1 } }; },
             async all() { return { results: [] }; },
-            async first() { return sql.includes("SELECT * FROM pod_invites") ? row : { ok: 1 }; },
+            async first() {
+              if (sql.includes("SELECT * FROM pod_invites")) return row;
+              if (sql.includes("SELECT zkode_hash FROM pod_invite_zkodes")) return zkodeHash ? { zkode_hash: zkodeHash } : null;
+              return { ok: 1 };
+            },
           };
         },
         async run() { return { success: true }; },
@@ -448,12 +452,14 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(body.invite.maxUses, 8);
     assert.match(body.invite.joinPath, /^\/join\/[A-Za-z0-9_-]+$/);
     assert.ok(body.ownerToken.length > 60);
+    assert.match(body.zkode, /^[A-HJ-NP-Z2-9]{10}$/);
     assert.equal(JSON.stringify(body.invite).includes("ownerToken"), false);
     assert.ok(insert);
     assert.notEqual(insert.values[2], body.ownerToken);
   });
 
   test("accepts an active pod invite once and reports capacity truthfully", async () => {
+    const zkode = "AMX7STAGE9";
     const row = {
       id: "invite-1", token: "invite-token", owner_token_hash: "unused", tenant_id: "tech-at-nite",
       tenant_name: "Tech At Nite", tenant_color: "#55e6ff", pod_id: "pod-1", room_code: "AIR123",
@@ -461,8 +467,11 @@ describe("AMX AIR Hubs Worker API", () => {
       guest_role: "participant", max_uses: 1, use_count: 0, status: "active",
       expires_at: new Date(Date.now() + 60_000).toISOString(), created_at: new Date().toISOString(),
     };
-    env.DB = podInviteDatabase(row);
-    const response = await worker.fetch(jsonRequest("/api/pod-invites/invite-token/accept", {}), env);
+    env.DB = podInviteDatabase(row, await hash(zkode));
+    const rejected = await worker.fetch(jsonRequest("/api/pod-invites/invite-token/accept", { zkode: "WRONGCODE" }), env);
+    assert.equal(rejected.status, 403);
+    assert.equal(env.DB.writes.some((write) => write.sql.includes("use_count = use_count + 1")), false);
+    const response = await worker.fetch(jsonRequest("/api/pod-invites/invite-token/accept", { zkode }), env);
     const body = await response.json();
 
     assert.equal(response.status, 200);

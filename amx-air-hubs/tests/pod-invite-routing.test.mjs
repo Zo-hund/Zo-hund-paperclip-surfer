@@ -13,9 +13,9 @@ test("invite destination carries admission context into the protected lobby", as
 test("public pass preview signs members in before consuming an invite use", async () => {
   const source = await readFile(new URL("../src/pages/invites.tsx", import.meta.url), "utf8");
   const signInGuard = source.indexOf("if(!member.session)");
-  const acceptRequest = source.indexOf("await acceptPodInvite(token)");
+  const acceptRequest = source.indexOf("await acceptPodInvite(token", signInGuard);
   assert.ok(signInGuard >= 0, "missing member sign-in guard");
   assert.ok(acceptRequest > signInGuard, "invite must not be accepted before member sign-in");
-  assert.match(source, /Sign in to claim pass/);
-  assert.match(source, /does not by itself prove payment/);
+  assert.match(source, /Sign in to unlock pass/);
+  assert.match(source, /QR and ZKODE are separate credentials/);
 });

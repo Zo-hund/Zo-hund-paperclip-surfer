@@ -118,6 +118,8 @@ Requires a WebSocket upgrade. A Durable Object binding is preferred. The in-isol
 
 ### `POST /api/pod-invites`
 
+Creates a pass and returns its QR invite plus a one-time issuer-visible `zkode`. Only the ZKODE hash is stored server-side.
+
 Creates a durable invitation for a Skill Pod. The request includes tenant and pod identity, room code, mission, guest role (`viewer`, `participant`, or `presenter`), capacity from 1 to 100, and expiry from 1 to 168 hours.
 
 Returns the public invite plus a one-time `ownerToken`. The browser stores that owner capability only on the creator device; it is never included when an invite is resolved.
@@ -127,6 +129,8 @@ Returns the public invite plus a one-time `ownerToken`. The browser stores that 
 Resolves sanitized public showcase details and the current `active`, `expired`, `full`, or `revoked` state.
 
 ### `POST /api/pod-invites/:token/accept`
+
+Requires an authenticated member bearer token and `{ "zkode": "..." }`. Incorrect codes return `403` without consuming pass capacity. Legacy passes without a ZKODE must be reissued.
 
 Atomically consumes one capacity slot while the invite is active and unexpired. The client creates the invited immersive room locally and opens its pre-flight lobby.
 

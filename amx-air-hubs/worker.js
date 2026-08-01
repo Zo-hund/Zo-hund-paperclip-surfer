@@ -192,7 +192,7 @@ function publicApiRequest(request, url) {
   if (url.pathname.startsWith("/api/pod-invites/")) {
     const segments = url.pathname.split("/").filter(Boolean);
     const action = segments[3] || "";
-    return (request.method === "GET" && !action) || (request.method === "POST" && action === "accept");
+    return request.method === "GET" && !action;
   }
   return false;
 }
@@ -321,6 +321,16 @@ function validatePodInvite(body) {
     description: safeLabel(body.description, "Join this AMX Skill Pod showcase.").slice(0, 500),
     hostName: safeLabel(body.hostName, "AMX Host").slice(0, 100),
   };
+}
+
+function generateZkode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(bytes, (value) => alphabet[value % alphabet.length]).join("");
+}
+
+function normalizeZkode(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
 }
 
 function validTimestamp(value) {
@@ -1240,6 +1250,7 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS analytics_tenant_idx ON analytics_events (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS skill_pods (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, code TEXT NOT NULL UNIQUE, payload TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS pod_invites (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, owner_token_hash TEXT NOT NULL, tenant_id TEXT NOT NULL, tenant_name TEXT NOT NULL, tenant_color TEXT NOT NULL, pod_id TEXT NOT NULL, room_code TEXT NOT NULL, mission_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, host_name TEXT NOT NULL, guest_role TEXT NOT NULL, max_uses INTEGER NOT NULL, use_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, expires_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS pod_invite_zkodes (invite_id TEXT PRIMARY KEY, zkode_hash TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS pod_invites_lookup_idx ON pod_invites (token, status, expires_at)"),
     db.prepare("CREATE INDEX IF NOT EXISTS pod_invites_pod_idx ON pod_invites (tenant_id, pod_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS media_objects (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_user_id TEXT, visibility TEXT NOT NULL DEFAULT 'private', purpose TEXT, file_name TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, object_key TEXT NOT NULL, created_at TEXT NOT NULL)"),
@@ -1354,13 +1365,16 @@ async function handleApi(request, env, url, requestId) {
     const token = base64Url(crypto.getRandomValues(new Uint8Array(24)));
     const ownerToken = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
     const ownerTokenHash = await sha256(ownerToken);
+    const zkode = generateZkode();
+    const zkodeHash = await sha256(zkode);
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + input.expiresInHours * 60 * 60 * 1000).toISOString();
     await env.DB.prepare("INSERT INTO pod_invites (id, token, owner_token_hash, tenant_id, tenant_name, tenant_color, pod_id, room_code, mission_id, title, description, host_name, guest_role, max_uses, use_count, status, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'active', ?, ?, ?)")
       .bind(id, token, ownerTokenHash, input.tenantId, input.tenantName, input.tenantColor, input.podId, input.roomCode, input.missionId, input.title, input.description, input.hostName, input.role, input.maxUses, expiresAt, createdAt, createdAt).run();
+    await env.DB.prepare("INSERT INTO pod_invite_zkodes (invite_id, zkode_hash, created_at) VALUES (?, ?, ?)").bind(id, zkodeHash, createdAt).run();
     const invite = publicPodInvite({ id, token, tenant_id: input.tenantId, tenant_name: input.tenantName, tenant_color: input.tenantColor, pod_id: input.podId, room_code: input.roomCode, mission_id: input.missionId, title: input.title, description: input.description, host_name: input.hostName, guest_role: input.role, max_uses: input.maxUses, use_count: 0, status: "active", expires_at: expiresAt, created_at: createdAt });
     logEvent("info", "pod_invite.created", { requestId, inviteId: id, tenantId: input.tenantId, podId: input.podId, role: input.role, maxUses: input.maxUses });
-    return reply({ invite, ownerToken, requestId }, 201);
+    return reply({ invite, ownerToken, zkode, requestId }, 201);
   }
   if (url.pathname.startsWith("/api/pod-invites/")) {
     if (!env.DB) return reply({ error: "Durable invite storage is not configured", requestId }, 503);
@@ -1375,6 +1389,14 @@ async function handleApi(request, env, url, requestId) {
     if (request.method === "POST" && action === "accept") {
       const status = podInviteStatus(row);
       if (status !== "active") return reply({ error: `Showcase invite is ${status}`, invite: publicPodInvite(row), requestId }, 410);
+      const lock = await env.DB.prepare("SELECT zkode_hash FROM pod_invite_zkodes WHERE invite_id = ? LIMIT 1").bind(row.id).first();
+      if (!lock?.zkode_hash) return reply({ error: "This legacy pass must be reissued with a ZKODE", requestId }, 409);
+      const body = await readJson(request, 4 * 1024);
+      const zkode = normalizeZkode(body.zkode);
+      if (!zkode || await sha256(zkode) !== lock.zkode_hash) {
+        logEvent("warn", "pod_invite.zkode_rejected", { requestId, inviteId: row.id });
+        return reply({ error: "ZKODE is incorrect", requestId }, 403);
+      }
       const updatedAt = new Date().toISOString();
       const result = await env.DB.prepare("UPDATE pod_invites SET use_count = use_count + 1, updated_at = ? WHERE token = ? AND status = 'active' AND expires_at > ? AND use_count < max_uses")
         .bind(updatedAt, token, updatedAt).run();

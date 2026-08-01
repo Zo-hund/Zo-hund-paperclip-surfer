@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, Crown, DoorOpen, ExternalLink, Eye, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, UserPlus, Users } from "lucide-react";
 import { QRCodeCard } from "./components";
 import { getActiveTenant } from "./operations";
-import { absoluteInviteUrl, createPodInvite, getOwnedPodInvite, resolvePodInvite, revokePodInvite, storeOwnedPodInvite, type PodInvite } from "./pod-invites";
+import { absoluteInviteUrl, createPodInvite, getOwnedInviteZkode, getOwnedPodInvite, resolvePodInvite, revokePodInvite, storeOwnedPodInvite, type PodInvite } from "./pod-invites";
 import { createStageSeats, stageSeatCounts, STAGE_EVENT_PRESETS, stageEventPreset, type StageEventFormat, type StageEventState, type StageEventStatus, type StageSeat, type StageSeatSection, type StageSeatStatus, type StageTicketTierId } from "./stage-events";
 import type { StageProductionState } from "./stage-production";
 import { getTenantRecord } from "./tenant-management";
@@ -255,7 +255,7 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
     {activePass && <section className="stage-control-section stage-pass-workspace">
       <header><div><span className="eyebrow">{activeTier.label.toUpperCase()} PASS</span><h2>{activePass.status === "active" ? "Ready to share" : activePass.status}</h2></div><span>{activePass.useCount}/{activePass.maxUses}</span></header>
       <QRCodeCard route={activePass.joinPath} title={activePass.title}/>
-      <div className="stage-pass-meta"><span><CalendarClock/>Expires {new Date(activePass.expiresAt).toLocaleString()}</span><span><ShieldCheck/>Room is revealed only after acceptance</span></div>
+      <div className="stage-pass-meta"><span><CalendarClock/>Expires {new Date(activePass.expiresAt).toLocaleString()}</span><span><ShieldCheck/>QR + ZKODE unlock required</span><code>ZKODE: {getOwnedInviteZkode(activePass.token)||"LEGACY PASS - REISSUE"}</code></div>
       <div className="stage-pass-actions"><button onClick={() => void copyPass()}><Copy/>Copy</button><button onClick={() => void sharePass()}><Send/>Share</button><button className="danger" disabled={busyTier === activeTier.id || activePass.status !== "active"} onClick={() => void revokePass()} aria-label={`Revoke ${activeTier.label} pass`} title={`Revoke ${activeTier.label} pass`}><Trash2/></button></div>
     </section>}
     {notice && <p className="stage-event-notice" role="status"><TicketCheck/>{notice}</p>}
