@@ -108,6 +108,7 @@ import {
   type StageCue,
   type StageDeckTrack,
   type StageMode,
+  type StageScreenId,
   type StageShot,
   type StageSoundscape,
   type StageVideoState,
@@ -272,6 +273,7 @@ export function AMXXRStagePage() {
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
   const [videoFeeds, setVideoFeeds] = useState<LiveVideoFeed[]>([]);
   const [videoLibrary, setVideoLibrary] = useState<StageMediaAsset[]>([]);
+  const [allScreenRoute, setAllScreenRoute] = useState("program");
   const [promotedRoomAudio, setPromotedRoomAudio] =
     useState<MediaStream | null>(null);
   const [feedMonitorStatus, setFeedMonitorStatus] =
@@ -485,6 +487,14 @@ export function AMXXRStagePage() {
       campaignId: route === "auto" || route === "virtual" ? undefined : route,
       locationTag: production.room,
     });
+  };
+  const routeVenueScreen = (screen: StageScreenId, route: string) => {
+    production.update({ screenRoutes: { ...production.state.screenRoutes, [screen]: route } });
+    trackEvent("stage_screen_routed", { campaignId: route, locationTag: `${production.room}:${screen}` });
+  };
+  const routeAllVenueScreens = () => {
+    production.update({ screenRoutes: { center: allScreenRoute, left: allScreenRoute, right: allScreenRoute } });
+    trackEvent("stage_screens_routed_all", { campaignId: allScreenRoute, locationTag: production.room });
   };
   const quickTakeFeed = (route: string) => {
     const shot = production.state.shot;
@@ -1090,6 +1100,9 @@ export function AMXXRStagePage() {
               audio={production.state.audio}
               programFeed={programChannel.feed}
               programMedia={programChannel.route.startsWith("media:") ? production.state.programMedia : null}
+              screenRoutes={production.state.screenRoutes}
+              videoFeeds={orderedVideoFeeds}
+              mediaLibrary={videoLibrary}
               reducedMotion={settings.reducedMotion}
               onBackend={setBackend}
             />
@@ -1336,6 +1349,12 @@ export function AMXXRStagePage() {
                 onUpdate={updateProgramMedia}
                 onLibraryChange={setVideoLibrary}
               />
+              <section className="stage-control-section stage-screen-matrix">
+                <header><div><span className="eyebrow">VENUE DISPLAY MATRIX</span><h2>Three-screen routing</h2></div><MonitorPlay/></header>
+                <div className="stage-screen-all"><select aria-label="Source for all venue screens" value={allScreenRoute} onChange={(event)=>setAllScreenRoute(event.target.value)}><option value="program">PROGRAM OUTPUT</option><option value="sponsor">SPONSOR / EVENT BRAND</option><option value="virtual">VIRTUAL VENUE BRAND</option>{orderedVideoFeeds.map((feed)=><option key={`all-feed:${feed.id}`} value={`feed:${feed.id}`}>GUEST / MEMBER / {feed.name}</option>)}{videoLibrary.map((asset)=><option key={`all-media:${asset.id}`} value={`media:${asset.id}`}>MEDIA / {asset.name}</option>)}</select><button onClick={routeAllVenueScreens}><Zap/>ROUTE ALL</button></div>
+                <div className="stage-screen-grid">{(["center","left","right"] as StageScreenId[]).map((screen)=><label key={screen}><span>{screen.toUpperCase()} SCREEN</span><select value={production.state.screenRoutes[screen]||"program"} onChange={(event)=>routeVenueScreen(screen,event.target.value)}><option value="program">PROGRAM OUTPUT</option><option value="sponsor">SPONSOR / EVENT BRAND</option><option value="virtual">VIRTUAL VENUE BRAND</option>{orderedVideoFeeds.map((feed)=><option key={`${screen}-feed:${feed.id}`} value={`feed:${feed.id}`}>GUEST / MEMBER / {feed.name}</option>)}{videoLibrary.map((asset)=><option key={`${screen}-media:${asset.id}`} value={`media:${asset.id}`}>MEDIA / {asset.name}</option>)}</select></label>)}</div>
+                <p>Route screens independently, or choose one source and route all three together.</p>
+              </section>
               <StreamlabsControl room={production.room} />
               <section className="stage-control-section">
                 <header>

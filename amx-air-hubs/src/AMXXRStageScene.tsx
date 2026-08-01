@@ -3,7 +3,7 @@ import * as THREE from "three/webgpu";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { LiveVideoFeed } from "./LiveKitPod";
 import type { StageSeat, StageVenueLayout } from "./stage-events";
-import type { SponsorCreative, StageAudioState, StageMode, StageShot } from "./stage-production";
+import type { SponsorCreative, StageAudioState, StageMode, StageScreenId, StageShot } from "./stage-production";
 import type { StageProgramMediaState } from "./stage-program-media";
 import { smoothCameraMotionProgress, stageCameraMotionPreset, stageCameraMotionProgress, type StageCameraMotionState } from "./stage-camera-motion";
 import { forceWebGLDiagnostic, getRendererBackend, type RendererBackend } from "./webgpu";
@@ -21,6 +21,9 @@ interface Props {
   audio: StageAudioState;
   programFeed?: LiveVideoFeed | null;
   programMedia?: StageProgramMediaState | null;
+  screenRoutes?: Record<StageScreenId, string>;
+  videoFeeds?: LiveVideoFeed[];
+  mediaLibrary?: Array<{ id: string; name: string; url: string; contentType: string }>;
   reducedMotion?: boolean;
   portraitFraming?: boolean;
   onBackend?: (backend: RendererBackend) => void;
@@ -32,6 +35,9 @@ const SHOTS: Record<StageShot, { position: THREE.Vector3; target: THREE.Vector3;
   audience: { position: new THREE.Vector3(0, 3.2, -2.1), target: new THREE.Vector3(0, 1.25, 6.1), operator: 2 },
   crane: { position: new THREE.Vector3(-8.4, 8.2, 8.4), target: new THREE.Vector3(0, 2, -3.4), operator: 0 },
 };
+const DEFAULT_SCREEN_ROUTES: Record<StageScreenId, string> = { center: "program", left: "program", right: "program" };
+const NO_VIDEO_FEEDS: LiveVideoFeed[] = [];
+const NO_MEDIA_LIBRARY: Array<{ id: string; name: string; url: string; contentType: string }> = [];
 
 const SCORE_LIGHTING = {
   house: { primary: 0xd9f7ff, secondary: 0x8bc9d8, background: 0x061017 },
@@ -189,7 +195,7 @@ function disposeObject(root: THREE.Object3D) {
   materials.forEach((material) => material.dispose());
 }
 
-export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, programMedia, reducedMotion, portraitFraming, onBackend }: Props) {
+export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio, programFeed, programMedia, screenRoutes = DEFAULT_SCREEN_ROUTES, videoFeeds = NO_VIDEO_FEEDS, mediaLibrary = NO_MEDIA_LIBRARY, reducedMotion, portraitFraming, onBackend }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ mode, shot, cameraMotion, sponsor, generalSeats, vipSeats, seats, venueLayout, live, audio });
   const programScreensRef = useRef<THREE.Mesh[]>([]);
@@ -207,10 +213,33 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
       host.dataset.programFeedSource = programFeed?.source || (programMedia ? "media-library" : "virtual");
       host.dataset.programFeedLive = String(Boolean((programFeed && !programFeed.muted) || programMedia?.url));
     }
-    if (!screens.length) return;
-    if (programFeed && !programFeed.muted) return bindStream(screens, programFeed);
-    if (programMedia?.url) return bindProgramMedia(screens, programMedia);
-  }, [programFeed, programMedia, sceneGeneration]);
+    if (screens.length !== 3) return;
+    const screenIds: StageScreenId[] = ["center", "left", "right"];
+    const groups = new Map<string, THREE.Mesh[]>();
+    screenIds.forEach((id, index) => {
+      const route = screenRoutes[id] || "program";
+      groups.set(route, [...(groups.get(route) || []), screens[index]]);
+    });
+    const cleanups: Array<() => void> = [];
+    groups.forEach((routeScreens, route) => {
+      if (route === "sponsor" || route === "virtual") return;
+      if (route === "program") {
+        if (programFeed && !programFeed.muted) cleanups.push(bindStream(routeScreens, programFeed));
+        else if (programMedia?.url) cleanups.push(bindProgramMedia(routeScreens, programMedia));
+        return;
+      }
+      if (route.startsWith("feed:")) {
+        const feed = videoFeeds.find((item) => `feed:${item.id}` === route);
+        if (feed && !feed.muted) cleanups.push(bindStream(routeScreens, feed));
+        return;
+      }
+      if (route.startsWith("media:")) {
+        const asset = mediaLibrary.find((item) => `media:${item.id}` === route);
+        if (asset) cleanups.push(bindProgramMedia(routeScreens, { ...programMedia, url: asset.url, name: asset.name, contentType: asset.contentType, fit: programMedia?.fit || "contain", muted: true, transport: "playing", startedAt: Date.now(), positionSeconds: 0 }));
+      }
+    });
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [mediaLibrary, programFeed, programMedia, screenRoutes, sceneGeneration, videoFeeds]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -344,6 +373,20 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
     programScreensRef.current = [programScreen, leftSponsor, rightSponsor];
     setSceneGeneration((generation) => generation + 1);
     scene.add(leftSponsor, rightSponsor);
+    const screenFrame = (screen: THREE.Mesh, width: number, height: number) => {
+      const frame = new THREE.Mesh(new THREE.PlaneGeometry(width + 0.34, height + 0.34), darkMetal);
+      frame.position.copy(screen.position);
+      frame.rotation.copy(screen.rotation);
+      frame.translateZ(-0.035);
+      const trim = new THREE.Mesh(new THREE.PlaneGeometry(width + 0.12, height + 0.12), cyan);
+      trim.position.copy(screen.position);
+      trim.rotation.copy(screen.rotation);
+      trim.translateZ(-0.018);
+      scene.add(frame, trim);
+    };
+    screenFrame(programScreen, 9.6, 5.4);
+    screenFrame(leftSponsor, 4.2, 2.36);
+    screenFrame(rightSponsor, 4.2, 2.36);
     const ribbonCanvas = document.createElement("canvas");
     ribbonCanvas.width = 2048;
     ribbonCanvas.height = 70;

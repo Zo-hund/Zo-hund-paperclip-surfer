@@ -17,6 +17,7 @@ export type { StageCameraMotionId, StageCameraMotionPreset, StageCameraMotionSta
 
 export type StageMode = "in-person" | "online" | "metaverse";
 export type StageShot = "wide" | "host" | "audience" | "crane";
+export type StageScreenId = "center" | "left" | "right";
 export type StageCue = "standby" | "opening" | "speaker" | "demo" | "qa" | "sponsor" | "close";
 
 export interface SponsorCreative {
@@ -39,6 +40,7 @@ export interface StageProductionState {
   cue: StageCue;
   sponsor: SponsorCreative;
   cameraRoutes: Record<StageShot, string>;
+  screenRoutes: Record<StageScreenId, string>;
   cameraMotion: StageCameraMotionState;
   audio: StageAudioState;
   video: StageVideoState;
@@ -78,6 +80,12 @@ export const DEFAULT_CAMERA_ROUTES: Record<StageShot, string> = {
   crane: "auto",
 };
 
+export const DEFAULT_SCREEN_ROUTES: Record<StageScreenId, string> = {
+  center: "program",
+  left: "program",
+  right: "program",
+};
+
 function localHost() {
   return ["localhost", "127.0.0.1"].includes(location.hostname);
 }
@@ -91,6 +99,7 @@ function initialState(operatorId: string, room = "AMXSTAGE"): StageProductionSta
     cue: "standby",
     sponsor: DEFAULT_SPONSORS[0],
     cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
+    screenRoutes: { ...DEFAULT_SCREEN_ROUTES },
     cameraMotion: { ...DEFAULT_STAGE_CAMERA_MOTION },
     audio: normalizeStageAudio(),
     video: normalizeStageVideo(),
@@ -111,7 +120,7 @@ function storedState(room: string, operatorId: string) {
     const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
     if (!saved) return initialState(operatorId, room);
     const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
-    return { ...initialState(operatorId, room), ...saved, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), cameraMotion: normalizeStageCameraMotion(saved.cameraMotion), audio: normalizeStageAudio(saved.audio), video: normalizeStageVideo(saved.video), programMedia: normalizeStageProgramMedia(saved.programMedia), event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), workflow: normalizeStageShowWorkflow(saved.workflow, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
+    return { ...initialState(operatorId, room), ...saved, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), screenRoutes: { ...DEFAULT_SCREEN_ROUTES, ...saved.screenRoutes }, cameraMotion: normalizeStageCameraMotion(saved.cameraMotion), audio: normalizeStageAudio(saved.audio), video: normalizeStageVideo(saved.video), programMedia: normalizeStageProgramMedia(saved.programMedia), event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), workflow: normalizeStageShowWorkflow(saved.workflow, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
   } catch {
     return initialState(operatorId, room);
   }
@@ -145,7 +154,7 @@ export function useStageProduction(roomCode: string, options: { readOnly?: boole
   const receive = useCallback((packet: StagePacket) => {
     if (packet.type !== "stage-state") return;
     const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
-    const incoming = { ...packet.state, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), cameraMotion: normalizeStageCameraMotion(packet.state.cameraMotion), audio: normalizeStageAudio(packet.state.audio), video: normalizeStageVideo(packet.state.video), programMedia: normalizeStageProgramMedia(packet.state.programMedia), event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), workflow: normalizeStageShowWorkflow(packet.state.workflow, room), revision, updatedAt: new Date(revision).toISOString() };
+    const incoming = { ...packet.state, cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), screenRoutes: { ...DEFAULT_SCREEN_ROUTES, ...packet.state.screenRoutes }, cameraMotion: normalizeStageCameraMotion(packet.state.cameraMotion), audio: normalizeStageAudio(packet.state.audio), video: normalizeStageVideo(packet.state.video), programMedia: normalizeStageProgramMedia(packet.state.programMedia), event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), workflow: normalizeStageShowWorkflow(packet.state.workflow, room), revision, updatedAt: new Date(revision).toISOString() };
     const current = stateRef.current;
     if (incoming.revision < current.revision) return;
     if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;
