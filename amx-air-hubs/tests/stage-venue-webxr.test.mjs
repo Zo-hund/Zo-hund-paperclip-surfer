@@ -86,4 +86,15 @@ describe("member WebXR venues", () => {
     assert.match(worker, /mediaPurpose === "stage-video"/);
     assert.match(worker, /isSharedStageVideo/);
   });
+
+  test("gives theater, arena, and expo presets distinct visual environment zones", async () => {
+    const [liveScene, xrScene] = await Promise.all([read("src/AMXXRStageScene.tsx"), read("src/StageVenueWorld.tsx")]);
+    assert.match(liveScene, /VenueZone_Theater/);
+    assert.match(liveScene, /VenueZone_Arena/);
+    assert.match(liveScene, /VenueZone_ExpoHall/);
+    assert.match(liveScene, /environment\.visible = layout === current\.venueLayout/);
+    assert.match(xrScene, /new THREE\.TorusGeometry\(11\.2/);
+    assert.match(xrScene, /0x4a0d23/);
+    assert.match(xrScene, /boothColors/);
+  });
 });

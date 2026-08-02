@@ -84,12 +84,26 @@ function buildVenue(root: THREE.Group, layout: StageVenueLayout) {
   [-7.1, 7.1].forEach((x) => box(root, [.22, 6.5, .22], [x, 3.25, -12.6], COLORS.magenta, COLORS.magenta));
 
   if (layout === "theater") {
+    [-13.5, 13.5].forEach((x) => {
+      box(root, [.55, 8, 28], [x, 4, 0], 0x121923);
+      for (let z = -9; z <= 11; z += 4) box(root, [.1, 2.25, 2.5], [x - Math.sign(x) * .34, 3.6, z], 0x4a0d23);
+    });
+    [-7.2, 7.2].forEach((x) => box(root, [1.3, 7.2, .24], [x, 3.7, -13], 0x541027));
+    for (let z = -5; z <= 10; z += 1.7) [-6.2, 6.2].forEach((x) => box(root, [.12, .035, .72], [x, .04, z], COLORS.gold, COLORS.gold));
     for (let row = 0; row < 5; row += 1) for (let column = 0; column < 9; column += 1) {
       const seat = box(root, [.72, .55, .72], [(column - 4) * 1.15, .32 + row * .08, -5 + row * 1.75], row === 0 ? 0x6b5524 : 0x16303a);
       seat.rotation.y = 0;
       colliders.push({ minX: seat.position.x - .42, maxX: seat.position.x + .42, minZ: seat.position.z - .42, maxZ: seat.position.z + .42 });
     }
   } else if (layout === "arena") {
+    const overhead = new THREE.Mesh(new THREE.TorusGeometry(11.2, .12, 10, 96), new THREE.MeshStandardMaterial({ color: 0x252f3d, metalness: .84, roughness: .3 }));
+    overhead.rotation.x = Math.PI / 2; overhead.position.set(0, 8.6, -3); root.add(overhead);
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index / 8 * Math.PI * 2;
+      box(root, [.22, 8.2, .22], [Math.sin(angle) * 11.2, 4.2, -3 + Math.cos(angle) * 11.2], 0x252f3d);
+      const beacon = box(root, [.65, 1.8, .08], [Math.sin(angle) * 10.7, 6.1, -3 + Math.cos(angle) * 10.7], index % 2 ? COLORS.magenta : COLORS.cyan, index % 2 ? COLORS.magenta : COLORS.cyan);
+      beacon.lookAt(0, 6.1, -3);
+    }
     for (let index = 0; index < 32; index += 1) {
       const angle = index / 32 * Math.PI * 2;
       const radius = index % 2 ? 8.4 : 10;
@@ -112,6 +126,13 @@ function buildVenue(root: THREE.Group, layout: StageVenueLayout) {
       root.add(group);
       colliders.push({ minX: group.position.x - 2.45, maxX: group.position.x + 2.45, minZ: group.position.z - 2, maxZ: group.position.z + 2 });
     }
+    box(root, [7.2, .16, .16], [0, 6.5, 1.5], COLORS.cyan, COLORS.cyan);
+    box(root, [.16, 6.4, .16], [-3.5, 3.25, 1.5], 0x273842);
+    box(root, [.16, 6.4, .16], [3.5, 3.25, 1.5], 0x273842);
+    [-1, 1].forEach((side) => {
+      const info = box(root, [2.5, 1.4, .12], [side * 4.7, 2.4, 10.5], side < 0 ? COLORS.green : COLORS.gold, side < 0 ? COLORS.green : COLORS.gold);
+      info.rotation.y = side * -.18;
+    });
   }
 
   return { floor, colliders };

@@ -458,6 +458,59 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
     scene.add(ribbon);
     host.dataset.ribbonAspect = `${ribbonCanvas.width}:${ribbonCanvas.height}`;
 
+    const theaterEnvironment = new THREE.Group();
+    theaterEnvironment.name = "VenueZone_Theater";
+    const theaterWall = new THREE.MeshStandardMaterial({ color: 0x141923, roughness: 0.82, metalness: 0.08 });
+    const theaterFabric = new THREE.MeshStandardMaterial({ color: 0x4a0d23, roughness: 0.94, metalness: 0.02 });
+    materials.push(theaterWall, theaterFabric);
+    theaterEnvironment.add(box([0.65, 8.5, 23], [-10.4, 4.1, 1], theaterWall), box([0.65, 8.5, 23], [10.4, 4.1, 1], theaterWall));
+    [-9.95, 9.95].forEach((x) => {
+      for (let z = -6; z <= 10; z += 4) theaterEnvironment.add(box([0.08, 2.2, 2.4], [x, 3.6, z], theaterFabric));
+    });
+    [-8.7, 8.7].forEach((x) => theaterEnvironment.add(box([1.35, 7.4, 0.28], [x, 4.25, -7.25], theaterFabric)));
+    for (let z = 2; z <= 11; z += 1.55) theaterEnvironment.add(box([0.12, 0.035, 0.7], [-5.9, 0.08, z], gold), box([0.12, 0.035, 0.7], [5.9, 0.08, z], gold));
+
+    const arenaEnvironment = new THREE.Group();
+    arenaEnvironment.name = "VenueZone_Arena";
+    const arenaSteel = new THREE.MeshStandardMaterial({ color: 0x202936, roughness: 0.34, metalness: 0.82 });
+    materials.push(arenaSteel);
+    const arenaRing = new THREE.Mesh(new THREE.TorusGeometry(9.2, 0.12, 10, 96), arenaSteel);
+    arenaRing.rotation.x = Math.PI / 2;
+    arenaRing.position.set(0, 8.3, 0.8);
+    arenaEnvironment.add(arenaRing);
+    for (let index = 0; index < 8; index += 1) {
+      const angle = index / 8 * Math.PI * 2;
+      arenaEnvironment.add(box([0.22, 8, 0.22], [Math.sin(angle) * 9.2, 4.15, 0.8 + Math.cos(angle) * 9.2], arenaSteel));
+      const banner = box([1.35, 2.8, 0.08], [Math.sin(angle) * 8.65, 5.9, 0.8 + Math.cos(angle) * 8.65], index % 2 ? magenta : cyan);
+      banner.lookAt(0, 5.9, 0.8);
+      arenaEnvironment.add(banner);
+    }
+    const arenaHalo = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.055, 8, 72), new THREE.MeshBasicMaterial({ color: 0xff63de, toneMapped: false }));
+    arenaHalo.rotation.x = Math.PI / 2;
+    arenaHalo.position.set(0, 6.8, -3.8);
+    arenaEnvironment.add(arenaHalo);
+
+    const expoEnvironment = new THREE.Group();
+    expoEnvironment.name = "VenueZone_ExpoHall";
+    const expoShell = new THREE.MeshStandardMaterial({ color: 0x16242b, roughness: 0.64, metalness: 0.42 });
+    materials.push(expoShell);
+    [-8.2, 8.2].forEach((x) => {
+      for (let row = 0; row < 3; row += 1) {
+        const z = 1.5 + row * 5.2;
+        const booth = new THREE.Group();
+        booth.position.set(x, 0, z);
+        booth.add(box([4.2, 0.18, 3.5], [0, 0.1, 0], expoShell));
+        booth.add(box([4.2, 2.8, 0.18], [0, 1.5, -1.65], expoShell));
+        booth.add(box([3.45, 0.62, 0.08], [0, 2.45, -1.52], (row + (x > 0 ? 1 : 0)) % 2 ? magenta : cyan));
+        booth.add(box([2.25, 0.92, 0.75], [0, 0.48, -0.7], darkMetal));
+        expoEnvironment.add(booth);
+      }
+    });
+    expoEnvironment.add(box([5.8, 0.16, 0.16], [0, 6.3, 5.5], cyan), box([0.16, 6.2, 0.16], [-2.8, 3.15, 5.5], expoShell), box([0.16, 6.2, 0.16], [2.8, 3.15, 5.5], expoShell));
+    const venueEnvironments: Record<StageVenueLayout, THREE.Group> = { theater: theaterEnvironment, arena: arenaEnvironment, "expo-hall": expoEnvironment };
+    Object.values(venueEnvironments).forEach((environment) => { environment.visible = false; scene.add(environment); });
+    host.dataset.venueZones = Object.keys(venueEnvironments).join(",");
+
     const seatGroups: THREE.Mesh[] = [];
     const seatOpen = new THREE.MeshStandardMaterial({ color: 0x15252d, roughness: 0.72, metalness: 0.25 });
     const seatFilled = new THREE.MeshStandardMaterial({ color: 0x287f91, roughness: 0.58, metalness: 0.22 });
@@ -685,6 +738,7 @@ export function AMXXRStageScene({ mode, shot, cameraMotion, sponsor, generalSeat
       }
       if (current.venueLayout !== lastVenueLayout) {
         lastVenueLayout = current.venueLayout;
+        Object.entries(venueEnvironments).forEach(([layout, environment]) => { environment.visible = layout === current.venueLayout; });
         seatGroups.forEach((seat) => {
           const column = Number(seat.userData.column);
           if (seat.userData.seatType === "vip") {
