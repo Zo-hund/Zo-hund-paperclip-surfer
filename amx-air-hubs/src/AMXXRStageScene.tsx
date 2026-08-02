@@ -130,7 +130,11 @@ function drawSponsorRibbon(canvas: HTMLCanvasElement, creative: SponsorCreative,
 }
 
 function bindVideoToScreens(meshes: THREE.Mesh[], video: HTMLVideoElement, detach?: () => void) {
-  const texture = new THREE.VideoTexture(video);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1280;
+  canvas.height = 720;
+  const context = canvas.getContext("2d", { alpha: false });
+  const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -138,8 +142,28 @@ function bindVideoToScreens(meshes: THREE.Mesh[], video: HTMLVideoElement, detac
   const previous = meshes.map((mesh) => mesh.material);
   const material = new THREE.MeshBasicMaterial({ map: texture, toneMapped: false, side: THREE.DoubleSide });
   meshes.forEach((mesh) => { mesh.material = material; });
+  let animationFrame = 0;
+  let stopped = false;
+  const composeFrame = () => {
+    if (stopped) return;
+    if (context && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth && video.videoHeight) {
+      const scale = Math.min(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+      const width = Math.round(video.videoWidth * scale);
+      const height = Math.round(video.videoHeight * scale);
+      const x = Math.round((canvas.width - width) / 2);
+      const y = Math.round((canvas.height - height) / 2);
+      context.fillStyle = "#000";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(video, x, y, width, height);
+      texture.needsUpdate = true;
+    }
+    animationFrame = requestAnimationFrame(composeFrame);
+  };
   void video.play().catch(() => undefined);
+  animationFrame = requestAnimationFrame(composeFrame);
   return () => {
+    stopped = true;
+    cancelAnimationFrame(animationFrame);
     video.pause();
     detach?.();
     video.removeAttribute("src");
