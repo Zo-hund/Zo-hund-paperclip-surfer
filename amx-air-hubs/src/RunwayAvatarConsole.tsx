@@ -61,6 +61,25 @@ async function responseJson<T>(response: Response): Promise<T> {
   return body;
 }
 
+async function prepareRealtimeAvatarMedia() {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error("Realtime voice requires the HTTPS site in Chrome, Safari, or Quest Browser.");
+  const streamPromise = navigator.mediaDevices.getUserMedia({
+    audio: { autoGainControl: true, echoCancellation: true, noiseSuppression: true },
+    video: false,
+  });
+  const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const context = AudioContextConstructor ? new AudioContextConstructor({ latencyHint: "interactive" }) : null;
+  try {
+    const [stream] = await Promise.all([streamPromise, context?.resume() || Promise.resolve()]);
+    stream.getTracks().forEach((track) => track.stop());
+  } catch (error) {
+    void streamPromise.then((stream) => stream.getTracks().forEach((track) => track.stop())).catch(() => undefined);
+    throw error;
+  } finally {
+    if (context) void context.close();
+  }
+}
+
 function RunwayToolBridge({ onWorldCamera, onMoveNpc, onNpcAction, onOpenPanel, onRunTool }: {
   onWorldCamera: Props["onWorldCamera"];
   onMoveNpc: Props["onMoveNpc"];
@@ -89,15 +108,25 @@ function RunwayCallSurface({ onPanelVideo, onTrace, ...bridge }: {
   const session = useAvatarSession();
   const transcript = useTranscript({ interim: true, bufferSize: 8 });
   const latestTranscript = transcript.at(-1)?.text || "Say hello, ask about the room, or request a skill.";
+  const canShareScreen = typeof navigator.mediaDevices?.getDisplayMedia === "function";
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    let boundVideo: HTMLVideoElement | null = null;
+    const bindVideo = () => {
       const video = stageRef.current?.querySelector("video") || null;
-      if (video?.dataset.amxBound === "true") return;
-      if (video) video.dataset.amxBound = "true";
+      if (video === boundVideo) return;
+      boundVideo = video;
+      if (video) {
+        video.playsInline = true;
+        video.preload = "metadata";
+        video.dataset.amxBound = "true";
+      }
       onPanelVideo(video);
-    }, 500);
-    return () => { window.clearInterval(timer); onPanelVideo(null); };
+    };
+    bindVideo();
+    const observer = new MutationObserver(bindVideo);
+    if (stageRef.current) observer.observe(stageRef.current, { childList: true, subtree: true });
+    return () => { observer.disconnect(); onPanelVideo(null); };
   }, [onPanelVideo]);
 
   useEffect(() => {
@@ -109,10 +138,10 @@ function RunwayCallSurface({ onPanelVideo, onTrace, ...bridge }: {
       <AvatarVideo className="runway-avatar-video"/>
       <UserVideo className="runway-user-video" mirror/>
       <span className={`runway-call-state ${session.state}`}><i/>{session.state}</span>
-      <ControlBar showScreenShare>{({ isMicEnabled, isCameraEnabled, isScreenShareEnabled, toggleMic, toggleCamera, toggleScreenShare, endCall }) => <div className="runway-call-controls">
-        <button onClick={toggleMic} title={isMicEnabled ? "Mute microphone" : "Enable microphone"} aria-label={isMicEnabled ? "Mute microphone" : "Enable microphone"}>{isMicEnabled ? <Mic/> : <MicOff/>}</button>
-        <button onClick={toggleCamera} title={isCameraEnabled ? "Disable camera" : "Enable camera"} aria-label={isCameraEnabled ? "Disable camera" : "Enable camera"}>{isCameraEnabled ? <Camera/> : <CameraOff/>}</button>
-        <button className={isScreenShareEnabled ? "active" : ""} onClick={toggleScreenShare} title="Share screen" aria-label="Share screen"><MonitorUp/></button>
+      <ControlBar showScreenShare={canShareScreen}>{({ isMicEnabled, isCameraEnabled, isScreenShareEnabled, toggleMic, toggleCamera, toggleScreenShare, endCall }) => <div className="runway-call-controls">
+        <button onClick={() => void toggleMic()} title={isMicEnabled ? "Mute microphone" : "Enable microphone"} aria-label={isMicEnabled ? "Mute microphone" : "Enable microphone"}>{isMicEnabled ? <Mic/> : <MicOff/>}</button>
+        <button onClick={() => void toggleCamera()} title={isCameraEnabled ? "Disable camera" : "Enable camera"} aria-label={isCameraEnabled ? "Disable camera" : "Enable camera"}>{isCameraEnabled ? <Camera/> : <CameraOff/>}</button>
+        {canShareScreen && <button className={isScreenShareEnabled ? "active" : ""} onClick={() => void toggleScreenShare()} title="Share screen" aria-label="Share screen"><MonitorUp/></button>}
         <button className="end" onClick={() => void endCall()} title="End call" aria-label="End call"><PhoneOff/></button>
       </div>}</ControlBar>
     </div>
@@ -127,6 +156,7 @@ export function RunwayAvatarConsole({ roomCode, agentId, onWorldCamera, onMoveNp
   const [catalogError, setCatalogError] = useState("");
   const [selectedKey, setSelectedKey] = useState("preset:human-resource");
   const [callKey, setCallKey] = useState("");
+  const [starting, setStarting] = useState(false);
   const [trace, setTrace] = useState<ToolTrace>({ id: "ready", name: "toolbelt", status: "idle", detail: "Toolbelt ready for voice or operator commands." });
 
   useEffect(() => {
@@ -186,12 +216,26 @@ export function RunwayAvatarConsole({ roomCode, agentId, onWorldCamera, onMoveNp
     setTrace({ id: crypto.randomUUID(), name: "runway.session", status: "complete", detail: "Runway Character session ended." });
   }, [onPanelVideo]);
 
+  const startSession = useCallback(async () => {
+    if (!selected || starting) return;
+    setStarting(true);
+    try {
+      await prepareRealtimeAvatarMedia();
+      setTrace({ id: crypto.randomUUID(), name: "runway.session", status: "running", detail: "Microphone and mobile audio are ready. Connecting JAZ..." });
+      setCallKey(`${selectedKey}:${Date.now()}`);
+    } catch (error) {
+      setTrace({ id: crypto.randomUUID(), name: "runway.session", status: "blocked", detail: error instanceof Error ? error.message : "Microphone permission is required for realtime voice." });
+    } finally {
+      setStarting(false);
+    }
+  }, [selected, selectedKey, starting]);
+
   return <section className="runway-avatar-console">
     <header className="runway-console-head"><div><span className="eyebrow">RUNWAY CHARACTERS / GWM-1</span><h3>Realtime avatar</h3></div><Video/></header>
     {!callKey && <div className="runway-launcher">
-      <div className="runway-avatar-preview">{selected?.imageUrl ? <img src={selected.imageUrl} alt=""/> : <UserRound/>}<span><b>{selected?.name || "Loading avatars"}</b><small>{selected?.type || "catalog"} / {selected?.status || "checking"}</small></span></div>
+      <div className="runway-avatar-preview">{selected?.imageUrl ? <img src={selected.imageUrl} alt="" loading="lazy" decoding="async"/> : <UserRound/>}<span><b>{selected?.name || "Loading avatars"}</b><small>{selected?.type || "catalog"} / {selected?.status || "checking"}</small></span></div>
       <label><span>Character</span><select value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)} disabled={!options.length}>{options.map((avatar) => <option key={`${avatar.type}:${avatar.id}`} value={`${avatar.type}:${avatar.id}`}>{avatar.name} / {avatar.type}</option>)}</select></label>
-      <button className="button primary full" disabled={!catalog?.configured || !selected || selected.status === "FAILED"} onClick={() => setCallKey(`${selectedKey}:${Date.now()}`)}>{catalog ? <Play/> : <LoaderCircle className="spin"/>}{catalog?.configured ? "Start realtime avatar" : "Runway key required"}</button>
+      <button className="button primary full" disabled={starting || !catalog?.configured || !selected || selected.status === "FAILED"} onClick={() => void startSession()}>{starting || !catalog ? <LoaderCircle className="spin"/> : <Play/>}{catalog?.configured ? starting ? "Opening microphone" : "Start realtime avatar" : "Runway key required"}</button>
       <p className={catalogError ? "error" : ""}>{catalogError || (catalog?.configured ? "Microphone permission is requested when the call starts." : "Configure RUNWAYML_API_SECRET on the server to enable calls.")}</p>
     </div>}
     {callKey && selected && <AvatarCall key={callKey} avatarId={selected.id} connect={connect} audio video onEnd={endSession} onError={(error) => setTrace({ id: crypto.randomUUID(), name: "runway.session", status: "blocked", detail: error.message })}>

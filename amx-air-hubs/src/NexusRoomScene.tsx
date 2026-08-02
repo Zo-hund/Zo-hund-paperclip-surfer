@@ -763,15 +763,16 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     scene.background = xrMode === "mr" ? null : new THREE.Color(0x02070d);
     scene.fog = new THREE.FogExp2(0x02070d, 0.025);
     const initialAspect = host.clientWidth / Math.max(1, host.clientHeight);
+    const mobileEdge = window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
     const camera = new THREE.PerspectiveCamera(responsiveRoomFov(initialAspect), initialAspect, 0.05, 100);
     camera.position.set(0, 4.15, 9.4);
     const renderer = new THREE.WebGPURenderer({
-      antialias: true,
+      antialias: !mobileEdge,
       alpha: xrMode === "mr",
       powerPreference: "high-performance",
       forceWebGL: xrMode !== "none" || forceWebGLDiagnostic(),
     });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, mobileEdge ? 1 : 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1202,7 +1203,7 @@ export function NexusRoomScene({ localStream, sceneStreams = [], mediaElement, r
     let disposed = false;
     const animate = () => {
       if (disposed) return;
-      render();
+      if (!document.hidden) render();
       if (!captureFrame || !model || frame < 3) animationFrame = requestAnimationFrame(animate);
     };
     void renderer.init().then(() => {

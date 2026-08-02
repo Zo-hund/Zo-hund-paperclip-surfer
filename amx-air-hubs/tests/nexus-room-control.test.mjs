@@ -22,6 +22,14 @@ test("LiveKit carries reliable room chat and operator-only NPC commands", () => 
   assert.match(pod, /isRoomCommunicatorMetadata\(participant\.metadata\)/);
 });
 
+test("mobile pod chat invokes JAZ and shares the bounded agent response", () => {
+  assert.match(protocol, /agentId\?: string/);
+  assert.match(pod, /sendAgentRequest\(guideAgent, text, \[\], "text"\)/);
+  assert.match(pod, /agentId: guideAgent\.id/);
+  assert.match(pod, /Ask JAZ by text/);
+  assert.match(pod, /prepareStudioVoiceAccess\(\)/);
+});
+
 test("local Nexus NPC controls publish while remote commands do not echo", () => {
   assert.match(page, /roomControlRef\.current\?\.sendNpcCommand\(command\)/);
   assert.match(page, /onNpcCommand=\{issueNpcCommand\}/);

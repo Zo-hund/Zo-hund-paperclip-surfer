@@ -10,6 +10,7 @@ export type NexusChatMessage = {
   kind: "chat";
   senderId: string;
   senderName: string;
+  agentId?: string;
   text: string;
   sentAt: number;
 };
@@ -74,7 +75,8 @@ export function decodeNexusRoomMessage(payload: Uint8Array): NexusRoomMessage | 
     const message = JSON.parse(decoder.decode(payload)) as Partial<NexusRoomMessage>;
     if (!boundedString(message.id, 128) || !boundedString(message.senderId, 64) || !Number.isFinite(message.sentAt)) return null;
     if (message.kind === "chat") {
-      return boundedString(message.senderName, 80) && boundedString(message.text, 500) ? message as NexusChatMessage : null;
+      const validAgent = message.agentId === undefined || boundedString(message.agentId, 64);
+      return validAgent && boundedString(message.senderName, 80) && boundedString(message.text, 500) ? message as NexusChatMessage : null;
     }
     if (message.kind === "npc-command") return isNpcCommand(message.command) ? message as NexusNpcMessage : null;
     if (message.kind === "session-request") return boundedString(message.senderName, 80) ? message as NexusSessionMessage : null;
