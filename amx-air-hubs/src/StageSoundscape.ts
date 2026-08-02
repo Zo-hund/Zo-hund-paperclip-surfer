@@ -341,8 +341,10 @@ export function useStageSoundscape(state: StageAudioState) {
         return false;
       }
       engineRef.current = engine;
-      await engine.context.resume();
+      const resume = engine.context.resume();
+      // Start media-backed decks in the original tap stack for mobile Safari.
       applyState(engine, stateRef.current);
+      await resume;
       setProgramStream(engine.programOutput.stream);
       if (meterTimerRef.current === null) {
         const musicData = new Uint8Array(new ArrayBuffer(engine.musicAnalyser.fftSize));

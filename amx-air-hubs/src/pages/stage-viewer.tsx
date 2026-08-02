@@ -85,6 +85,7 @@ export function StageLiveViewerPage() {
   const [backend, setBackend] = useState<RendererBackend>("webgl2");
   const roomRef = useRef<Room | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
+  const programVideoRef = useRef<HTMLVideoElement>(null);
   const audioEnabledRef = useRef(false);
   const venueAudioEnabledRef = useRef(false);
   const audioTrackIdsRef = useRef(new Set<string>());
@@ -128,7 +129,7 @@ export function StageLiveViewerPage() {
         setNotice(response.status === 503 ? "Virtual venue is live. Camera relay is not configured." : credentials.error || "Live camera relay is unavailable.");
         return;
       }
-      const room = new Room({ adaptiveStream: false, dynacast: true, disconnectOnPageLeave: true });
+      const room = new Room({ adaptiveStream: false, dynacast: true, disconnectOnPageLeave: true, webAudioMix: true });
       roomRef.current = room;
       const updateCount = () => setParticipantCount(countStageAudienceParticipants(room.remoteParticipants.values(), 1));
       room.on(RoomEvent.ParticipantConnected, updateCount);
@@ -144,13 +145,16 @@ export function StageLiveViewerPage() {
         }
         if (track.kind === Track.Kind.Audio && audioHostRef.current) {
           const element = track.attach();
-          element.autoplay = audioEnabledRef.current;
+          element.autoplay = true;
           element.muted = !audioEnabledRef.current;
+          element.preload = "auto";
+          element.setAttribute("playsinline", "");
           audioHostRef.current.appendChild(element);
           const trackId = publication.trackSid || track.sid;
           if (trackId) audioTrackIdsRef.current.add(trackId);
           setAudioTrackCount(audioTrackIdsRef.current.size);
-          if (audioEnabledRef.current) void element.play().catch(() => {
+          void element.play().catch(() => {
+            if (!audioEnabledRef.current) return;
             if (!venueAudioEnabledRef.current) {
               audioEnabledRef.current = false;
               setAudioEnabled(false);
@@ -172,8 +176,10 @@ export function StageLiveViewerPage() {
       room.on(RoomEvent.TrackUnmuted, (publication) => setFeeds((current) => current.map((feed) => feed.track === publication.track ? { ...feed, muted: false } : feed)));
       room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (room.canPlaybackAudio) return;
-        audioEnabledRef.current = venueAudioEnabledRef.current;
-        setAudioEnabled(venueAudioEnabledRef.current);
+        if (audioTrackIdsRef.current.size === 0) return;
+        audioEnabledRef.current = false;
+        setAudioEnabled(false);
+        setNotice("Tap Listen Live to restore room sound on this phone.");
       });
       room.on(RoomEvent.Reconnecting, () => setStatus("connecting"));
       room.on(RoomEvent.Reconnected, () => { setStatus("live"); updateCount(); });
@@ -232,22 +238,39 @@ export function StageLiveViewerPage() {
   const enableAudio = async () => {
     const room = roomRef.current;
     try {
-      const localReady = await venueAudio.enable();
-      venueAudioEnabledRef.current = localReady;
-      if (room) await room.startAudio();
+      audioEnabledRef.current = true;
+      const localStart = venueAudio.enable();
+      const roomStart = room ? room.startAudio() : Promise.resolve();
       const elements = [...(audioHostRef.current?.querySelectorAll("audio") || [])];
-      const results = await Promise.allSettled(elements.map((element) => {
+      const remoteStarts = elements.map((element) => {
+        element.autoplay = true;
         element.muted = false;
         element.volume = 1;
         return element.play();
-      }));
-      const mediaReady = elements.length === 0 || results.some((result) => result.status === "fulfilled");
-      const remoteReady = Boolean(room?.canPlaybackAudio && mediaReady);
-      const ready = localReady || remoteReady;
+      });
+      const programElement = programVideoRef.current;
+      const programRequested = Boolean(programElement && programMedia && !programMedia.muted && programMedia.transport === "playing");
+      const programStart = programRequested && programElement
+        ? (() => {
+            programElement.autoplay = true;
+            programElement.muted = false;
+            programElement.volume = 1;
+            return programElement.play();
+          })()
+        : Promise.resolve();
+      const [localResult, roomResult, programResult, ...remoteResults] = await Promise.allSettled([localStart, roomStart, programStart, ...remoteStarts]);
+      const localReady = localResult.status === "fulfilled" && localResult.value;
+      venueAudioEnabledRef.current = localReady;
+      const mediaReady = elements.length === 0 || remoteResults.some((result) => result.status === "fulfilled");
+      const remoteReady = Boolean(room && roomResult.status === "fulfilled" && room.canPlaybackAudio && mediaReady);
+      const programReady = programRequested && programResult.status === "fulfilled";
+      const ready = Boolean(localReady || remoteReady || programReady);
       audioEnabledRef.current = ready;
       setAudioEnabled(ready);
-      setNotice(localReady && remoteReady ? "Venue mix and live room sound are on." : localReady ? "Venue mix is on. Waiting for live voices." : remoteReady ? "Live room sound is on." : "Tap Listen Live again after allowing audio playback.");
+      setNotice(localReady && remoteReady ? "Venue mix and live room sound are on." : remoteReady ? "Live room sound is on." : programReady && programMedia && !programMedia.muted ? "Program media sound is on." : localReady ? "Venue mix is on. Waiting for live voices." : "Tap Listen Live again after allowing audio playback.");
     } catch {
+      audioEnabledRef.current = false;
+      setAudioEnabled(false);
       setNotice("Audio playback is blocked by this browser.");
     }
   };
@@ -255,10 +278,11 @@ export function StageLiveViewerPage() {
     await venueAudio.disable();
     venueAudioEnabledRef.current = false;
     audioHostRef.current?.querySelectorAll("audio").forEach((element) => {
-      element.autoplay = false;
       element.muted = true;
-      element.pause();
+      element.autoplay = true;
+      void element.play().catch(() => undefined);
     });
+    if (programVideoRef.current) programVideoRef.current.muted = true;
     audioEnabledRef.current = false;
     setAudioEnabled(false);
     setNotice("Live sound is off.");
@@ -282,7 +306,7 @@ export function StageLiveViewerPage() {
         <AMXXRStageScene mode={production.state.mode} shot={production.state.shot} cameraMotion={production.state.cameraMotion} sponsor={production.state.sponsor} generalSeats={production.state.generalSeats} vipSeats={production.state.vipSeats} seats={production.state.event.seats} venueLayout={production.state.event.venueLayout} live={production.state.live} audio={production.state.audio} programFeed={programFeed} programMedia={programMedia} screenRoutes={production.state.screenRoutes} videoFeeds={feeds} mediaLibrary={screenMediaLibrary} reducedMotion={matchMedia("(prefers-reduced-motion: reduce)").matches} portraitFraming onBackend={setBackend}/>
       </Suspense>
       {showProgram && programFeed && <ViewerProgramVideo feed={programFeed} motion={production.state.cameraMotion}/>}
-      {showProgramMedia && programMedia && <video className="stage-viewer-program-video" src={programMedia.url} autoPlay={programMedia.transport === "playing"} muted={programMedia.muted} playsInline controls/>}
+      {showProgramMedia && programMedia && <video ref={programVideoRef} className="stage-viewer-program-video" src={programMedia.url} autoPlay={programMedia.transport === "playing"} muted={!audioEnabled || programMedia.muted} playsInline preload="auto" controls/>}
       {!programFeed && !showProgramMedia && mode === "program" && <div className={`stage-viewer-waiting ${programSourceUnavailable?"error":""}`}><Clapperboard/><span><b>{programSourceUnavailable?"PROGRAM SOURCE UNAVAILABLE":"VIRTUAL PROGRAM"}</b><small>{programSourceUnavailable?"The operator must restore or reroute this source.":"Switch to Venue for the rendered stage."}</small></span></div>}
       {mode === "venue" && unavailableScreens.length>0 && <div className="stage-viewer-source-error" role="status"><Clapperboard/><span><b>SCREEN SOURCE UNAVAILABLE</b><small>{unavailableScreens.map((screen)=>screen.toUpperCase()).join(" + ")} retained without camera substitution</small></span></div>}
     </div>

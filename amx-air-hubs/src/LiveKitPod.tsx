@@ -462,6 +462,7 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
         adaptiveStream: true,
         dynacast: true,
         disconnectOnPageLeave: true,
+        webAudioMix: true,
         audioCaptureDefaults: STUDIO_VOICE_CAPTURE,
         videoCaptureDefaults: videoConfig.capture,
         publishDefaults: {
@@ -504,7 +505,14 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
           const source = screen ? "screen" : "camera";
           addVideoTrack(track as RemoteVideoTrack, stageFeedId(participant.identity, source), screen ? `${participant.name || participant.identity} / screen` : participant.name || participant.identity, false, source, participant.identity);
         }
-        if (track.kind === Track.Kind.Audio && audioHostRef.current) audioHostRef.current.appendChild(track.attach());
+        if (track.kind === Track.Kind.Audio && audioHostRef.current) {
+          const element = track.attach();
+          element.autoplay = true;
+          element.preload = "auto";
+          element.setAttribute("playsinline", "");
+          audioHostRef.current.appendChild(element);
+          void element.play().catch(() => setPlaybackState("blocked"));
+        }
       });
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
         track.detach().forEach((element) => element.remove());
@@ -527,7 +535,10 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
       room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
         if (participant === room.localParticipant) setConnectionQuality(String(quality));
       });
-      room.on(RoomEvent.AudioPlaybackStatusChanged, () => setPlaybackState(room.canPlaybackAudio ? "ready" : "blocked"));
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        setPlaybackState(room.canPlaybackAudio ? "ready" : "blocked");
+        if (!room.canPlaybackAudio) setMessage("Tap the speaker control to enable room sound on this device");
+      });
       room.on(RoomEvent.LocalAudioSilenceDetected, () => setMessage("Voice is published, but LiveKit is detecting silence from this microphone"));
       room.on(RoomEvent.MediaDevicesError, (mediaError) => setMessage(mediaDeviceMessage(mediaError)));
       room.on(RoomEvent.Reconnecting, () => {
@@ -824,8 +835,24 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
   const resumeAudio = useCallback(async () => {
     const room = roomRef.current;
     if (!room) return;
-    try { await room.startAudio(); setPlaybackState(room.canPlaybackAudio ? "ready" : "blocked"); }
-    catch { setPlaybackState("blocked"); }
+    try {
+      const elements = [...(audioHostRef.current?.querySelectorAll("audio") || [])];
+      const roomStart = room.startAudio();
+      const elementStarts = elements.map((element) => {
+        element.autoplay = true;
+        element.muted = false;
+        element.volume = 1;
+        return element.play();
+      });
+      const [roomResult, ...elementResults] = await Promise.allSettled([roomStart, ...elementStarts]);
+      const elementsReady = elements.length === 0 || elementResults.some((result) => result.status === "fulfilled");
+      const ready = roomResult.status === "fulfilled" && room.canPlaybackAudio && elementsReady;
+      setPlaybackState(ready ? "ready" : "blocked");
+      setMessage(ready ? "Room sound is on" : "Tap the speaker control again after allowing audio playback");
+    } catch {
+      setPlaybackState("blocked");
+      setMessage("Room sound is blocked by this browser");
+    }
   }, []);
 
   const sendChat = useCallback(async () => {
