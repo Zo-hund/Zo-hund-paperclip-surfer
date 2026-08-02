@@ -5,6 +5,7 @@ let databaseInitialization;
 const APP_HTML = "__AMX_APP_HTML__";
 const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), display-capture=(self), fullscreen=(self), xr-spatial-tracking=(self)";
 const SERVICE_VERSION = "1.1.0";
+const DEPLOYMENT_REVISION = "release-114-repack";
 const MAX_AGENT_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
@@ -1855,7 +1856,7 @@ export default {
     const incomingRequestId = request.headers.get("X-Request-ID");
     const requestId = incomingRequestId && /^[a-zA-Z0-9_-]{8,120}$/.test(incomingRequestId) ? incomingRequestId : crypto.randomUUID();
     if (["GET", "HEAD"].includes(request.method) && url.pathname === "/api/health") {
-      const response = json({ ok: true, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, 200, requestId);
+      const response = json({ ok: true, service: "amx-air-hubs", version: SERVICE_VERSION, deploymentRevision: DEPLOYMENT_REVISION, requestId, timestamp: new Date().toISOString() }, 200, requestId);
       return request.method === "HEAD" ? new Response(null, { status: 200, headers: response.headers }) : response;
     }
     if (url.pathname.startsWith("/api/")) {
