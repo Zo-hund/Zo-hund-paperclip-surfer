@@ -14,6 +14,7 @@ import { ConnectionsPage } from "./pages/connections";
 import { PodInvitePage } from "./pages/invites";
 import { AccountPage, PublicMemberProfilePage } from "./pages/account";
 import { MerchOrdersPage, MerchStorefrontPage } from "./pages/merch";
+import { MembershipPage } from "./pages/membership";
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
 import { RequireMember } from "./member-auth";
 import {
@@ -33,6 +34,7 @@ function ShellRoutes() {
   return <AppShell><Routes>
     <Route path="/" element={<HomePage/>}/>
     <Route path="/account" element={<AccountPage/>}/>
+    <Route path="/membership" element={<MembershipPage/>}/>
     <Route path="/members/:slug" element={<PublicMemberProfilePage/>}/>
     <Route path="/role" element={<RequireMember><RoleSelectPage/></RequireMember>}/>
     <Route path="/dashboard" element={<RequireMember><RoleDashboardPage/></RequireMember>}/>

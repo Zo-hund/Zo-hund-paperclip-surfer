@@ -16,7 +16,11 @@ export function AccountPage() {
   const auth = useMemberAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [mode, setMode] = useState<AccountMode>(() => searchParams.get("mode") === "recovery" ? "recover" : "signin");
+  const [mode, setMode] = useState<AccountMode>(() => {
+    if (searchParams.get("mode") === "recovery") return "recover";
+    if (searchParams.get("mode") === "create") return "create";
+    return "signin";
+  });
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -282,6 +286,7 @@ function MemberAccount({ profile, claimStatus }: { profile: MemberProfile; claim
           <button className={visibility === "private" ? "active" : ""} onClick={() => setVisibility("private")}><EyeOff/><span><b>Private profile</b><small>Only your signed-in account can view the record.</small></span></button>
         </div>
         <button className="button secondary full" onClick={share} disabled={!canShare}><BadgeCheck/>Share public profile</button>
+        <Link className="button primary full" to="/membership"><BadgeCheck/>Membership plan</Link>
         {profile.membership_role === "operator" && <Link className="button ghost full" to="/control"><ShieldCheck/>Open operator control</Link>}
       </section>
     </div>

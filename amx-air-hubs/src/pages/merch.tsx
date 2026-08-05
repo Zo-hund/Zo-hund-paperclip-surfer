@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowRight, Check, ExternalLink, Minus, PackageCheck, Plus, ShieldCheck, ShoppingBag, Sparkles, Truck } from "lucide-react";
+import { ArrowRight, Check, Crown, ExternalLink, Minus, PackageCheck, Plus, ShieldCheck, ShoppingBag, Sparkles, Truck } from "lucide-react";
 import { EmptyState, PageHeader, StatusPill } from "../components";
 import { getActiveTenant } from "../operations";
 import { getTenantRecord } from "../tenant-management";
 import { createMerchCheckout, loadMerchCatalog, loadMerchOrders, previewMerchProducts, type MerchCatalog, type MerchOrder, type MerchProduct } from "../merch-platform";
+import { loadMemberSubscription, type MemberSubscription } from "../membership-platform";
+import { useMemberAuth } from "../member-auth";
 
 interface CartLine { product: MerchProduct; variantId: string; quantity: number }
 const money = (cents: number, currency = "USD") => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
@@ -13,12 +15,15 @@ export function MerchStorefrontPage() {
   const { eventId } = useParams();
   const tenantId = getActiveTenant();
   const tenant = getTenantRecord(tenantId);
+  const auth = useMemberAuth();
   const [catalog, setCatalog] = useState<MerchCatalog>({ configured: false, checkoutConfigured: false, source: "preview", products: previewMerchProducts });
   const [cart, setCart] = useState<CartLine[]>(() => { try { return JSON.parse(localStorage.getItem("amx_merch_cart") || "[]") as CartLine[]; } catch { return []; } });
   const [category, setCategory] = useState("all");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [membership, setMembership] = useState<MemberSubscription | null>(null);
   useEffect(() => { void loadMerchCatalog(tenantId, eventId).then(setCatalog); }, [tenantId, eventId]);
+  useEffect(() => { if (auth.session) void loadMemberSubscription(tenantId).then(setMembership).catch(() => setMembership(null)); else setMembership(null); }, [auth.session?.user.id, tenantId]);
   useEffect(() => { localStorage.setItem("amx_merch_cart", JSON.stringify(cart)); }, [cart]);
   const products = catalog.products.filter((product) => category === "all" || product.category === category);
   const subtotal = cart.reduce((sum, line) => sum + (line.product.variants.find((variant) => variant.id === line.variantId)?.priceCents || 0) * line.quantity, 0);
@@ -37,7 +42,7 @@ export function MerchStorefrontPage() {
     finally { setBusy(false); }
   };
   return <div className="page merch-page section-wrap">
-    <PageHeader eyebrow={eventId ? "EVENT MERCH DROP" : `${tenant.name.toUpperCase()} / COLLECTIVE STORE`} title={eventId ? `${eventId.replaceAll("-", " ")} collection` : "Wear the work. Fund the runway."} description="Made-to-order AMX gear supports featured creators, event partners, and community learning programs." actions={<Link to="/account/orders" className="button secondary"><PackageCheck/>My orders</Link>}/>
+    <PageHeader eyebrow={eventId ? "EVENT MERCH DROP" : `${tenant.name.toUpperCase()} / COLLECTIVE STORE`} title={eventId ? `${eventId.replaceAll("-", " ")} collection` : "Wear the work. Fund the runway."} description="Made-to-order AMX gear supports featured creators, event partners, and community learning programs." actions={<><Link to="/membership" className="button ghost"><Crown/>{auth.session ? `${membership?.planId || "explorer"} member` : "Membership"}</Link><Link to="/account/orders" className="button secondary"><PackageCheck/>My orders</Link></>}/>
     <section className="merch-hero"><img src="/merch/amx-merch-collection.png" alt="AMX AIR Hubs apparel and creator accessories"/><div><StatusPill tone={catalog.configured ? "green" : "gold"}>{catalog.configured ? "PRINTFUL CONNECTED" : "CATALOG PREVIEW"}</StatusPill><span className="eyebrow">CREATE. CURATE. CONNECT.</span><h2>AMX AIR Creator Collection</h2><p>Limited event apparel and production gear fulfilled on demand. Each item shows the collective share returned to its featured partner.</p><a href="#merch-products" className="button primary">Shop the drop<ArrowRight/></a></div></section>
     {catalog.message && <p className="merch-notice"><ShieldCheck/>{catalog.message}</p>}
     <div className="merch-layout" id="merch-products"><section><div className="filter-row">{["all", "apparel", "accessories", "event"].map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div><div className="merch-grid">{products.map((product) => <MerchProductCard key={product.id} product={product} onAdd={add}/>)}</div></section>

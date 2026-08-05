@@ -3,6 +3,7 @@ const ephemeralRooms = new Map();
 const memberSessionCache = new Map();
 let databaseInitialization;
 const printfulCatalogCache = new Map();
+const membershipCatalogCache = new Map();
 const PRINTFUL_API_BASE = "https://api.printful.com";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_API_VERSION = "2025-02-24.acacia";
@@ -40,6 +41,44 @@ async function stripeGet(env, path, params = new URLSearchParams()) {
     throw new HttpError(response.status === 429 ? 429 : 502, response.status === 429 ? "Stripe request limit reached" : "Stripe account request failed");
   }
   return payload;
+}
+
+const MEMBERSHIP_PLANS = [
+  { id: "explorer", name: "Explorer", cadence: "free", priceEnv: "", benefits: ["Community access", "AI newsletter", "Events", "Discord", "XR community"] },
+  { id: "learner", name: "Learner", cadence: "month", priceEnv: "MEMBERSHIP_PRICE_LEARNER", benefits: ["AI Labs", "XR workshops", "Community challenges", "Certificates", "Portfolio"] },
+  { id: "builder", name: "Builder", cadence: "month", priceEnv: "MEMBERSHIP_PRICE_BUILDER", benefits: ["Projects", "Hackathons", "Innovation Labs", "Portfolio reviews", "Mentorship"] },
+  { id: "ambassador", name: "Ambassador", cadence: "month", priceEnv: "MEMBERSHIP_PRICE_AMBASSADOR", benefits: ["Leadership", "Recruitment", "Community outreach", "Workshop support", "Recognition program"] },
+  { id: "earner", name: "Earner", cadence: "month", priceEnv: "MEMBERSHIP_PRICE_EARNER", benefits: ["Paid projects", "Marketplace access", "Client opportunities", "Revenue sharing", "Internships"] },
+  { id: "parent", name: "Parent", cadence: "month", priceEnv: "MEMBERSHIP_PRICE_PARENT", benefits: ["Family dashboard", "Progress reports", "Notifications", "Parent workshops", "Community resources"] },
+  { id: "community", name: "Community", cadence: "month", priceEnv: "MEMBERSHIP_PRICE_COMMUNITY", benefits: ["Innovation challenges", "Volunteer network", "Events", "Neighborhood programs", "Digital credentials"] },
+  { id: "volunteer", name: "Volunteer", cadence: "month", priceEnv: "MEMBERSHIP_PRICE_VOLUNTEER", benefits: ["Training", "Scheduling", "Service hours", "Certificates", "Recognition"] },
+  { id: "sponsor", name: "Sponsor", cadence: "year", priceEnv: "MEMBERSHIP_PRICE_SPONSOR", benefits: ["Brand placement", "Impact reports", "Scholarships", "Talent pipeline", "Executive dashboard"] },
+  { id: "donor", name: "Donor", cadence: "year", priceEnv: "MEMBERSHIP_PRICE_DONOR", benefits: ["Community investment", "Scholarship fund", "Equipment fund", "Innovation fund", "Recognition wall"] },
+];
+
+function membershipPlan(id) {
+  return MEMBERSHIP_PLANS.find((plan) => plan.id === safeId(id));
+}
+
+async function loadMembershipCatalog(env) {
+  const key = MEMBERSHIP_PLANS.map((plan) => `${plan.id}:${plan.priceEnv ? String(env[plan.priceEnv] || "") : "free"}`).join("|");
+  const cached = membershipCatalogCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.plans;
+  const plans = await Promise.all(MEMBERSHIP_PLANS.map(async (plan) => {
+    if (plan.id === "explorer") return { ...plan, configured: true, amountCents: 0, currency: "USD", interval: null };
+    const priceId = safeId(env[plan.priceEnv]).slice(0, 120);
+    if (!priceId) return { ...plan, configured: false, amountCents: null, currency: "USD", interval: plan.cadence };
+    try {
+      const price = await stripeGet(env, `/prices/${encodeURIComponent(priceId)}`);
+      const recurring = isPlainObject(price.recurring) ? price.recurring : {};
+      return { ...plan, configured: Boolean(price.active && recurring.interval), amountCents: Number.isSafeInteger(price.unit_amount) ? price.unit_amount : null, currency: safeId(price.currency, "usd").toUpperCase(), interval: safeId(recurring.interval, plan.cadence), intervalCount: Math.max(1, Number(recurring.interval_count || 1)) };
+    } catch {
+      return { ...plan, configured: false, amountCents: null, currency: "USD", interval: plan.cadence };
+    }
+  }));
+  const publicPlans = plans.map(({ priceEnv, ...plan }) => plan);
+  membershipCatalogCache.set(key, { plans: publicPlans, expiresAt: Date.now() + 5 * 60 * 1000 });
+  return publicPlans;
 }
 
 function stripeAccountState(account) {
@@ -173,6 +212,38 @@ async function fulfillPaidMerchOrder(env, input) {
   await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'accrued' WHERE order_id = ? AND status = 'pending_payment'").bind(orderId).run();
   logEvent("info", "merch.order_submitted", { requestId: input.requestId, orderId, tenantId: row.tenant_id, printfulOrderId });
   return { orderId, printfulOrderId, status: "submitted", idempotent: false };
+}
+
+function publicMembershipSubscription(row) {
+  if (!row) return { planId: "explorer", status: "active", currentPeriodEnd: null, cancelAtPeriodEnd: false, managed: false };
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    planId: row.plan_id,
+    status: row.status,
+    currentPeriodEnd: row.current_period_end || null,
+    cancelAtPeriodEnd: Boolean(row.cancel_at_period_end),
+    managed: Boolean(row.stripe_subscription_id),
+  };
+}
+
+async function persistMembershipSubscription(env, input) {
+  if (!env.DB) throw new HttpError(503, "Membership persistence is not configured");
+  await initialize(env.DB);
+  const subscriptionId = safeId(input.subscriptionId).slice(0, 120);
+  const checkoutSessionId = safeId(input.checkoutSessionId).slice(0, 120);
+  const id = subscriptionId || checkoutSessionId;
+  const memberId = safeId(input.memberId).slice(0, 120);
+  const tenantId = safeId(input.tenantId, "tech-at-nite").slice(0, 80);
+  const plan = membershipPlan(input.planId);
+  if (!id || !memberId || !plan || plan.id === "explorer") throw new HttpError(400, "Membership subscription metadata is incomplete");
+  const status = ["trialing", "active", "past_due", "unpaid", "canceled", "incomplete", "incomplete_expired", "paused"].includes(safeId(input.status)) ? safeId(input.status) : "incomplete";
+  const customerId = safeId(input.customerId).slice(0, 120);
+  const currentPeriodEnd = Number(input.currentPeriodEnd) > 0 ? new Date(Number(input.currentPeriodEnd) * 1000).toISOString() : null;
+  const now = new Date().toISOString();
+  await env.DB.prepare("INSERT INTO membership_subscriptions (id, tenant_id, member_id, plan_id, status, stripe_customer_id, stripe_subscription_id, stripe_checkout_session_id, current_period_end, cancel_at_period_end, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET tenant_id = excluded.tenant_id, member_id = excluded.member_id, plan_id = excluded.plan_id, status = excluded.status, stripe_customer_id = excluded.stripe_customer_id, stripe_subscription_id = excluded.stripe_subscription_id, stripe_checkout_session_id = COALESCE(excluded.stripe_checkout_session_id, membership_subscriptions.stripe_checkout_session_id), current_period_end = excluded.current_period_end, cancel_at_period_end = excluded.cancel_at_period_end, updated_at = excluded.updated_at")
+    .bind(id, tenantId, memberId, plan.id, status, customerId || null, subscriptionId || null, checkoutSessionId || null, currentPeriodEnd, input.cancelAtPeriodEnd ? 1 : 0, now, now).run();
+  return { id, tenantId, memberId, planId: plan.id, status };
 }
 const APP_HTML = "__AMX_APP_HTML__";
 const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), display-capture=(self), fullscreen=(self), xr-spatial-tracking=(self)";
@@ -361,10 +432,12 @@ function publicApiRequest(request, url) {
   if (request.method === "GET" && ["/api/health", "/api/ready", "/api/config", "/api/agents/capabilities"].includes(url.pathname)) return true;
   if (request.method === "GET" && url.pathname.startsWith("/api/media/")) return true;
   if (request.method === "GET" && url.pathname === "/api/merch/catalog") return true;
+  if (request.method === "GET" && url.pathname === "/api/membership/catalog") return true;
   if (request.method === "POST" && ["/api/livekit/viewer-token", "/api/analytics/events"].includes(url.pathname)) return true;
   if (request.method === "POST" && url.pathname === "/api/merch/payment-confirmed") return true;
   if (request.method === "POST" && url.pathname === "/api/merch/printful-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/merch/stripe-webhook") return true;
+  if (request.method === "POST" && url.pathname === "/api/membership/stripe-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") return true;
   if (url.pathname.startsWith("/api/pod-invites/")) {
     const segments = url.pathname.split("/").filter(Boolean);
@@ -378,6 +451,7 @@ function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
   if (url.pathname.startsWith("/api/merch/admin/")) return ["operator"];
+  if (url.pathname.startsWith("/api/membership/admin/")) return ["operator"];
   return ["member", "trainer", "operator"];
 }
 
@@ -1457,6 +1531,9 @@ async function initialize(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS merch_payout_transfers (id TEXT PRIMARY KEY, allocation_id TEXT NOT NULL UNIQUE, order_id TEXT NOT NULL, tenant_id TEXT NOT NULL, beneficiary_type TEXT NOT NULL, beneficiary_id TEXT NOT NULL, stripe_account_id TEXT NOT NULL, stripe_transfer_id TEXT UNIQUE, amount_cents INTEGER NOT NULL, currency TEXT NOT NULL, status TEXT NOT NULL, approved_by TEXT NOT NULL, failure_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS merch_payout_transfers_tenant_idx ON merch_payout_transfers (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS merch_connect_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, stripe_object_id TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS membership_subscriptions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, member_id TEXT NOT NULL, plan_id TEXT NOT NULL, status TEXT NOT NULL, stripe_customer_id TEXT, stripe_subscription_id TEXT UNIQUE, stripe_checkout_session_id TEXT UNIQUE, current_period_end TEXT, cancel_at_period_end INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS membership_subscriptions_member_idx ON membership_subscriptions (tenant_id, member_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS membership_webhook_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, stripe_object_id TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS api_rate_limits (bucket_key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, request_count INTEGER NOT NULL, expires_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS api_rate_limits_expiry_idx ON api_rate_limits (expires_at)"),
   ]).catch((error) => {
@@ -1700,6 +1777,86 @@ async function handleApi(request, env, url, requestId) {
         requestId,
       });
   }
+  }
+  if (request.method === "GET" && url.pathname === "/api/membership/catalog") {
+    const plans = await loadMembershipCatalog(env);
+    return reply({ brand: "TECH AT NITE", tagline: "Learn. Build. Ambassador. Earn. Lead.", billingConfigured: Boolean(env.STRIPE_SECRET_KEY), plans, requestId }, 200, { "Cache-Control": "public, max-age=120" });
+  }
+  if (request.method === "GET" && url.pathname === "/api/membership/me") {
+    if (!env.DB) return reply({ subscription: publicMembershipSubscription(null), persisted: false, requestId });
+    await initialize(env.DB);
+    const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    const memberId = safeId(member?.user?.id, "local-member");
+    const row = await env.DB.prepare("SELECT id, tenant_id, plan_id, status, stripe_subscription_id, current_period_end, cancel_at_period_end FROM membership_subscriptions WHERE tenant_id = ? AND member_id = ? ORDER BY CASE WHEN status IN ('active','trialing','past_due') THEN 0 ELSE 1 END, updated_at DESC LIMIT 1").bind(tenantId, memberId).first();
+    return reply({ subscription: publicMembershipSubscription(row), persisted: true, requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/membership/checkout") {
+    if (!env.STRIPE_SECRET_KEY || !env.DB) return reply({ error: "Stripe subscriptions and membership persistence must be configured", requestId }, 503);
+    const body = await readJson(request, 32 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    const memberId = safeId(member?.user?.id, "local-member");
+    const plan = membershipPlan(body.planId);
+    if (!plan || plan.id === "explorer") return reply({ error: "Choose a paid membership plan", requestId }, 400);
+    const priceId = safeId(env[plan.priceEnv]).slice(0, 120);
+    if (!priceId) return reply({ error: `${plan.name} membership is not available for checkout yet`, requestId }, 409);
+    let publicBase;
+    try { publicBase = new URL(String(env.MEMBERSHIP_PUBLIC_BASE_URL || env.MERCH_PUBLIC_BASE_URL)); } catch { return reply({ error: "A valid membership public URL is required", requestId }, 500); }
+    if (publicBase.protocol !== "https:") return reply({ error: "Membership checkout requires an HTTPS public URL", requestId }, 500);
+    const successUrl = new URL("/membership", publicBase); successUrl.searchParams.set("checkout", "success"); successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+    const cancelUrl = new URL("/membership", publicBase); cancelUrl.searchParams.set("checkout", "cancelled");
+    const params = new URLSearchParams({ mode: "subscription", success_url: successUrl.toString(), cancel_url: cancelUrl.toString(), client_reference_id: memberId, "line_items[0][price]": priceId, "line_items[0][quantity]": "1", "metadata[amx_membership_plan]": plan.id, "metadata[amx_member_id]": memberId, "metadata[tenant_id]": tenantId, "subscription_data[metadata][amx_membership_plan]": plan.id, "subscription_data[metadata][amx_member_id]": memberId, "subscription_data[metadata][tenant_id]": tenantId, "allow_promotion_codes": "true" });
+    if (member?.user?.email) params.set("customer_email", safeLabel(member.user.email).slice(0, 160));
+    const session = await stripeRequest(env, "/checkout/sessions", params, `amx-membership-${memberId}-${plan.id}`);
+    if (!/^https:\/\/checkout\.stripe\.com\//i.test(String(session?.url || ""))) throw new HttpError(502, "Stripe did not return a secure membership checkout URL");
+    logEvent("info", "membership.checkout_created", { requestId, tenantId, memberId, planId: plan.id });
+    return reply({ checkoutUrl: session.url, planId: plan.id, requestId }, 201, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/membership/portal") {
+    if (!env.STRIPE_SECRET_KEY || !env.DB) return reply({ error: "Stripe membership management is not configured", requestId }, 503);
+    const body = await readJson(request, 16 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    const memberId = safeId(member?.user?.id, "local-member");
+    await initialize(env.DB);
+    const row = await env.DB.prepare("SELECT stripe_customer_id FROM membership_subscriptions WHERE tenant_id = ? AND member_id = ? AND stripe_customer_id IS NOT NULL ORDER BY updated_at DESC LIMIT 1").bind(tenantId, memberId).first();
+    if (!row?.stripe_customer_id) return reply({ error: "No managed membership subscription was found", requestId }, 404);
+    let publicBase;
+    try { publicBase = new URL(String(env.MEMBERSHIP_PUBLIC_BASE_URL || env.MERCH_PUBLIC_BASE_URL)); } catch { return reply({ error: "A valid membership public URL is required", requestId }, 500); }
+    const portal = await stripeRequest(env, "/billing_portal/sessions", new URLSearchParams({ customer: row.stripe_customer_id, return_url: new URL("/membership", publicBase).toString() }));
+    if (!/^https:\/\/billing\.stripe\.com\//i.test(String(portal?.url || ""))) throw new HttpError(502, "Stripe did not return a secure membership portal URL");
+    return reply({ portalUrl: portal.url, requestId }, 201, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/membership/stripe-webhook") {
+    const rawBody = await request.text();
+    const webhookSecret = env.MEMBERSHIP_STRIPE_WEBHOOK_SECRET || env.STRIPE_WEBHOOK_SECRET;
+    if (!await verifyStripeSignature(rawBody, request.headers.get("Stripe-Signature") || "", webhookSecret)) return reply({ error: "Membership webhook signature is invalid or expired", requestId }, 403);
+    let event; try { event = JSON.parse(rawBody); } catch { return reply({ error: "Membership webhook JSON is invalid", requestId }, 400); }
+    const eventType = String(event.type || "").replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 80);
+    const supported = new Set(["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]);
+    if (!supported.has(eventType)) return reply({ accepted: true, ignored: true, eventType, requestId }, 202);
+    if (!env.DB) return reply({ error: "Membership persistence is required for subscription updates", requestId }, 503);
+    await initialize(env.DB);
+    const eventId = safeId(event.id).slice(0, 120);
+    if (!eventId) return reply({ error: "Stripe membership event id is required", requestId }, 400);
+    const duplicate = await env.DB.prepare("SELECT id FROM membership_webhook_events WHERE id = ? LIMIT 1").bind(eventId).first();
+    if (duplicate) return reply({ accepted: true, duplicate: true, eventType, requestId });
+    const object = isPlainObject(event?.data?.object) ? event.data.object : {};
+    let subscription = object;
+    let checkoutSessionId = "";
+    if (eventType === "checkout.session.completed") {
+      checkoutSessionId = safeId(object.id).slice(0, 120);
+      const subscriptionId = safeId(object.subscription).slice(0, 120);
+      if (!subscriptionId) return reply({ accepted: true, pending: true, eventType, requestId }, 202);
+      subscription = await stripeGet(env, `/subscriptions/${encodeURIComponent(subscriptionId)}`);
+      subscription.metadata = { ...(isPlainObject(subscription.metadata) ? subscription.metadata : {}), ...(isPlainObject(object.metadata) ? object.metadata : {}) };
+    }
+    const metadata = isPlainObject(subscription.metadata) ? subscription.metadata : {};
+    const saved = await persistMembershipSubscription(env, { subscriptionId: subscription.id, checkoutSessionId, customerId: subscription.customer || object.customer, memberId: metadata.amx_member_id || object.client_reference_id, tenantId: metadata.tenant_id, planId: metadata.amx_membership_plan, status: eventType === "customer.subscription.deleted" ? "canceled" : subscription.status, currentPeriodEnd: subscription.current_period_end, cancelAtPeriodEnd: subscription.cancel_at_period_end });
+    await env.DB.prepare("INSERT INTO membership_webhook_events (id, event_type, stripe_object_id, payload, created_at) VALUES (?, ?, ?, ?, ?)").bind(eventId, eventType, safeId(subscription.id).slice(0, 120), JSON.stringify({ memberId: saved.memberId, tenantId: saved.tenantId, planId: saved.planId, status: saved.status }), new Date().toISOString()).run();
+    logEvent("info", "membership.subscription_updated", { requestId, eventType, memberId: saved.memberId, tenantId: saved.tenantId, planId: saved.planId, status: saved.status });
+    return reply({ accepted: true, eventType, planId: saved.planId, status: saved.status, requestId }, 200, { "Cache-Control": "no-store" });
   }
   if (request.method === "GET" && url.pathname === "/api/merch/catalog") {
     const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");

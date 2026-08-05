@@ -26,6 +26,7 @@ AMX AIR Hubs is an installable WebXR/WebAR operations portal for agent-assisted 
 - Runway Characters realtime avatars with microphone, camera, screen context, transcripts, in-world screen routing, and an AMX client-action toolbelt.
 - Tenant-branded 3D digital membership cards with profile QR verification and native sharing.
 - Supabase member accounts with email/password and passwordless entry, private-by-default profiles, public credential links, database roles, and one-time operator invitations.
+- TECH AT NITE membership commerce with ten business-model tiers, Stripe-hosted subscriptions, signed lifecycle webhooks, member billing management, and role-safe entitlements.
 - Supabase Partner Portal with role-governed organizations, email-bound team invitations, branded mission campaigns, QR distribution, attribution funnels, and outcome-report export.
 - Durable Skill Pod showcase invitations with guest roles, expiry, capacity, QR links, acceptance lobbies, and owner-key revocation.
 - Above-the-fold Nexus workspace with a persistent 3D world, task-scoped NPC/Avatar/Pod/Media/Vision rail, pinned action feedback, and independent mobile control scrolling.
