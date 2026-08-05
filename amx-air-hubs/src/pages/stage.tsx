@@ -325,6 +325,7 @@ export function AMXXRStagePage() {
     name: "",
     headline: "",
     cta: "VISIT THE SPONSOR",
+    ctaUrl: "",
     accent: "#55e6ff",
     logoUrl: "",
     mediaUrl: "",
@@ -943,6 +944,7 @@ export function AMXXRStagePage() {
       name: "",
       headline: "",
       cta: "VISIT THE SPONSOR",
+      ctaUrl: "",
       accent: "#55e6ff",
       logoUrl: "",
       mediaUrl: "",
@@ -2390,6 +2392,14 @@ export function AMXXRStagePage() {
                       value={sponsorDraft.mediaUrl}
                       placeholder="https://brand.example/spot.mp4"
                       onChange={(event) => setSponsorDraft((current) => ({ ...current, mediaUrl: event.target.value }))}
+                    />
+                  </label>
+                  <label className="wide">
+                    CTA destination
+                    <input
+                      value={sponsorDraft.ctaUrl}
+                      placeholder="/events/event-name/merch"
+                      onChange={(event) => setSponsorDraft((current) => ({ ...current, ctaUrl: event.target.value }))}
                     />
                   </label>
                   <label>

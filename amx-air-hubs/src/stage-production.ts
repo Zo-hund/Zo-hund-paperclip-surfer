@@ -27,6 +27,7 @@ export interface SponsorCreative {
   name: string;
   headline: string;
   cta: string;
+  ctaUrl?: string;
   accent: string;
   logoUrl?: string;
   mediaUrl?: string;
@@ -75,6 +76,7 @@ export const DEFAULT_SPONSORS: SponsorCreative[] = [
   { id: "amx-air", name: "AMX AIR HUBS.CC", headline: "Create. Curate. Connect.", cta: "ENTER THE XR RUNWAY", accent: "#55e6ff" },
   { id: "amx-labs", name: "AMX LABS", headline: "Human Agentic AI in the real world", cta: "BUILD WITH THE LAB", accent: "#f4c96b" },
   { id: "tech-at-nite", name: "TECH AT NITE", headline: "Skills, community, and creative technology", cta: "JOIN THE NEXT COHORT", accent: "#79eea8" },
+  { id: "amx-merch", name: "AMX CREATOR COLLECTION", headline: "Wear the work. Fund the runway.", cta: "SHOP EVENT MERCH", ctaUrl: "/marketplace/merch", accent: "#79eea8", logoUrl: "/merch/amx-merch-collection.png", durationSeconds: 18, animation: "slide", stingerTrack: "sponsor-sting" },
 ];
 
 export const DEFAULT_CAMERA_ROUTES: Record<StageShot, string> = {

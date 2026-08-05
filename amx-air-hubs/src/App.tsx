@@ -13,6 +13,7 @@ import { RuntimeStatusPage } from "./pages/runtime-status";
 import { ConnectionsPage } from "./pages/connections";
 import { PodInvitePage } from "./pages/invites";
 import { AccountPage, PublicMemberProfilePage } from "./pages/account";
+import { MerchOrdersPage, MerchStorefrontPage } from "./pages/merch";
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
 import { RequireMember } from "./member-auth";
 import {
@@ -50,6 +51,9 @@ function ShellRoutes() {
     <Route path="/profile/deployments" element={<RequireMember>{deferred(<PathfinderPassportPage view="deployments"/>)}</RequireMember>}/>
     <Route path="/profile/toolbelt" element={<RequireMember>{deferred(<PathfinderPassportPage/>)}</RequireMember>}/>
     <Route path="/marketplace" element={<RequireMember><MarketplacePage/></RequireMember>}/>
+    <Route path="/marketplace/merch" element={<MerchStorefrontPage/>}/>
+    <Route path="/events/:eventId/merch" element={<MerchStorefrontPage/>}/>
+    <Route path="/account/orders" element={<RequireMember><MerchOrdersPage/></RequireMember>}/>
     <Route path="/pods" element={<RequireMember><PodsPage/></RequireMember>}/>
     <Route path="/partners" element={<RequireMember><PartnerPortalPage/></RequireMember>}/>
     <Route path="/partners/join" element={<RequireMember><PartnerJoinPage/></RequireMember>}/>

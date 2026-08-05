@@ -2,6 +2,178 @@ const rateBuckets = new Map();
 const ephemeralRooms = new Map();
 const memberSessionCache = new Map();
 let databaseInitialization;
+const printfulCatalogCache = new Map();
+const PRINTFUL_API_BASE = "https://api.printful.com";
+const STRIPE_API_BASE = "https://api.stripe.com/v1";
+const STRIPE_API_VERSION = "2025-02-24.acacia";
+
+async function stripeRequest(env, path, params, idempotencyKey) {
+  if (!env.STRIPE_SECRET_KEY) throw new HttpError(503, "Stripe Checkout is not configured");
+  const response = await fetch(`${STRIPE_API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${String(env.STRIPE_SECRET_KEY)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Stripe-Version": STRIPE_API_VERSION,
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+    },
+    body: params.toString(),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    logEvent("warn", "stripe.request_failed", { path, status: response.status, type: safeId(payload?.error?.type) });
+    throw new HttpError(response.status === 429 ? 429 : 502, response.status === 429 ? "Stripe request limit reached" : "Secure checkout could not be created");
+  }
+  return payload;
+}
+
+async function stripeGet(env, path, params = new URLSearchParams()) {
+  if (!env.STRIPE_SECRET_KEY) throw new HttpError(503, "Stripe is not configured");
+  const target = new URL(`${STRIPE_API_BASE}${path}`);
+  for (const [key, value] of params) target.searchParams.append(key, value);
+  const response = await fetch(target, {
+    headers: { Authorization: `Bearer ${String(env.STRIPE_SECRET_KEY)}`, "Stripe-Version": STRIPE_API_VERSION, Accept: "application/json" },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    logEvent("warn", "stripe.request_failed", { path, status: response.status, type: safeId(payload?.error?.type) });
+    throw new HttpError(response.status === 429 ? 429 : 502, response.status === 429 ? "Stripe request limit reached" : "Stripe account request failed");
+  }
+  return payload;
+}
+
+function stripeAccountState(account) {
+  const requirementsDue = Array.isArray(account?.requirements?.currently_due) ? account.requirements.currently_due.map((item) => safeLabel(item).slice(0, 120)).slice(0, 30) : [];
+  const detailsSubmitted = Boolean(account?.details_submitted);
+  const chargesEnabled = Boolean(account?.charges_enabled);
+  const payoutsEnabled = Boolean(account?.payouts_enabled);
+  const onboardingStatus = payoutsEnabled && detailsSubmitted ? "active" : account?.requirements?.disabled_reason ? "disabled" : detailsSubmitted ? "restricted" : "pending";
+  return { detailsSubmitted, chargesEnabled, payoutsEnabled, requirementsDue, onboardingStatus };
+}
+
+function secureHexEqual(left, right) {
+  if (!left || left.length !== right.length || !/^[a-f0-9]+$/i.test(left) || !/^[a-f0-9]+$/i.test(right)) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index += 1) mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return mismatch === 0;
+}
+
+async function verifyStripeSignature(rawBody, signatureHeader, secret) {
+  if (!rawBody || !signatureHeader || !secret) return false;
+  const parts = String(signatureHeader).split(",").map((part) => part.trim().split("="));
+  const timestamp = Number(parts.find(([key]) => key === "t")?.[1]);
+  const signatures = parts.filter(([key]) => key === "v1").map(([, value]) => value);
+  if (!Number.isFinite(timestamp) || Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300 || !signatures.length) return false;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(secret)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${rawBody}`));
+  const expected = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return signatures.some((signature) => secureHexEqual(signature, expected));
+}
+
+function printfulHeaders(env) {
+  const headers = { Authorization: `Bearer ${String(env.PRINTFUL_API_TOKEN || "")}`, Accept: "application/json" };
+  if (env.PRINTFUL_STORE_ID) headers["X-PF-Store-Id"] = String(env.PRINTFUL_STORE_ID);
+  return headers;
+}
+
+async function printfulRequest(env, path, init = {}) {
+  if (!env.PRINTFUL_API_TOKEN) throw new HttpError(503, "Printful fulfillment is not configured");
+  const response = await fetch(`${PRINTFUL_API_BASE}${path}`, { ...init, headers: { ...printfulHeaders(env), ...(init.body ? { "Content-Type": "application/json" } : {}), ...init.headers } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    logEvent("warn", "printful.request_failed", { path, status: response.status });
+    throw new HttpError(response.status === 429 ? 429 : 502, response.status === 429 ? "Printful request limit reached" : "Printful service request failed");
+  }
+  return payload?.result ?? payload;
+}
+
+function normalizePrintfulProduct(item) {
+  const variants = Array.isArray(item?.sync_variants) ? item.sync_variants : [];
+  const thumbnail = safeLabel(item?.sync_product?.thumbnail_url || item?.thumbnail_url, "/merch/amx-merch-collection.png");
+  return {
+    id: String(item?.sync_product?.id || item?.id || "").slice(0, 80),
+    name: safeLabel(item?.sync_product?.name || item?.name, "AMX Creator Product").slice(0, 120),
+    description: "Made-to-order AMX creator merchandise fulfilled by Printful.",
+    category: "apparel",
+    imageUrl: /^https:\/\//i.test(thumbnail) ? thumbnail : "/merch/amx-merch-collection.png",
+    partnerName: "Community Runway",
+    collectiveSharePercent: 15,
+    variants: variants.map((variant) => ({
+      id: String(variant.id || "").slice(0, 80),
+      name: safeLabel(variant.name, "Standard").slice(0, 120),
+      priceCents: Math.max(0, Math.round(Number(variant.retail_price || 0) * 100)),
+      currency: safeId(variant.currency, "USD").toUpperCase().slice(0, 3),
+      available: Boolean(variant.id),
+    })).filter((variant) => variant.id),
+  };
+}
+
+async function loadPrintfulCatalog(env) {
+  const cacheKey = String(env.PRINTFUL_STORE_ID || "default");
+  const cached = printfulCatalogCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.products;
+  const listed = await printfulRequest(env, "/store/products?status=synced&limit=24");
+  const summaries = Array.isArray(listed) ? listed.slice(0, 12) : [];
+  const details = await Promise.all(summaries.map((item) => printfulRequest(env, `/store/products/${encodeURIComponent(item.id)}`)));
+  const products = details.map(normalizePrintfulProduct).filter((product) => product.id && product.variants.length);
+  printfulCatalogCache.set(cacheKey, { products, expiresAt: Date.now() + 5 * 60 * 1000 });
+  return products;
+}
+
+function normalizeMerchItems(value) {
+  if (!Array.isArray(value) || !value.length || value.length > 20) throw new HttpError(400, "One to twenty merchandise items are required");
+  return value.map((item) => {
+    const productId = safeId(item?.productId).slice(0, 80);
+    const variantId = safeId(item?.variantId).slice(0, 80);
+    const quantity = Math.max(1, Math.min(10, Math.floor(Number(item?.quantity || 1))));
+    if (!productId || !variantId) throw new HttpError(400, "Every merchandise item requires a product and variant");
+    return { productId, variantId, quantity };
+  });
+}
+
+async function fulfillPaidMerchOrder(env, input) {
+  if (!env.PRINTFUL_API_TOKEN || !env.DB) throw new HttpError(503, "Merchandise fulfillment is not fully configured");
+  const orderId = safeId(input.orderId).slice(0, 80);
+  const paymentReference = safeLabel(input.paymentReference).slice(0, 160);
+  if (!orderId || !paymentReference) throw new HttpError(400, "orderId and paymentReference are required");
+  await initialize(env.DB);
+  const row = await env.DB.prepare("SELECT id, tenant_id, status, currency, total_cents, printful_order_id, payload FROM merch_orders WHERE id = ? LIMIT 1").bind(orderId).first();
+  if (!row) throw new HttpError(404, "Merchandise order was not found");
+  if (row.printful_order_id) return { orderId, printfulOrderId: row.printful_order_id, status: row.status, idempotent: true };
+  if (row.status !== "pending_payment") throw new HttpError(409, "Merchandise order cannot be fulfilled from its current state");
+  const amountCents = Math.round(Number(input.amountCents));
+  const currency = safeId(input.currency, "USD").toUpperCase();
+  if (amountCents !== Number(row.total_cents) || currency !== row.currency) throw new HttpError(409, "Confirmed payment does not match the merchandise order");
+  const sourceRecipient = isPlainObject(input.recipient) ? input.recipient : {};
+  const recipient = {
+    name: safeLabel(sourceRecipient.name).slice(0, 120),
+    address1: safeLabel(sourceRecipient.address1).slice(0, 180),
+    address2: safeLabel(sourceRecipient.address2).slice(0, 180),
+    city: safeLabel(sourceRecipient.city).slice(0, 100),
+    state_code: safeLabel(sourceRecipient.stateCode).slice(0, 32),
+    country_code: safeId(sourceRecipient.countryCode).toUpperCase().slice(0, 2),
+    zip: safeLabel(sourceRecipient.zip).slice(0, 24),
+    phone: safeLabel(sourceRecipient.phone).slice(0, 32),
+    email: safeLabel(sourceRecipient.email).slice(0, 160),
+  };
+  if (!recipient.name || !recipient.address1 || !recipient.city || !recipient.country_code || !recipient.zip) throw new HttpError(400, "A complete shipping recipient is required");
+  let payload = {}; try { payload = JSON.parse(row.payload || "{}"); } catch {}
+  const items = Array.isArray(payload.items) ? payload.items.map((item) => ({
+    sync_variant_id: Number(item.variantId),
+    quantity: Math.max(1, Math.min(10, Math.floor(Number(item.quantity || 1)))),
+    retail_price: (Number(item.unitPriceCents || 0) / 100).toFixed(2),
+  })).filter((item) => Number.isSafeInteger(item.sync_variant_id) && item.sync_variant_id > 0) : [];
+  if (!items.length) throw new HttpError(409, "The merchandise order has no fulfillable Printful variants");
+  const printfulOrder = await printfulRequest(env, "/orders?confirm=true", { method: "POST", body: JSON.stringify({ external_id: orderId, recipient, items }) });
+  const printfulOrderId = String(printfulOrder?.id || "").slice(0, 80);
+  if (!printfulOrderId) throw new HttpError(502, "Printful did not return an order id");
+  const now = new Date().toISOString();
+  await env.DB.prepare("UPDATE merch_orders SET status = 'submitted', printful_order_id = ?, payload = ?, updated_at = ? WHERE id = ? AND status = 'pending_payment'")
+    .bind(printfulOrderId, JSON.stringify({ ...payload, paymentReference }), now, orderId).run();
+  await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'accrued' WHERE order_id = ? AND status = 'pending_payment'").bind(orderId).run();
+  logEvent("info", "merch.order_submitted", { requestId: input.requestId, orderId, tenantId: row.tenant_id, printfulOrderId });
+  return { orderId, printfulOrderId, status: "submitted", idempotent: false };
+}
 const APP_HTML = "__AMX_APP_HTML__";
 const CAPABILITY_POLICY = "camera=(self), microphone=(self), geolocation=(self), display-capture=(self), fullscreen=(self), xr-spatial-tracking=(self)";
 const SERVICE_VERSION = "1.1.0";
@@ -188,7 +360,11 @@ function memberAuthRequired(env) {
 function publicApiRequest(request, url) {
   if (request.method === "GET" && ["/api/health", "/api/ready", "/api/config", "/api/agents/capabilities"].includes(url.pathname)) return true;
   if (request.method === "GET" && url.pathname.startsWith("/api/media/")) return true;
+  if (request.method === "GET" && url.pathname === "/api/merch/catalog") return true;
   if (request.method === "POST" && ["/api/livekit/viewer-token", "/api/analytics/events"].includes(url.pathname)) return true;
+  if (request.method === "POST" && url.pathname === "/api/merch/payment-confirmed") return true;
+  if (request.method === "POST" && url.pathname === "/api/merch/printful-webhook") return true;
+  if (request.method === "POST" && url.pathname === "/api/merch/stripe-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") return true;
   if (url.pathname.startsWith("/api/pod-invites/")) {
     const segments = url.pathname.split("/").filter(Boolean);
@@ -201,6 +377,7 @@ function publicApiRequest(request, url) {
 function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
+  if (url.pathname.startsWith("/api/merch/admin/")) return ["operator"];
   return ["member", "trainer", "operator"];
 }
 
@@ -1269,6 +1446,17 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS project_learning_lookup_idx ON project_learning_state (tenant_id, project_id, learner_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS stage_workflows (tenant_id TEXT NOT NULL, room_code TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL, PRIMARY KEY (tenant_id, room_code))"),
     db.prepare("CREATE INDEX IF NOT EXISTS stage_workflows_updated_idx ON stage_workflows (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS merch_orders (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, member_id TEXT NOT NULL, event_id TEXT, status TEXT NOT NULL, currency TEXT NOT NULL, total_cents INTEGER NOT NULL, checkout_url TEXT, printful_order_id TEXT, tracking_url TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS merch_orders_member_idx ON merch_orders (tenant_id, member_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS merch_revenue_allocations (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, tenant_id TEXT NOT NULL, beneficiary_type TEXT NOT NULL, beneficiary_id TEXT NOT NULL, share_basis_points INTEGER NOT NULL, amount_cents INTEGER, status TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS merch_allocations_order_idx ON merch_revenue_allocations (tenant_id, order_id)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS merch_webhook_events (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, event_type TEXT NOT NULL, store_id TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS merch_webhook_order_idx ON merch_webhook_events (order_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS merch_payout_profiles (tenant_id TEXT NOT NULL, beneficiary_type TEXT NOT NULL, beneficiary_id TEXT NOT NULL, display_name TEXT NOT NULL, contact_email TEXT, stripe_account_id TEXT NOT NULL UNIQUE, onboarding_status TEXT NOT NULL, details_submitted INTEGER NOT NULL DEFAULT 0, charges_enabled INTEGER NOT NULL DEFAULT 0, payouts_enabled INTEGER NOT NULL DEFAULT 0, requirements_due TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, beneficiary_type, beneficiary_id))"),
+    db.prepare("CREATE INDEX IF NOT EXISTS merch_payout_profiles_tenant_idx ON merch_payout_profiles (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS merch_payout_transfers (id TEXT PRIMARY KEY, allocation_id TEXT NOT NULL UNIQUE, order_id TEXT NOT NULL, tenant_id TEXT NOT NULL, beneficiary_type TEXT NOT NULL, beneficiary_id TEXT NOT NULL, stripe_account_id TEXT NOT NULL, stripe_transfer_id TEXT UNIQUE, amount_cents INTEGER NOT NULL, currency TEXT NOT NULL, status TEXT NOT NULL, approved_by TEXT NOT NULL, failure_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS merch_payout_transfers_tenant_idx ON merch_payout_transfers (tenant_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS merch_connect_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, stripe_object_id TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE TABLE IF NOT EXISTS api_rate_limits (bucket_key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, request_count INTEGER NOT NULL, expires_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS api_rate_limits_expiry_idx ON api_rate_limits (expires_at)"),
   ]).catch((error) => {
@@ -1511,8 +1699,390 @@ async function handleApi(request, env, url, requestId) {
         output: error instanceof Error ? error.message : "Tool execution failed",
         requestId,
       });
+  }
+  }
+  if (request.method === "GET" && url.pathname === "/api/merch/catalog") {
+    const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    if (!env.PRINTFUL_API_TOKEN) return reply({ configured: false, checkoutConfigured: false, source: "preview", products: [], message: "Connect PRINTFUL_API_TOKEN to load synchronized products.", requestId });
+    const products = await loadPrintfulCatalog(env);
+    const stripeCheckout = Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.MERCH_PUBLIC_BASE_URL && env.DB);
+    return reply({ configured: true, checkoutConfigured: stripeCheckout || Boolean(env.MERCH_CHECKOUT_URL), checkoutProvider: stripeCheckout ? "stripe" : env.MERCH_CHECKOUT_URL ? "hosted" : "none", source: "printful", products, requestId }, 200, { "Cache-Control": "private, max-age=120" });
+  }
+  if (request.method === "GET" && url.pathname === "/api/merch/orders") {
+    const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    if (!env.DB) return reply({ orders: [], persisted: false, requestId });
+    await initialize(env.DB);
+    const memberId = safeId(member?.user?.id, "local-member");
+    const result = await env.DB.prepare("SELECT id, event_id, status, currency, total_cents, tracking_url, payload, created_at FROM merch_orders WHERE tenant_id = ? AND member_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId, memberId).all();
+    const orders = result.results.map((row) => {
+      let payload = {}; try { payload = JSON.parse(row.payload || "{}"); } catch {}
+      return { id: row.id, eventId: row.event_id || undefined, status: row.status, currency: row.currency, totalCents: row.total_cents, trackingUrl: row.tracking_url || undefined, items: Array.isArray(payload.items) ? payload.items : [], createdAt: row.created_at };
+    });
+    return reply({ orders, persisted: true, requestId });
+  }
+  if (request.method === "GET" && url.pathname === "/api/merch/admin/status") {
+    const runtime = {
+      tokenConfigured: Boolean(env.PRINTFUL_API_TOKEN),
+      storeConfigured: Boolean(env.PRINTFUL_STORE_ID),
+      checkoutConfigured: Boolean(env.STRIPE_SECRET_KEY || env.MERCH_CHECKOUT_URL),
+      stripeConfigured: Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET),
+      paymentWebhookConfigured: Boolean(env.MERCH_PAYMENT_WEBHOOK_TOKEN),
+      fulfillmentWebhookConfigured: Boolean(env.MERCH_PRINTFUL_WEBHOOK_TOKEN && env.MERCH_PUBLIC_BASE_URL),
+      databaseConfigured: Boolean(env.DB),
+    };
+    if (!env.PRINTFUL_API_TOKEN) return reply({ runtime, printful: { connected: false, webhookConfigured: false, eventTypes: [] }, requestId });
+    try {
+      const webhook = await printfulRequest(env, "/webhooks");
+      let callbackHost = "";
+      try { callbackHost = new URL(String(webhook?.url || "")).host; } catch {}
+      return reply({ runtime, printful: { connected: true, webhookConfigured: Boolean(webhook?.url), callbackHost, eventTypes: Array.isArray(webhook?.types) ? webhook.types : [] }, requestId });
+    } catch (error) {
+      return reply({ runtime, printful: { connected: false, webhookConfigured: false, eventTypes: [], error: error instanceof Error ? error.message : "Printful status is unavailable" }, requestId });
     }
   }
+  if (request.method === "POST" && url.pathname === "/api/merch/admin/configure-webhook") {
+    if (!env.PRINTFUL_API_TOKEN || !env.MERCH_PRINTFUL_WEBHOOK_TOKEN || !env.MERCH_PUBLIC_BASE_URL) return reply({ error: "Printful token, public base URL, and fulfillment webhook token are required", requestId }, 503);
+    let callback;
+    try {
+      callback = new URL("/api/merch/printful-webhook", String(env.MERCH_PUBLIC_BASE_URL));
+      if (callback.protocol !== "https:") throw new Error("HTTPS required");
+    } catch {
+      return reply({ error: "MERCH_PUBLIC_BASE_URL must be a valid HTTPS origin", requestId }, 500);
+    }
+    callback.searchParams.set("token", String(env.MERCH_PRINTFUL_WEBHOOK_TOKEN));
+    const eventTypes = ["package_shipped", "package_returned", "order_failed", "order_canceled", "order_put_hold", "order_put_hold_approval", "order_remove_hold"];
+    await printfulRequest(env, "/webhooks", { method: "POST", body: JSON.stringify({ url: callback.toString(), types: eventTypes }) });
+    return reply({ configured: true, callbackHost: callback.host, eventTypes, requestId }, 201, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "GET" && url.pathname === "/api/merch/admin/payouts") {
+    if (!env.DB) return reply({ error: "Payout persistence is not configured", requestId }, 503);
+    const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    await initialize(env.DB);
+    const profilesResult = await env.DB.prepare("SELECT tenant_id, beneficiary_type, beneficiary_id, display_name, contact_email, stripe_account_id, onboarding_status, details_submitted, charges_enabled, payouts_enabled, requirements_due, updated_at FROM merch_payout_profiles WHERE tenant_id = ? ORDER BY display_name ASC LIMIT 100").bind(tenantId).all();
+    const allocationsResult = await env.DB.prepare("SELECT allocation.id, allocation.order_id, allocation.beneficiary_type, allocation.beneficiary_id, allocation.amount_cents, allocation.status, merch_order.currency, merch_order.event_id, merch_order.created_at, profile.display_name, profile.onboarding_status, profile.payouts_enabled, payout.stripe_transfer_id, payout.status AS transfer_status FROM merch_revenue_allocations allocation JOIN merch_orders merch_order ON merch_order.id = allocation.order_id LEFT JOIN merch_payout_profiles profile ON profile.tenant_id = allocation.tenant_id AND profile.beneficiary_type = allocation.beneficiary_type AND profile.beneficiary_id = allocation.beneficiary_id LEFT JOIN merch_payout_transfers payout ON payout.allocation_id = allocation.id WHERE allocation.tenant_id = ? AND allocation.status IN ('payable','paid') ORDER BY merch_order.created_at DESC LIMIT 200").bind(tenantId).all();
+    const profiles = profilesResult.results.map((row) => {
+      let requirementsDue = []; try { requirementsDue = JSON.parse(row.requirements_due || "[]"); } catch {}
+      return { tenantId: row.tenant_id, beneficiaryType: row.beneficiary_type, beneficiaryId: row.beneficiary_id, displayName: row.display_name, contactEmail: row.contact_email || "", stripeAccountId: row.stripe_account_id, onboardingStatus: row.onboarding_status, detailsSubmitted: Boolean(row.details_submitted), chargesEnabled: Boolean(row.charges_enabled), payoutsEnabled: Boolean(row.payouts_enabled), requirementsDue: Array.isArray(requirementsDue) ? requirementsDue : [], updatedAt: row.updated_at };
+    });
+    const allocations = allocationsResult.results.map((row) => ({ id: row.id, orderId: row.order_id, beneficiaryType: row.beneficiary_type, beneficiaryId: row.beneficiary_id, displayName: row.display_name || row.beneficiary_id, amountCents: Number(row.amount_cents || 0), currency: row.currency, allocationStatus: row.status, onboardingStatus: row.onboarding_status || "not_started", payoutsEnabled: Boolean(row.payouts_enabled), stripeTransferId: row.stripe_transfer_id || undefined, transferStatus: row.transfer_status || undefined, eventId: row.event_id || undefined, createdAt: row.created_at }));
+    return reply({ tenantId, connectConfigured: Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET), profiles, allocations, requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/merch/admin/connect/onboard") {
+    if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET || !env.DB) return reply({ error: "Stripe Connect and payout persistence must be configured", requestId }, 503);
+    const body = await readJson(request, 32 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    const beneficiaryTypes = new Set(["creator", "partner", "organization", "community_fund"]);
+    const beneficiaryType = safeId(body.beneficiaryType, "partner");
+    const beneficiaryId = safeId(body.beneficiaryId).slice(0, 100);
+    const displayName = safeLabel(body.displayName).slice(0, 120);
+    const contactEmail = safeLabel(body.contactEmail).toLowerCase().slice(0, 160);
+    if (!beneficiaryTypes.has(beneficiaryType) || !beneficiaryId || !displayName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) throw new HttpError(400, "A valid beneficiary type, id, name, and email are required");
+    await initialize(env.DB);
+    const existing = await env.DB.prepare("SELECT stripe_account_id FROM merch_payout_profiles WHERE tenant_id = ? AND beneficiary_type = ? AND beneficiary_id = ? LIMIT 1").bind(tenantId, beneficiaryType, beneficiaryId).first();
+    let account;
+    if (existing?.stripe_account_id) account = await stripeGet(env, `/accounts/${encodeURIComponent(existing.stripe_account_id)}`);
+    else {
+      const params = new URLSearchParams({ type: "express", email: contactEmail, "metadata[amx_tenant_id]": tenantId, "metadata[amx_beneficiary_type]": beneficiaryType, "metadata[amx_beneficiary_id]": beneficiaryId, "business_profile[product_description]": "AMX AIR Hubs creator, event, and community merchandise revenue share" });
+      account = await stripeRequest(env, "/accounts", params, `amx-connect-${tenantId}-${beneficiaryType}-${beneficiaryId}`.slice(0, 240));
+    }
+    const stripeAccountId = safeLabel(account?.id).slice(0, 120);
+    if (!/^acct_[A-Za-z0-9]+$/.test(stripeAccountId)) throw new HttpError(502, "Stripe did not return a connected account");
+    const state = stripeAccountState(account);
+    const now = new Date().toISOString();
+    await env.DB.prepare("INSERT INTO merch_payout_profiles (tenant_id, beneficiary_type, beneficiary_id, display_name, contact_email, stripe_account_id, onboarding_status, details_submitted, charges_enabled, payouts_enabled, requirements_due, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (tenant_id, beneficiary_type, beneficiary_id) DO UPDATE SET display_name = excluded.display_name, contact_email = excluded.contact_email, stripe_account_id = excluded.stripe_account_id, onboarding_status = excluded.onboarding_status, details_submitted = excluded.details_submitted, charges_enabled = excluded.charges_enabled, payouts_enabled = excluded.payouts_enabled, requirements_due = excluded.requirements_due, updated_at = excluded.updated_at")
+      .bind(tenantId, beneficiaryType, beneficiaryId, displayName, contactEmail, stripeAccountId, state.onboardingStatus, Number(state.detailsSubmitted), Number(state.chargesEnabled), Number(state.payoutsEnabled), JSON.stringify(state.requirementsDue), now, now).run();
+    let publicBase;
+    try { publicBase = new URL(String(env.MERCH_PUBLIC_BASE_URL)); } catch { throw new HttpError(500, "MERCH_PUBLIC_BASE_URL must be a valid HTTPS origin"); }
+    if (publicBase.protocol !== "https:") throw new HttpError(500, "MERCH_PUBLIC_BASE_URL must use HTTPS");
+    const refreshUrl = new URL("/connections", publicBase); refreshUrl.searchParams.set("connect", "stripe"); refreshUrl.searchParams.set("state", "refresh"); refreshUrl.searchParams.set("beneficiary", beneficiaryId);
+    const returnUrl = new URL("/connections", publicBase); returnUrl.searchParams.set("connect", "stripe"); returnUrl.searchParams.set("state", "complete");
+    const link = await stripeRequest(env, "/account_links", new URLSearchParams({ account: stripeAccountId, refresh_url: refreshUrl.toString(), return_url: returnUrl.toString(), type: "account_onboarding" }), `amx-connect-link-${crypto.randomUUID()}`);
+    if (!/^https:\/\/connect\.stripe\.com\//i.test(String(link?.url || ""))) throw new HttpError(502, "Stripe did not return a secure onboarding URL");
+    logEvent("info", "merch.connect_onboarding_created", { requestId, tenantId, beneficiaryType, beneficiaryId, stripeAccountId });
+    return reply({ beneficiaryId, stripeAccountId, onboardingStatus: state.onboardingStatus, onboardingUrl: String(link.url), requestId }, existing ? 200 : 201, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/merch/admin/connect/dashboard") {
+    if (!env.STRIPE_SECRET_KEY || !env.DB) return reply({ error: "Stripe Connect is not configured", requestId }, 503);
+    const body = await readJson(request, 16 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    const beneficiaryType = safeId(body.beneficiaryType, "partner");
+    const beneficiaryId = safeId(body.beneficiaryId).slice(0, 100);
+    await verifyTenantAccess(member, env, tenantId);
+    await initialize(env.DB);
+    const profile = await env.DB.prepare("SELECT stripe_account_id FROM merch_payout_profiles WHERE tenant_id = ? AND beneficiary_type = ? AND beneficiary_id = ? LIMIT 1").bind(tenantId, beneficiaryType, beneficiaryId).first();
+    if (!profile?.stripe_account_id) throw new HttpError(404, "The payout profile has not started Stripe onboarding");
+    const link = await stripeRequest(env, `/accounts/${encodeURIComponent(profile.stripe_account_id)}/login_links`, new URLSearchParams(), `amx-connect-login-${crypto.randomUUID()}`);
+    if (!/^https:\/\/connect\.stripe\.com\//i.test(String(link?.url || ""))) throw new HttpError(502, "Stripe did not return a secure dashboard URL");
+    return reply({ dashboardUrl: String(link.url), requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  const payoutReleaseMatch = url.pathname.match(/^\/api\/merch\/admin\/payouts\/([A-Za-z0-9_-]{1,100})\/release$/);
+  if (request.method === "POST" && payoutReleaseMatch) {
+    if (!env.STRIPE_SECRET_KEY || !env.DB) return reply({ error: "Stripe Connect and payout persistence must be configured", requestId }, 503);
+    const allocationId = safeId(payoutReleaseMatch[1]).slice(0, 100);
+    const body = await readJson(request, 16 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    await initialize(env.DB);
+    const allocation = await env.DB.prepare("SELECT allocation.id, allocation.order_id, allocation.tenant_id, allocation.beneficiary_type, allocation.beneficiary_id, allocation.amount_cents, allocation.status, merch_order.currency, merch_order.total_cents, merch_order.payload AS order_payload, profile.stripe_account_id, profile.onboarding_status, profile.details_submitted, profile.payouts_enabled FROM merch_revenue_allocations allocation JOIN merch_orders merch_order ON merch_order.id = allocation.order_id LEFT JOIN merch_payout_profiles profile ON profile.tenant_id = allocation.tenant_id AND profile.beneficiary_type = allocation.beneficiary_type AND profile.beneficiary_id = allocation.beneficiary_id WHERE allocation.id = ? AND allocation.tenant_id = ? LIMIT 1").bind(allocationId, tenantId).first();
+    if (!allocation) throw new HttpError(404, "The revenue allocation was not found");
+    const previous = await env.DB.prepare("SELECT id, stripe_transfer_id, status FROM merch_payout_transfers WHERE allocation_id = ? LIMIT 1").bind(allocationId).first();
+    if (previous?.stripe_transfer_id) return reply({ allocationId, transferId: previous.stripe_transfer_id, status: previous.status, idempotent: true, requestId }, 200, { "Cache-Control": "no-store" });
+    if (allocation.status !== "payable") throw new HttpError(409, "Only shipped-order allocations can be released");
+    if (!allocation.stripe_account_id || allocation.onboarding_status !== "active" || !Boolean(allocation.details_submitted) || !Boolean(allocation.payouts_enabled)) throw new HttpError(409, "The beneficiary must complete Stripe payout onboarding before release");
+    const amountCents = Math.round(Number(allocation.amount_cents));
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || amountCents > Number(allocation.total_cents)) throw new HttpError(409, "The payout allocation amount is invalid");
+    let orderPayload = {}; try { orderPayload = JSON.parse(allocation.order_payload || "{}"); } catch {}
+    const paymentReference = safeLabel(orderPayload.paymentReference).slice(0, 160);
+    let sourceTransaction = "";
+    if (/^pi_[A-Za-z0-9]+$/.test(paymentReference)) {
+      const paymentIntent = await stripeGet(env, `/payment_intents/${encodeURIComponent(paymentReference)}`);
+      sourceTransaction = safeLabel(typeof paymentIntent?.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent?.latest_charge?.id).slice(0, 120);
+    }
+    const now = new Date().toISOString();
+    const transferRecordId = previous?.id || crypto.randomUUID();
+    const approvedBy = safeId(member?.user?.id, "local-operator");
+    if (!previous) await env.DB.prepare("INSERT INTO merch_payout_transfers (id, allocation_id, order_id, tenant_id, beneficiary_type, beneficiary_id, stripe_account_id, stripe_transfer_id, amount_cents, currency, status, approved_by, failure_reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(transferRecordId, allocationId, allocation.order_id, tenantId, allocation.beneficiary_type, allocation.beneficiary_id, allocation.stripe_account_id, null, amountCents, allocation.currency, "pending", approvedBy, null, now, now).run();
+    const params = new URLSearchParams({ amount: String(amountCents), currency: safeId(allocation.currency, "USD").toLowerCase(), destination: allocation.stripe_account_id, transfer_group: `AMX_${allocation.order_id}`, "metadata[amx_order_id]": allocation.order_id, "metadata[amx_allocation_id]": allocationId, "metadata[amx_tenant_id]": tenantId });
+    if (/^ch_[A-Za-z0-9]+$/.test(sourceTransaction)) params.set("source_transaction", sourceTransaction);
+    try {
+      const transfer = await stripeRequest(env, "/transfers", params, `amx-allocation-${allocationId}`);
+      const stripeTransferId = safeLabel(transfer?.id).slice(0, 120);
+      if (!/^tr_[A-Za-z0-9]+$/.test(stripeTransferId)) throw new HttpError(502, "Stripe did not return a transfer id");
+      await env.DB.prepare("UPDATE merch_payout_transfers SET stripe_transfer_id = ?, status = 'submitted', failure_reason = NULL, updated_at = ? WHERE allocation_id = ?").bind(stripeTransferId, now, allocationId).run();
+      await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'paid' WHERE id = ? AND tenant_id = ? AND status = 'payable'").bind(allocationId, tenantId).run();
+      logEvent("info", "merch.payout_released", { requestId, tenantId, allocationId, orderId: allocation.order_id, stripeTransferId, approvedBy, amountCents });
+      return reply({ allocationId, transferId: stripeTransferId, status: "submitted", idempotent: false, requestId }, 201, { "Cache-Control": "no-store" });
+    } catch (error) {
+      await env.DB.prepare("UPDATE merch_payout_transfers SET status = 'failed', failure_reason = ?, updated_at = ? WHERE allocation_id = ?").bind(error instanceof Error ? error.message.slice(0, 240) : "Stripe transfer failed", now, allocationId).run();
+      throw error;
+    }
+  }
+  const payoutReverseMatch = url.pathname.match(/^\/api\/merch\/admin\/payouts\/([A-Za-z0-9_-]{1,100})\/reverse$/);
+  if (request.method === "POST" && payoutReverseMatch) {
+    if (!env.STRIPE_SECRET_KEY || !env.DB) return reply({ error: "Stripe Connect and payout persistence must be configured", requestId }, 503);
+    const allocationId = safeId(payoutReverseMatch[1]).slice(0, 100);
+    const body = await readJson(request, 16 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    const reason = safeLabel(body.reason).slice(0, 240);
+    if (reason.length < 8) throw new HttpError(400, "A reversal reason is required for the payout audit");
+    await verifyTenantAccess(member, env, tenantId);
+    await initialize(env.DB);
+    const transfer = await env.DB.prepare("SELECT id, allocation_id, order_id, stripe_transfer_id, amount_cents, status FROM merch_payout_transfers WHERE allocation_id = ? AND tenant_id = ? LIMIT 1").bind(allocationId, tenantId).first();
+    if (!transfer?.stripe_transfer_id) throw new HttpError(404, "A submitted Stripe transfer was not found for this allocation");
+    if (transfer.status === "reversed") return reply({ allocationId, transferId: transfer.stripe_transfer_id, status: "reversed", idempotent: true, requestId }, 200, { "Cache-Control": "no-store" });
+    if (transfer.status !== "submitted") throw new HttpError(409, "Only submitted transfers can be reversed");
+    const reversal = await stripeRequest(env, `/transfers/${encodeURIComponent(transfer.stripe_transfer_id)}/reversals`, new URLSearchParams({ amount: String(transfer.amount_cents), "metadata[amx_allocation_id]": allocationId, "metadata[amx_reversal_reason]": reason }), `amx-reversal-${allocationId}`);
+    const reversalId = safeLabel(reversal?.id).slice(0, 120);
+    if (!/^trr_[A-Za-z0-9]+$/.test(reversalId)) throw new HttpError(502, "Stripe did not return a transfer reversal id");
+    const now = new Date().toISOString();
+    await env.DB.prepare("UPDATE merch_payout_transfers SET status = 'reversed', failure_reason = NULL, updated_at = ? WHERE allocation_id = ? AND tenant_id = ?").bind(now, allocationId, tenantId).run();
+    await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'reversed' WHERE id = ? AND tenant_id = ? AND status = 'paid'").bind(allocationId, tenantId).run();
+    await env.DB.prepare("INSERT INTO merch_connect_events (id, event_type, stripe_object_id, payload, created_at) VALUES (?, ?, ?, ?, ?)").bind(`manual-reversal-${reversalId}`, "transfer.reversed", transfer.stripe_transfer_id, JSON.stringify({ allocationId, orderId: transfer.order_id, reversalId, reason, approvedBy: safeId(member?.user?.id, "local-operator") }), now).run();
+    logEvent("warn", "merch.payout_reversed", { requestId, tenantId, allocationId, orderId: transfer.order_id, stripeTransferId: transfer.stripe_transfer_id, reversalId });
+    return reply({ allocationId, transferId: transfer.stripe_transfer_id, reversalId, status: "reversed", idempotent: false, requestId }, 201, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/merch/checkout") {
+    if (!env.PRINTFUL_API_TOKEN) return reply({ error: "Printful fulfillment is not configured", requestId }, 503);
+    if (!env.STRIPE_SECRET_KEY && !env.MERCH_CHECKOUT_URL) return reply({ error: "Secure merchandise checkout is not connected yet", requestId }, 503);
+    if (!env.DB) return reply({ error: "Order persistence is required before checkout", requestId }, 503);
+    const body = await readJson(request, 64 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    const items = normalizeMerchItems(body.items);
+    const catalog = await loadPrintfulCatalog(env);
+    let totalCents = 0;
+    const normalizedItems = items.map((item) => {
+      const product = catalog.find((entry) => entry.id === item.productId);
+      const variant = product?.variants.find((entry) => entry.id === item.variantId);
+      if (!product || !variant?.available) throw new HttpError(409, "A selected merchandise variant is unavailable");
+      totalCents += variant.priceCents * item.quantity;
+      return { productId: product.id, variantId: variant.id, name: product.name, variantName: variant.name, quantity: item.quantity, unitPriceCents: variant.priceCents, partnerName: product.partnerName, collectiveSharePercent: product.collectiveSharePercent };
+    });
+    const orderId = crypto.randomUUID();
+    const eventId = safeId(body.eventId).slice(0, 80) || null;
+    const memberId = safeId(member?.user?.id, "local-member");
+    const now = new Date().toISOString();
+    let checkoutUrl;
+    let checkoutProvider = "hosted";
+    if (env.STRIPE_SECRET_KEY) {
+      if (!env.STRIPE_WEBHOOK_SECRET || !env.MERCH_PUBLIC_BASE_URL) return reply({ error: "Stripe webhook and public AMX URL are required before checkout", requestId }, 503);
+      let publicBase;
+      try { publicBase = new URL(String(env.MERCH_PUBLIC_BASE_URL)); } catch { return reply({ error: "MERCH_PUBLIC_BASE_URL must be valid", requestId }, 500); }
+      if (publicBase.protocol !== "https:") return reply({ error: "MERCH_PUBLIC_BASE_URL must use HTTPS", requestId }, 500);
+      const successUrl = new URL("/account/orders", publicBase);
+      successUrl.searchParams.set("checkout", "success");
+      successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+      const cancelUrl = new URL(eventId ? `/events/${encodeURIComponent(eventId)}/merch` : "/marketplace/merch", publicBase);
+      cancelUrl.searchParams.set("checkout", "cancelled");
+      const params = new URLSearchParams({ mode: "payment", success_url: successUrl.toString(), cancel_url: cancelUrl.toString(), client_reference_id: orderId, "metadata[amx_order_id]": orderId, "metadata[tenant_id]": tenantId, "payment_intent_data[metadata][amx_order_id]": orderId, "payment_intent_data[metadata][tenant_id]": tenantId, "payment_intent_data[transfer_group]": `AMX_${orderId}`, "phone_number_collection[enabled]": "true" });
+      const allowedCountries = String(env.MERCH_ALLOWED_COUNTRIES || "US,CA").split(",").map((value) => safeId(value).toUpperCase()).filter((value) => /^[A-Z]{2}$/.test(value)).slice(0, 20);
+      (allowedCountries.length ? allowedCountries : ["US"]).forEach((country, index) => params.set(`shipping_address_collection[allowed_countries][${index}]`, country));
+      normalizedItems.forEach((item, index) => {
+        params.set(`line_items[${index}][quantity]`, String(item.quantity));
+        params.set(`line_items[${index}][price_data][currency]`, "usd");
+        params.set(`line_items[${index}][price_data][unit_amount]`, String(item.unitPriceCents));
+        params.set(`line_items[${index}][price_data][product_data][name]`, `${item.name} / ${item.variantName}`.slice(0, 160));
+      });
+      if (member?.user?.email) params.set("customer_email", safeLabel(member.user.email).slice(0, 160));
+      const session = await stripeRequest(env, "/checkout/sessions", params, `amx-merch-${orderId}`);
+      if (!/^https:\/\/checkout\.stripe\.com\//i.test(String(session?.url || ""))) throw new HttpError(502, "Stripe did not return a secure Checkout URL");
+      checkoutUrl = String(session.url);
+      checkoutProvider = "stripe";
+    } else {
+      const checkout = new URL(String(env.MERCH_CHECKOUT_URL));
+      if (checkout.protocol !== "https:") return reply({ error: "Merchandise checkout URL must use HTTPS", requestId }, 500);
+      checkout.searchParams.set("order", orderId);
+      checkout.searchParams.set("tenant", tenantId);
+      checkoutUrl = checkout.toString();
+    }
+    await initialize(env.DB);
+    await env.DB.prepare("INSERT INTO merch_orders (id, tenant_id, member_id, event_id, status, currency, total_cents, checkout_url, printful_order_id, tracking_url, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(orderId, tenantId, memberId, eventId, "pending_payment", "USD", totalCents, checkoutUrl, null, null, JSON.stringify({ items: normalizedItems, checkoutProvider }), now, now).run();
+    for (const item of normalizedItems) await env.DB.prepare("INSERT INTO merch_revenue_allocations (id, order_id, tenant_id, beneficiary_type, beneficiary_id, share_basis_points, amount_cents, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), orderId, tenantId, "partner", safeId(item.partnerName, "community-runway"), item.collectiveSharePercent * 100, Math.round(item.unitPriceCents * item.quantity * item.collectiveSharePercent / 100), "pending_payment", now).run();
+    return reply({ orderId, checkoutUrl, checkoutProvider, status: "pending_payment", requestId }, 201, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/merch/payment-confirmed") {
+    const authorization = request.headers.get("Authorization") || "";
+    const provided = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+    if (!await matchesSecret(provided, env.MERCH_PAYMENT_WEBHOOK_TOKEN)) return reply({ error: "Merchandise payment webhook token is invalid", requestId }, 403);
+    const body = await readJson(request, 48 * 1024);
+    const result = await fulfillPaidMerchOrder(env, { ...body, requestId });
+    return reply({ ...result, requestId }, result.idempotent ? 200 : 201, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/merch/stripe-webhook") {
+    const declaredSize = Number(request.headers.get("Content-Length") || 0);
+    if (declaredSize > 96 * 1024) return reply({ error: "Stripe webhook exceeds the size limit", requestId }, 413);
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 96 * 1024) return reply({ error: "Stripe webhook exceeds the size limit", requestId }, 413);
+    if (!await verifyStripeSignature(rawBody, request.headers.get("Stripe-Signature") || "", env.STRIPE_WEBHOOK_SECRET)) return reply({ error: "Stripe webhook signature is invalid or expired", requestId }, 403);
+    let event; try { event = JSON.parse(rawBody); } catch { return reply({ error: "Stripe webhook JSON is invalid", requestId }, 400); }
+    const eventType = safeLabel(event?.type).slice(0, 80);
+    const connectEvents = new Set(["account.updated", "transfer.created", "transfer.updated", "transfer.reversed"]);
+    if (connectEvents.has(eventType)) {
+      if (!env.DB) return reply({ error: "Payout persistence is required for Stripe Connect updates", requestId }, 503);
+      const eventId = safeId(event?.id).slice(0, 120);
+      if (!eventId) return reply({ error: "Stripe Connect event id is required", requestId }, 400);
+      await initialize(env.DB);
+      const duplicate = await env.DB.prepare("SELECT id FROM merch_connect_events WHERE id = ? LIMIT 1").bind(eventId).first();
+      if (duplicate) return reply({ accepted: true, duplicate: true, eventType, requestId });
+      const stripeObject = isPlainObject(event?.data?.object) ? event.data.object : {};
+      const stripeObjectId = safeLabel(stripeObject.id).slice(0, 120);
+      const now = new Date().toISOString();
+      if (eventType === "account.updated") {
+        if (!/^acct_[A-Za-z0-9]+$/.test(stripeObjectId)) return reply({ error: "Stripe account update is missing its account id", requestId }, 400);
+        const state = stripeAccountState(stripeObject);
+        await env.DB.prepare("UPDATE merch_payout_profiles SET onboarding_status = ?, details_submitted = ?, charges_enabled = ?, payouts_enabled = ?, requirements_due = ?, updated_at = ? WHERE stripe_account_id = ?")
+          .bind(state.onboardingStatus, Number(state.detailsSubmitted), Number(state.chargesEnabled), Number(state.payoutsEnabled), JSON.stringify(state.requirementsDue), now, stripeObjectId).run();
+        await env.DB.prepare("INSERT INTO merch_connect_events (id, event_type, stripe_object_id, payload, created_at) VALUES (?, ?, ?, ?, ?)").bind(eventId, eventType, stripeObjectId, JSON.stringify({ onboardingStatus: state.onboardingStatus, requirementsDue: state.requirementsDue }), now).run();
+        return reply({ accepted: true, eventType, onboardingStatus: state.onboardingStatus, requestId }, 200, { "Cache-Control": "no-store" });
+      }
+      if (!/^tr_[A-Za-z0-9]+$/.test(stripeObjectId)) return reply({ error: "Stripe transfer update is missing its transfer id", requestId }, 400);
+      const allocationId = safeId(stripeObject?.metadata?.amx_allocation_id).slice(0, 100);
+      if (eventType === "transfer.reversed") {
+        await env.DB.prepare("UPDATE merch_payout_transfers SET status = 'reversed', updated_at = ? WHERE stripe_transfer_id = ?").bind(now, stripeObjectId).run();
+        await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'reversed' WHERE id = COALESCE(NULLIF(?, ''), (SELECT allocation_id FROM merch_payout_transfers WHERE stripe_transfer_id = ? LIMIT 1)) AND status = 'paid'").bind(allocationId, stripeObjectId).run();
+      } else await env.DB.prepare("UPDATE merch_payout_transfers SET status = 'submitted', updated_at = ? WHERE stripe_transfer_id = ?").bind(now, stripeObjectId).run();
+      await env.DB.prepare("INSERT INTO merch_connect_events (id, event_type, stripe_object_id, payload, created_at) VALUES (?, ?, ?, ?, ?)").bind(eventId, eventType, stripeObjectId, JSON.stringify({ allocationId, amountReversed: Number(stripeObject.amount_reversed || 0) }), now).run();
+      return reply({ accepted: true, eventType, allocationId: allocationId || undefined, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    const supportedEvents = new Set(["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed", "checkout.session.expired"]);
+    if (!supportedEvents.has(eventType)) return reply({ accepted: true, ignored: true, eventType, requestId }, 202);
+    if (!env.DB) return reply({ error: "Order persistence is required for payment updates", requestId }, 503);
+    const session = isPlainObject(event?.data?.object) ? event.data.object : {};
+    const orderId = safeId(session?.metadata?.amx_order_id || session.client_reference_id).slice(0, 80);
+    if (!orderId) return reply({ error: "Stripe Checkout Session is missing its AMX order reference", requestId }, 400);
+    await initialize(env.DB);
+    const eventId = safeId(event.id).slice(0, 120);
+    if (!eventId) return reply({ error: "Stripe webhook event id is required", requestId }, 400);
+    const duplicate = await env.DB.prepare("SELECT id FROM merch_webhook_events WHERE id = ? LIMIT 1").bind(eventId).first();
+    if (duplicate) return reply({ accepted: true, duplicate: true, orderId, requestId });
+    if (["checkout.session.async_payment_failed", "checkout.session.expired"].includes(eventType)) {
+      const now = new Date().toISOString();
+      await env.DB.prepare("UPDATE merch_orders SET status = 'failed', updated_at = ? WHERE id = ? AND status = 'pending_payment'").bind(now, orderId).run();
+      await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'reversed' WHERE order_id = ? AND status = 'pending_payment'").bind(orderId).run();
+      await env.DB.prepare("INSERT INTO merch_webhook_events (id, order_id, event_type, store_id, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(eventId, orderId, eventType, "stripe", JSON.stringify({ sessionId: safeId(session.id).slice(0, 120) }), now).run();
+      return reply({ accepted: true, orderId, status: "failed", requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    if (session.payment_status !== "paid") return reply({ accepted: true, pending: true, orderId, requestId }, 202);
+    const shipping = isPlainObject(session?.collected_information?.shipping_details) ? session.collected_information.shipping_details : isPlainObject(session.shipping_details) ? session.shipping_details : {};
+    const customer = isPlainObject(session.customer_details) ? session.customer_details : {};
+    const address = isPlainObject(shipping.address) ? shipping.address : isPlainObject(customer.address) ? customer.address : {};
+    const result = await fulfillPaidMerchOrder(env, {
+      orderId,
+      paymentReference: safeLabel(session.payment_intent || session.id).slice(0, 160),
+      amountCents: session.amount_total,
+      currency: safeId(session.currency, "usd").toUpperCase(),
+      recipient: { name: shipping.name || customer.name, address1: address.line1, address2: address.line2, city: address.city, stateCode: address.state, countryCode: address.country, zip: address.postal_code, phone: customer.phone, email: customer.email },
+      requestId,
+    });
+    const now = new Date().toISOString();
+    await env.DB.prepare("INSERT INTO merch_webhook_events (id, order_id, event_type, store_id, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(eventId, orderId, eventType, "stripe", JSON.stringify({ sessionId: safeId(session.id).slice(0, 120), paymentReference: safeLabel(session.payment_intent).slice(0, 160) }), now).run();
+    return reply({ accepted: true, ...result, requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/merch/printful-webhook") {
+    if (!await matchesSecret(url.searchParams.get("token") || "", env.MERCH_PRINTFUL_WEBHOOK_TOKEN)) return reply({ error: "Printful fulfillment webhook token is invalid", requestId }, 403);
+    if (!env.DB) return reply({ error: "Order persistence is required for fulfillment updates", requestId }, 503);
+    const body = await readJson(request, 96 * 1024);
+    const eventType = safeId(body.type).slice(0, 64);
+    const allowedEvents = new Set(["package_shipped", "package_returned", "order_failed", "order_canceled", "order_put_hold", "order_put_hold_approval", "order_remove_hold"]);
+    if (!allowedEvents.has(eventType)) return reply({ accepted: true, ignored: true, eventType, requestId }, 202);
+    const storeId = String(body.store || "").slice(0, 80);
+    if (env.PRINTFUL_STORE_ID && storeId !== String(env.PRINTFUL_STORE_ID)) return reply({ error: "Printful webhook store does not match this tenant runtime", requestId }, 403);
+    const data = isPlainObject(body.data) ? body.data : {};
+    const order = isPlainObject(data.order) ? data.order : isPlainObject(data.shipment?.order) ? data.shipment.order : {};
+    const shipment = isPlainObject(data.shipment) ? data.shipment : {};
+    const externalId = safeId(order.external_id || data.external_id).slice(0, 80);
+    const printfulOrderId = String(order.id || data.order_id || shipment.order_id || "").slice(0, 80);
+    if (!externalId && !printfulOrderId) return reply({ error: "Printful webhook did not identify an order", requestId }, 400);
+    await initialize(env.DB);
+    const row = externalId
+      ? await env.DB.prepare("SELECT id, status, payload FROM merch_orders WHERE id = ? LIMIT 1").bind(externalId).first()
+      : await env.DB.prepare("SELECT id, status, payload FROM merch_orders WHERE printful_order_id = ? LIMIT 1").bind(printfulOrderId).first();
+    if (!row) return reply({ error: "Matching merchandise order is not available yet", requestId }, 409);
+    const eventId = [eventType, storeId, String(body.created || ""), String(shipment.id || order.id || row.id)].map((value) => safeLabel(value).slice(0, 80)).join(":");
+    const duplicate = await env.DB.prepare("SELECT id FROM merch_webhook_events WHERE id = ? LIMIT 1").bind(eventId).first();
+    if (duplicate) return reply({ accepted: true, duplicate: true, orderId: row.id, status: row.status, requestId });
+    const statusByEvent = {
+      package_shipped: "shipped",
+      package_returned: "returned",
+      order_failed: "failed",
+      order_canceled: "cancelled",
+      order_put_hold: "on_hold",
+      order_put_hold_approval: "on_hold",
+      order_remove_hold: "submitted",
+    };
+    const nextStatus = statusByEvent[eventType] || row.status;
+    const rawTrackingUrl = safeLabel(shipment.tracking_url).slice(0, 500);
+    const trackingUrl = /^https:\/\//i.test(rawTrackingUrl) ? rawTrackingUrl : "";
+    const fulfillment = {
+      eventType,
+      carrier: safeLabel(shipment.carrier).slice(0, 80),
+      service: safeLabel(shipment.service).slice(0, 120),
+      trackingNumber: safeLabel(shipment.tracking_number).slice(0, 120),
+      trackingUrl,
+      updatedAt: new Date().toISOString(),
+    };
+    let payload = {}; try { payload = JSON.parse(row.payload || "{}"); } catch {}
+    const shipments = Array.isArray(payload.shipments) ? payload.shipments.filter((item) => item?.trackingUrl !== trackingUrl || !trackingUrl) : [];
+    if (eventType === "package_shipped") shipments.push(fulfillment);
+    const updatedPayload = { ...payload, fulfillment, shipments: shipments.slice(-10) };
+    const now = new Date().toISOString();
+    await env.DB.prepare("INSERT INTO merch_webhook_events (id, order_id, event_type, store_id, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(eventId, row.id, eventType, storeId || null, JSON.stringify(fulfillment), now).run();
+    await env.DB.prepare("UPDATE merch_orders SET status = ?, tracking_url = COALESCE(NULLIF(?, ''), tracking_url), payload = ?, updated_at = ? WHERE id = ?")
+      .bind(nextStatus, trackingUrl, JSON.stringify(updatedPayload), now, row.id).run();
+    if (eventType === "package_shipped") await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'payable' WHERE order_id = ? AND status = 'accrued'").bind(row.id).run();
+    if (["order_failed", "order_canceled", "package_returned"].includes(eventType)) await env.DB.prepare("UPDATE merch_revenue_allocations SET status = 'reversed' WHERE order_id = ? AND status IN ('accrued', 'payable')").bind(row.id).run();
+    logEvent("info", "merch.fulfillment_updated", { requestId, orderId: row.id, eventType, status: nextStatus });
+    return reply({ accepted: true, orderId: row.id, status: nextStatus, trackingAvailable: Boolean(trackingUrl), requestId }, 200, { "Cache-Control": "no-store" });
+  }
+
   if (request.method === "POST" && url.pathname === "/api/media") {
     if (!env.MEDIA) return reply({ error: "Media storage is not configured", requestId }, 503);
     const declaredSize = Number(request.headers.get("Content-Length") || 0);

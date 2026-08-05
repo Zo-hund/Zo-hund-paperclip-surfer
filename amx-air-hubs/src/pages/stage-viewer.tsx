@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Clapperboard, Maximize2, MonitorPlay, Radio, Share2, Ticket, Users, Volume2, VolumeX, Wifi, X } from "lucide-react";
+import { Box, Clapperboard, Maximize2, MonitorPlay, Radio, Share2, ShoppingBag, Ticket, Users, Volume2, VolumeX, Wifi, X } from "lucide-react";
 import {
   RemoteVideoTrack, Room, RoomEvent, Track, VideoQuality,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
@@ -337,7 +337,7 @@ export function StageLiveViewerPage() {
 
     {!audioEnabled && <button className="stage-viewer-audio-gate" onClick={() => void enableAudio()}><Volume2/><span><b>LISTEN LIVE</b><small>{audioTrackCount ? `${audioTrackCount} LIVE FEED${audioTrackCount === 1 ? "" : "S"} + VENUE MIX` : "VOICE + VENUE MIX"}</small></span></button>}
 
-    <footer key={`${production.state.sponsor.id}-${production.state.updatedAt}`} className={`stage-viewer-sponsor sponsor-${production.state.sponsor.animation || "cut"}`}><i/>{production.state.sponsor.logoUrl && <img src={production.state.sponsor.logoUrl} alt=""/>}<span><small>PRESENTED WITH</small><b>{production.state.sponsor.name}</b></span><strong>{production.state.sponsor.cta}</strong></footer>
+    <footer key={`${production.state.sponsor.id}-${production.state.updatedAt}`} className={`stage-viewer-sponsor sponsor-${production.state.sponsor.animation || "cut"}`}><i/>{production.state.sponsor.logoUrl && <img src={production.state.sponsor.logoUrl} alt=""/>}<span><small>PRESENTED WITH</small><b>{production.state.sponsor.name}</b></span>{production.state.sponsor.ctaUrl?.startsWith("/") ? <a href={production.state.sponsor.ctaUrl}><ShoppingBag/>{production.state.sponsor.cta}</a> : <strong>{production.state.sponsor.cta}</strong>}</footer>
     <div ref={audioHostRef} className="stage-viewer-audio" aria-hidden="true"/>
     {notice && <button className="stage-viewer-notice" onClick={() => setNotice("")}><span>{notice}</span></button>}
     <div className="stage-viewer-health" data-status={status} data-renderer={backend} data-program-feed={programFeed?.id || "virtual"} data-program-resolution={programFeed?.width && programFeed.height ? `${programFeed.width}x${programFeed.height}` : "virtual"} data-output-profile={production.state.video.outputProfile} data-room={production.room} data-venue-audio={venueAudio.status} data-venue-program-level={venueAudio.levels.program.toFixed(3)} data-venue-ambience-level={venueAudio.levels.ambience.toFixed(3)}/>
