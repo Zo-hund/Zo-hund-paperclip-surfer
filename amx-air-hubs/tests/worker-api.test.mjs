@@ -129,6 +129,7 @@ describe("AMX AIR Hubs Worker API", () => {
   });
 
   test("returns liveness metadata, request tracing, and security headers", async () => {
+    env.DEPLOYMENT_REVISION = "release-test";
     const response = await worker.fetch(request("/api/health", { headers: { "X-Request-ID": "test-request-123" } }), env);
     const body = await response.json();
 
@@ -136,6 +137,7 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(body.ok, true);
     assert.equal(body.service, "amx-air-hubs");
     assert.equal(body.version, "1.1.0");
+    assert.equal(body.deploymentRevision, "release-test");
     assert.equal(body.requestId, "test-request-123");
     assert.equal(response.headers.get("X-Request-ID"), "test-request-123");
     assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
