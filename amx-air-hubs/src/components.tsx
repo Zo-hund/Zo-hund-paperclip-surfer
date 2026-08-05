@@ -33,6 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/dashboard", label: "Dashboard", icon: Activity },
     { to: "/partners", label: "Partners", icon: BriefcaseBusiness },
     { to: "/membership", label: "Membership", icon: Crown },
+    { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
     { to: "/missions", label: "Missions", icon: Radio },
     { to: `/play/${activeMission.id}`, label: "Play", icon: Move3d },
     { to: "/stage", label: "Stage", icon: Clapperboard },
@@ -44,8 +45,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   ];
   const nav = member.session ? memberNav : [
     { to: "/", label: "Home", icon: Home },
-    { to: "/sponsor", label: "Partners", icon: ShoppingBag },
+    { to: "/sponsor", label: "Partners", icon: BriefcaseBusiness },
     { to: "/membership", label: "Membership", icon: Crown },
+    { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
   ];
   return (
     <div className="app-shell">

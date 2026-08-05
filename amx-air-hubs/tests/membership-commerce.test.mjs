@@ -87,4 +87,10 @@ describe("TECH AT NITE membership commerce", () => {
     assert.match(account, /searchParams\.get\("mode"\) === "create"/);
     assert.match(account, /return "create"/);
   });
+
+  test("keeps merch visible in guest and member navigation", async () => {
+    const components = await read("../src/components.tsx");
+    const merchLinks = components.match(/to: "\/marketplace\/merch", label: "Merch"/g) || [];
+    assert.equal(merchLinks.length, 2);
+  });
 });
