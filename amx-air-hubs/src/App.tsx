@@ -16,6 +16,7 @@ import { AccountPage, PublicMemberProfilePage } from "./pages/account";
 import { MerchOrdersPage, MerchStorefrontPage } from "./pages/merch";
 import { MembershipPage } from "./pages/membership";
 import { SkillMarketPage } from "./pages/skill-market";
+import { PathfinderFacilitatorPage, PathfinderTrainingMissionPage } from "./pages/pathfinder-training";
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
 import { RequireMember } from "./member-auth";
 import {
@@ -40,6 +41,7 @@ function ShellRoutes() {
     <Route path="/role" element={<RequireMember><RoleSelectPage/></RequireMember>}/>
     <Route path="/dashboard" element={<RequireMember><RoleDashboardPage/></RequireMember>}/>
     <Route path="/missions" element={<RequireMember><MissionsPage/></RequireMember>}/>
+    <Route path="/missions/pathfinder-educator" element={<RequireMember><PathfinderTrainingMissionPage/></RequireMember>}/>
     <Route path="/agents" element={<RequireMember><AgentsPage/></RequireMember>}/>
     <Route path="/agents/:agentId/profile" element={<RequireMember><AgentProfilePage/></RequireMember>}/>
     <Route path="/agents/:agentId/workspace" element={<RequireMember><AgentWorkbenchPage/></RequireMember>}/>
@@ -66,6 +68,7 @@ function ShellRoutes() {
     <Route path="/analytics" element={<RequireMember roles={["trainer", "operator"]}><AnalyticsPage/></RequireMember>}/>
     <Route path="/control" element={<RequireMember roles={["operator"]}><ControlPage/></RequireMember>}/>
     <Route path="/control/runtime" element={<RequireMember roles={["operator"]}><RuntimeStatusPage/></RequireMember>}/>
+    <Route path="/training/pathfinder/facilitator" element={<RequireMember roles={["trainer", "operator"]}><PathfinderFacilitatorPage/></RequireMember>}/>
     <Route path="/connections" element={<RequireMember roles={["operator"]}><ConnectionsPage/></RequireMember>}/>
     <Route path="/nexus" element={<RequireMember><NexusPage/></RequireMember>}/>
     <Route path="/stage" element={<RequireMember roles={["operator"]}><AMXXRStagePage/></RequireMember>}/>
