@@ -1,0 +1,11 @@
+import { useEffect,useState } from "react";
+import { Activity,CircleDot,Radio,RefreshCw } from "lucide-react";
+import { getActiveTenant } from "../operations";
+import { loadBoardFeed,type BoardFeed } from "../board-runtime";
+
+export function BoardLiveFeed({publicOnly=false}:{publicOnly?:boolean}) {
+  const [feed,setFeed]=useState<BoardFeed>({issues:[],runs:[],persisted:false,visibility:publicOnly?"public":"tenant"});
+  const [error,setError]=useState(""); const [updated,setUpdated]=useState("");
+  useEffect(()=>{let active=true;let controller:AbortController;const refresh=async()=>{controller?.abort();controller=new AbortController();try{const next=await loadBoardFeed(getActiveTenant(),publicOnly,controller.signal);if(active){setFeed(next);setError("");setUpdated(new Date().toLocaleTimeString());}}catch(reason){if(active&&(reason as Error).name!=="AbortError")setError((reason as Error).message);}};refresh();const timer=window.setInterval(refresh,4000);return()=>{active=false;controller?.abort();window.clearInterval(timer);};},[publicOnly]);
+  return <section className="dashboard-panel full board-live-feed"><header><div><span className="eyebrow">{publicOnly?"PUBLIC ACTIVITY":"TENANT CONTROL BOARD"}</span><h2>Sim-live operations</h2></div><span className="board-live-status"><Radio/> {error?"RECONNECTING":`LIVE ${updated}`}</span></header>{error&&<p className="board-error">{error}</p>}{!feed.issues.length&&!feed.runs.length?<div className="board-empty"><Activity/><p>No mapped runs or issues yet. Voice agents and operator tools will publish activity here.</p></div>:<div className="board-feed-grid"><div><h3>Issues</h3>{feed.issues.map(item=><article className="board-feed-row" key={item.id}><CircleDot/><div><b>{item.title}</b><small>{item.priority} / {item.source} / {new Date(item.updated_at).toLocaleString()}</small></div><span>{item.status.replaceAll("_"," ")}</span></article>)}</div><div><h3>Simulation and live runs</h3>{feed.runs.map(item=><article className="board-feed-row" key={item.id}><RefreshCw/><div><b>{item.summary||item.mission_id||item.id}</b><small>{item.mode} / {item.agent_id||"team"} / {new Date(item.updated_at).toLocaleString()}</small></div><span>{item.status}</span></article>)}</div></div>}</section>;
+}

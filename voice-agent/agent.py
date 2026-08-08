@@ -456,6 +456,20 @@ async def _post_meeting_action(room, action: str, params: dict) -> dict:
             return body
 
 
+async def _post_amx_board_action(path: str, payload: dict, method: str = "POST") -> dict:
+    token = os.environ.get("AMX_AGENT_CONTROL_TOKEN")
+    if not token:
+        raise RuntimeError("The AMX tenant board action bridge is not configured yet.")
+    base_url = os.environ.get("AMX_BOARD_API_BASE_URL", "https://amx-hubs.cc").rstrip("/")
+    async with aiohttp.ClientSession() as session:
+        async with session.request(method, f"{base_url}{path}", json=payload,
+            headers={"Authorization": f"Bearer {token}"}, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            body = await resp.json(content_type=None)
+            if resp.status >= 400:
+                raise RuntimeError(body.get("error") or f"Board action failed ({resp.status}).")
+            return body
+
+
 def _is_amx_operator(participant) -> bool:
     try:
         metadata = json.loads(participant.metadata or "{}")
@@ -465,8 +479,9 @@ def _is_amx_operator(participant) -> bool:
 
 
 class JAZSupportGuide(Agent):
-    def __init__(self, instructions: str | None = None, greeting: str | None = None) -> None:
+    def __init__(self, instructions: str | None = None, greeting: str | None = None, dispatch_context: dict | None = None) -> None:
         super().__init__(instructions=instructions or JAZ_INSTRUCTIONS)
+        self._dispatch_context = dispatch_context or {}
         self._greeting = greeting or (
             "Hi, this is JAZ Support Guide for AMX AIR HUBS. I can help with questions, "
             "troubleshooting, onboarding, bookings, billing direction, or agent setup. "
@@ -818,7 +833,7 @@ class JAZSupportGuide(Agent):
     # the standard REST routes — not a parallel implementation.
 
     @function_tool()
-    async def create_issue(self, context: RunContext, title: str, description: str = "") -> str:
+    async def create_issue(self, context: RunContext, title: str, description: str = "", priority: str = "normal", visibility: str = "private", operator_approved: bool = False) -> str:
         """Create a new issue/task in this meeting's company.
 
         Use when the user says things like 'create an issue for X', 'file a
@@ -826,6 +841,19 @@ class JAZSupportGuide(Agent):
         """
         room = context.session.room_io.room
         try:
+            if visibility == "public" and not operator_approved:
+                return "Approval required. Confirm that I should publish this issue to the public board."
+            if not _meeting_id_from_room(room):
+                body = await _post_amx_board_action("/api/board/agent/issues", {
+                    "tenantId": self._dispatch_context.get("tenant") or "tech-at-nite",
+                    "title": title, "description": description, "priority": priority,
+                    "visibility": "public" if visibility == "public" else "private",
+                    "operatorApproved": operator_approved,
+                    "source": "private-operator-phone" if room.name.startswith("AMX-CALL-") else "livekit-agent",
+                    "actorType": "agent", "actorId": "jaz",
+                })
+                issue = body.get("issue", {})
+                return f"Created tenant board issue {issue.get('id', '')}: {issue.get('title', title)}."
             body = await _post_meeting_action(
                 room, "create_issue", {"title": title, "description": description or None},
             )
@@ -852,6 +880,13 @@ class JAZSupportGuide(Agent):
         """
         room = context.session.room_io.room
         try:
+            if not _meeting_id_from_room(room):
+                if not issue_id:
+                    return "Tell me the tenant board issue identifier you want to update."
+                await _post_amx_board_action(f"/api/board/agent/issues/{issue_id}", {
+                    "tenantId": self._dispatch_context.get("tenant") or "tech-at-nite", "status": status,
+                }, "PATCH")
+                return f"Updated tenant board issue {issue_id} to {status}."
             context_body = await _post_meeting_action(
                 room, "get_issue_context", {"issueId": issue_id} if issue_id else {},
             )
@@ -894,6 +929,28 @@ class JAZSupportGuide(Agent):
         except Exception as e:
             logger.warning("add_issue_comment failed: %s", e)
             return "I ran into a problem adding that comment."
+
+    @function_tool()
+    async def record_sim_live_run(self, context: RunContext, summary: str, mode: str = "simulation", status: str = "running", mission_id: str = "", issue_id: str = "", visibility: str = "private", operator_approved: bool = False) -> str:
+        """Map a tenant simulation or live run to the board after required operator approval."""
+        try:
+            if (visibility == "public" or mode == "live") and not operator_approved:
+                return "Approval required. Confirm that I should publish or start this live board run."
+            room = context.session.room_io.room
+            result = await _post_amx_board_action("/api/board/agent/runs", {
+                "tenantId": self._dispatch_context.get("tenant") or "tech-at-nite",
+                "summary": summary, "mode": "live" if mode == "live" else "simulation", "status": status,
+                "missionId": mission_id, "issueId": issue_id, "roomCode": room.name,
+                "visibility": "public" if visibility == "public" else "private", "agentId": "jaz",
+                "operatorApproved": operator_approved,
+            })
+            run = result.get("run", {})
+            return f"Mapped {run.get('mode', mode)} run {run.get('id', '')} to the tenant board with {run.get('status', status)} status."
+        except RuntimeError as e:
+            return str(e)
+        except Exception as e:
+            logger.warning("record_sim_live_run failed: %s", e)
+            return "I ran into a problem mapping that run to the tenant board."
 
     @function_tool()
     async def invite_guest(self, context: RunContext, email: str = "", label: str = "") -> str:
@@ -1192,11 +1249,11 @@ async def entrypoint(ctx: JobContext):
             instructions += "\n\n" + nav_block
         if active_block:
             instructions += "\n\n" + active_block
-        agent = JAZSupportGuide(instructions=instructions, greeting=greeting)
+        agent = JAZSupportGuide(instructions=instructions, greeting=greeting, dispatch_context=dispatch_metadata)
     else:
         extra = "\n\n".join(filter(None, [nav_block, active_block]))
         instructions = JAZ_INSTRUCTIONS + ("\n\n" + extra if extra else "")
-        agent = JAZSupportGuide(instructions=instructions)
+        agent = JAZSupportGuide(instructions=instructions, dispatch_context=dispatch_metadata)
 
     # Optional Runway visual avatar
     avatar_session = None

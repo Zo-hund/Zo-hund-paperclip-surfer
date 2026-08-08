@@ -439,6 +439,8 @@ function publicApiRequest(request, url) {
   if (request.method === "POST" && url.pathname === "/api/merch/stripe-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/membership/stripe-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") return true;
+  if (request.method === "GET" && url.pathname === "/api/board/public/feed") return true;
+  if (url.pathname.startsWith("/api/board/agent/")) return true;
   if (url.pathname.startsWith("/api/pod-invites/")) {
     const segments = url.pathname.split("/").filter(Boolean);
     const action = segments[3] || "";
@@ -1511,6 +1513,11 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS media_tenant_idx ON media_objects (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, agent_id TEXT NOT NULL, transport TEXT NOT NULL, content_kind TEXT NOT NULL, attachment_count INTEGER NOT NULL, status TEXT NOT NULL, request_id TEXT NOT NULL, created_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS agent_runs_tenant_idx ON agent_runs (tenant_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS board_issues (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL, priority TEXT NOT NULL, visibility TEXT NOT NULL, source TEXT NOT NULL, actor_type TEXT NOT NULL, actor_id TEXT, member_id TEXT, partner_id TEXT, run_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS board_issues_tenant_idx ON board_issues (tenant_id, updated_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS board_issues_public_idx ON board_issues (visibility, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS sim_live_runs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, issue_id TEXT, mission_id TEXT, room_code TEXT, mode TEXT NOT NULL, status TEXT NOT NULL, visibility TEXT NOT NULL, member_id TEXT, partner_id TEXT, agent_id TEXT, summary TEXT NOT NULL, payload TEXT NOT NULL, started_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS sim_live_runs_tenant_idx ON sim_live_runs (tenant_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS geo_anchors (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, room_code TEXT NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS geo_anchors_room_idx ON geo_anchors (tenant_id, room_code, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS digital_twin_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, twin_id TEXT NOT NULL, room_code TEXT NOT NULL, event_type TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
@@ -1548,6 +1555,58 @@ async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
   if (!await allowRequest(request, env)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
   const member = !publicApiRequest(request, url) ? await verifyMemberRequest(request, env, requiredMemberRoles(url)) : null;
+  if (url.pathname.startsWith("/api/board/agent/")) {
+    const token = String(request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (!env.AMX_AGENT_CONTROL_TOKEN) return reply({ error: "Agent board control is not configured", requestId }, 503);
+    if (!await matchesSecret(token, String(env.AMX_AGENT_CONTROL_TOKEN))) return reply({ error: "Agent board authorization failed", requestId }, 401);
+    if (!env.DB) return reply({ error: "Board storage is not configured", requestId }, 503);
+    await initialize(env.DB);
+    const body = await readJson(request, 64 * 1024);
+    const tenantId = safeId(body.tenantId).slice(0, 64);
+    if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+    const visibility = body.visibility === "public" ? "public" : "private";
+    if (visibility === "public" && body.operatorApproved !== true) return reply({ error: "Explicit operator approval is required for public board publishing", requestId }, 403);
+    const now = new Date().toISOString();
+    if (request.method === "POST" && url.pathname === "/api/board/agent/issues") {
+      const id = safeId(body.id, `issue-${crypto.randomUUID()}`).slice(0, 96);
+      const title = safeLabel(body.title).slice(0, 180);
+      if (!title) return reply({ error: "title is required", requestId }, 400);
+      const priority = ["low", "normal", "high", "urgent"].includes(body.priority) ? body.priority : "normal";
+      const status = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"].includes(body.status) ? body.status : "todo";
+      await env.DB.prepare("INSERT INTO board_issues (id, tenant_id, title, description, status, priority, visibility, source, actor_type, actor_id, member_id, partner_id, run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, tenantId, title, safeLabel(body.description).slice(0, 4000), status, priority, visibility, safeId(body.source, "voice-agent").slice(0, 64), safeId(body.actorType, "agent").slice(0, 32), safeId(body.actorId).slice(0, 96) || null, safeId(body.memberId).slice(0, 96) || null, safeId(body.partnerId).slice(0, 96) || null, safeId(body.runId).slice(0, 96) || null, now, now).run();
+      return reply({ issue: { id, tenantId, title, status, priority, visibility, updatedAt: now }, requestId }, 201, { "Cache-Control": "no-store" });
+    }
+    if (request.method === "POST" && url.pathname === "/api/board/agent/runs") {
+      const id = safeId(body.id, `run-${crypto.randomUUID()}`).slice(0, 96);
+      const mode = body.mode === "live" ? "live" : "simulation";
+      const status = ["scheduled", "ready", "running", "blocked", "complete", "cancelled"].includes(body.status) ? body.status : "running";
+      const summary = safeLabel(body.summary).slice(0, 1000);
+      await env.DB.prepare("INSERT INTO sim_live_runs (id, tenant_id, issue_id, mission_id, room_code, mode, status, visibility, member_id, partner_id, agent_id, summary, payload, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status = excluded.status, summary = excluded.summary, payload = excluded.payload, visibility = excluded.visibility, updated_at = excluded.updated_at").bind(id, tenantId, safeId(body.issueId).slice(0, 96) || null, safeId(body.missionId).slice(0, 96) || null, safeId(body.roomCode).slice(0, 96) || null, mode, status, visibility, safeId(body.memberId).slice(0, 96) || null, safeId(body.partnerId).slice(0, 96) || null, safeId(body.agentId, "jaz").slice(0, 96), summary, JSON.stringify(isPlainObject(body.payload) ? body.payload : {}), safeLabel(body.startedAt, now).slice(0, 40), now).run();
+      return reply({ run: { id, tenantId, mode, status, visibility, summary, updatedAt: now }, requestId }, 201, { "Cache-Control": "no-store" });
+    }
+    const issueMatch = url.pathname.match(/^\/api\/board\/agent\/issues\/([^/]+)$/);
+    if (request.method === "PATCH" && issueMatch) {
+      const id = safeId(decodeURIComponent(issueMatch[1])).slice(0, 96);
+      const status = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"].includes(body.status) ? body.status : "";
+      if (!id || !status) return reply({ error: "A valid issue id and status are required", requestId }, 400);
+      const result = await env.DB.prepare("UPDATE board_issues SET status = ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(status, now, id, tenantId).run();
+      if (!result.meta?.changes) return reply({ error: "Issue not found", requestId }, 404);
+      return reply({ issue: { id, tenantId, status, updatedAt: now }, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    return reply({ error: "Not found", requestId }, 404);
+  }
+  if (request.method === "GET" && ["/api/board/feed", "/api/board/public/feed"].includes(url.pathname)) {
+    if (!env.DB) return reply({ issues: [], runs: [], persisted: false, requestId }, 200, { "Cache-Control": "no-store" });
+    const tenantId = safeId(url.searchParams.get("tenantId")).slice(0, 64);
+    if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+    const isPublic = url.pathname.includes("/public/");
+    if (!isPublic) await verifyTenantAccess(member, env, tenantId);
+    await initialize(env.DB);
+    const scope = isPublic ? " AND visibility = 'public'" : "";
+    const issueRows = await env.DB.prepare(`SELECT id, tenant_id, title, ${isPublic ? "''" : "description"} AS description, status, priority, visibility, source, actor_type, ${isPublic ? "NULL" : "member_id"} AS member_id, ${isPublic ? "NULL" : "partner_id"} AS partner_id, run_id, created_at, updated_at FROM board_issues WHERE tenant_id = ?${scope} ORDER BY updated_at DESC LIMIT 100`).bind(tenantId).all();
+    const runRows = await env.DB.prepare(`SELECT id, tenant_id, issue_id, mission_id, room_code, mode, status, visibility, ${isPublic ? "NULL" : "member_id"} AS member_id, ${isPublic ? "NULL" : "partner_id"} AS partner_id, agent_id, summary, started_at, updated_at FROM sim_live_runs WHERE tenant_id = ?${scope} ORDER BY updated_at DESC LIMIT 100`).bind(tenantId).all();
+    return reply({ issues: issueRows.results || [], runs: runRows.results || [], persisted: true, visibility: isPublic ? "public" : "tenant", requestId }, 200, { "Cache-Control": "no-store" });
+  }
   if (request.method === "GET" && url.pathname === "/api/h3at/control-plane") {
     const configured = Boolean(String(env["AMX-HUBS-CONNECT"] || env.AMX_HUBS_CONNECT_API_KEY || "").trim());
     return reply({ configured, connected: configured, tenantId: "h3at-solutions", allowedActions: ["page.read", "page.navigate", "content.present", "vision.inspect", "tool.invoke", "proof.write"], lastCommand: null }, configured ? 200 : 503, { "Cache-Control": "no-store" });
