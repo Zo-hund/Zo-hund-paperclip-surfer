@@ -149,6 +149,7 @@ export const tenants = [
   { id: "amx-labs", name: "AMX Labs", type: "Innovation Lab", color: "#f4c96b", missionIds: ["xrt-green-mode", "webxr-creator"], agentIds: ["jaz", "naz", "zohund"] },
   { id: "northside-school", name: "Northside School", type: "Education Partner", color: "#79eea8", missionIds: ["xrt-green-mode", "project-checklist"], agentIds: ["jaz", "taz"] },
   { id: "community-runway", name: "Community Runway", type: "Community Partner", color: "#ff7a66", missionIds: ["xrt-green-mode", "sponsor-demo"], agentIds: ["jaz", "raz"] },
+  { id: "h3at-solutions", name: "H3AT Solutions", type: "Workforce & Innovation Partner", color: "#1bb5a7", missionIds: missions.map((mission) => mission.id), agentIds: ["jaz", "taz", "raz", "naz", "zohund"] },
 ];
 
 export const sponsorConfig = {

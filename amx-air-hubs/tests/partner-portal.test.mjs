@@ -39,3 +39,20 @@ test("partner routes connect campaign attribution to mission outcomes", async ()
   assert.match(missions, /recordActivePartnerCampaignEvent\("completion",\s*mission\.id\)/);
   assert.match(marketplace, /recordActivePartnerCampaignEvent\("marketplace"\)/);
 });
+
+test("H3AT workforce workspace connects tracks, simulations, agents, and management API", async () => {
+  const routes = await read("src/App.tsx");
+  const page = await read("src/pages/h3at-partner.tsx");
+  const model = await read("src/h3at-partnership.ts");
+  const connections = await read("src/pages/connections.tsx");
+  const schema = await read("supabase/migrations/20260808200000_h3at_partner_workspace.sql");
+  assert.match(routes, /path="\/partners\/h3at"/);
+  assert.match(page, /SIMULATION TO LIVE/);
+  assert.match(page, /GROUNDED BRAINS/);
+  assert.match(page, /REMOTE CONTROL PROTOCOL/);
+  assert.match(model, /vision\.inspect/);
+  assert.match(model, /tool\.invoke/);
+  assert.match(connections, /h3at-management/);
+  assert.match(schema, /'h3at-solutions'/);
+  assert.match(schema, /partner_memberships/);
+});

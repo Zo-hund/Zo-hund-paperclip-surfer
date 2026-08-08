@@ -18,6 +18,7 @@ import { MembershipPage } from "./pages/membership";
 import { SkillMarketPage } from "./pages/skill-market";
 import { PathfinderFacilitatorPage, PathfinderTrainingMissionPage } from "./pages/pathfinder-training";
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
+import { H3ATPartnerPage } from "./pages/h3at-partner";
 import { RequireMember } from "./member-auth";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
@@ -62,6 +63,7 @@ function ShellRoutes() {
     <Route path="/account/orders" element={<RequireMember><MerchOrdersPage/></RequireMember>}/>
     <Route path="/pods" element={<RequireMember><PodsPage/></RequireMember>}/>
     <Route path="/partners" element={<RequireMember><PartnerPortalPage/></RequireMember>}/>
+    <Route path="/partners/h3at" element={<RequireMember><H3ATPartnerPage/></RequireMember>}/>
     <Route path="/partners/join" element={<RequireMember><PartnerJoinPage/></RequireMember>}/>
     <Route path="/sponsor" element={<SponsorPage/>}/>
     <Route path="/admin" element={<RequireMember roles={["operator"]}><AdminPage/></RequireMember>}/>

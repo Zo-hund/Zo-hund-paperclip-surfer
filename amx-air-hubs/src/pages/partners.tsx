@@ -146,6 +146,7 @@ export function PartnerPortalPage() {
 
   return <div className="page section-wrap partner-portal">
     <PageHeader eyebrow="PARTNER OPERATIONS" title="Organizations, campaigns, and outcomes" description="Run a partner from invitation through verified mission completion, reporting, and the next opportunity." actions={<>
+      <Link className="button secondary" to="/partners/h3at"><Building2/>H3AT workspace</Link>
       <button className="button secondary" onClick={() => void refreshAll()} disabled={Boolean(busy)}><RefreshCw/>Refresh</button>
       <button className="button primary" onClick={() => setOrganizationOpen(true)}><Plus/>New organization</button>
     </>}/>

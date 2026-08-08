@@ -17,6 +17,7 @@ const catalog: Array<{ provider: string; name: string; kind: ConnectionKind; det
   { provider: "google", name: "Google Workspace", kind: "oauth", detail: "Calendar, Drive, Maps, and event resources" },
   { provider: "skills", name: "AMX Skill Registry", kind: "skill", detail: "Tenant-approved agent capabilities" },
   { provider: "plugins", name: "Plugin Registry", kind: "plugin", detail: "Signed platform extensions" },
+  { provider: "h3at-management", name: "H3AT Management API", kind: "api", detail: "Tenant-scoped projects, workforce records, Pod page control, and approved agent tools" },
 ];
 
 export function ConnectionsPage() {
@@ -47,18 +48,18 @@ export function ConnectionsPage() {
   const rows = useMemo(() => catalog.map((item) => ({ ...item, connection: connections.find((connection) => connection.provider === item.provider) })), [connections]);
   const configure = (item: (typeof catalog)[number]) => {
     const current = connections.find((connection) => connection.provider === item.provider);
-    const defaults = item.provider === "printful" ? { endpoint: "https://api.printful.com", scopes: "products, orders, webhooks" } : item.provider === "stripe" ? { endpoint: "https://api.stripe.com", scopes: "checkout, payments, webhooks" } : { endpoint: "", scopes: "" };
+    const defaults = item.provider === "printful" ? { endpoint: "https://api.printful.com", scopes: "products, orders, webhooks" } : item.provider === "stripe" ? { endpoint: "https://api.stripe.com", scopes: "checkout, payments, webhooks" } : item.provider === "h3at-management" ? { endpoint: "", scopes: "projects:read, workforce:read, pods:control, tools:invoke, proof:write" } : { endpoint: "", scopes: "" };
     setSelected(item); setEndpoint(current?.endpoint_url || defaults.endpoint); setScopes(current?.scopes.join(", ") || defaults.scopes); setSecret(""); setNotice(""); setPrintfulRuntime(null); setPayouts(null);
     if (item.provider === "printful") void loadPrintfulRuntimeStatus().then(setPrintfulRuntime).catch((error) => setNotice(error instanceof Error ? error.message : "Printful runtime status is unavailable."));
     if (item.provider === "stripe") void loadMerchPayouts(tenantId).then(setPayouts).catch((error) => setNotice(error instanceof Error ? error.message : "Stripe payout status is unavailable."));
   };
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
-    if (query.get("connect") !== "stripe") return;
-    const stripe = catalog.find((item) => item.provider === "stripe");
-    if (stripe) configure(stripe);
-    setNotice(query.get("state") === "complete" ? "Stripe returned the partner to AMX. Account verification status is refreshing." : "Stripe onboarding needs another secure session.");
-    window.history.replaceState({}, "", "/connections");
+    const requested = query.get("provider") || query.get("connect");
+    if (!requested) return;
+    const provider = catalog.find((item) => item.provider === requested);
+    if (provider) configure(provider);
+    if (requested === "stripe") setNotice(query.get("state") === "complete" ? "Stripe returned the partner to AMX. Account verification status is refreshing." : "Stripe onboarding needs another secure session.");
   }, []);
   const registerPrintfulWebhook = async () => {
     setBusy(true);
