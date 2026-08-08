@@ -169,6 +169,24 @@ export function createProofRecord(mission: Mission, role: Role, xp: number, star
 }
 
 export function getProofs() { return read<ProofRecord[]>(PROOFS_KEY, []); }
+
+export function issueNamedPathfinderProof(learnerId: string, learnerName: string, completedSteps: string[], proofId = `opprrc-${crypto.randomUUID().slice(0, 8)}`): ProofRecord {
+  const tenant = getTenantRecord(getActiveTenant());
+  const timestamp = new Date().toISOString();
+  const base = {
+    id: proofId, org: tenant.certificateName, program: "XRT Pathfinder Educator Training",
+    project: "KNOW / DO / BE Educator Readiness", resource: learnerName, tenantId: tenant.proofScope, learnerId,
+    role: "Learner" as Role, agentId: "jaz", missionId: "pathfinder-educator", device: "facilitator-console",
+    report: { completedSteps, score: 100, xp: 250, durationSeconds: 10800, template: tenant.reportTemplate },
+    certificate: { badge: "Pathfinder Educator", issued: true, status: "ready" as const, issuer: tenant.certificateName, sponsor: tenant.certificateSponsor, color: tenant.color },
+    sponsorTag: tenant.certificateSponsor, status: "complete" as const, issuerSignature: tenant.proofSignature,
+    timestamp, syncStatus: navigator.onLine ? "synced" as const : "queued" as const,
+  };
+  const proof: ProofRecord = { ...base, signature: proofSignature(base) };
+  localStorage.setItem(PROOFS_KEY, JSON.stringify([proof, ...getProofs().filter((item) => item.id !== proof.id)]));
+  syncProofRecord("proof:complete", proof);
+  return proof;
+}
 export function validateProof(proof: ProofRecord) { return proof.signature === proofSignature(proof); }
 export function getXP() { return read<number>(XP_KEY, 40); }
 export function addXP(amount: number) {
