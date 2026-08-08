@@ -37,6 +37,24 @@ export type PathfinderProgram = {
   evidenceStarters: string[]; setup: boolean[];
 };
 
+export type PathfinderTrackUnlock = {
+  id: string; pillar: TrainingPillar; title: string; kind: "module" | "pod"; mode: "solo" | "co-op" | "team";
+  requiredCompetencies: number; route: string; outcome: string;
+};
+
+export const pathfinderTrack: PathfinderTrackUnlock[] = [
+  { id: "orientation", pillar: "KNOW", title: "Pathfinder Orientation", kind: "module", mode: "solo", requiredCompetencies: 0, route: "/missions/pathfinder-educator", outcome: "Understand the KNOW / DO / BE learning path." },
+  { id: "ai-studio", pillar: "KNOW", title: "AI Lesson Studio", kind: "pod", mode: "solo", requiredCompetencies: 1, route: "/rooms/room-ai-101/lobby", outcome: "Build and test an educator-ready AI lesson." },
+  { id: "xr-safety", pillar: "DO", title: "XR Safety Lab", kind: "module", mode: "solo", requiredCompetencies: 2, route: "/mission/webxr-creator/pre", outcome: "Practice headset setup, access, and supervised rotation." },
+  { id: "integration-pod", pillar: "DO", title: "Integration Builder Pod", kind: "pod", mode: "co-op", requiredCompetencies: 3, route: "/pods", outcome: "Co-design a STEM, Reading, and Math activity." },
+  { id: "teachback", pillar: "BE", title: "Teach-Back Studio", kind: "pod", mode: "co-op", requiredCompetencies: 5, route: "/pods", outcome: "Rehearse, receive feedback, and revise your delivery." },
+  { id: "ambassador", pillar: "BE", title: "Ambassador Team Pod", kind: "pod", mode: "team", requiredCompetencies: 7, route: "/pods", outcome: "Launch a team-led Pathfinder activation and earn certification." },
+];
+
+export function trackUnlockState(completed: number) {
+  return pathfinderTrack.map((item, index) => ({ ...item, unlocked: completed >= item.requiredCompetencies, completed: index < pathfinderTrack.length - 1 ? completed >= pathfinderTrack[index + 1].requiredCompetencies : completed >= competencies.length }));
+}
+
 export const evidenceStarters = [
   "I can explain AI, VR, AR, and MR using this classroom example: ",
   "My three-day AI-assisted lesson helps learners to: ",

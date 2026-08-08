@@ -42,6 +42,15 @@ test("mobile evidence prefills and reusable program deployment are available", (
   assert.match(page, /!current\.evidence\[itemIndex\]\?\.trim/);
 });
 
+test("competency milestones drip modules and Solo Co-op Team Skill Pods", () => {
+  assert.match(source, /pathfinderTrack/);
+  assert.match(source, /trackUnlockState/);
+  for (const mode of ['"solo"', '"co-op"', '"team"']) assert.match(source, new RegExp(mode));
+  assert.match(page, /DRIP SKILL TRACK/);
+  assert.match(page, /COHORT UNLOCK MAP/);
+  assert.match(page, /Complete \{item\.requiredCompetencies\} competencies/);
+});
+
 test("protected routes and printable kit are shipped", () => {
   assert.match(app, /\/missions\/pathfinder-educator/);
   assert.match(app, /\/training\/pathfinder\/facilitator/);
