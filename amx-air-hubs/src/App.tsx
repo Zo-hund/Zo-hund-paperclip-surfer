@@ -19,6 +19,7 @@ import { SkillMarketPage } from "./pages/skill-market";
 import { PathfinderFacilitatorPage, PathfinderTrainingMissionPage } from "./pages/pathfinder-training";
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
 import { H3ATPartnerPage } from "./pages/h3at-partner";
+import { TenantLaunchKitPage } from "./pages/tenant-launch-kit";
 import { RequireMember } from "./member-auth";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
@@ -76,6 +77,7 @@ function ShellRoutes() {
     <Route path="/stage" element={<RequireMember roles={["operator"]}><AMXXRStagePage/></RequireMember>}/>
     <Route path="/qr-studio" element={<RequireMember roles={["trainer", "operator"]}><QRStudioPage/></RequireMember>}/>
     <Route path="/tenants" element={<RequireMember roles={["operator"]}><TenantConsolePage/></RequireMember>}/>
+    <Route path="/tenants/:tenantId/guide" element={<RequireMember><TenantLaunchKitPage/></RequireMember>}/>
     <Route path="/settings/comfort" element={<RequireMember><ComfortSettingsPage/></RequireMember>}/>
     <Route path="/profiles/:userId" element={<RequireMember><HumanProfilePage/></RequireMember>}/>
     <Route path="/teams" element={<RequireMember><TeamsPage/></RequireMember>}/>
