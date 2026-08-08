@@ -33,6 +33,15 @@ test("production sessions use tenant RLS, realtime sync, and governed certificat
   assert.doesNotMatch(live, /service_role|SUPABASE_SECRET/i);
 });
 
+test("mobile evidence prefills and reusable program deployment are available", () => {
+  assert.match(source, /evidenceStarters/);
+  assert.match(source, /pathfinderPrograms/);
+  assert.match(source, /parsePathfinderProgram/);
+  assert.match(page, /Quick program deployment/);
+  assert.match(page, /Upload program/);
+  assert.match(page, /!current\.evidence\[itemIndex\]\?\.trim/);
+});
+
 test("protected routes and printable kit are shipped", () => {
   assert.match(app, /\/missions\/pathfinder-educator/);
   assert.match(app, /\/training\/pathfinder\/facilitator/);

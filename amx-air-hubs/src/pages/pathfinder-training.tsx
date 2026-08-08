@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BadgeCheck, BookOpenCheck, Check, Circle, Clock3, CloudOff, Download, GraduationCap, Pause, Play, RotateCcw, ShieldCheck, Users, Wifi } from "lucide-react";
+import { BadgeCheck, BookOpenCheck, Check, Circle, Clock3, CloudOff, Download, GraduationCap, Pause, Play, RotateCcw, ShieldCheck, Upload, Users, WandSparkles, Wifi } from "lucide-react";
 import { PageHeader, QRCodeCard, StatusPill } from "../components";
 import { useMemberAuth } from "../member-auth";
 import { getActiveTenant } from "../operations";
 import { issueNamedPathfinderProof } from "../platform";
 import { certifyLiveParticipant, createLiveTraining, joinLiveTraining, loadLiveTraining, subscribeLiveTraining, updateLiveParticipant, updateLiveTraining, type LiveTrainingParticipant, type LiveTrainingSession } from "../pathfinder-training-live";
-import { competencies, contingencyPlans, emptyTrainingState, learnerProgress, readTrainingState, saveTrainingState, setupChecks, trainingSegments, type PathfinderTrainingState } from "../pathfinder-training";
+import { competencies, contingencyPlans, emptyTrainingState, evidenceStarters, parsePathfinderProgram, pathfinderPrograms, readTrainingState, saveTrainingState, setupChecks, trainingSegments, type PathfinderProgram, type PathfinderTrainingState } from "../pathfinder-training";
 
 const kitUrl = "/resources/xrt-pathfinder-training-kit.pdf";
 const clock = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -57,7 +57,7 @@ function useTrainingSession(mode: "learner" | "facilitator") {
 export function PathfinderTrainingMissionPage() {
   const { state, update, session, notice } = useTrainingSession("learner");
   const completed = state.competencies[0]?.filter(Boolean).length || 0;
-  const toggle = (index: number) => update((current) => ({ ...current, competencies: [competencies.map((_, itemIndex) => itemIndex === index ? !current.competencies[0]?.[itemIndex] : Boolean(current.competencies[0]?.[itemIndex]))] }));
+  const toggle = (index: number) => update((current) => { const checked = !current.competencies[0]?.[index]; return { ...current, evidence: competencies.map((_, itemIndex) => itemIndex === index && checked && !current.evidence[itemIndex]?.trim() ? evidenceStarters[itemIndex] : current.evidence[itemIndex] || ""), competencies: [competencies.map((_, itemIndex) => itemIndex === index ? checked : Boolean(current.competencies[0]?.[itemIndex]))] }; });
   const evidenceLabels = ["Explain the landscape in your own words", "Paste your three-day lesson outline", "Record your XR safety observation", "Describe your integration triangle activity", "Capture your teach-back feedback", "Write your Ambassador reflection", "Trainer certification note"];
   return <div className="page section-wrap pathfinder-training-page">
     <PageHeader eyebrow="XRT PATHFINDER / STAFF + EDUCATOR MISSION" title="Learn it. Build it. Teach it back." description="A guided three-hour mission that turns educator practice into verified KNOW, DO, and BE evidence." actions={<a className="button secondary" href={kitUrl} download><Download/>Training kit</a>}/>
@@ -74,11 +74,16 @@ export function PathfinderFacilitatorPage() {
   const segment = trainingSegments[state.activeSegment] || trainingSegments[0];
   const setupReady = state.setup.every(Boolean);
   const total = participants.reduce((sum, item) => sum + item.competencies.filter(Boolean).length, 0);
+  const [program, setProgram] = useState<PathfinderProgram>(pathfinderPrograms[0]);
+  const [programNotice, setProgramNotice] = useState("");
+  const applyProgram = (next: PathfinderProgram) => { setProgram(next); update((current) => ({ ...current, setup: next.setup })); setProgramNotice(`${next.name} loaded for ${next.learnerTarget} learners.`); };
+  const uploadProgram = async (file?: File) => { if (!file) return; try { applyProgram(parsePathfinderProgram(await file.text())); } catch (error) { setProgramNotice(error instanceof Error ? error.message : "Program could not be loaded."); } };
   const selectSegment = (index: number) => update((current) => ({ ...current, activeSegment: index, running: false, remainingSeconds: trainingSegments[index].minutes * 60 }));
   const certify = async (participant: LiveTrainingParticipant) => { const proofId = `opprrc-${crypto.randomUUID().slice(0, 8)}`; await certifyLiveParticipant(participant.id, proofId); issueNamedPathfinderProof(participant.user_id, participant.display_name, competencies, proofId); await refresh(); };
   const reset = () => { if (window.confirm("Reset timing and setup for this Pathfinder session?")) update(() => ({ ...emptyTrainingState(), learners: state.learners, competencies: state.competencies, certified: state.certified })); };
   return <div className="page section-wrap pathfinder-facilitator-page">
     <PageHeader eyebrow="XRT PATHFINDER / FACILITATOR CONSOLE" title="Run the room with two voices and one rhythm." description="Live timing, learner evidence, role-governed sign-off, and named OPPRRC certification." actions={<><a className="button secondary" href={kitUrl} target="_blank" rel="noreferrer"><Download/>Print kit</a><button className="icon-button" title="Reset session" onClick={reset}><RotateCcw/></button></>}/>
+    <section className="training-program-loader"><div><WandSparkles/><span><b>Quick program deployment</b><small>{program.venue} / {program.schedule}</small></span></div><select aria-label="Program preset" value={program.id} onChange={(event) => applyProgram(pathfinderPrograms.find((item) => item.id === event.target.value) || pathfinderPrograms[0])}>{pathfinderPrograms.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><label className="button secondary"><Upload/>Upload program<input type="file" accept="application/json,.json" onChange={(event) => void uploadProgram(event.target.files?.[0])}/></label>{programNotice && <p role="status">{programNotice}</p>}</section>
     <section className="training-launch-panel"><div><span className="eyebrow">MULTI-DEVICE SESSION</span><h2>{session ? session.session_code : "CREATING"}</h2><p>{notice}</p></div>{session && <QRCodeCard route={`/missions/pathfinder-educator?session=${session.session_code}`} title={`Pathfinder ${session.session_code}`}/>}</section>
     <section className="facilitator-live"><div><span className={`live-dot ${state.running ? "" : "paused"}`}/><p><small>{segment.pillar} / {segment.start} - {segment.end}</small><b>{segment.title}</b></p></div><strong>{clock(state.remainingSeconds)}</strong><button className="button primary" disabled={!setupReady || !session} onClick={() => update((current) => ({ ...current, running: !current.running, startedAt: current.startedAt || Date.now() }))}>{state.running ? <Pause/> : <Play/>}{state.running ? "Pause" : "Run block"}</button></section>
     {!setupReady && <p className="training-alert"><ShieldCheck/>Complete pre-flight before starting the timer.</p>}
