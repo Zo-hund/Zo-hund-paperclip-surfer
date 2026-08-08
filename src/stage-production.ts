@@ -1,0 +1,293 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
+import { defaultStageEvent, normalizeStageEvent, type StageEventState } from "./stage-events";
+import { migrateLegacyStageCameraRoutes } from "./stage-camera-routing";
+import { DEFAULT_STAGE_CAMERA_MOTION, normalizeStageCameraMotion, type StageCameraMotionState } from "./stage-camera-motion";
+import { normalizeStageAudio, type StageAudioState, type StageDeckTrack } from "./stage-audio";
+import { defaultStageShowWorkflow, normalizeStageShowWorkflow, type StageShowWorkflow } from "./stage-show-workflow";
+import { normalizeStageVideo, type StageVideoState } from "./stage-video";
+import { DEFAULT_STAGE_PROGRAM_MEDIA, normalizeStageProgramMedia, type StageProgramMediaState } from "./stage-program-media";
+
+export { DEFAULT_STAGE_AUDIO } from "./stage-audio";
+export type { StageAudioAsset, StageAudioFormat, StageAudioState, StageAudioTransport, StageDeckPreset, StageDeckTrack, StageLightingLook, StageScoreCue, StageScoreMode, StageScoreState, StageSoundDesign, StageSoundscape, StageVfxLook } from "./stage-audio";
+export { DEFAULT_STAGE_VIDEO, STAGE_VIDEO_PROFILES } from "./stage-video";
+export type { StageVideoProfile, StageVideoState } from "./stage-video";
+export { DEFAULT_STAGE_CAMERA_MOTION, STAGE_CAMERA_MOTION_PRESETS } from "./stage-camera-motion";
+export type { StageCameraMotionId, StageCameraMotionPreset, StageCameraMotionState } from "./stage-camera-motion";
+
+export type StageMode = "in-person" | "online" | "metaverse";
+export type StageShot = "wide" | "host" | "audience" | "crane";
+export type StageScreenId = "center" | "left" | "right";
+export interface StageScreenMediaAsset { id: string; name: string; url: string; contentType: string }
+export interface StagePassOverlayState { visible: boolean; durationSeconds: number; startedAt: number | null }
+export type StageCue = "standby" | "opening" | "speaker" | "demo" | "qa" | "sponsor" | "close";
+
+export interface SponsorCreative {
+  id: string;
+  name: string;
+  headline: string;
+  cta: string;
+  ctaUrl?: string;
+  accent: string;
+  logoUrl?: string;
+  mediaUrl?: string;
+  durationSeconds?: number;
+  animation?: "cut" | "fade" | "slide" | "pulse";
+  stingerTrack?: StageDeckTrack;
+}
+
+export interface StageProductionState {
+  live: boolean;
+  mode: StageMode;
+  shot: StageShot;
+  cue: StageCue;
+  sponsor: SponsorCreative;
+  cameraRoutes: Record<StageShot, string>;
+  screenRoutes: Record<StageScreenId, string>;
+  screenMedia: Partial<Record<StageScreenId, StageScreenMediaAsset>>;
+  passOverlay: StagePassOverlayState;
+  cameraMotion: StageCameraMotionState;
+  audio: StageAudioState;
+  video: StageVideoState;
+  programMedia: StageProgramMediaState;
+  event: StageEventState;
+  workflow: StageShowWorkflow;
+  generalSeats: number;
+  vipSeats: number;
+  connectedPods: string[];
+  revision: number;
+  updatedAt: string;
+  operatorId: string;
+}
+
+interface StageStatePacket {
+  type: "stage-state";
+  state: StageProductionState;
+}
+
+interface StageRequestPacket {
+  type: "stage-request";
+  requestId: string;
+}
+
+type StagePacket = StageStatePacket | StageRequestPacket;
+
+export const DEFAULT_SPONSORS: SponsorCreative[] = [
+  { id: "amx-air", name: "AMX AIR HUBS.CC", headline: "Create. Curate. Connect.", cta: "ENTER THE XR RUNWAY", accent: "#55e6ff" },
+  { id: "amx-labs", name: "AMX LABS", headline: "Human Agentic AI in the real world", cta: "BUILD WITH THE LAB", accent: "#f4c96b" },
+  { id: "tech-at-nite", name: "TECH AT NITE", headline: "Skills, community, and creative technology", cta: "JOIN THE NEXT COHORT", accent: "#79eea8" },
+  { id: "amx-merch", name: "AMX CREATOR COLLECTION", headline: "Wear the work. Fund the runway.", cta: "SHOP EVENT MERCH", ctaUrl: "/marketplace/merch", accent: "#79eea8", logoUrl: "/merch/amx-merch-collection.png", durationSeconds: 18, animation: "slide", stingerTrack: "sponsor-sting" },
+];
+
+export const DEFAULT_CAMERA_ROUTES: Record<StageShot, string> = {
+  wide: "auto",
+  host: "auto",
+  audience: "auto",
+  crane: "auto",
+};
+
+export const DEFAULT_SCREEN_ROUTES: Record<StageScreenId, string> = {
+  center: "program",
+  left: "program",
+  right: "program",
+};
+
+export function normalizeStagePassOverlay(value?: Partial<StagePassOverlayState>): StagePassOverlayState {
+  const durationSeconds = Math.max(5, Math.min(120, Math.round(Number(value?.durationSeconds) || 15)));
+  const startedAt = Number(value?.startedAt);
+  return { visible: Boolean(value?.visible), durationSeconds, startedAt: Number.isFinite(startedAt) && startedAt > 0 ? startedAt : null };
+}
+
+function localHost() {
+  return ["localhost", "127.0.0.1"].includes(location.hostname);
+}
+
+function initialState(operatorId: string, room = "AMXSTAGE"): StageProductionState {
+  const revision = Date.now();
+  return {
+    live: false,
+    mode: "in-person",
+    shot: "wide",
+    cue: "standby",
+    sponsor: DEFAULT_SPONSORS[0],
+    cameraRoutes: { ...DEFAULT_CAMERA_ROUTES },
+    screenRoutes: { ...DEFAULT_SCREEN_ROUTES },
+    screenMedia: {},
+    passOverlay: normalizeStagePassOverlay(),
+    cameraMotion: { ...DEFAULT_STAGE_CAMERA_MOTION },
+    audio: normalizeStageAudio(),
+    video: normalizeStageVideo(),
+    programMedia: { ...DEFAULT_STAGE_PROGRAM_MEDIA },
+    event: defaultStageEvent(room),
+    workflow: defaultStageShowWorkflow(room),
+    generalSeats: 0,
+    vipSeats: 0,
+    connectedPods: ["AMX-MAIN"],
+    revision,
+    updatedAt: new Date(revision).toISOString(),
+    operatorId,
+  };
+}
+
+function storedState(room: string, operatorId: string) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(`amx_stage_${room}`) || "null") as StageProductionState | null;
+    if (!saved) return initialState(operatorId, room);
+    const revision = Number(saved.revision) || Date.parse(saved.updatedAt) || Date.now();
+    return { ...initialState(operatorId, room), ...saved, passOverlay: normalizeStagePassOverlay(saved.passOverlay), cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...saved.cameraRoutes }), screenRoutes: { ...DEFAULT_SCREEN_ROUTES, ...saved.screenRoutes }, screenMedia: saved.screenMedia || {}, cameraMotion: normalizeStageCameraMotion(saved.cameraMotion), audio: normalizeStageAudio(saved.audio), video: normalizeStageVideo(saved.video), programMedia: normalizeStageProgramMedia(saved.programMedia), event: normalizeStageEvent(saved.event, room, saved.generalSeats, saved.vipSeats), workflow: normalizeStageShowWorkflow(saved.workflow, room), revision, updatedAt: new Date(revision).toISOString(), operatorId };
+  } catch {
+    return initialState(operatorId, room);
+  }
+}
+
+export function useStageProduction(roomCode: string, options: { readOnly?: boolean } = {}) {
+  const readOnly = Boolean(options.readOnly);
+  const room = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "AMXSTAGE";
+  const operatorId = useMemo(() => sessionStorage.getItem("amx_stage_operator") || crypto.randomUUID().slice(0, 8), []);
+  const [state, setState] = useState<StageProductionState>(() => storedState(room, operatorId));
+  const [transport, setTransport] = useState<"connecting" | "websocket" | "local mesh" | "offline">("connecting");
+  const [peerCount, setPeerCount] = useState(1);
+  const stateRef = useRef(state);
+  const roomRef = useRef(room);
+  const localRef = useRef<BroadcastChannel | null>(null);
+  const bridgeLocalRef = useRef<BroadcastChannel[]>([]);
+  const realtimeRef = useRef<RealtimeChannel | null>(null);
+  const bridgeRealtimeRef = useRef<RealtimeChannel[]>([]);
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+
+  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { sessionStorage.setItem("amx_stage_operator", operatorId); }, [operatorId]);
+  useEffect(() => {
+    if (roomRef.current === room) return;
+    roomRef.current = room;
+    const next = storedState(room, operatorId);
+    stateRef.current = next;
+    setState(next);
+  }, [operatorId, room]);
+
+  const receive = useCallback((packet: StagePacket) => {
+    if (packet.type !== "stage-state") return;
+    const revision = Number(packet.state.revision) || Date.parse(packet.state.updatedAt) || 0;
+    const incoming = { ...packet.state, passOverlay: normalizeStagePassOverlay(packet.state.passOverlay), cameraRoutes: migrateLegacyStageCameraRoutes({ ...DEFAULT_CAMERA_ROUTES, ...packet.state.cameraRoutes }), screenRoutes: { ...DEFAULT_SCREEN_ROUTES, ...packet.state.screenRoutes }, screenMedia: packet.state.screenMedia || {}, cameraMotion: normalizeStageCameraMotion(packet.state.cameraMotion), audio: normalizeStageAudio(packet.state.audio), video: normalizeStageVideo(packet.state.video), programMedia: normalizeStageProgramMedia(packet.state.programMedia), event: normalizeStageEvent(packet.state.event, room, packet.state.generalSeats, packet.state.vipSeats), workflow: normalizeStageShowWorkflow(packet.state.workflow, room), revision, updatedAt: new Date(revision).toISOString() };
+    const current = stateRef.current;
+    if (incoming.revision < current.revision) return;
+    if (incoming.revision === current.revision && incoming.operatorId.localeCompare(current.operatorId) <= 0) return;
+    stateRef.current = incoming;
+    setState(incoming);
+    localStorage.setItem(`amx_stage_${room}`, JSON.stringify(incoming));
+  }, [room]);
+
+  const broadcast = useCallback((packet: StagePacket) => {
+    if (realtimeRef.current) {
+      void realtimeRef.current.send({ type: "broadcast", event: "stage-sync", payload: packet });
+      bridgeRealtimeRef.current.forEach((channel) => {
+        void channel.send({ type: "broadcast", event: "stage-sync", payload: packet });
+      });
+      return;
+    }
+    localRef.current?.postMessage(packet);
+    bridgeLocalRef.current.forEach((channel) => channel.postMessage(packet));
+  }, []);
+
+  useEffect(() => {
+    const config = window.__AMX_CONFIG__;
+    if (localHost() || !config?.supabaseUrl || !config.supabasePublishableKey) {
+      if (!("BroadcastChannel" in window)) { setTransport("offline"); return; }
+      const channel = new BroadcastChannel(`amx-stage-${room}`);
+      channel.onmessage = (event) => {
+        const packet = event.data as StagePacket;
+        if (packet.type === "stage-request") {
+          if (!readOnly) channel.postMessage({ type: "stage-state", state: stateRef.current } satisfies StageStatePacket);
+          return;
+        }
+        receive(packet);
+      };
+      localRef.current = channel;
+      setTransport("local mesh");
+      if (readOnly) channel.postMessage({ type: "stage-request", requestId: operatorId } satisfies StageRequestPacket);
+      return () => { channel.close(); localRef.current = null; };
+    }
+
+    const supabase = createClient(config.supabaseUrl, config.supabasePublishableKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    const channel = supabase.channel(`amx-stage-${room}`, {
+      config: { broadcast: { self: false }, presence: { key: operatorId } },
+    });
+    supabaseRef.current = supabase;
+    realtimeRef.current = channel;
+    channel
+      .on("broadcast", { event: "stage-sync" }, ({ payload }) => receive(payload as StagePacket))
+      .on("broadcast", { event: "stage-request" }, () => {
+        if (!readOnly) void channel.send({ type: "broadcast", event: "stage-sync", payload: { type: "stage-state", state: stateRef.current } satisfies StageStatePacket });
+      })
+      .on("presence", { event: "sync" }, () => setPeerCount(Math.max(1, Object.keys(channel.presenceState()).length)))
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          setTransport("websocket");
+          if (readOnly) void channel.send({ type: "broadcast", event: "stage-request", payload: { type: "stage-request", requestId: operatorId } satisfies StageRequestPacket });
+          else void channel.track({ operatorId, joinedAt: new Date().toISOString() });
+        } else if (["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"].includes(status)) setTransport("offline");
+      });
+    return () => {
+      if (!readOnly) void channel.untrack();
+      void supabase.removeChannel(channel);
+      realtimeRef.current = null;
+      supabaseRef.current = null;
+    };
+  }, [operatorId, readOnly, receive, room]);
+
+  const bridgeKey = readOnly ? "" : state.connectedPods.filter((pod) => pod !== room).sort().join("|");
+  useEffect(() => {
+    const podRooms = bridgeKey.split("|").filter(Boolean);
+    if (!podRooms.length) return;
+    const config = window.__AMX_CONFIG__;
+    if (localHost() || !config?.supabaseUrl || !config.supabasePublishableKey) {
+      if (!("BroadcastChannel" in window)) return;
+      const channels = podRooms.map((pod) => new BroadcastChannel(`amx-stage-${pod}`));
+      bridgeLocalRef.current = channels;
+      const packet: StageStatePacket = { type: "stage-state", state: stateRef.current };
+      channels.forEach((channel) => channel.postMessage(packet));
+      return () => {
+        channels.forEach((channel) => channel.close());
+        bridgeLocalRef.current = [];
+      };
+    }
+
+    const supabase = supabaseRef.current;
+    if (!supabase) return;
+    const channels = podRooms.map((pod) => {
+      const channel = supabase.channel(`amx-stage-${pod}`);
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          void channel.send({ type: "broadcast", event: "stage-sync", payload: { type: "stage-state", state: stateRef.current } satisfies StageStatePacket });
+        }
+      });
+      return channel;
+    });
+    bridgeRealtimeRef.current = channels;
+    return () => {
+      channels.forEach((channel) => { void supabase.removeChannel(channel); });
+      bridgeRealtimeRef.current = [];
+    };
+  }, [bridgeKey]);
+
+  const update = useCallback((patch: Partial<Omit<StageProductionState, "revision" | "updatedAt" | "operatorId">>) => {
+    if (readOnly) return stateRef.current;
+    const revision = Math.max(Date.now(), stateRef.current.revision + 1);
+    const next: StageProductionState = {
+      ...stateRef.current,
+      ...patch,
+      revision,
+      updatedAt: new Date(revision).toISOString(),
+      operatorId,
+    };
+    stateRef.current = next;
+    setState(next);
+    localStorage.setItem(`amx_stage_${room}`, JSON.stringify(next));
+    broadcast({ type: "stage-state", state: next });
+    return next;
+  }, [broadcast, operatorId, readOnly, room]);
+
+  return { room, state, transport, peerCount, update };
+}

@@ -1,0 +1,215 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import QRCode from "qrcode";
+import {
+  Accessibility, Activity, BadgeCheck, Bot, BriefcaseBusiness, Cable, ChevronRight, CircleDollarSign, CircleUserRound, Download,
+  Camera, Clapperboard, Cpu, Crown, Gamepad2, Glasses, Home, Layers, LayoutGrid, LogIn, Menu, Move3d, Radio, ScanLine, Settings2, ShieldCheck, ShoppingBag, Smartphone, Volume2, VolumeX, X, Zap,
+} from "lucide-react";
+import type { Agent, Mission } from "./data";
+import { sponsorConfig } from "./data";
+import { useAMX } from "./AppContext";
+import { getOfflineQueue, syncOfflineQueue } from "./operations";
+import { useMemberAuth } from "./member-auth";
+import { modeRoute } from "./immersive";
+import { detectInputCapabilities, type InputCapabilities } from "./interaction";
+import { resolveSpatialAccess, type SpatialAccessMode } from "./xr-access";
+import { nexusSpatialRoute } from "./nexus-xr";
+
+const emptySpatialCapabilities: InputCapabilities = {
+  methods: ["mouse", "keyboard"], webXR: false, immersiveAR: false, immersiveVR: false,
+  camera: false, voice: false, gamepad: false, touch: false, handTracking: false,
+};
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [accessibilityOpen, setAccessibilityOpen] = useState(false);
+  const [xrAccessOpen, setXrAccessOpen] = useState(false);
+  const { xp, role, activeMission } = useAMX();
+  const member = useMemberAuth();
+  const location = useLocation();
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+  const memberNav = [
+    { to: "/", label: "Home", icon: Home },
+    { to: "/dashboard", label: "Dashboard", icon: Activity },
+    { to: "/partners", label: "Partners", icon: BriefcaseBusiness },
+    { to: "/membership", label: "Membership", icon: Crown },
+    { to: "/marketplace/earn", label: "Earn", icon: CircleDollarSign },
+    { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
+    { to: "/missions", label: "Missions", icon: Radio },
+    { to: `/play/${activeMission.id}`, label: "Play", icon: Move3d },
+    { to: "/stage", label: "Stage", icon: Clapperboard },
+    { to: "/nexus", label: "Nexus", icon: Cpu },
+    { to: "/agents", label: "Agents", icon: Bot },
+    { to: "/wallet", label: "Proof", icon: BadgeCheck },
+    { to: "/control", label: "Control", icon: LayoutGrid },
+    ...(member.profile?.membership_role === "operator" ? [{ to: "/connections", label: "Connections", icon: Cable }] : []),
+  ];
+  const nav = member.session ? memberNav : [
+    { to: "/", label: "Home", icon: Home },
+    { to: "/sponsor", label: "Partners", icon: BriefcaseBusiness },
+    { to: "/membership", label: "Membership", icon: Crown },
+    { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
+  ];
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <Link to="/" className="brand" aria-label="AMX AIR Hubs home">
+          <img className="brand-mark" src="/brand/amx-air-hubs-brand.png" alt=""/>
+          <span><b>AMX AIR</b><small>HUBS / XR RUNWAY</small></span>
+        </Link>
+        <nav className="desktop-nav" aria-label="Primary navigation">
+          {nav.map(({to, label, icon: Icon}) => <NavLink key={to} to={to} className={({isActive}) => isActive ? "active" : ""}><Icon size={16}/>{label}</NavLink>)}
+        </nav>
+        <div className="top-actions">
+          {member.session && <span className="role-chip">{member.profile?.membership_role || role}</span>}
+          {member.session && <span className="xp-chip"><Zap size={14}/>{xp.toLocaleString()} XP</span>}
+          {member.session && <SyncBadge/>}
+          {member.session && <button className="icon-button xr-access-button" title="AR, VR, and mixed reality" aria-label="Open spatial access" onClick={() => setXrAccessOpen(true)}><Glasses/></button>}
+          <Link className={member.session ? "icon-button account-button" : "button secondary compact account-signin"} to="/account" title={member.session ? "Member account" : undefined} aria-label={member.session ? "Member account" : undefined}>{member.session ? <CircleUserRound/> : <><LogIn/>Sign in</>}</Link>
+          <button className="icon-button" title="Accessibility settings" aria-label="Accessibility settings" onClick={() => setAccessibilityOpen(true)}><Accessibility size={20}/></button>
+          <button className="icon-button mobile-menu-button" title="Open menu" aria-label="Open menu" onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X size={21}/> : <Menu size={21}/>}</button>
+        </div>
+      </header>
+      {menuOpen && <nav className="mobile-menu">{nav.map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={18}/>{label}<ChevronRight size={16}/></NavLink>)}{member.session && <button onClick={() => { setMenuOpen(false); setXrAccessOpen(true); }}><Glasses size={18}/>Spatial access<ChevronRight size={16}/></button>}<NavLink to="/account"><CircleUserRound size={18}/>Account<ChevronRight size={16}/></NavLink></nav>}
+      <main>{children}</main>
+      <nav className="bottom-nav" aria-label="Mobile navigation">
+        {nav.slice(0,5).map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={20}/><span>{label}</span></NavLink>)}
+      </nav>
+      {accessibilityOpen && <AccessibilityPanel onClose={() => setAccessibilityOpen(false)}/>}
+      {xrAccessOpen && <XRAccessPanel missionId={activeMission.id} pathname={location.pathname} onClose={() => setXrAccessOpen(false)}/>}
+    </div>
+  );
+}
+
+function XRAccessPanel({ missionId, pathname, onClose }: { missionId: string; pathname: string; onClose: () => void }) {
+  const navigate = useNavigate();
+  const [capabilities, setCapabilities] = useState<InputCapabilities>(emptySpatialCapabilities);
+  const [checking, setChecking] = useState(true);
+  useEffect(() => {
+    let active = true;
+    void detectInputCapabilities().then((detected) => { if (active) { setCapabilities(detected); setChecking(false); } });
+    return () => { active = false; };
+  }, []);
+  const modes: Array<{ id: SpatialAccessMode; label: string; icon: typeof ScanLine }> = [
+    { id: "ar", label: "Augmented reality", icon: ScanLine },
+    { id: "vr", label: "Virtual reality", icon: Glasses },
+    { id: "mr", label: "Mixed reality", icon: Layers },
+  ];
+  const launch = (mode: SpatialAccessMode) => {
+    const route = resolveSpatialAccess(mode, capabilities);
+    onClose();
+    navigate(pathname === "/nexus" ? nexusSpatialRoute(mode, route.resolved) : modeRoute(route.resolved, missionId));
+  };
+  return <div className="modal-backdrop" onMouseDown={onClose}><aside className="xr-access-panel" onMouseDown={(event) => event.stopPropagation()} aria-label="Spatial access">
+    <header><div><span className="eyebrow">SPATIAL ACCESS / DEVICE ROUTER</span><h2>Enter spatial mode</h2></div><button className="icon-button" onClick={onClose} aria-label="Close spatial access"><X/></button></header>
+    <div className="xr-device-status" aria-live="polite">
+      <span><ShieldCheck/><b>{window.isSecureContext ? "HTTPS READY" : "HTTPS REQUIRED"}</b><small>SECURE ORIGIN</small></span>
+      <span><Smartphone/><b>{checking ? "CHECKING" : capabilities.touch ? "TOUCH READY" : "DESKTOP"}</b><small>DEVICE</small></span>
+      <span><Gamepad2/><b>{checking ? "CHECKING" : capabilities.immersiveVR ? "XR INPUT" : capabilities.gamepad ? "GAMEPAD" : "POINTER"}</b><small>INPUT</small></span>
+    </div>
+    <div className="xr-access-modes">
+      {modes.map(({id,label,icon:Icon}) => { const route=resolveSpatialAccess(id,capabilities); return <button key={id} onClick={() => launch(id)} disabled={checking}>
+        <span className={`xr-mode-symbol ${id}`}><Icon/></span><span><b>{label}</b><small>{checking ? "Checking device" : route.status}</small></span><i className={route.ready ? "ready" : "fallback"}>{route.resolved.toUpperCase()}</i><ChevronRight/>
+      </button>; })}
+    </div>
+    <div className="xr-access-capabilities"><span><Camera/>{capabilities.camera ? "CAMERA" : "NO CAMERA"}</span><span><Glasses/>{capabilities.webXR ? "WEBXR" : "WEB FALLBACK"}</span><span><Move3d/>{capabilities.handTracking ? "HANDS" : "TOUCH / POINTER"}</span></div>
+    <footer><span><b>{pathname === "/nexus" ? "ACTIVE ROOM" : "ACTIVE MISSION"}</b><small>{pathname === "/nexus" ? "Nexus control room" : missionId.replace(/-/g, " ")}</small></span><Link className="button secondary compact" to="/settings/comfort" onClick={onClose}><Settings2/>Comfort</Link></footer>
+  </aside></div>;
+}
+
+function SyncBadge() {
+  const [online,setOnline]=useState(navigator.onLine);const [queued,setQueued]=useState(getOfflineQueue().length);
+  useEffect(()=>{const refresh=()=>{setOnline(navigator.onLine);setQueued(getOfflineQueue().length)};window.addEventListener("online",refresh);window.addEventListener("offline",refresh);window.addEventListener("amx:store",refresh as EventListener);return()=>{window.removeEventListener("online",refresh);window.removeEventListener("offline",refresh);window.removeEventListener("amx:store",refresh as EventListener)}},[]);
+  const sync=async()=>{await syncOfflineQueue();setQueued(getOfflineQueue().length)};
+  return <button className={`sync-badge ${online?"online":"offline"}`} onClick={sync} title={online?"Sync offline records":"Offline mode"}><span/>{online?(queued?`${queued} queued`:"Synced"):`${queued} offline`}</button>;
+}
+
+function AccessibilityPanel({ onClose }: { onClose: () => void }) {
+  const { settings, updateSettings } = useAMX();
+  const options: Array<{key: keyof typeof settings; label: string; detail: string}> = [
+    { key: "captions", label: "Narration captions", detail: "Show every spoken instruction as text." },
+    { key: "audioEnabled", label: "Agent voice", detail: "Play spoken mission guidance." },
+    { key: "largeButtons", label: "Large controls", detail: "Increase tap targets across mission screens." },
+    { key: "youthMode", label: "Youth mode", detail: "Require an event code and trainer approval." },
+    { key: "reducedMotion", label: "Reduced motion", detail: "Minimize animation and camera movement." },
+    { key: "highContrast", label: "High contrast", detail: "Increase edge and text contrast." },
+    { key: "textOnlyMode", label: "Text-only mode", detail: "Replace the spatial scene with guided steps." },
+  ];
+  return <div className="modal-backdrop" onMouseDown={onClose}><aside className="settings-panel" onMouseDown={(event)=>event.stopPropagation()} aria-label="Accessibility settings">
+    <div className="panel-heading"><div><span className="eyebrow">ACCESSIBILITY</span><h2>Mission settings</h2></div><button className="icon-button" onClick={onClose} aria-label="Close settings"><X/></button></div>
+    <div className="settings-list">{options.map(({key,label,detail})=><label className="setting-row" key={key}><span>{label}<small>{detail}</small></span><input type="checkbox" checked={settings[key]} onChange={(event)=>updateSettings({[key]:event.target.checked})}/><i/></label>)}</div>
+    <button className="button primary full" onClick={onClose}>Apply settings</button>
+  </aside></div>
+}
+
+export function PageHeader({ eyebrow, title, description, actions }: {eyebrow:string;title:string;description?:string;actions?:ReactNode}) {
+  return <div className="page-header"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1>{description && <p>{description}</p>}</div>{actions && <div className="page-actions">{actions}</div>}</div>;
+}
+
+export function StatusPill({ children, tone="cyan" }: {children:ReactNode;tone?:"cyan"|"gold"|"green"|"red"|"neutral"}) {
+  return <span className={`status-pill ${tone}`}>{children}</span>;
+}
+
+export function AgentGlyph({ agent, size="large" }: {agent:Agent;size?:"small"|"large"}) {
+  return <div className={`agent-glyph ${size}`} style={{"--agent":agent.color,"--accent":agent.accent} as React.CSSProperties}>
+    <span className="agent-ring"/><div className="agent-head"><i/><i/></div><div className="agent-body"><b>{agent.name.slice(0,1)}</b></div>
+  </div>;
+}
+
+export function AgentCard({ agent, active, locked, onSelect }: {agent:Agent;active?:boolean;locked?:boolean;onSelect:()=>void}) {
+  return <button className={`agent-card ${active?"selected":""} ${locked?"locked":""}`} onClick={onSelect} disabled={locked}>
+    <AgentGlyph agent={agent}/><div className="card-copy"><span className="eyebrow">{agent.voice}</span><h3>{agent.name}</h3><b>{agent.role}</b><p>{agent.specialty}</p></div><span className="select-indicator">{active ? <BadgeCheck/> : <ChevronRight/>}</span>
+    {locked && <span className="agent-lock">{agent.unlockAtXP} XP</span>}</button>;
+}
+
+export function MissionCard({ mission, onOpen }: {mission:Mission;onOpen:()=>void}) {
+  const agent = mission.agentId.toUpperCase();
+  return <article className="mission-card" style={{"--mission":mission.color} as React.CSSProperties}>
+    <div className="mission-top"><StatusPill tone={mission.access.type === "sponsored" ? "gold" : "cyan"}>{mission.access.type}</StatusPill><span>{mission.duration}</span></div>
+    <div className="mission-signal"><span/><i/><b>{agent.slice(0,1)}</b></div>
+    <span className="eyebrow">{mission.domain}</span><h3>{mission.title}</h3><p>{mission.description}</p>
+    <div className="mission-meta"><span>{mission.difficulty}</span><span>+{mission.xp} XP</span><span>{agent}</span></div>
+    <button className="button secondary full" onClick={onOpen}>Open mission <ChevronRight size={17}/></button>
+  </article>;
+}
+
+export function XPBar({ value, level=3 }: {value:number;level?:number}) {
+  const base = level * 500;
+  const progress = Math.min(100, ((value - base) / 500) * 100);
+  return <div className="xp-bar"><div className="xp-label"><span>LEVEL {level + 1}</span><b>{Math.max(0,value-base)} / 500 XP</b></div><div className="xp-track"><span style={{width:`${progress}%`}}/></div></div>;
+}
+
+export function SponsorBanner() {
+  return <div className="sponsor-banner"><div className="sponsor-logo">AMX<span>LABS</span></div><div><span className="eyebrow">MISSION PARTNER</span><b>{sponsorConfig.sponsorName} funds verified learning outcomes.</b></div><Link className="button ghost" to="/sponsor">Sponsor this mission</Link></div>;
+}
+
+export function Metric({ label, value, delta, icon: Icon=Activity }: {label:string;value:string|number;delta?:string;icon?:typeof Activity}) {
+  return <div className="metric"><span><Icon size={17}/>{label}</span><strong>{value}</strong>{delta && <small>{delta}</small>}</div>;
+}
+
+export function QRCodeCard({ route, title }: {route:string;title:string}) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const url = typeof window === "undefined" ? route : `${window.location.origin}${route}`;
+  useEffect(()=>{ if(canvas.current) QRCode.toCanvas(canvas.current,url,{width:176,margin:1,color:{dark:"#071017",light:"#f7fcff"}}); },[url]);
+  const download = () => {
+    if(!canvas.current) return;
+    const link=document.createElement("a");link.href=canvas.current.toDataURL("image/png");link.download=`${title.toLowerCase().replace(/\s+/g,"-")}-qr.png`;link.click();
+  };
+  return <div className="qr-card"><canvas ref={canvas} aria-label={`QR code for ${title}`}/><div><span className="eyebrow">SCAN TO LAUNCH</span><h3>{title}</h3><code>{route}</code><button className="button secondary compact" onClick={download}><Download size={15}/>Save QR</button></div></div>;
+}
+
+export function ProofStatus({ status="Verified" }: {status?:string}) {
+  return <span className="proof-status"><ShieldCheck size={16}/>{status}</span>;
+}
+
+export function EmptyState({ icon: Icon=CircleUserRound, title, body, action }: {icon?:typeof CircleUserRound;title:string;body:string;action?:ReactNode}) {
+  return <div className="empty-state"><Icon size={34}/><h3>{title}</h3><p>{body}</p>{action}</div>;
+}
+
+export function VoiceIndicator({ enabled }: {enabled:boolean}) {
+  return <span className="voice-indicator">{enabled?<Volume2 size={15}/>:<VolumeX size={15}/>} {enabled?"Voice on":"Muted"}</span>;
+}
+
+export function ControlCard({ icon: Icon=Settings2, title, text, to }: {icon?:typeof Settings2;title:string;text:string;to:string}) {
+  return <Link to={to} className="control-card"><Icon/><div><h3>{title}</h3><p>{text}</p></div><ChevronRight/></Link>;
+}
