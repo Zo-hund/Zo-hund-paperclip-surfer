@@ -122,6 +122,15 @@ async function hash(value) {
 }
 
 describe("AMX AIR Hubs Worker API", () => {
+  test("connects H3AT workspace commands through the server-only AMX capability", async () => {
+    const env = { ASSETS: assets(), "AMX-HUBS-CONNECT": "server-secret", DB: memoryDatabase() };
+    let response = await worker.fetch(request("/api/h3at/control-plane"), env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).connected, true);
+    response = await worker.fetch(jsonRequest("/api/h3at/control-plane/commands", { tenantId: "h3at-solutions", action: "page.navigate", target: "NEXUS1" }), env);
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).command.status, "accepted");
+  });
   let env;
 
   beforeEach(() => {

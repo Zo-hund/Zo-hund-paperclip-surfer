@@ -53,6 +53,9 @@ test("H3AT workforce workspace connects tracks, simulations, agents, and managem
   assert.match(model, /vision\.inspect/);
   assert.match(model, /tool\.invoke/);
   assert.match(connections, /h3at-management/);
+  assert.match(page, /loadH3ATControlStatus/);
+  assert.match(page, /sendH3ATControlCommand/);
+  assert.match(page, /CONNECTED/);
   assert.match(schema, /'h3at-solutions'/);
   assert.match(schema, /partner_memberships/);
 });

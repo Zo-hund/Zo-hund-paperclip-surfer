@@ -448,6 +448,7 @@ function publicApiRequest(request, url) {
 }
 
 function requiredMemberRoles(url) {
+  if (url.pathname.startsWith("/api/h3at/control-plane")) return ["operator"];
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
   if (url.pathname.startsWith("/api/merch/admin/")) return ["operator"];
@@ -1547,6 +1548,26 @@ async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
   if (!await allowRequest(request, env)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
   const member = !publicApiRequest(request, url) ? await verifyMemberRequest(request, env, requiredMemberRoles(url)) : null;
+  if (request.method === "GET" && url.pathname === "/api/h3at/control-plane") {
+    const configured = Boolean(String(env["AMX-HUBS-CONNECT"] || env.AMX_HUBS_CONNECT_API_KEY || "").trim());
+    return reply({ configured, connected: configured, tenantId: "h3at-solutions", allowedActions: ["page.read", "page.navigate", "content.present", "vision.inspect", "tool.invoke", "proof.write"], lastCommand: null }, configured ? 200 : 503, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/h3at/control-plane/commands") {
+    const configured = Boolean(String(env["AMX-HUBS-CONNECT"] || env.AMX_HUBS_CONNECT_API_KEY || "").trim());
+    if (!configured) return reply({ error: "AMX Hubs Connect is not configured", requestId }, 503);
+    const body = await readJson(request, 16 * 1024);
+    const allowed = new Set(["page.read", "page.navigate", "content.present", "vision.inspect", "tool.invoke", "proof.write"]);
+    const action = safeLabel(body.action).slice(0, 64);
+    const target = safeLabel(body.target).slice(0, 240);
+    const value = safeLabel(body.value).slice(0, 500);
+    const tenantId = safeId(body.tenantId, "h3at-solutions").slice(0, 64);
+    if (!allowed.has(action)) return reply({ error: "Control action is not allowlisted", requestId }, 400);
+    if (!target) return reply({ error: "A control target is required", requestId }, 400);
+    const command = { action, target, status: "accepted", timestamp: new Date().toISOString() };
+    await persistTwinEvent(env, { id: crypto.randomUUID(), tenantId, twinId: "h3at-control-plane", roomCode: target, eventType: action, createdAt: command.timestamp, payload: { ...command, value, approvedBy: member?.profile?.id || "operator", source: "h3at-workspace" } });
+    logEvent("info", "h3at.control_command", { requestId, tenantId, action, target });
+    return reply({ command, requestId }, 202, { "Cache-Control": "no-store" });
+  }
   if (request.method === "GET" && url.pathname === "/api/ready") {
     const readiness = await probeReadiness(env);
     return reply({ ...readiness, service: "amx-air-hubs", version: SERVICE_VERSION, requestId, timestamp: new Date().toISOString() }, readiness.ready ? 200 : 503);
