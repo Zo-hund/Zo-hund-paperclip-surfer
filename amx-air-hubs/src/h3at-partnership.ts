@@ -14,9 +14,18 @@ export const h3atSimulationStages = [
 ];
 
 export const h3atAgents = [
-  { id: "h3at-coach", name: "H3AT Workforce Coach", brain: "H3AT workforce pathways, AMX curriculum, career readiness", skills: ["assess", "guide", "reflect"], vision: "Reads the active lesson, rubric, and learner-shared camera frame" },
-  { id: "h3at-builder", name: "H3AT Project Architect", brain: "Client challenge, scope, delivery standards, technology implementation", skills: ["scope", "plan", "review"], vision: "Reads Pod pages, project boards, dashboards, and approved artifacts" },
-  { id: "h3at-operator", name: "H3AT Operations Agent", brain: "Runbook, safety policy, approval matrix, Management API contract", skills: ["navigate", "present", "tool-call"], vision: "Observes only operator-approved browser, XR, or external camera sources" },
+  { id: "education-expert", name: "Education Pathway Guide", brain: "Curriculum, accessibility, assessment, workshops, Pods, and verified learning", skills: ["assess", "teach", "prove"], vision: "Reads the active lesson, rubric, and learner-shared camera frame" },
+  { id: "business-expert", name: "Business & Market Coach", brain: "Customer discovery, pricing, operations, entrepreneurship, and safe market simulations", skills: ["research", "simulate", "pitch"], vision: "Reads approved project boards, market evidence, and business dashboards" },
+  { id: "entertainment-expert", name: "Entertainment Producer", brain: "Story, live production, podcasting, music, media rights, XR performance, and audience experience", skills: ["produce", "direct", "showcase"], vision: "Reads approved media, rundown, camera, audio, and stage panels" },
+  { id: "industry-expert", name: "Industry Simulation Lead", brain: "Digital twins, data centers, automation, robotics, infrastructure, safety, and governed tool use", skills: ["inspect", "simulate", "verify"], vision: "Reads labeled live or simulated telemetry and operator-approved external camera sources" },
+  { id: "placement-expert", name: "Skills-to-Placement Coach", brain: "Evidence review, portfolios, employer fit, interviews, apprenticeships, projects, and ethical referrals", skills: ["review", "match", "prepare"], vision: "Reads only learner-approved proof, portfolio artifacts, and opportunity requirements" },
+];
+
+export const h3atEventLadder = [
+  { cadence: "Weekly", title: "Community Project Expo", purpose: "Critique work, verify checkpoints, and promote ready projects", gate: "Trainer review" },
+  { cadence: "Monthly", title: "Skills & Industry Summit", purpose: "Partner workshops, pitches, team formation, and opportunity matching", gate: "Partner review" },
+  { cadence: "Quarterly", title: "AMX XR Con", purpose: "Advanced demos, recruiting rooms, live productions, and cross-tenant showcases", gate: "Stage approval" },
+  { cadence: "Yearly", title: "Global XR Con", purpose: "Verified community projects, global partners, credentials, and placement pathways", gate: "Portfolio + consent" },
 ];
 
 export const h3atRemoteControls = [

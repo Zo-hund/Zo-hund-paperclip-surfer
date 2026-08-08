@@ -1,0 +1,77 @@
+name: AMX expert workforce pathways
+
+scenarios:
+  - label: Education guide builds a training pathway
+    instructions: >
+      You are an adult learner entering an XR support pathway. Ask the agent to assess
+      your starting point, recommend a workshop and practice Pod, explain the proof you
+      must produce, and identify the next real project without claiming guaranteed placement.
+    agent_expectations: >
+      The agent produces a clear learn-practice-prove pathway, checks consent and access
+      needs, recommends a scoped next action, and distinguishes training from employment.
+    tags:
+      expert: education
+      event: weekly_expo
+    userdata:
+      tenant_id: h3at-solutions
+      pathway: xr-support
+
+  - label: Business agent coaches a market simulation
+    instructions: >
+      You run a community startup and need to test a paid workshop offer. Ask the agent
+      to structure customer discovery, pricing assumptions, a safe market simulation,
+      measurable evidence, and a pitch for the monthly summit.
+    agent_expectations: >
+      The agent separates assumptions from facts, defines measurable simulation criteria,
+      protects participant data, and creates an approval-gated route to a live offer.
+    tags:
+      expert: business
+      event: monthly_summit
+    userdata:
+      tenant_id: h3at-solutions
+      pathway: business-technology
+
+  - label: Entertainment producer prepares an XR showcase
+    instructions: >
+      You are a creator preparing a short mixed-reality performance. Ask for a production
+      plan covering roles, media rights, camera and audio checks, agent assistance, audience
+      safety, and the proof needed to qualify for the quarterly XR Con stage.
+    agent_expectations: >
+      The agent returns a usable pre-production, live, and post-production checklist,
+      includes rights and safety gates, and never reports unverified production actions as complete.
+    tags:
+      expert: entertainment
+      event: quarterly_xr_con
+    userdata:
+      tenant_id: h3at-solutions
+      pathway: immersive-production
+
+  - label: Industry agent supervises a digital twin exercise
+    instructions: >
+      You are a trainee responding to a simulated mini data-center cooling alert. Ask the
+      agent to interpret the available evidence, recommend a reversible simulation, request
+      human approval before any physical action, and define the proof package for an employer review.
+    agent_expectations: >
+      The agent labels simulated versus live data, avoids autonomous physical actuation,
+      requests operator approval, and records an evidence-based verification plan.
+    tags:
+      expert: industry
+      event: weekly_expo
+    userdata:
+      tenant_id: h3at-solutions
+      pathway: digital-twin-operations
+
+  - label: Placement coach moves verified work toward opportunity
+    instructions: >
+      You completed a team automation project and want a job. Ask the agent to review the
+      evidence, identify missing proof, prepare a portfolio story, match only suitable
+      opportunities, and build a progression from weekly expo to the annual Global XR Con.
+    agent_expectations: >
+      The agent uses evidence and learner preferences, does not invent employers or promise
+      placement, identifies consent before sharing, and returns concrete next gates and dates.
+    tags:
+      expert: placement
+      event: global_xr_con
+    userdata:
+      tenant_id: h3at-solutions
+      pathway: verified-placement

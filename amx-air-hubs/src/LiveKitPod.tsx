@@ -15,6 +15,7 @@ import {
 import { countStageAudienceParticipants, stageFeedId } from "./stage-camera-routing";
 import { stageVideoDiagnostics, stageVideoProfile, type StageVideoDiagnostics, type StageVideoProfile } from "./stage-video";
 import type { StageSourceIdentity } from "./stage-source-identity";
+import { normalizeStageAgentCommand, type StageAgentCommandResult } from "./stage-agent-toolbelt";
 
 type PodStatus = "idle" | "connecting" | "livekit" | "local" | "error";
 export type CaptureState = "off" | "requesting" | "published" | "muted" | "blocked";
@@ -72,6 +73,7 @@ interface Props {
   onControlReady?: (control: NexusRoomControl | null) => void;
   onRemoteNpcCommand?: (command: NpcCommand, senderName: string) => void;
   onSessionMessage?: (message: NexusSessionMessage) => void;
+  onProductionCommand?: (command: NonNullable<ReturnType<typeof normalizeStageAgentCommand>>) => Promise<StageAgentCommandResult> | StageAgentCommandResult;
   compact?: boolean;
 }
 
@@ -229,7 +231,7 @@ function PodVideoTile({ surface }: { surface: VideoSurface }) {
   return <div className={`pod-video-tile ${surface.local ? "local" : "remote"} ${surface.source} ${surface.muted ? "muted" : ""}`}><video ref={ref} autoPlay muted={surface.local} playsInline preload="metadata" disablePictureInPicture/><span>{surface.source === "screen" ? surface.name.toUpperCase() : surface.local ? "YOU" : surface.name}{resolution}{surface.muted ? " / MUTED" : ""}</span></div>;
 }
 
-export function LiveKitPod({ roomCode, agents, clientType = "operator", participantName = "AMX Explorer", onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, autoJoin = false, videoProfile = "720p30", onCameraQuality, onControlReady, onRemoteNpcCommand, onSessionMessage, compact }: Props) {
+export function LiveKitPod({ roomCode, agents, clientType = "operator", participantName = "AMX Explorer", onLocalStream, onSceneStreams, onVideoFeeds, onCameraState, programAudioStream, onProgramAudioState, microphoneEnabled, microphoneGain = 82, onMicrophoneEnabledChange, onMicrophoneState, onVoiceLevel, autoConnectProgram = false, autoJoin = false, videoProfile = "720p30", onCameraQuality, onControlReady, onRemoteNpcCommand, onSessionMessage, onProductionCommand, compact }: Props) {
   const safeRoom = roomCode.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 64) || "LOCAL";
   const identity = useMemo(() => sessionStorage.getItem("amx_participant") || crypto.randomUUID().slice(0, 8), []);
   const mobileEdge = useMemo(() => window.matchMedia("(max-width: 760px), (pointer: coarse)").matches, []);
@@ -265,6 +267,7 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
   const onControlReadyRef = useRef(onControlReady);
   const onRemoteNpcCommandRef = useRef(onRemoteNpcCommand);
   const onSessionMessageRef = useRef(onSessionMessage);
+  const onProductionCommandRef = useRef(onProductionCommand);
   const agentsRef = useRef(agents);
   const receivedRoomMessageIdsRef = useRef(new Set<string>());
   const appliedVideoProfileRef = useRef(videoProfile);
@@ -278,6 +281,7 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
   useEffect(() => { onControlReadyRef.current = onControlReady; }, [onControlReady]);
   useEffect(() => { onRemoteNpcCommandRef.current = onRemoteNpcCommand; }, [onRemoteNpcCommand]);
   useEffect(() => { onSessionMessageRef.current = onSessionMessage; }, [onSessionMessage]);
+  useEffect(() => { onProductionCommandRef.current = onProductionCommand; }, [onProductionCommand]);
   useEffect(() => { agentsRef.current = agents; }, [agents]);
   useEffect(() => { onCameraState?.(cameraState); }, [cameraState, onCameraState]);
   useEffect(() => { onMicrophoneStateRef.current?.(microphoneState); }, [microphoneState]);
@@ -310,6 +314,7 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
     onControlReadyRef.current?.(null);
     fallbackStreamRef.current?.getTracks().forEach((track) => track.stop());
     fallbackStreamRef.current = null;
+    roomRef.current?.unregisterRpcMethod("production_control");
     void roomRef.current?.disconnect();
     roomRef.current = null;
     programTrackRef.current = null;
@@ -569,6 +574,18 @@ export function LiveKitPod({ roomCode, agents, clientType = "operator", particip
         onProgramAudioStateRef.current?.("off");
       });
       await room.connect(credentials.serverUrl, credentials.participantToken);
+      if (clientType === "operator" && onProductionCommandRef.current) {
+        room.registerRpcMethod("production_control", async ({ callerIdentity, payload }) => {
+          const caller = room.remoteParticipants.get(callerIdentity);
+          if (!caller?.isAgent) return JSON.stringify({ ok: false, status: "rejected", message: "Only a connected LiveKit agent can call production controls." });
+          const parsed = (() => { try { return JSON.parse(payload) as unknown; } catch { return null; } })();
+          const command = normalizeStageAgentCommand(parsed, safeRoom);
+          if (!command) return JSON.stringify({ ok: false, status: "rejected", message: "Invalid production command." });
+          const result = await onProductionCommandRef.current?.({ ...command, requestedBy: caller.name || caller.identity });
+          if (!result) return JSON.stringify({ ok: false, status: "rejected", message: "Stage operator is unavailable." });
+          return JSON.stringify({ ok: result.ok, status: result.status, message: result.message });
+        });
+      }
       onControlReadyRef.current?.({
         connected: true,
         sendNpcCommand: async (command) => {

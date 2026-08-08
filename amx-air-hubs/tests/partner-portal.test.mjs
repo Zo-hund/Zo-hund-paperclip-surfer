@@ -56,6 +56,25 @@ test("H3AT workforce workspace connects tracks, simulations, agents, and managem
   assert.match(page, /loadH3ATControlStatus/);
   assert.match(page, /sendH3ATControlCommand/);
   assert.match(page, /CONNECTED/);
+  assert.match(page, /h3atEventLadder/);
+  for (const expert of ["education-expert", "business-expert", "entertainment-expert", "industry-expert", "placement-expert"]) assert.match(model, new RegExp(expert));
+  for (const cadence of ["Weekly", "Monthly", "Quarterly", "Yearly"]) assert.match(model, new RegExp(cadence));
   assert.match(schema, /'h3at-solutions'/);
   assert.match(schema, /partner_memberships/);
+});
+
+test("LiveKit simulations fail fast and route an explicit workforce persona", async () => {
+  const agent = await read("../voice-agent/agent.py");
+  const requirements = await read("../voice-agent/requirements.txt");
+  assert.match(requirements, /livekit-agents.*>=1\.6\.6/);
+  assert.match(agent, /assert_simulation_runtime/);
+  assert.match(agent, /ctx\.simulation_context\(\)/);
+  assert.match(agent, /Simulation room started without lk\.simulator\.dispatch/);
+  assert.match(agent, /Do not act as the generic support guide during this scenario/);
+  assert.match(agent, /inference\.LLM/);
+  assert.match(agent, /google\/gemma-4-31b-it/);
+  assert.doesNotMatch(agent, /llm=lk_google\.LLM/);
+  for (const expert of ["education", "business", "entertainment", "industry", "placement"]) {
+    assert.match(agent, new RegExp(`"${expert}"`));
+  }
 });

@@ -43,6 +43,22 @@ Your job is to answer questions, troubleshoot issues, and guide the user to the 
 Core mission:
 Understand the customer's issue, collect only the minimum needed context, resolve simple problems directly, and escalate anything that needs a human, billing, admin, or backend action.
 
+Expert workforce mission:
+When the user is learning, building, practicing, proving a skill, or pursuing work, act as the correct AMX expert guide.
+Education: assess the learner, recommend a lesson and Pod, define accessible practice, and explain required proof.
+Business: separate assumptions from facts, coach customer discovery and market simulations, and define measurable approval gates.
+Entertainment: guide media, production, performance, rights, safety, audio, camera, and XR showcase workflows.
+Live production: use the production tools when an operator asks to preview or take cameras, route screens, control media or audio, fire cues, set lighting/VFX, control a stream, or request a robotics inspection. Never claim a production action happened unless the tool returns executed. When it returns approval-required, state the exact action and ask the operator for explicit approval before retrying with operator_approved=true.
+Industry: guide digital twins, data, automation, robotics, infrastructure, and safety-bound simulations. Never claim simulated data or actions are physical.
+Placement: review verified evidence, learner preferences, portfolio readiness, and suitable opportunities. Never invent employers or guarantee a job.
+
+Opportunity ladder:
+Use weekly expos for project critique and readiness checks.
+Use monthly summits for partner review, pitches, workshops, and team formation.
+Use quarterly XR Cons for advanced demonstrations, recruiting, and cross-organization collaboration.
+Use the annual Global XR Con for verified community-project showcases and partner-approved placement pathways.
+Before sharing learner evidence with a partner or employer, obtain clear consent. Distinguish training, simulation, referral, interview, and confirmed placement.
+
 Tone:
 Calm, clear, friendly, and practical.
 Sound helpful, not robotic.
@@ -440,6 +456,14 @@ async def _post_meeting_action(room, action: str, params: dict) -> dict:
             return body
 
 
+def _is_amx_operator(participant) -> bool:
+    try:
+        metadata = json.loads(participant.metadata or "{}")
+    except (TypeError, json.JSONDecodeError):
+        metadata = {}
+    return metadata.get("app") == "amx-air-hubs" and metadata.get("clientType") == "operator"
+
+
 class JAZSupportGuide(Agent):
     def __init__(self, instructions: str | None = None, greeting: str | None = None) -> None:
         super().__init__(instructions=instructions or JAZ_INSTRUCTIONS)
@@ -455,25 +479,96 @@ class JAZSupportGuide(Agent):
             allow_interruptions=True,
         )
 
-    async def _rpc(self, context: RunContext, method: str, args: dict) -> None:
-        """Call an RPC method on the board-user participant."""
+    async def _rpc(self, context: RunContext, method: str, args: dict):
+        """Call an RPC method on the active AMX operator or board participant."""
         room = context.session.room_io.room
         payload = json.dumps(args)
         target = next(
-            (p.identity for p in room.remote_participants.values()
-             if p.identity.startswith("board-user")),
-            "board-user",
+            (p.identity for p in room.remote_participants.values() if _is_amx_operator(p)),
+            next((p.identity for p in room.remote_participants.values()
+                  if p.identity.startswith("board-user")), "board-user"),
         )
         try:
-            await room.local_participant.perform_rpc(
+            response = await room.local_participant.perform_rpc(
                 destination_identity=target,
                 method=method,
                 payload=payload,
                 response_timeout=5.0,
             )
             logger.info("RPC %s ok (target=%s)", method, target)
+            try:
+                return json.loads(response)
+            except (TypeError, json.JSONDecodeError):
+                return {"ok": True, "status": "executed", "message": str(response or "Action completed")}
         except Exception as e:
             logger.warning("RPC %s failed: %s", method, e)
+            return {"ok": False, "status": "rejected", "message": f"The Stage operator control is unavailable: {e}"}
+
+    async def _production_control(self, context: RunContext, action: str, *, target: str = "", source: str = "", value=None, media=None, operator_approved: bool = False) -> str:
+        result = await self._rpc(context, "production_control", {
+            "id": f"agent-{action}-{int(asyncio.get_running_loop().time() * 1000)}",
+            "action": action,
+            "target": target,
+            "source": source,
+            "value": value,
+            "media": media,
+            "operatorApproved": operator_approved,
+            "requestedBy": "JAZ production agent",
+        })
+        return result.get("message", "Production control returned no status.")
+
+    @function_tool()
+    async def control_camera(self, context: RunContext, shot: str, take_live: bool = False, operator_approved: bool = False) -> str:
+        """Preview or take a Stage camera. Shots: wide, host, audience, crane. A live take requires explicit operator approval."""
+        return await self._production_control(context, "camera.take" if take_live else "camera.preview", target=shot, operator_approved=operator_approved)
+
+    @function_tool()
+    async def route_stage_screen(self, context: RunContext, screen: str, source: str, operator_approved: bool = False) -> str:
+        """Route a source to center, left, or right venue screen. Requires explicit operator approval."""
+        return await self._production_control(context, "screen.route", target=screen, source=source, operator_approved=operator_approved)
+
+    @function_tool()
+    async def control_stage_media(self, context: RunContext, action: str, media_url: str = "", media_name: str = "", content_type: str = "video/mp4", operator_approved: bool = False) -> str:
+        """Load, play, or pause Stage media. Use action load, play, or pause. Loading requires an HTTPS URL and operator approval."""
+        tool_action = {"load": "media.load", "play": "media.play", "pause": "media.pause"}.get(action, "")
+        if not tool_action:
+            return "Choose load, play, or pause."
+        media = None if action != "load" else {"id": f"agent-media-{abs(hash(media_url))}", "name": media_name or "Agent media", "url": media_url, "contentType": content_type}
+        return await self._production_control(context, tool_action, media=media, operator_approved=operator_approved)
+
+    @function_tool()
+    async def control_stage_audio(self, context: RunContext, action: str, gain: int = 62) -> str:
+        """Mute, unmute, or set Stage master gain from 0 to 100."""
+        tool_action = {"mute": "audio.mute", "unmute": "audio.unmute", "gain": "audio.set_gain"}.get(action, "")
+        if not tool_action:
+            return "Choose mute, unmute, or gain."
+        return await self._production_control(context, tool_action, value=gain)
+
+    @function_tool()
+    async def fire_stage_cue(self, context: RunContext, cue: str, operator_approved: bool = False) -> str:
+        """Fire a governed show cue: standby, opening, speaker, demo, qa, sponsor, or close."""
+        return await self._production_control(context, "cue.fire", target=cue, operator_approved=operator_approved)
+
+    @function_tool()
+    async def set_stage_look(self, context: RunContext, kind: str, preset: str, operator_approved: bool = False) -> str:
+        """Set lighting or trigger VFX. Lighting: house, keynote, neon-grid, audience, brand, finale. VFX: clean, beat-pulse, laser-sweep, prism, confetti."""
+        action = "lighting.set_scene" if kind == "lighting" else "vfx.trigger" if kind == "vfx" else ""
+        if not action:
+            return "Choose lighting or vfx."
+        return await self._production_control(context, action, target=preset, operator_approved=operator_approved)
+
+    @function_tool()
+    async def control_public_stream(self, context: RunContext, action: str, operator_approved: bool = False) -> str:
+        """Start or stop the public Stage program. Always requires explicit operator approval."""
+        tool_action = {"start": "stream.start", "stop": "stream.stop"}.get(action, "")
+        if not tool_action:
+            return "Choose start or stop."
+        return await self._production_control(context, tool_action, operator_approved=operator_approved)
+
+    @function_tool()
+    async def request_robot_inspection(self, context: RunContext, target: str, operator_approved: bool = False) -> str:
+        """Request a governed robotics inspection for a named stage, rack, camera, or venue zone."""
+        return await self._production_control(context, "robot.inspect", target=target, operator_approved=operator_approved)
 
     # ── Navigation tools ──────────────────────────────────────────────────────
 
@@ -966,6 +1061,70 @@ def build_persona_instructions(dispatch_metadata: dict) -> tuple[str, str] | Non
     return instructions, greeting
 
 
+SIMULATION_EXPERTS = {
+    "education": ("Education Pathway Guide", "Before recommending a pathway, ask about experience and access needs such as device access, captions, accommodations, and schedule. Return a learn-practice-prove pathway with consent and evidence gates. Explicitly label each next step as training, simulation, portfolio work, referral, or employment, and state that training is not a job or guaranteed placement."),
+    "business": ("Business & Market Coach", "Separate assumptions from facts and design measurable market simulations before any live offer. Every simulation plan must minimize participant data, explain its purpose and retention, obtain consent, and require approval before storing, sharing, or launching."),
+    "entertainment": ("Entertainment Producer", "Guide pre-production, live production, and post-production with explicit rights, safety, camera, audio, and stage approval gates."),
+    "industry": ("Industry Simulation Lead", "Label simulated and live data, prefer reversible tests, and require human approval before any physical action."),
+    "placement": ("Skills-to-Placement Coach", "Use verified evidence and learner preferences and never invent employers or guarantee placement. Ask for consent before any evidence is shared. Even when proof is missing, provide a draft portfolio story, suitable opportunity categories, and concrete weekly expo, monthly summit, quarterly XR Con, and annual Global XR Con gates with target dates; clearly label them provisional until proof is verified."),
+}
+
+
+def _runtime_version_tuple(value: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in value.split("+")[0].split(".") if part.isdigit())
+
+
+def assert_simulation_runtime(ctx: JobContext) -> object | None:
+    """Fail before persona creation when the simulation SDK contract is unavailable."""
+    from importlib.metadata import version
+
+    sdk_version = version("livekit-agents")
+    if _runtime_version_tuple(sdk_version) < (1, 6, 6):
+        raise RuntimeError(
+            f"LiveKit Agents {sdk_version} cannot receive simulation scenario dispatch; 1.6.6+ is required"
+        )
+
+    simulation = ctx.simulation_context()
+    room_name = getattr(getattr(ctx, "room", None), "name", "") or ""
+    if room_name.startswith("sim-") and simulation is None:
+        raise RuntimeError(
+            "Simulation room started without lk.simulator.dispatch; refusing default support-guide fallback"
+        )
+    return simulation
+
+
+def build_simulation_persona(simulation: object | None) -> tuple[str, str] | None:
+    if simulation is None:
+        return None
+
+    scenario = simulation.scenario
+    tags = dict(getattr(scenario, "tags", {}))
+    expert_key = tags.get("expert", "")
+    expert = SIMULATION_EXPERTS.get(expert_key)
+    if expert is None:
+        raise RuntimeError(f"Simulation scenario has no supported expert tag: {expert_key or 'missing'}")
+
+    expert_name, expert_scope = expert
+    userdata = simulation.userdata()
+    label = getattr(scenario, "label", "unnamed scenario")
+    pathway = userdata.get("pathway", "unscoped")
+    event = tags.get("event", "unscoped")
+    instructions = (
+        f"You are the AMX {expert_name}. This is an active LiveKit simulation named {label}. "
+        f"The verified persona route is {expert_key}; pathway is {pathway}; showcase gate is {event}. "
+        f"{expert_scope} Do not act as the generic support guide during this scenario.\n\n"
+        + JAZ_INSTRUCTIONS
+    )
+    logger.info(
+        "simulation persona selected expert=%s pathway=%s event=%s label=%s",
+        expert_key,
+        pathway,
+        event,
+        label,
+    )
+    return instructions, f"Hi, I am your {expert_name}. Let us work through this scenario."
+
+
 server = AgentServer()
 
 
@@ -973,6 +1132,8 @@ server = AgentServer()
 async def entrypoint(ctx: JobContext):
     import json
     from livekit import rtc
+
+    simulation = assert_simulation_runtime(ctx)
 
     # Realtime mode: a single Gemini Live session natively handles hearing,
     # reasoning, and speaking, and (via video_enabled below) continuously
@@ -992,9 +1153,11 @@ async def entrypoint(ctx: JobContext):
     else:
         session = AgentSession(
             stt=inference.STT(model="deepgram/nova-3", language="en"),
-            # Gemini 3.5 Flash is GA and tuned for agentic/tool-calling work;
-            # per its docs we pass no temperature/top_p/top_k overrides.
-            llm=lk_google.LLM(model=os.environ.get("VOICE_LLM_MODEL") or "gemini-3.5-flash"),
+            # LiveKit Inference uses the deployment's existing LiveKit credentials,
+            # avoiding a separate provider key in production and simulation workers.
+            llm=inference.LLM(
+                model=os.environ.get("VOICE_LLM_MODEL") or "google/gemma-4-31b-it"
+            ),
             tts=inference.TTS(
                 model="cartesia/sonic-3",
                 voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
@@ -1006,13 +1169,14 @@ async def entrypoint(ctx: JobContext):
         )
 
     # Per-room persona override sent via createDispatch metadata
-    persona = None
+    persona = build_simulation_persona(simulation)
     dispatch_metadata: dict = {}
     raw_metadata = getattr(ctx.job, "metadata", None)
     if raw_metadata:
         try:
             dispatch_metadata = json.loads(raw_metadata)
-            persona = build_persona_instructions(dispatch_metadata)
+            if persona is None:
+                persona = build_persona_instructions(dispatch_metadata)
         except Exception as e:
             logger.debug("dispatch metadata parse error: %s", e)
 

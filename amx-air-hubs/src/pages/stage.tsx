@@ -120,6 +120,7 @@ import {
 } from "../stage-camera-motion";
 import type { StageVideoDiagnostics } from "../stage-video";
 import { nexusViewerHref, stageLaunchConfig } from "../nexus-broadcast";
+import { applyStageAgentCommand, type StageAgentCommand } from "../stage-agent-toolbelt";
 
 const AMXXRStageScene = lazy(async () => ({
   default: (await import("../AMXXRStageScene")).AMXXRStageScene,
@@ -272,6 +273,15 @@ export function AMXXRStagePage() {
     () => launch.room || localStorage.getItem("amx_stage_room") || "AMXSTAGE",
   );
   const production = useStageProduction(roomCode);
+  const executeAgentProductionCommand = useCallback((command: StageAgentCommand) => {
+    const result = applyStageAgentCommand(production.state, command);
+    trackEvent(`stage_agent_tool_${result.status}`, { campaignId: command.action, locationTag: production.room });
+    if (result.ok && result.state) {
+      const { revision: _revision, updatedAt: _updatedAt, operatorId: _operatorId, ...patch } = result.state;
+      production.update(patch);
+    }
+    return result;
+  }, [production]);
   const showcasePromotions = useShowcasePromotions();
   const soundscapeRuntime = useStageSoundscape(production.state.audio);
   const [runtimeNow, setRuntimeNow] = useState(Date.now());
@@ -1793,6 +1803,7 @@ export function AMXXRStagePage() {
                   autoConnectProgram
                   videoProfile={production.state.video.captureProfile}
                   onCameraQuality={setCameraQuality}
+                  onProductionCommand={executeAgentProductionCommand}
                 />
               </Suspense>
             </div>
