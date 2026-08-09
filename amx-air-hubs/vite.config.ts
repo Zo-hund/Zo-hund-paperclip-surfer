@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import { iwsdkDev } from "@iwsdk/vite-plugin-dev";
 
 export default defineConfig({
+  define: {
+    global: "globalThis",
+  },
   plugins: [
     react(),
     iwsdkDev({

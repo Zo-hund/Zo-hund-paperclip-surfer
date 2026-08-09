@@ -441,6 +441,7 @@ function publicApiRequest(request, url) {
   if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") return true;
   if (request.method === "GET" && url.pathname === "/api/board/public/feed") return true;
   if (url.pathname.startsWith("/api/board/agent/")) return true;
+  if (url.pathname.startsWith("/api/air-connect/edge/")) return true;
   if (url.pathname.startsWith("/api/pod-invites/")) {
     const segments = url.pathname.split("/").filter(Boolean);
     const action = segments[3] || "";
@@ -450,6 +451,7 @@ function publicApiRequest(request, url) {
 }
 
 function requiredMemberRoles(url) {
+  if (url.pathname.startsWith("/api/air-connect")) return ["operator"];
   if (url.pathname.startsWith("/api/h3at/control-plane")) return ["operator"];
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
@@ -1497,6 +1499,288 @@ function openEphemeralRoom(request, roomCode) {
   return new Response(null, { status: 101, webSocket: client });
 }
 
+function airPositiveInteger(value, fallback, maximum = 10_000_000) {
+  const parsed = Math.floor(Number(value ?? fallback));
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > maximum) throw new HttpError(400, "Resource values must be positive whole numbers");
+  return parsed;
+}
+
+function parseStoredJson(value, fallback) {
+  try { return value ? JSON.parse(value) : fallback; }
+  catch { return fallback; }
+}
+
+function publicAirRuntime(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    poolId: row.pool_id,
+    roomCode: row.room_code,
+    name: row.name,
+    allocationUnits: Number(row.allocation_units),
+    consumedUnits: Number(row.consumed_units),
+    learnerCount: Number(row.learner_count),
+    trainerCount: Number(row.trainer_count),
+    agentCount: Number(row.agent_count),
+    learnerIds: parseStoredJson(row.learner_ids, []),
+    bandwidthMbps: Number(row.bandwidth_mbps),
+    videoProfile: row.video_profile,
+    livekitRoom: row.livekit_room,
+    livekitDispatch: parseStoredJson(row.livekit_dispatch, null),
+    status: row.status,
+    report: parseStoredJson(row.report_payload, null),
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function airConnectState(db, tenantId) {
+  const [poolRows, runtimeRows, walletSummary, transactionRows, providerRows, poolProfileRows, containerRows, nodeRows, policyRows, commandRows, usageRows, sessionRows, alertRows, reportRows] = await Promise.all([
+    db.prepare("SELECT id, tenant_id, name, resource_type, total_units, available_units, status, created_by, created_at, updated_at FROM air_resource_pools WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 20").bind(tenantId).all(),
+    db.prepare("SELECT * FROM air_room_runtimes WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 50").bind(tenantId).all(),
+    db.prepare("SELECT COUNT(*) AS wallet_count, COALESCE(SUM(available_units), 0) AS credits_issued FROM air_resource_wallets WHERE tenant_id = ? AND resource_type = 'AIR_CREDIT'").bind(tenantId).first(),
+    db.prepare("SELECT id, pool_id, runtime_id, wallet_id, transaction_type, resource_type, amount_units, balance_after, actor_id, reason, metadata, created_at FROM air_resource_transactions WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all(),
+    db.prepare("SELECT * FROM connectivity_providers WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 20").bind(tenantId).all(),
+    db.prepare("SELECT * FROM connectivity_pool_profiles WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 20").bind(tenantId).all(),
+    db.prepare("SELECT * FROM connectivity_container_profiles WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 50").bind(tenantId).all(),
+    db.prepare("SELECT * FROM network_nodes WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 20").bind(tenantId).all(),
+    db.prepare("SELECT * FROM network_policies WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 50").bind(tenantId).all(),
+    db.prepare("SELECT * FROM network_edge_commands WHERE tenant_id = ? ORDER BY issued_at DESC LIMIT 50").bind(tenantId).all(),
+    db.prepare("SELECT * FROM network_usage_samples WHERE tenant_id = ? ORDER BY recorded_at DESC LIMIT 120").bind(tenantId).all(),
+    db.prepare("SELECT * FROM network_sessions WHERE tenant_id = ? ORDER BY connected_at DESC LIMIT 120").bind(tenantId).all(),
+    db.prepare("SELECT * FROM network_alerts WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 50").bind(tenantId).all(),
+    db.prepare("SELECT * FROM connectivity_reports WHERE tenant_id = ? ORDER BY generated_at DESC LIMIT 50").bind(tenantId).all(),
+  ]);
+  const poolProfiles = new Map((poolProfileRows.results || []).map((row) => [row.pool_id, row]));
+  const containers = new Map((containerRows.results || []).map((row) => [row.runtime_id, row]));
+  return {
+    pools: (poolRows.results || []).map((row) => { const profile = poolProfiles.get(row.id); return { id: row.id, tenantId: row.tenant_id, name: row.name, resourceType: row.resource_type, totalUnits: Number(row.total_units), availableUnits: Number(row.available_units), status: row.status, providerId: profile?.provider_id || null, locationId: profile?.location_id || null, downloadCapacityMbps: Number(profile?.download_capacity_mbps || 0), uploadCapacityMbps: Number(profile?.upload_capacity_mbps || 0), upstreamCostCents: Number(profile?.upstream_cost_cents || 0), currency: profile?.currency || "USD", createdAt: row.created_at, updatedAt: row.updated_at }; }),
+    runtimes: (runtimeRows.results || []).map((row) => { const profile = containers.get(row.id); return { ...publicAirRuntime(row), profile: profile ? { roomId: profile.room_id, eventId: profile.event_id, programId: profile.program_id, reservedMb: Number(profile.reserved_mb), downloadLimitMbps: Number(profile.download_limit_mbps), uploadLimitMbps: Number(profile.upload_limit_mbps), minGuaranteedMbps: Number(profile.min_guaranteed_mbps), burstLimitMbps: Number(profile.burst_limit_mbps), maxUsers: Number(profile.max_users), maxDevices: Number(profile.max_devices), priorityClass: profile.priority_class, startsAt: profile.starts_at, endsAt: profile.ends_at, autoReturnUnused: Boolean(profile.auto_return_unused), networkPolicyId: profile.network_policy_id, edgeNodeId: profile.edge_node_id, policyVersion: Number(profile.policy_version), admissionsOpen: Boolean(profile.admissions_open), cost: parseStoredJson(profile.cost_payload, {}) } : null }; }),
+    providers: (providerRows.results || []).map((row) => ({ id: row.id, name: row.name, providerType: row.provider_type, serviceType: row.service_type, downloadMbps: Number(row.download_mbps), uploadMbps: Number(row.upload_mbps), dataCapMb: Number(row.data_cap_mb), monthlyCostCents: Number(row.monthly_cost_cents), currency: row.currency, rights: { multiUser: Boolean(row.multi_user_allowed), commercialUse: Boolean(row.commercial_use_allowed), resale: Boolean(row.resale_allowed), guestAccess: Boolean(row.guest_access_allowed), publicAccess: Boolean(row.public_access_allowed), multiTenant: Boolean(row.multi_tenant_allowed), dataPooling: Boolean(row.data_pooling_allowed) }, status: row.status, updatedAt: row.updated_at })),
+    nodes: (nodeRows.results || []).map((row) => ({ id: row.id, name: row.name, locationId: row.location_id, adapterType: row.adapter_type, status: row.status, lastHeartbeatAt: row.last_heartbeat_at, capabilities: parseStoredJson(row.capabilities, []), updatedAt: row.updated_at })),
+    policies: (policyRows.results || []).map((row) => ({ id: row.id, runtimeId: row.runtime_id, roomId: row.room_id, version: Number(row.version), status: row.status, payload: parseStoredJson(row.payload, {}), appliedAt: row.applied_at, removedAt: row.removed_at, updatedAt: row.updated_at })),
+    edgeCommands: (commandRows.results || []).map((row) => ({ id: row.id, nodeId: row.node_id, runtimeId: row.runtime_id, policyId: row.policy_id, action: row.action, status: row.status, issuedAt: row.issued_at, expiresAt: row.expires_at, signatureAlgorithm: row.signature_algorithm, acknowledgedAt: row.acknowledged_at })),
+    usageSamples: (usageRows.results || []).map((row) => ({ id: row.id, runtimeId: row.runtime_id, roomId: row.room_id, deviceId: row.device_id, bytesDown: Number(row.bytes_down), bytesUp: Number(row.bytes_up), downloadMbps: Number(row.download_mbps), uploadMbps: Number(row.upload_mbps), latencyMs: Number(row.latency_ms), jitterMs: Number(row.jitter_ms), packetLoss: Number(row.packet_loss), recordedAt: row.recorded_at })),
+    sessions: (sessionRows.results || []).map((row) => ({ id: row.id, runtimeId: row.runtime_id, userId: row.user_id, deviceId: row.device_id, roomId: row.room_id, connectedAt: row.connected_at, disconnectedAt: row.disconnected_at, bytesDown: Number(row.bytes_down), bytesUp: Number(row.bytes_up), totalMb: Number(row.total_mb), terminationReason: row.termination_reason })),
+    alerts: (alertRows.results || []).map((row) => ({ id: row.id, runtimeId: row.runtime_id, type: row.alert_type, severity: row.severity, status: row.status, message: row.message, payload: parseStoredJson(row.payload, {}), createdAt: row.created_at })),
+    reports: (reportRows.results || []).map((row) => ({ id: row.id, runtimeId: row.runtime_id, eventId: row.event_id, programId: row.program_id, type: row.report_type, payload: parseStoredJson(row.payload, {}), generatedAt: row.generated_at })),
+    walletSummary: { wallets: Number(walletSummary?.wallet_count || 0), creditsIssued: Number(walletSummary?.credits_issued || 0) },
+    transactions: (transactionRows.results || []).map((row) => ({ id: row.id, poolId: row.pool_id, runtimeId: row.runtime_id, walletId: row.wallet_id, type: row.transaction_type, resourceType: row.resource_type, amountUnits: Number(row.amount_units), balanceAfter: row.balance_after == null ? null : Number(row.balance_after), actorId: row.actor_id, reason: row.reason, metadata: parseStoredJson(row.metadata, {}), createdAt: row.created_at })),
+  };
+}
+
+async function signAirEdgeCommand(env, command) {
+  const secret = String(env.AIR_EDGE_COMMAND_SIGNING_KEY || "").trim();
+  if (!secret) throw new HttpError(503, "AIR edge command signing is not configured");
+  const source = JSON.stringify({ id: command.id, nodeId: command.nodeId, runtimeId: command.runtimeId, policyId: command.policyId, action: command.action, issuedAt: command.issuedAt, expiresAt: command.expiresAt, nonce: command.nonce, payload: command.payload });
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return base64Url(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(source)));
+}
+
+async function airEdgeCommand(env, tenantId, nodeId, runtimeId, policyId, action, payload, now) {
+  const command = { id: `edge-cmd-${crypto.randomUUID()}`, nodeId, runtimeId, policyId, action, issuedAt: now, expiresAt: new Date(Date.parse(now) + 5 * 60_000).toISOString(), nonce: crypto.randomUUID(), payload };
+  const signature = await signAirEdgeCommand(env, command);
+  return env.DB.prepare("INSERT INTO network_edge_commands (id, tenant_id, node_id, runtime_id, policy_id, action, status, issued_at, expires_at, nonce, payload, signature, signature_algorithm) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, 'HMAC-SHA256')")
+    .bind(command.id, tenantId, nodeId, runtimeId || null, policyId || null, action, command.issuedAt, command.expiresAt, command.nonce, JSON.stringify(payload), signature);
+}
+
+async function executeAirConnectAction(env, tenantId, action, body, actorId, requestId) {
+  const db = env.DB;
+  const now = new Date().toISOString();
+  const transaction = (values) => db.prepare("INSERT INTO air_resource_transactions (id, tenant_id, pool_id, runtime_id, wallet_id, transaction_type, resource_type, amount_units, balance_after, actor_id, reason, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(`air-tx-${crypto.randomUUID()}`, tenantId, values.poolId || null, values.runtimeId || null, values.walletId || null, values.type, values.resourceType, values.amount, values.balanceAfter ?? null, actorId, values.reason, JSON.stringify(values.metadata || {}), now);
+
+  if (action === "register_provider") {
+    const id = safeId(body.providerId, `air-provider-${crypto.randomUUID()}`).slice(0, 96);
+    const rights = isPlainObject(body.rights) ? body.rights : {};
+    const dataCapMb = airPositiveInteger(body.dataCapMb, 5_000_000);
+    const downloadMbps = airPositiveInteger(body.downloadMbps, 2_000, 100_000);
+    const uploadMbps = airPositiveInteger(body.uploadMbps, 1_000, 100_000);
+    const monthlyCostCents = airPositiveInteger(body.monthlyCostCents, 150_000, 100_000_000);
+    await db.prepare("INSERT INTO connectivity_providers (id, tenant_id, name, provider_type, account_reference, service_type, contract_start, contract_end, download_mbps, upload_mbps, data_cap_mb, monthly_cost_cents, currency, multi_user_allowed, commercial_use_allowed, resale_allowed, guest_access_allowed, public_access_allowed, multi_tenant_allowed, data_pooling_allowed, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)")
+      .bind(id, tenantId, safeLabel(body.name, "AMX Business Internet").slice(0, 140), safeId(body.providerType, "business-internet").slice(0, 40), safeLabel(body.accountReference, "").slice(0, 120) || null, safeId(body.serviceType, "fiber").slice(0, 40), safeLabel(body.contractStart, now.slice(0, 10)).slice(0, 40), safeLabel(body.contractEnd, "").slice(0, 40) || null, downloadMbps, uploadMbps, dataCapMb, monthlyCostCents, safeId(body.currency, "USD").toUpperCase().slice(0, 3), rights.multiUser === true ? 1 : 0, rights.commercialUse === true ? 1 : 0, rights.resale === true ? 1 : 0, rights.guestAccess === true ? 1 : 0, rights.publicAccess === true ? 1 : 0, rights.multiTenant === true ? 1 : 0, rights.dataPooling === true ? 1 : 0, now, now).run();
+    return { action, provider: { id, dataCapMb, downloadMbps, uploadMbps, monthlyCostCents, rights } };
+  }
+
+  if (action === "register_edge_node") {
+    const id = safeId(body.nodeId, `air-edge-${crypto.randomUUID()}`).slice(0, 96);
+    const capabilities = Array.isArray(body.capabilities) ? body.capabilities.map((value) => safeId(value).slice(0, 48)).filter(Boolean) : ["qos", "vlan", "client-count", "usage-meter"];
+    await db.prepare("INSERT INTO network_nodes (id, tenant_id, location_id, name, adapter_type, status, capabilities, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'registered', ?, ?, ?)")
+      .bind(id, tenantId, safeId(body.locationId, "hub-001").slice(0, 96), safeLabel(body.name, "AMX Edge Gateway 001").slice(0, 140), safeId(body.adapterType, "generic-http").slice(0, 48), JSON.stringify(capabilities), now, now).run();
+    return { action, node: { id, status: "registered", capabilities } };
+  }
+
+  if (action === "create_pool") {
+    const totalUnits = airPositiveInteger(body.totalUnits, 5_000_000);
+    const providerId = safeId(body.providerId).slice(0, 96);
+    const provider = providerId ? await db.prepare("SELECT * FROM connectivity_providers WHERE id = ? AND tenant_id = ? AND status = 'active' LIMIT 1").bind(providerId, tenantId).first() : null;
+    if (!provider) throw new HttpError(404, "An active connectivity provider contract is required");
+    if (!provider.multi_user_allowed || !provider.commercial_use_allowed || !provider.data_pooling_allowed) throw new HttpError(409, "Provider contract does not allow multi-user commercial data pooling");
+    if (totalUnits > Number(provider.data_cap_mb)) throw new HttpError(409, "Pool exceeds the provider contract data cap");
+    const id = safeId(body.poolId, `air-pool-${crypto.randomUUID()}`).slice(0, 96);
+    const name = safeLabel(body.name, "Community Connectivity Pool").slice(0, 120);
+    await db.batch([
+      db.prepare("INSERT INTO air_resource_pools (id, tenant_id, name, resource_type, total_units, available_units, status, created_by, created_at, updated_at) VALUES (?, ?, ?, 'DATA_MB', ?, ?, 'active', ?, ?, ?)").bind(id, tenantId, name, totalUnits, totalUnits, actorId, now, now),
+      db.prepare("INSERT INTO connectivity_pool_profiles (pool_id, tenant_id, provider_id, location_id, download_capacity_mbps, upload_capacity_mbps, billing_period_start, billing_period_end, upstream_cost_cents, currency, contract_type, resale_allowed, community_access_allowed, guest_access_allowed, public_access_allowed, multi_tenant_allowed, data_pooling_allowed, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, tenantId, providerId, safeId(body.locationId, "hub-001").slice(0, 96), Number(provider.download_mbps), Number(provider.upload_mbps), safeLabel(body.billingPeriodStart, now.slice(0, 10)).slice(0, 40), safeLabel(body.billingPeriodEnd, "").slice(0, 40) || null, Number(provider.monthly_cost_cents), provider.currency, safeId(body.contractType, "business").slice(0, 40), Number(provider.resale_allowed), 1, Number(provider.guest_access_allowed), Number(provider.public_access_allowed), Number(provider.multi_tenant_allowed), Number(provider.data_pooling_allowed), now, now),
+      transaction({ poolId: id, type: "POOL_CREATED", resourceType: "DATA_MB", amount: totalUnits, balanceAfter: totalUnits, reason: "Community connectivity capacity provisioned" }),
+    ]);
+    return { action, pool: { id, tenantId, providerId, name, resourceType: "DATA_MB", totalUnits, availableUnits: totalUnits, downloadCapacityMbps: Number(provider.download_mbps), uploadCapacityMbps: Number(provider.upload_mbps), upstreamCostCents: Number(provider.monthly_cost_cents), status: "active", createdAt: now, updatedAt: now } };
+  }
+
+  if (action === "allocate_room") {
+    const poolId = safeId(body.poolId).slice(0, 96);
+    const pool = poolId ? await db.prepare("SELECT * FROM air_resource_pools WHERE id = ? AND tenant_id = ? LIMIT 1").bind(poolId, tenantId).first() : null;
+    if (!pool || pool.status !== "active") throw new HttpError(404, "An active tenant resource pool is required");
+    const allocationUnits = airPositiveInteger(body.allocationUnits, 250_000);
+    if (allocationUnits > Number(pool.available_units)) throw new HttpError(409, "The pool does not have enough available capacity");
+    const learnerCount = airPositiveInteger(body.learnerCount, 30, 500);
+    const trainerCount = airPositiveInteger(body.trainerCount, 3, 100);
+    const agentCount = airPositiveInteger(body.agentCount, 3, 25);
+    const roomCode = safeId(body.roomCode, "ROOM-A").toUpperCase().slice(0, 64);
+    const name = safeLabel(body.name, "Room A Community Learning Runtime").slice(0, 140);
+    const id = safeId(body.runtimeId, `air-runtime-${crypto.randomUUID()}`).slice(0, 96);
+    const providedLearners = Array.isArray(body.learnerIds) ? body.learnerIds.map((value) => safeId(value).slice(0, 96)).filter(Boolean) : [];
+    const learnerIds = [...new Set(providedLearners)].slice(0, learnerCount);
+    while (learnerIds.length < learnerCount) learnerIds.push(`${roomCode.toLowerCase()}-learner-${String(learnerIds.length + 1).padStart(3, "0")}`);
+    const bandwidthMbps = airPositiveInteger(body.bandwidthMbps, 500, 10_000);
+    const uploadLimitMbps = airPositiveInteger(body.uploadLimitMbps, 250, 10_000);
+    const minGuaranteedMbps = airPositiveInteger(body.minGuaranteedMbps, 100, 10_000);
+    const burstLimitMbps = airPositiveInteger(body.burstLimitMbps, 700, 10_000);
+    const maxUsers = airPositiveInteger(body.maxUsers, learnerCount + trainerCount, 2_000);
+    const maxDevices = airPositiveInteger(body.maxDevices, 40, 5_000);
+    const edgeNodeId = safeId(body.edgeNodeId).slice(0, 96);
+    if (edgeNodeId && !await db.prepare("SELECT id FROM network_nodes WHERE id = ? AND tenant_id = ? LIMIT 1").bind(edgeNodeId, tenantId).first()) throw new HttpError(404, "The selected edge node was not found");
+    const videoProfile = ["audio-first", "360p", "540p", "720p", "1080p"].includes(body.videoProfile) ? body.videoProfile : "720p";
+    const update = await db.prepare("UPDATE air_resource_pools SET available_units = available_units - ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'active' AND available_units >= ?").bind(allocationUnits, now, poolId, tenantId, allocationUnits).run();
+    if (!update.meta?.changes) throw new HttpError(409, "Pool capacity changed; refresh before allocating the room");
+    try {
+      await db.batch([
+        db.prepare("INSERT INTO air_room_runtimes (id, tenant_id, pool_id, room_code, name, allocation_units, consumed_units, learner_count, trainer_count, agent_count, learner_ids, bandwidth_mbps, video_profile, livekit_room, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'allocated', ?, ?, ?)").bind(id, tenantId, poolId, roomCode, name, allocationUnits, learnerCount, trainerCount, agentCount, JSON.stringify(learnerIds), bandwidthMbps, videoProfile, `air-${tenantId}-${roomCode}`.toLowerCase().slice(0, 120), actorId, now, now),
+        db.prepare("INSERT INTO connectivity_container_profiles (runtime_id, tenant_id, room_id, event_id, program_id, reserved_mb, download_limit_mbps, upload_limit_mbps, min_guaranteed_mbps, burst_limit_mbps, max_users, max_devices, priority_class, starts_at, ends_at, auto_return_unused, edge_node_id, cost_payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, '{}', ?, ?)").bind(id, tenantId, roomCode, safeId(body.eventId).slice(0, 96) || null, safeId(body.programId).slice(0, 96) || null, bandwidthMbps, uploadLimitMbps, minGuaranteedMbps, burstLimitMbps, maxUsers, maxDevices, ["P0", "P1", "P2", "P3", "P4", "P5"].includes(body.priorityClass) ? body.priorityClass : "P1", safeLabel(body.startsAt, now).slice(0, 40), safeLabel(body.endsAt, new Date(Date.parse(now) + 3 * 60 * 60_000).toISOString()).slice(0, 40), edgeNodeId || null, now, now),
+        transaction({ poolId, runtimeId: id, type: "ROOM_ALLOCATED", resourceType: "DATA_MB", amount: -allocationUnits, balanceAfter: Number(pool.available_units) - allocationUnits, reason: `${roomCode} capacity reserved`, metadata: { learnerCount, trainerCount, agentCount, bandwidthMbps, videoProfile } }),
+      ]);
+    } catch (error) {
+      await db.prepare("UPDATE air_resource_pools SET available_units = available_units + ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(allocationUnits, now, poolId, tenantId).run().catch(() => undefined);
+      throw error;
+    }
+    return { action, runtime: publicAirRuntime({ id, tenant_id: tenantId, pool_id: poolId, room_code: roomCode, name, allocation_units: allocationUnits, consumed_units: 0, learner_count: learnerCount, trainer_count: trainerCount, agent_count: agentCount, learner_ids: JSON.stringify(learnerIds), bandwidth_mbps: bandwidthMbps, video_profile: videoProfile, livekit_room: `air-${tenantId}-${roomCode}`.toLowerCase().slice(0, 120), status: "allocated", created_at: now, updated_at: now }) };
+  }
+
+  const runtimeId = safeId(body.runtimeId).slice(0, 96);
+  const runtime = runtimeId ? await db.prepare("SELECT * FROM air_room_runtimes WHERE id = ? AND tenant_id = ? LIMIT 1").bind(runtimeId, tenantId).first() : null;
+  if (!runtime) throw new HttpError(404, "Room runtime was not found");
+
+  if (action === "start_room") {
+    if (runtime.status !== "allocated") throw new HttpError(409, "Only an allocated room can be started");
+    const profile = await db.prepare("SELECT * FROM connectivity_container_profiles WHERE runtime_id = ? AND tenant_id = ? LIMIT 1").bind(runtimeId, tenantId).first();
+    if (!profile?.edge_node_id) throw new HttpError(409, "An edge node must be assigned before the room can start");
+    const policyId = `net-policy-${crypto.randomUUID()}`;
+    const policyVersion = Number(profile.policy_version || 0) + 1;
+    const policy = { ssid: safeLabel(body.ssid, `AMX-${runtime.room_code}`).slice(0, 64), vlan: airPositiveInteger(body.vlan, 120, 4094), dataLimitMb: Number(runtime.allocation_units), downloadLimitMbps: Number(profile.download_limit_mbps), uploadLimitMbps: Number(profile.upload_limit_mbps), minGuaranteedMbps: Number(profile.min_guaranteed_mbps), burstLimitMbps: Number(profile.burst_limit_mbps), maxUsers: Number(profile.max_users), maxDevices: Number(profile.max_devices), priorityClass: profile.priority_class, applicationPriorities: { P0: ["emergency", "operator-control"], P1: ["voice", "livekit-audio"], P2: ["trainer-video", "livekit-video", "lms"], P3: ["web"], P4: ["downloads"], P5: ["background-updates"] }, peerToPeerBlocked: true, backgroundTrafficThrottled: true };
+    const commandStatement = await airEdgeCommand(env, tenantId, profile.edge_node_id, runtimeId, policyId, "ACTIVATE_CONTAINER", policy, now);
+    const start = await db.prepare("UPDATE air_room_runtimes SET status = 'active', started_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'allocated'").bind(now, now, runtimeId, tenantId).run();
+    if (!start.meta?.changes) throw new HttpError(409, "The room runtime has already changed state");
+    const dispatch = env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET ? await ensureLiveKitAgentDispatch(env, runtime.livekit_room, requestId) : { configured: false, dispatched: false };
+    await db.batch([
+      db.prepare("INSERT INTO network_policies (id, tenant_id, runtime_id, room_id, version, status, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)").bind(policyId, tenantId, runtimeId, runtime.room_code, policyVersion, JSON.stringify(policy), now, now),
+      commandStatement,
+      db.prepare("UPDATE connectivity_container_profiles SET network_policy_id = ?, policy_version = ?, admissions_open = 1, updated_at = ? WHERE runtime_id = ? AND tenant_id = ?").bind(policyId, policyVersion, now, runtimeId, tenantId),
+      db.prepare("UPDATE air_room_runtimes SET livekit_dispatch = ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(JSON.stringify(dispatch), now, runtimeId, tenantId),
+      transaction({ poolId: runtime.pool_id, runtimeId, type: "ROOM_STARTED", resourceType: "DATA_MB", amount: 0, balanceAfter: Number(runtime.allocation_units), reason: "Live room runtime started", metadata: { livekitRoom: runtime.livekit_room, dispatch } }),
+    ]);
+    return { action, runtimeId, status: "active", networkStatus: "policy-pending-edge-ack", policyId, policyVersion, livekitRoom: runtime.livekit_room, dispatch, startedAt: now };
+  }
+
+  if (action === "resize_room") {
+    if (!["allocated", "active"].includes(runtime.status)) throw new HttpError(409, "Only allocated or active rooms can be resized");
+    const profile = await db.prepare("SELECT * FROM connectivity_container_profiles WHERE runtime_id = ? AND tenant_id = ? LIMIT 1").bind(runtimeId, tenantId).first();
+    if (!profile) throw new HttpError(409, "The room does not have a v0.2 container profile");
+    const allocationUnits = airPositiveInteger(body.allocationUnits, Number(runtime.allocation_units));
+    if (allocationUnits < Number(runtime.consumed_units)) throw new HttpError(409, "Allocation cannot be lower than recorded consumption");
+    const delta = allocationUnits - Number(runtime.allocation_units);
+    const pool = await db.prepare("SELECT * FROM air_resource_pools WHERE id = ? AND tenant_id = ? LIMIT 1").bind(runtime.pool_id, tenantId).first();
+    if (delta > Number(pool.available_units)) throw new HttpError(409, "The pool does not have enough capacity for this resize");
+    const downloadLimitMbps = airPositiveInteger(body.bandwidthMbps, Number(profile.download_limit_mbps), 10_000);
+    const uploadLimitMbps = airPositiveInteger(body.uploadLimitMbps, Number(profile.upload_limit_mbps), 10_000);
+    const poolUpdate = delta >= 0
+      ? db.prepare("UPDATE air_resource_pools SET available_units = available_units - ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND available_units >= ?").bind(delta, now, runtime.pool_id, tenantId, delta)
+      : db.prepare("UPDATE air_resource_pools SET available_units = available_units + ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(-delta, now, runtime.pool_id, tenantId);
+    const statements = [
+      poolUpdate,
+      db.prepare("UPDATE air_room_runtimes SET allocation_units = ?, bandwidth_mbps = ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(allocationUnits, downloadLimitMbps, now, runtimeId, tenantId),
+      db.prepare("UPDATE connectivity_container_profiles SET download_limit_mbps = ?, upload_limit_mbps = ?, updated_at = ? WHERE runtime_id = ? AND tenant_id = ?").bind(downloadLimitMbps, uploadLimitMbps, now, runtimeId, tenantId),
+      transaction({ poolId: runtime.pool_id, runtimeId, type: delta >= 0 ? "ROOM_RESIZED" : "CAPACITY_RETURNED", resourceType: "DATA_MB", amount: -delta, balanceAfter: Number(pool.available_units) - delta, reason: "Active room entitlement resized", metadata: { allocationUnits, downloadLimitMbps, uploadLimitMbps } }),
+    ];
+    if (runtime.status === "active") statements.push(await airEdgeCommand(env, tenantId, profile.edge_node_id, runtimeId, profile.network_policy_id, "UPDATE_LIMITS", { allocationUnits, downloadLimitMbps, uploadLimitMbps }, now));
+    await db.batch(statements);
+    return { action, runtimeId, allocationUnits, downloadLimitMbps, uploadLimitMbps, edgeUpdateQueued: runtime.status === "active", updatedAt: now };
+  }
+
+  if (action === "record_usage") {
+    if (runtime.status !== "active") throw new HttpError(409, "Usage can only be recorded for an active room");
+    const consumedUnits = airPositiveInteger(body.consumedUnits, 1, Number(runtime.allocation_units));
+    if (consumedUnits < Number(runtime.consumed_units)) throw new HttpError(409, "Meter readings cannot move backwards");
+    const delta = consumedUnits - Number(runtime.consumed_units);
+    const profile = await db.prepare("SELECT * FROM connectivity_container_profiles WHERE runtime_id = ? AND tenant_id = ? LIMIT 1").bind(runtimeId, tenantId).first();
+    const downloadMbps = Math.max(0, Number(body.downloadMbps || 0));
+    const uploadMbps = Math.max(0, Number(body.uploadMbps || 0));
+    const latencyMs = Math.max(0, Number(body.latencyMs || 0));
+    const jitterMs = Math.max(0, Number(body.jitterMs || 0));
+    const packetLoss = Math.max(0, Number(body.packetLoss || 0));
+    const statements = [
+      db.prepare("INSERT INTO network_usage_samples (id, tenant_id, runtime_id, room_id, user_id, device_id, bytes_down, bytes_up, download_mbps, upload_mbps, latency_ms, jitter_ms, packet_loss, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(`usage-${crypto.randomUUID()}`, tenantId, runtimeId, runtime.room_code, safeId(body.userId).slice(0, 96) || null, safeId(body.deviceId, "room-meter").slice(0, 96), Math.max(0, Math.floor(Number(body.bytesDown || delta * 1024 * 1024))), Math.max(0, Math.floor(Number(body.bytesUp || 0))), downloadMbps, uploadMbps, latencyMs, jitterMs, packetLoss, now),
+      db.prepare("INSERT INTO network_sessions (id, tenant_id, runtime_id, user_id, device_id, room_id, connected_at, bytes_down, bytes_up, total_mb) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET bytes_down = excluded.bytes_down, bytes_up = excluded.bytes_up, total_mb = excluded.total_mb").bind(`net-session:${runtimeId}:${safeId(body.deviceId, "room-meter").slice(0, 96)}`, tenantId, runtimeId, safeId(body.userId).slice(0, 96) || null, safeId(body.deviceId, "room-meter").slice(0, 96), runtime.room_code, now, Math.max(0, Math.floor(Number(body.bytesDown || consumedUnits * 1024 * 1024))), Math.max(0, Math.floor(Number(body.bytesUp || 0))), consumedUnits),
+      db.prepare("UPDATE air_room_runtimes SET consumed_units = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'active'").bind(consumedUnits, now, runtimeId, tenantId),
+      transaction({ poolId: runtime.pool_id, runtimeId, type: "USAGE_RECORDED", resourceType: "DATA_MB", amount: -delta, balanceAfter: Number(runtime.allocation_units) - consumedUnits, reason: "Room meter reading recorded", metadata: { consumedUnits } }),
+    ];
+    if (profile && (downloadMbps > Number(profile.download_limit_mbps) * 0.8 || latencyMs > 120 || packetLoss > 2 || Number(runtime.allocation_units) - consumedUnits < Number(runtime.allocation_units) * 0.1)) statements.push(db.prepare("INSERT INTO network_alerts (id, tenant_id, runtime_id, node_id, alert_type, severity, status, message, payload, created_at) VALUES (?, ?, ?, ?, 'adaptive-capacity', ?, 'open', ?, ?, ?)").bind(`net-alert-${crypto.randomUUID()}`, tenantId, runtimeId, profile.edge_node_id || null, packetLoss > 2 || latencyMs > 120 ? "high" : "medium", "Room network is approaching a policy or quality threshold", JSON.stringify({ downloadMbps, latencyMs, packetLoss, remainingUnits: Number(runtime.allocation_units) - consumedUnits, recommendation: "Review P4/P5 throttling or resize the room container" }), now));
+    await db.batch(statements);
+    return { action, runtimeId, consumedUnits, remainingUnits: Number(runtime.allocation_units) - consumedUnits, updatedAt: now };
+  }
+
+  if (action === "close_room") {
+    if (runtime.status !== "active") throw new HttpError(409, "Only an active room can be closed");
+    const claim = await db.prepare("UPDATE air_room_runtimes SET status = 'closing', updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'active'").bind(now, runtimeId, tenantId).run();
+    if (!claim.meta?.changes) throw new HttpError(409, "The room runtime is already being closed");
+    const unusedUnits = Math.max(0, Number(runtime.allocation_units) - Number(runtime.consumed_units));
+    const learnerIds = parseStoredJson(runtime.learner_ids, []);
+    const rewardUnits = airPositiveInteger(body.rewardUnits, 100, 100_000);
+    const profile = await db.prepare("SELECT * FROM connectivity_container_profiles WHERE runtime_id = ? AND tenant_id = ? LIMIT 1").bind(runtimeId, tenantId).first();
+    const poolProfile = await db.prepare("SELECT * FROM connectivity_pool_profiles WHERE pool_id = ? AND tenant_id = ? LIMIT 1").bind(runtime.pool_id, tenantId).first();
+    const pool = await db.prepare("SELECT total_units FROM air_resource_pools WHERE id = ? AND tenant_id = ? LIMIT 1").bind(runtime.pool_id, tenantId).first();
+    const costCents = poolProfile ? Math.round(Number(runtime.consumed_units) / Math.max(1, Number(pool?.total_units || 1)) * Number(poolProfile.upstream_cost_cents)) : 0;
+    const report = { runtimeId, tenantId, roomCode: runtime.room_code, status: "closed", learners: Number(runtime.learner_count), trainers: Number(runtime.trainer_count), agents: Number(runtime.agent_count), allocationUnits: Number(runtime.allocation_units), consumedUnits: Number(runtime.consumed_units), returnedUnits: unusedUnits, utilizationPercent: Math.round(Number(runtime.consumed_units) / Math.max(1, Number(runtime.allocation_units)) * 10_000) / 100, cost: { currency: poolProfile?.currency || "USD", connectivityCents: costCents, perLearnerCents: Math.round(costCents / Math.max(1, Number(runtime.learner_count))), perGbCents: Math.round(costCents / Math.max(1, Number(runtime.consumed_units) / 1000)) }, airCreditsPerLearner: rewardUnits, totalAirCreditsIssued: learnerIds.length * rewardUnits, livekitRoom: runtime.livekit_room, networkPolicyId: profile?.network_policy_id || null, privacy: { browsingHistoryCollected: false, aggregateUsageOnly: true }, startedAt: runtime.started_at, endedAt: now };
+    const statements = [
+      db.prepare("UPDATE air_resource_pools SET available_units = available_units + ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(unusedUnits, now, runtime.pool_id, tenantId),
+      db.prepare("UPDATE air_room_runtimes SET status = 'closed', report_payload = ?, ended_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'closing'").bind(JSON.stringify(report), now, now, runtimeId, tenantId),
+      db.prepare("UPDATE connectivity_container_profiles SET admissions_open = 0, cost_payload = ?, updated_at = ? WHERE runtime_id = ? AND tenant_id = ?").bind(JSON.stringify(report.cost), now, runtimeId, tenantId),
+      db.prepare("UPDATE network_sessions SET disconnected_at = ?, termination_reason = 'room-closed' WHERE runtime_id = ? AND tenant_id = ? AND disconnected_at IS NULL").bind(now, runtimeId, tenantId),
+      db.prepare("INSERT INTO connectivity_reports (id, tenant_id, runtime_id, event_id, program_id, report_type, payload, generated_at) VALUES (?, ?, ?, ?, ?, 'room-close', ?, ?)").bind(`air-report-${crypto.randomUUID()}`, tenantId, runtimeId, profile?.event_id || null, profile?.program_id || null, JSON.stringify(report), now),
+      transaction({ poolId: runtime.pool_id, runtimeId, type: "CAPACITY_RETURNED", resourceType: "DATA_MB", amount: unusedUnits, reason: "Unused room capacity returned to community pool", metadata: { consumedUnits: Number(runtime.consumed_units) } }),
+    ];
+    if (profile?.edge_node_id && profile?.network_policy_id) {
+      statements.push(await airEdgeCommand(env, tenantId, profile.edge_node_id, runtimeId, profile.network_policy_id, "REMOVE_POLICY", { stopAdmissions: true, closeLiveKitRoom: runtime.livekit_room }, now));
+      statements.push(db.prepare("UPDATE network_policies SET status = 'removal-pending', updated_at = ? WHERE id = ? AND tenant_id = ?").bind(now, profile.network_policy_id, tenantId));
+    }
+    for (const learnerId of learnerIds) {
+      const walletId = `air-wallet-${tenantId}-${learnerId}`.slice(0, 180);
+      statements.push(db.prepare("INSERT INTO air_resource_wallets (id, tenant_id, owner_type, owner_id, resource_type, available_units, reserved_units, consumed_units, updated_at) VALUES (?, ?, 'member', ?, 'AIR_CREDIT', ?, 0, 0, ?) ON CONFLICT(tenant_id, owner_type, owner_id, resource_type) DO UPDATE SET available_units = air_resource_wallets.available_units + excluded.available_units, updated_at = excluded.updated_at").bind(walletId, tenantId, learnerId, rewardUnits, now));
+      statements.push(transaction({ runtimeId, walletId, type: "LEARNER_REWARD", resourceType: "AIR_CREDIT", amount: rewardUnits, reason: "Room Runtime completion reward", metadata: { learnerId, roomCode: runtime.room_code } }));
+    }
+    try { await db.batch(statements); }
+    catch (error) {
+      await db.prepare("UPDATE air_room_runtimes SET status = 'active', updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'closing'").bind(now, runtimeId, tenantId).run().catch(() => undefined);
+      throw error;
+    }
+    return { action, runtimeId, status: "closed", report };
+  }
+
+  throw new HttpError(400, "Unsupported AIR Connect action");
+}
+
 async function initialize(db) {
   if (!db) return;
   if (!databaseInitialization) databaseInitialization = db.batch([
@@ -1542,6 +1826,36 @@ async function initialize(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS membership_subscriptions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, member_id TEXT NOT NULL, plan_id TEXT NOT NULL, status TEXT NOT NULL, stripe_customer_id TEXT, stripe_subscription_id TEXT UNIQUE, stripe_checkout_session_id TEXT UNIQUE, current_period_end TEXT, cancel_at_period_end INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS membership_subscriptions_member_idx ON membership_subscriptions (tenant_id, member_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS membership_webhook_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, stripe_object_id TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS air_resource_pools (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, resource_type TEXT NOT NULL, total_units INTEGER NOT NULL, available_units INTEGER NOT NULL, status TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS air_resource_pools_tenant_idx ON air_resource_pools (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS air_room_runtimes (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, pool_id TEXT NOT NULL, room_code TEXT NOT NULL, name TEXT NOT NULL, allocation_units INTEGER NOT NULL, consumed_units INTEGER NOT NULL DEFAULT 0, learner_count INTEGER NOT NULL, trainer_count INTEGER NOT NULL, agent_count INTEGER NOT NULL DEFAULT 1, learner_ids TEXT NOT NULL DEFAULT '[]', bandwidth_mbps INTEGER NOT NULL, video_profile TEXT NOT NULL, livekit_room TEXT NOT NULL, livekit_dispatch TEXT, status TEXT NOT NULL, report_payload TEXT, started_at TEXT, ended_at TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS air_room_runtimes_tenant_idx ON air_room_runtimes (tenant_id, updated_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS air_room_runtimes_pool_idx ON air_room_runtimes (pool_id, status)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS air_resource_wallets (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, owner_type TEXT NOT NULL, owner_id TEXT NOT NULL, resource_type TEXT NOT NULL, available_units INTEGER NOT NULL DEFAULT 0, reserved_units INTEGER NOT NULL DEFAULT 0, consumed_units INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, UNIQUE (tenant_id, owner_type, owner_id, resource_type))"),
+    db.prepare("CREATE INDEX IF NOT EXISTS air_resource_wallets_tenant_idx ON air_resource_wallets (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS air_resource_transactions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, pool_id TEXT, runtime_id TEXT, wallet_id TEXT, transaction_type TEXT NOT NULL, resource_type TEXT NOT NULL, amount_units INTEGER NOT NULL, balance_after INTEGER, actor_id TEXT NOT NULL, reason TEXT NOT NULL, metadata TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS air_resource_transactions_tenant_idx ON air_resource_transactions (tenant_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS air_resource_transactions_runtime_idx ON air_resource_transactions (runtime_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS connectivity_providers (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, provider_type TEXT NOT NULL, account_reference TEXT, service_type TEXT NOT NULL, contract_start TEXT, contract_end TEXT, download_mbps INTEGER NOT NULL, upload_mbps INTEGER NOT NULL, data_cap_mb INTEGER NOT NULL, monthly_cost_cents INTEGER NOT NULL, currency TEXT NOT NULL, multi_user_allowed INTEGER NOT NULL DEFAULT 0, commercial_use_allowed INTEGER NOT NULL DEFAULT 0, resale_allowed INTEGER NOT NULL DEFAULT 0, guest_access_allowed INTEGER NOT NULL DEFAULT 0, public_access_allowed INTEGER NOT NULL DEFAULT 0, multi_tenant_allowed INTEGER NOT NULL DEFAULT 0, data_pooling_allowed INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS connectivity_providers_tenant_idx ON connectivity_providers (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS connectivity_pool_profiles (pool_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, provider_id TEXT NOT NULL, location_id TEXT NOT NULL, download_capacity_mbps INTEGER NOT NULL, upload_capacity_mbps INTEGER NOT NULL, billing_period_start TEXT, billing_period_end TEXT, upstream_cost_cents INTEGER NOT NULL, currency TEXT NOT NULL, contract_type TEXT NOT NULL, resale_allowed INTEGER NOT NULL DEFAULT 0, community_access_allowed INTEGER NOT NULL DEFAULT 0, guest_access_allowed INTEGER NOT NULL DEFAULT 0, public_access_allowed INTEGER NOT NULL DEFAULT 0, multi_tenant_allowed INTEGER NOT NULL DEFAULT 0, data_pooling_allowed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS network_nodes (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, location_id TEXT NOT NULL, name TEXT NOT NULL, adapter_type TEXT NOT NULL, status TEXT NOT NULL, last_heartbeat_at TEXT, capabilities TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS network_nodes_tenant_idx ON network_nodes (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS network_policies (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, runtime_id TEXT NOT NULL, room_id TEXT NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL, applied_at TEXT, removed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS network_policies_runtime_idx ON network_policies (tenant_id, runtime_id, version)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS connectivity_container_profiles (runtime_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, room_id TEXT NOT NULL, event_id TEXT, program_id TEXT, reserved_mb INTEGER NOT NULL DEFAULT 0, download_limit_mbps INTEGER NOT NULL, upload_limit_mbps INTEGER NOT NULL, min_guaranteed_mbps INTEGER NOT NULL, burst_limit_mbps INTEGER NOT NULL, max_users INTEGER NOT NULL, max_devices INTEGER NOT NULL, priority_class TEXT NOT NULL, starts_at TEXT, ends_at TEXT, auto_return_unused INTEGER NOT NULL DEFAULT 1, network_policy_id TEXT, edge_node_id TEXT, policy_version INTEGER NOT NULL DEFAULT 0, admissions_open INTEGER NOT NULL DEFAULT 0, cost_payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS connectivity_container_profiles_tenant_idx ON connectivity_container_profiles (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS network_edge_commands (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, node_id TEXT NOT NULL, runtime_id TEXT, policy_id TEXT, action TEXT NOT NULL, status TEXT NOT NULL, issued_at TEXT NOT NULL, expires_at TEXT NOT NULL, nonce TEXT NOT NULL, payload TEXT NOT NULL, signature TEXT NOT NULL, signature_algorithm TEXT NOT NULL, acknowledged_at TEXT, acknowledgement_payload TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS network_edge_commands_node_idx ON network_edge_commands (tenant_id, node_id, status, issued_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS network_usage_samples (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, runtime_id TEXT NOT NULL, room_id TEXT NOT NULL, user_id TEXT, device_id TEXT, bytes_down INTEGER NOT NULL, bytes_up INTEGER NOT NULL, download_mbps REAL NOT NULL, upload_mbps REAL NOT NULL, latency_ms REAL NOT NULL, jitter_ms REAL NOT NULL, packet_loss REAL NOT NULL, recorded_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS network_usage_samples_runtime_idx ON network_usage_samples (tenant_id, runtime_id, recorded_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS network_sessions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, runtime_id TEXT NOT NULL, user_id TEXT, device_id TEXT NOT NULL, room_id TEXT NOT NULL, connected_at TEXT NOT NULL, disconnected_at TEXT, bytes_down INTEGER NOT NULL DEFAULT 0, bytes_up INTEGER NOT NULL DEFAULT 0, total_mb INTEGER NOT NULL DEFAULT 0, termination_reason TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS network_sessions_runtime_idx ON network_sessions (tenant_id, runtime_id, connected_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS allocation_rules (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL, rule_payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS network_alerts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, runtime_id TEXT, node_id TEXT, alert_type TEXT NOT NULL, severity TEXT NOT NULL, status TEXT NOT NULL, message TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, resolved_at TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS network_alerts_tenant_idx ON network_alerts (tenant_id, status, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS connectivity_reports (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, runtime_id TEXT NOT NULL UNIQUE, event_id TEXT, program_id TEXT, report_type TEXT NOT NULL, payload TEXT NOT NULL, generated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS connectivity_reports_tenant_idx ON connectivity_reports (tenant_id, generated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS api_rate_limits (bucket_key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, request_count INTEGER NOT NULL, expires_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS api_rate_limits_expiry_idx ON api_rate_limits (expires_at)"),
   ]).catch((error) => {
@@ -1568,6 +1882,11 @@ async function handleApi(request, env, url, requestId) {
       const runRows = await env.DB.prepare("SELECT id, tenant_id, issue_id, mission_id, room_code, mode, status, visibility, member_id, partner_id, agent_id, summary, started_at, updated_at FROM sim_live_runs WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 100").bind(tenantId).all();
       return reply({ issues: issueRows.results || [], runs: runRows.results || [], persisted: true, visibility: "tenant", requestId }, 200, { "Cache-Control": "no-store" });
     }
+    if (request.method === "GET" && url.pathname === "/api/board/agent/air-connect/state") {
+      const tenantId = safeId(url.searchParams.get("tenantId")).slice(0, 64);
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      return reply({ ...(await airConnectState(env.DB, tenantId)), persisted: true, requestId }, 200, { "Cache-Control": "no-store" });
+    }
     const body = await readJson(request, 64 * 1024);
     const tenantId = safeId(body.tenantId).slice(0, 64);
     if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
@@ -1579,6 +1898,13 @@ async function handleApi(request, env, url, requestId) {
       const verified = await matchesSecret(await sha256(zkode), expectedHash);
       logEvent(verified ? "info" : "warn", "board.zkode_verification", { requestId, tenantId, verified, source: safeId(body.source, "voice-agent") });
       return reply({ verified, tenantId, requestId }, verified ? 200 : 403, { "Cache-Control": "no-store" });
+    }
+    if (request.method === "POST" && url.pathname === "/api/board/agent/air-connect/actions") {
+      if (body.operatorApproved !== true) return reply({ error: "Explicit operator approval is required for AIR Connect mutations", requestId }, 403);
+      const action = safeId(body.action).slice(0, 40);
+      const result = await executeAirConnectAction(env, tenantId, action, body, safeId(body.actorId, "zero").slice(0, 96), requestId);
+      logEvent("info", "air_connect.agent_action", { requestId, tenantId, action, actorId: safeId(body.actorId, "zero") });
+      return reply({ ...result, requestId }, action === "create_pool" || action === "allocate_room" ? 201 : 200, { "Cache-Control": "no-store" });
     }
     const visibility = body.visibility === "public" ? "public" : "private";
     if (visibility === "public" && body.operatorApproved !== true) return reply({ error: "Explicit operator approval is required for public board publishing", requestId }, 403);
@@ -1608,6 +1934,65 @@ async function handleApi(request, env, url, requestId) {
       const result = await env.DB.prepare("UPDATE board_issues SET status = ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(status, now, id, tenantId).run();
       if (!result.meta?.changes) return reply({ error: "Issue not found", requestId }, 404);
       return reply({ issue: { id, tenantId, status, updatedAt: now }, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    return reply({ error: "Not found", requestId }, 404);
+  }
+  if (url.pathname.startsWith("/api/air-connect")) {
+    if (!env.DB) return reply({ error: "AIR Connect storage is not configured", requestId }, 503);
+    await initialize(env.DB);
+    if (url.pathname.startsWith("/api/air-connect/edge/")) {
+      const token = String(request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!env.AIR_EDGE_NODE_TOKEN) return reply({ error: "AIR edge authentication is not configured", requestId }, 503);
+      if (!await matchesSecret(token, String(env.AIR_EDGE_NODE_TOKEN))) return reply({ error: "AIR edge authorization failed", requestId }, 401);
+      const body = request.method === "POST" ? await readJson(request, 64 * 1024) : {};
+      const tenantId = safeId(body.tenantId || url.searchParams.get("tenantId")).slice(0, 64);
+      const nodeId = safeId(body.nodeId || url.searchParams.get("nodeId")).slice(0, 96);
+      if (!tenantId || !nodeId) return reply({ error: "tenantId and nodeId are required", requestId }, 400);
+      const node = await env.DB.prepare("SELECT * FROM network_nodes WHERE id = ? AND tenant_id = ? LIMIT 1").bind(nodeId, tenantId).first();
+      if (!node) return reply({ error: "Edge node was not found", requestId }, 404);
+      const now = new Date().toISOString();
+      if (request.method === "POST" && url.pathname === "/api/air-connect/edge/heartbeat") {
+        await env.DB.prepare("UPDATE network_nodes SET status = 'online', last_heartbeat_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(now, now, nodeId, tenantId).run();
+        return reply({ nodeId, status: "online", heartbeatAt: now, requestId }, 200, { "Cache-Control": "no-store" });
+      }
+      if (request.method === "GET" && url.pathname === "/api/air-connect/edge/commands") {
+        const rows = await env.DB.prepare("SELECT * FROM network_edge_commands WHERE tenant_id = ? AND node_id = ? AND status = 'pending' AND expires_at > ? ORDER BY issued_at ASC LIMIT 20").bind(tenantId, nodeId, now).all();
+        return reply({ commands: (rows.results || []).map((row) => ({ id: row.id, nodeId: row.node_id, runtimeId: row.runtime_id, policyId: row.policy_id, action: row.action, issuedAt: row.issued_at, expiresAt: row.expires_at, nonce: row.nonce, payload: parseStoredJson(row.payload, {}), signature: row.signature, signatureAlgorithm: row.signature_algorithm })), requestId }, 200, { "Cache-Control": "no-store" });
+      }
+      const acknowledgement = url.pathname.match(/^\/api\/air-connect\/edge\/commands\/([^/]+)\/ack$/);
+      if (request.method === "POST" && acknowledgement) {
+        const commandId = safeId(decodeURIComponent(acknowledgement[1])).slice(0, 120);
+        const status = body.applied === false ? "failed" : "acknowledged";
+        const command = await env.DB.prepare("SELECT * FROM network_edge_commands WHERE id = ? AND tenant_id = ? AND node_id = ? LIMIT 1").bind(commandId, tenantId, nodeId).first();
+        if (!command) return reply({ error: "Edge command was not found", requestId }, 404);
+        const statements = [env.DB.prepare("UPDATE network_edge_commands SET status = ?, acknowledged_at = ?, acknowledgement_payload = ? WHERE id = ? AND tenant_id = ? AND node_id = ? AND status = 'pending'").bind(status, now, JSON.stringify(isPlainObject(body.acknowledgement) ? body.acknowledgement : {}), commandId, tenantId, nodeId)];
+        if (command.policy_id && status === "acknowledged") statements.push(env.DB.prepare(`UPDATE network_policies SET status = ?, ${command.action === "REMOVE_POLICY" ? "removed_at" : "applied_at"} = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`).bind(command.action === "REMOVE_POLICY" ? "removed" : "applied", now, now, command.policy_id, tenantId));
+        await env.DB.batch(statements);
+        return reply({ commandId, status, acknowledgedAt: now, requestId }, 200, { "Cache-Control": "no-store" });
+      }
+      if (request.method === "POST" && url.pathname === "/api/air-connect/edge/usage") {
+        const result = await executeAirConnectAction(env, tenantId, "record_usage", body, `edge:${nodeId}`, requestId);
+        return reply({ ...result, requestId }, 202, { "Cache-Control": "no-store" });
+      }
+      return reply({ error: "Not found", requestId }, 404);
+    }
+    if (request.method === "GET" && url.pathname === "/api/air-connect/state") {
+      const tenantId = safeId(url.searchParams.get("tenantId")).slice(0, 64);
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      await verifyTenantAccess(member, env, tenantId);
+      return reply({ ...(await airConnectState(env.DB, tenantId)), persisted: true, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    if (request.method === "POST" && url.pathname === "/api/air-connect/actions") {
+      const body = await readJson(request, 64 * 1024);
+      const tenantId = safeId(body.tenantId).slice(0, 64);
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      if (body.operatorApproved !== true) return reply({ error: "Explicit operator approval is required for AIR Connect mutations", requestId }, 403);
+      await verifyTenantAccess(member, env, tenantId);
+      const action = safeId(body.action).slice(0, 40);
+      const actorId = safeId(member?.profile?.id || member?.user?.id, "local-operator").slice(0, 96);
+      const result = await executeAirConnectAction(env, tenantId, action, body, actorId, requestId);
+      logEvent("info", "air_connect.operator_action", { requestId, tenantId, action, actorId });
+      return reply({ ...result, requestId }, action === "create_pool" || action === "allocate_room" ? 201 : 200, { "Cache-Control": "no-store" });
     }
     return reply({ error: "Not found", requestId }, 404);
   }

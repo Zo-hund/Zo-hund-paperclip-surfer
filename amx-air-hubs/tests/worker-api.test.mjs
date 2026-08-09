@@ -116,12 +116,197 @@ function stageWorkflowDatabase(initialRow = null) {
   };
 }
 
+function airConnectDatabase() {
+  const pools = new Map();
+  const runtimes = new Map();
+  const providers = new Map();
+  const poolProfiles = new Map();
+  const containers = new Map();
+  const nodes = new Map();
+  const policies = new Map();
+  const edgeCommands = new Map();
+  const usageSamples = new Map();
+  const sessions = new Map();
+  const alerts = new Map();
+  const reports = new Map();
+  const wallets = new Map();
+  const transactions = [];
+  const statement = (sql, values = []) => ({
+    bind(...next) { return statement(sql, next); },
+    async run() {
+      if (sql.includes("INSERT INTO connectivity_providers")) {
+        const [id, tenant_id, name, provider_type, account_reference, service_type, contract_start, contract_end, download_mbps, upload_mbps, data_cap_mb, monthly_cost_cents, currency, multi_user_allowed, commercial_use_allowed, resale_allowed, guest_access_allowed, public_access_allowed, multi_tenant_allowed, data_pooling_allowed, created_at, updated_at] = values;
+        providers.set(id, { id, tenant_id, name, provider_type, account_reference, service_type, contract_start, contract_end, download_mbps, upload_mbps, data_cap_mb, monthly_cost_cents, currency, multi_user_allowed, commercial_use_allowed, resale_allowed, guest_access_allowed, public_access_allowed, multi_tenant_allowed, data_pooling_allowed, status: "active", created_at, updated_at });
+      } else if (sql.includes("INSERT INTO network_nodes")) {
+        const [id, tenant_id, location_id, name, adapter_type, capabilities, created_at, updated_at] = values;
+        nodes.set(id, { id, tenant_id, location_id, name, adapter_type, status: "registered", last_heartbeat_at: null, capabilities, created_at, updated_at });
+      } else if (sql.includes("INSERT INTO air_resource_pools")) {
+        const [id, tenant_id, name, total_units, available_units, created_by, created_at, updated_at] = values;
+        pools.set(id, { id, tenant_id, name, resource_type: "DATA_MB", total_units, available_units, status: "active", created_by, created_at, updated_at });
+      } else if (sql.includes("INSERT INTO connectivity_pool_profiles")) {
+        const [pool_id, tenant_id, provider_id, location_id, download_capacity_mbps, upload_capacity_mbps, billing_period_start, billing_period_end, upstream_cost_cents, currency, contract_type, resale_allowed, community_access_allowed, guest_access_allowed, public_access_allowed, multi_tenant_allowed, data_pooling_allowed, created_at, updated_at] = values;
+        poolProfiles.set(pool_id, { pool_id, tenant_id, provider_id, location_id, download_capacity_mbps, upload_capacity_mbps, billing_period_start, billing_period_end, upstream_cost_cents, currency, contract_type, resale_allowed, community_access_allowed, guest_access_allowed, public_access_allowed, multi_tenant_allowed, data_pooling_allowed, created_at, updated_at });
+      } else if (sql.includes("INSERT INTO air_room_runtimes")) {
+        const [id, tenant_id, pool_id, room_code, name, allocation_units, learner_count, trainer_count, agent_count, learner_ids, bandwidth_mbps, video_profile, livekit_room, created_by, created_at, updated_at] = values;
+        runtimes.set(id, { id, tenant_id, pool_id, room_code, name, allocation_units, consumed_units: 0, learner_count, trainer_count, agent_count, learner_ids, bandwidth_mbps, video_profile, livekit_room, livekit_dispatch: null, status: "allocated", report_payload: null, started_at: null, ended_at: null, created_by, created_at, updated_at });
+      } else if (sql.includes("INSERT INTO connectivity_container_profiles")) {
+        const [runtime_id, tenant_id, room_id, event_id, program_id, download_limit_mbps, upload_limit_mbps, min_guaranteed_mbps, burst_limit_mbps, max_users, max_devices, priority_class, starts_at, ends_at, edge_node_id, created_at, updated_at] = values;
+        containers.set(runtime_id, { runtime_id, tenant_id, room_id, event_id, program_id, reserved_mb: 0, download_limit_mbps, upload_limit_mbps, min_guaranteed_mbps, burst_limit_mbps, max_users, max_devices, priority_class, starts_at, ends_at, auto_return_unused: 1, network_policy_id: null, edge_node_id, policy_version: 0, admissions_open: 0, cost_payload: "{}", created_at, updated_at });
+      } else if (sql.includes("INSERT INTO network_policies")) {
+        const [id, tenant_id, runtime_id, room_id, version, payload, created_at, updated_at] = values;
+        policies.set(id, { id, tenant_id, runtime_id, room_id, version, status: "pending", payload, applied_at: null, removed_at: null, created_at, updated_at });
+      } else if (sql.includes("INSERT INTO network_edge_commands")) {
+        const [id, tenant_id, node_id, runtime_id, policy_id, action, issued_at, expires_at, nonce, payload, signature] = values;
+        edgeCommands.set(id, { id, tenant_id, node_id, runtime_id, policy_id, action, status: "pending", issued_at, expires_at, nonce, payload, signature, signature_algorithm: "HMAC-SHA256", acknowledged_at: null, acknowledgement_payload: null });
+      } else if (sql.includes("INSERT INTO network_usage_samples")) {
+        const [id, tenant_id, runtime_id, room_id, user_id, device_id, bytes_down, bytes_up, download_mbps, upload_mbps, latency_ms, jitter_ms, packet_loss, recorded_at] = values;
+        usageSamples.set(id, { id, tenant_id, runtime_id, room_id, user_id, device_id, bytes_down, bytes_up, download_mbps, upload_mbps, latency_ms, jitter_ms, packet_loss, recorded_at });
+      } else if (sql.includes("INSERT INTO network_sessions")) {
+        const [id, tenant_id, runtime_id, user_id, device_id, room_id, connected_at, bytes_down, bytes_up, total_mb] = values;
+        sessions.set(id, { id, tenant_id, runtime_id, user_id, device_id, room_id, connected_at, disconnected_at: null, bytes_down, bytes_up, total_mb, termination_reason: null });
+      } else if (sql.includes("INSERT INTO network_alerts")) {
+        const [id, tenant_id, runtime_id, node_id, severity, message, payload, created_at] = values;
+        alerts.set(id, { id, tenant_id, runtime_id, node_id, alert_type: "adaptive-capacity", severity, status: "open", message, payload, created_at, resolved_at: null });
+      } else if (sql.includes("INSERT INTO connectivity_reports")) {
+        const [id, tenant_id, runtime_id, event_id, program_id, payload, generated_at] = values;
+        reports.set(id, { id, tenant_id, runtime_id, event_id, program_id, report_type: "room-close", payload, generated_at });
+      } else if (sql.includes("INSERT INTO air_resource_transactions")) {
+        const [id, tenant_id, pool_id, runtime_id, wallet_id, transaction_type, resource_type, amount_units, balance_after, actor_id, reason, metadata, created_at] = values;
+        transactions.push({ id, tenant_id, pool_id, runtime_id, wallet_id, transaction_type, resource_type, amount_units, balance_after, actor_id, reason, metadata, created_at });
+      } else if (sql.includes("INSERT INTO air_resource_wallets")) {
+        const [id, tenant_id, owner_id, available_units, updated_at] = values;
+        const key = `${tenant_id}:${owner_id}`;
+        const current = wallets.get(key);
+        wallets.set(key, { id, tenant_id, owner_type: "member", owner_id, resource_type: "AIR_CREDIT", available_units: Number(current?.available_units || 0) + Number(available_units), reserved_units: 0, consumed_units: 0, updated_at });
+      } else if (sql.includes("available_units = available_units -")) {
+        const [amount, updated_at, id, tenant_id] = values; const pool = pools.get(id);
+        if (!pool || pool.tenant_id !== tenant_id || pool.available_units < amount) return { success: true, meta: { changes: 0 } };
+        Object.assign(pool, { available_units: pool.available_units - amount, updated_at });
+      } else if (sql.includes("available_units = available_units +")) {
+        const [amount, updated_at, id, tenant_id] = values; const pool = pools.get(id);
+        if (pool?.tenant_id === tenant_id) Object.assign(pool, { available_units: pool.available_units + amount, updated_at });
+      } else if (sql.includes("status = 'active', started_at")) {
+        const [started_at, updated_at, id] = values; Object.assign(runtimes.get(id), { status: "active", started_at, updated_at });
+      } else if (sql.includes("livekit_dispatch =")) {
+        const [livekit_dispatch, updated_at, id] = values; Object.assign(runtimes.get(id), { livekit_dispatch, updated_at });
+      } else if (sql.includes("consumed_units =")) {
+        const [consumed_units, updated_at, id] = values; Object.assign(runtimes.get(id), { consumed_units, updated_at });
+      } else if (sql.includes("status = 'closed'")) {
+        const [report_payload, ended_at, updated_at, id] = values; Object.assign(runtimes.get(id), { status: "closed", report_payload, ended_at, updated_at });
+      } else if (sql.includes("status = 'closing'")) {
+        const [updated_at, id] = values; const runtime = runtimes.get(id);
+        if (runtime?.status !== "active") return { success: true, meta: { changes: 0 } };
+        Object.assign(runtime, { status: "closing", updated_at });
+      } else if (sql.includes("allocation_units = ?, bandwidth_mbps")) {
+        const [allocation_units, bandwidth_mbps, updated_at, id] = values; Object.assign(runtimes.get(id), { allocation_units, bandwidth_mbps, updated_at });
+      } else if (sql.includes("UPDATE connectivity_container_profiles SET network_policy_id")) {
+        const [network_policy_id, policy_version, updated_at, runtime_id] = values; Object.assign(containers.get(runtime_id), { network_policy_id, policy_version, admissions_open: 1, updated_at });
+      } else if (sql.includes("UPDATE connectivity_container_profiles SET download_limit_mbps")) {
+        const [download_limit_mbps, upload_limit_mbps, updated_at, runtime_id] = values; Object.assign(containers.get(runtime_id), { download_limit_mbps, upload_limit_mbps, updated_at });
+      } else if (sql.includes("UPDATE connectivity_container_profiles SET admissions_open")) {
+        const [cost_payload, updated_at, runtime_id] = values; Object.assign(containers.get(runtime_id), { admissions_open: 0, cost_payload, updated_at });
+      } else if (sql.includes("UPDATE network_sessions SET disconnected_at")) {
+        const [disconnected_at, runtime_id] = values; for (const session of sessions.values()) if (session.runtime_id === runtime_id) Object.assign(session, { disconnected_at, termination_reason: "room-closed" });
+      } else if (sql.includes("UPDATE network_nodes SET status = 'online'")) {
+        const [last_heartbeat_at, updated_at, id] = values; Object.assign(nodes.get(id), { status: "online", last_heartbeat_at, updated_at });
+      } else if (sql.includes("UPDATE network_edge_commands SET status")) {
+        const [status, acknowledged_at, acknowledgement_payload, id] = values; Object.assign(edgeCommands.get(id), { status, acknowledged_at, acknowledgement_payload });
+      } else if (sql.includes("UPDATE network_policies SET status = 'removal-pending'")) {
+        const [updated_at, id] = values; Object.assign(policies.get(id), { status: "removal-pending", updated_at });
+      } else if (sql.includes("UPDATE network_policies SET status")) {
+        const [status, changed_at, updated_at, id] = values; const policy = policies.get(id); Object.assign(policy, { status, updated_at, ...(status === "removed" ? { removed_at: changed_at } : { applied_at: changed_at }) });
+      }
+      return { success: true, meta: { changes: 1 } };
+    },
+    async first() {
+      if (sql.includes("SELECT * FROM air_resource_pools")) return pools.get(values[0]) || null;
+      if (sql.includes("SELECT * FROM air_room_runtimes")) return runtimes.get(values[0]) || null;
+      if (sql.includes("SELECT total_units FROM air_resource_pools")) return pools.get(values[0]) || null;
+      if (sql.includes("SELECT * FROM connectivity_providers")) return providers.get(values[0]) || null;
+      if (sql.includes("SELECT id FROM network_nodes")) return nodes.get(values[0]) || null;
+      if (sql.includes("SELECT * FROM network_nodes")) return nodes.get(values[0]) || null;
+      if (sql.includes("SELECT * FROM connectivity_container_profiles")) return containers.get(values[0]) || null;
+      if (sql.includes("SELECT * FROM connectivity_pool_profiles")) return poolProfiles.get(values[0]) || null;
+      if (sql.includes("SELECT * FROM network_edge_commands")) return edgeCommands.get(values[0]) || null;
+      if (sql.includes("COUNT(*) AS wallet_count")) return { wallet_count: wallets.size, credits_issued: [...wallets.values()].reduce((sum, wallet) => sum + wallet.available_units, 0) };
+      if (sql.includes("SELECT request_count")) return { request_count: 1 };
+      return { ok: 1 };
+    },
+    async all() {
+      if (sql.includes("FROM air_resource_pools")) return { results: [...pools.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM air_room_runtimes")) return { results: [...runtimes.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM air_resource_transactions")) return { results: transactions.filter((row) => row.tenant_id === values[0]).reverse() };
+      if (sql.includes("FROM connectivity_providers")) return { results: [...providers.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM connectivity_pool_profiles")) return { results: [...poolProfiles.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM connectivity_container_profiles")) return { results: [...containers.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM network_nodes")) return { results: [...nodes.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM network_policies")) return { results: [...policies.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM network_edge_commands")) return { results: [...edgeCommands.values()].filter((row) => row.tenant_id === values[0] && (!values[1] || row.node_id === values[1])) };
+      if (sql.includes("FROM network_usage_samples")) return { results: [...usageSamples.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM network_sessions")) return { results: [...sessions.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM network_alerts")) return { results: [...alerts.values()].filter((row) => row.tenant_id === values[0]) };
+      if (sql.includes("FROM connectivity_reports")) return { results: [...reports.values()].filter((row) => row.tenant_id === values[0]) };
+      return { results: [] };
+    },
+  });
+  return { pools, runtimes, providers, poolProfiles, containers, nodes, policies, edgeCommands, usageSamples, sessions, wallets, transactions, prepare: (sql) => statement(sql), async batch(statements) { for (const item of statements) await item.run(); return []; } };
+}
+
 async function hash(value) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 describe("AMX AIR Hubs Worker API", () => {
+  test("runs the AIR Connect v0.2 provider-to-edge-to-reclaim lifecycle", async () => {
+    const DB = airConnectDatabase();
+    const agentRequest = (path, body, method = "POST") => request(path, { method, headers: { Authorization: "Bearer agent-secret", "Content-Type": "application/json", "CF-Connecting-IP": crypto.randomUUID() }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const edgeRequest = (path, body, method = "POST") => request(path, { method, headers: { Authorization: "Bearer edge-secret", "Content-Type": "application/json", "CF-Connecting-IP": crypto.randomUUID() }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const airEnv = { ASSETS: assets(), DB, AMX_AGENT_CONTROL_TOKEN: "agent-secret", AIR_EDGE_NODE_TOKEN: "edge-secret", AIR_EDGE_COMMAND_SIGNING_KEY: "signing-secret-for-tests" };
+    let response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "register_provider", dataCapMb: 5_000_000, downloadMbps: 2_000, uploadMbps: 1_000, monthlyCostCents: 150_000, rights: { multiUser: true, commercialUse: true, guestAccess: true, multiTenant: true, dataPooling: true }, operatorApproved: true }), airEnv);
+    assert.equal(response.status, 200);
+    const providerId = (await response.json()).provider.id;
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "register_edge_node", nodeId: "edge-hub-001", locationId: "hub-001", operatorApproved: true }), airEnv);
+    assert.equal(response.status, 200);
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "create_pool", providerId, totalUnits: 5_000_000, operatorApproved: true } ), airEnv);
+    assert.equal(response.status, 201);
+    const poolId = (await response.json()).pool.id;
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "allocate_room", poolId, edgeNodeId: "edge-hub-001", roomCode: "ROOM-A", allocationUnits: 250_000, learnerCount: 30, trainerCount: 3, agentCount: 3, bandwidthMbps: 500, uploadLimitMbps: 250, operatorApproved: true }), airEnv);
+    assert.equal(response.status, 201);
+    const runtimeId = (await response.json()).runtime.id;
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "start_room", runtimeId, operatorApproved: true }), airEnv);
+    assert.equal(response.status, 200);
+    const start = await response.json();
+    assert.equal(start.networkStatus, "policy-pending-edge-ack");
+    const command = [...DB.edgeCommands.values()][0];
+    assert.ok(command.signature);
+    assert.equal(command.signature_algorithm, "HMAC-SHA256");
+    response = await worker.fetch(edgeRequest(`/api/air-connect/edge/commands/${command.id}/ack`, { tenantId: "tech-at-nite", nodeId: "edge-hub-001", applied: true, acknowledgement: { adapter: "generic-http", applied: true } }), airEnv);
+    assert.equal(response.status, 200);
+    assert.equal(DB.policies.get(start.policyId).status, "applied");
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "resize_room", runtimeId, allocationUnits: 250_000, bandwidthMbps: 550, uploadLimitMbps: 275, operatorApproved: true }), airEnv);
+    assert.equal(response.status, 200);
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "record_usage", runtimeId, consumedUnits: 91_000, downloadMbps: 386, uploadMbps: 72, latencyMs: 31, jitterMs: 7, packetLoss: 0.2, operatorApproved: true }), airEnv);
+    assert.equal(response.status, 200);
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/actions", { tenantId: "tech-at-nite", action: "close_room", runtimeId, rewardUnits: 100, operatorApproved: true }), airEnv);
+    assert.equal(response.status, 200);
+    const report = (await response.json()).report;
+    assert.equal(report.returnedUnits, 159_000);
+    assert.equal(report.cost.connectivityCents, 2_730);
+    assert.equal(report.privacy.browsingHistoryCollected, false);
+    assert.equal(report.totalAirCreditsIssued, 3_000);
+    response = await worker.fetch(agentRequest("/api/board/agent/air-connect/state?tenantId=tech-at-nite", null, "GET"), airEnv);
+    const state = await response.json();
+    assert.equal(state.pools[0].availableUnits, 4_909_000);
+    assert.equal(state.runtimes[0].status, "closed");
+    assert.equal(state.providers[0].rights.dataPooling, true);
+    assert.equal(state.usageSamples.length, 1);
+    assert.equal(state.sessions[0].terminationReason, "room-closed");
+    assert.equal(state.reports[0].payload.returnedUnits, 159_000);
+    assert.equal(state.walletSummary.wallets, 30);
+    assert.equal(state.walletSummary.creditsIssued, 3_000);
+    assert.ok(state.transactions.some((entry) => entry.type === "CAPACITY_RETURNED"));
+  });
   test("connects H3AT workspace commands through the server-only AMX capability", async () => {
     const env = { ASSETS: assets(), "AMX-HUBS-CONNECT": "server-secret", DB: memoryDatabase() };
     let response = await worker.fetch(request("/api/h3at/control-plane"), env);
