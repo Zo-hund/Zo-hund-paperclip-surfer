@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "sessionId": "53a44fb6-265e-4a45-8818-c8f23365f430",
+  "workspaceRoot": "C:\\Users\\Owner\\Documents\\Codex\\2026-07-13\\gh-repo-clone-8thwall-8thwall\\Zo-hund-paperclip-surfer\\amx-air-hubs",
+  "pid": 63316,
+  "port": 4177,
+  "localUrl": "http://127.0.0.1:4177/",
+  "networkUrls": [],
+  "aiMode": "agent",
+  "browser": {
+    "status": "connected",
+    "connected": true,
+    "commandReady": false,
+    "connectedClientCount": 1,
+    "lastTransitionAt": "2026-07-22T00:19:32.758Z",
+    "lastBridgeConnectedAt": "2026-07-22T00:19:32.758Z"
+  },
+  "registeredAt": "2026-07-20T23:11:38.791Z",
+  "updatedAt": "2026-07-22T00:19:32.869Z"
+}

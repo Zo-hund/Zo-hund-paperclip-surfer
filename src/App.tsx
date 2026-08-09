@@ -3,7 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { AppShell } from "./components";
 import { CompletePage, HomePage, AgentsPage, MissionRunPage, MissionsPage, PreRunPage, RoleSelectPage } from "./pages/core";
 import { AdminPage, AnalyticsPage, ControlPage, MarketplacePage, PodsPage, ScanResolver, SponsorPage, SponsorResolver, WalletPage } from "./pages/secondary";
-import { QRStudioPage, RoleDashboardPage } from "./pages/operations";
+import { PublicBoardPage, QRStudioPage, RoleDashboardPage } from "./pages/operations";
 import { TenantConsolePage } from "./TenantConsole";
 import { NexusPage } from "./pages/nexus";
 import { AMXXRStagePage } from "./pages/stage";
@@ -39,6 +39,7 @@ function ShellRoutes() {
     <Route path="/" element={<HomePage/>}/>
     <Route path="/account" element={<AccountPage/>}/>
     <Route path="/membership" element={<MembershipPage/>}/>
+    <Route path="/board" element={<PublicBoardPage/>}/>
     <Route path="/members/:slug" element={<PublicMemberProfilePage/>}/>
     <Route path="/role" element={<RequireMember><RoleSelectPage/></RequireMember>}/>
     <Route path="/dashboard" element={<RequireMember><RoleDashboardPage/></RequireMember>}/>

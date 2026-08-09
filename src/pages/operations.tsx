@@ -10,6 +10,7 @@ import { useAMX } from "../AppContext";
 import { getAnalytics, getBadges, getProofs, trackEvent } from "../platform";
 import { getCampaigns, saveCampaign, type QRCampaign } from "../operations";
 import { Metric, PageHeader, QRCodeCard, StatusPill, XPBar } from "../components";
+import { BoardLiveFeed } from "../components/BoardLiveFeed";
 
 const roleConfig: Record<Role, { icon: typeof GraduationCap; headline: string; summary: string; actions: Array<{ label: string; to: string }> }> = {
   Learner: { icon: GraduationCap, headline: "Your learning runway", summary: "Continue training, collect proof, and unlock the next guide.", actions: [{ label: "Start training", to: "/missions" }, { label: "Open certificates", to: "/wallet" }] },
@@ -44,7 +45,12 @@ export function RoleDashboardPage() {
       <section className="dashboard-panel"><span className="eyebrow">NEXT BEST ACTION</span><h2>{role === "Trainer" ? "Create a classroom pod" : role === "Sponsor" ? "Launch a tracked QR campaign" : role === "Admin" ? "Review mission publishing" : "Continue Project Checklist"}</h2><p>{role === "Trainer" ? "Invite learners with one room code, share progress, and approve the final report." : role === "Sponsor" ? "Connect a location and campaign name to scans, starts, completions, and certificates." : role === "Admin" ? "Turn a local mission draft into a governed, QR-launchable experience." : "TAZ will help you translate your XR foundation into a scoped delivery plan."}</p><Link className="button primary" to={config.actions[0].to}>{config.actions[0].label}<ArrowRight/></Link></section>
       <section className="dashboard-panel"><span className="eyebrow">AGENT UNLOCK PATH</span>{agents.map((agent)=><div className="unlock-row" key={agent.id}><span className="agent-dot" style={{background:agent.color}}/><div><b>{agent.name}</b><small>{agent.role}</small></div>{xp>=agent.unlockAtXP?<StatusPill tone="green">Unlocked</StatusPill>:<span className="unlock-xp"><KeyRound/> {agent.unlockAtXP} XP</span>}</div>)}</section>
     </div>
+    <div className="dashboard-grid"><BoardLiveFeed/></div>
   </div>;
+}
+
+export function PublicBoardPage() {
+  return <div className="page section-wrap"><PageHeader eyebrow="PUBLIC BOARD" title="Community sim-live activity" description="Approved public runs and outcomes from AMX member and partner tenants."/><div className="dashboard-grid"><BoardLiveFeed publicOnly/></div></div>;
 }
 
 export function QRStudioPage() {
