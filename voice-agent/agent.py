@@ -49,6 +49,7 @@ Education: assess the learner, recommend a lesson and Pod, define accessible pra
 Business: separate assumptions from facts, coach customer discovery and market simulations, and define measurable approval gates.
 Entertainment: guide media, production, performance, rights, safety, audio, camera, and XR showcase workflows.
 Live production: use the production tools when an operator asks to preview or take cameras, route screens, control media or audio, fire cues, set lighting/VFX, control a stream, or request a robotics inspection. Never claim a production action happened unless the tool returns executed. When it returns approval-required, state the exact action and ask the operator for explicit approval before retrying with operator_approved=true.
+Private phone dispatch: before creating or changing tenant board records, ask for the operator's ZKODE and call verify_operator_zkode. Never repeat the ZKODE, store it, or include it in summaries. A successful verification lasts only for the current call. Route private member and partner operations to amx-hubs.cc/dashboard. Route approved public showcases to amx-hubs.cc/board. Explain which route received each action.
 Industry: guide digital twins, data, automation, robotics, infrastructure, and safety-bound simulations. Never claim simulated data or actions are physical.
 Placement: review verified evidence, learner preferences, portfolio readiness, and suitable opportunities. Never invent employers or guarantee a job.
 
@@ -482,6 +483,7 @@ class JAZSupportGuide(Agent):
     def __init__(self, instructions: str | None = None, greeting: str | None = None, dispatch_context: dict | None = None) -> None:
         super().__init__(instructions=instructions or JAZ_INSTRUCTIONS)
         self._dispatch_context = dispatch_context or {}
+        self._operator_verified = False
         self._greeting = greeting or (
             "Hi, this is JAZ Support Guide for AMX AIR HUBS. I can help with questions, "
             "troubleshooting, onboarding, bookings, billing direction, or agent setup. "
@@ -833,6 +835,29 @@ class JAZSupportGuide(Agent):
     # the standard REST routes — not a parallel implementation.
 
     @function_tool()
+    async def verify_operator_zkode(self, context: RunContext, zkode: str) -> str:
+        """Verify a private operator ZKODE for board actions during this call."""
+        try:
+            room = context.session.room_io.room
+            result = await _post_amx_board_action("/api/board/agent/verify-zkode", {
+                "tenantId": self._dispatch_context.get("tenant") or "tech-at-nite",
+                "zkode": zkode,
+                "source": "private-operator-phone" if room.name.startswith("AMX-CALL-") else "livekit-agent",
+            })
+            self._operator_verified = result.get("verified") is True
+            if self._operator_verified:
+                return "Operator verified for this call. Private actions route to the tenant dashboard; approved public actions route to the public board."
+            return "That ZKODE was not accepted."
+        except RuntimeError:
+            self._operator_verified = False
+            return "That ZKODE was not accepted. Check the code and try again."
+
+    @function_tool()
+    async def get_board_routes(self, context: RunContext) -> str:
+        """Explain the private and public AMX board destinations."""
+        return "Private tenant, member, and partner work routes to amx-hubs.cc/dashboard. Only operator-approved showcase records route to amx-hubs.cc/board."
+
+    @function_tool()
     async def create_issue(self, context: RunContext, title: str, description: str = "", priority: str = "normal", visibility: str = "private", operator_approved: bool = False) -> str:
         """Create a new issue/task in this meeting's company.
 
@@ -841,6 +866,8 @@ class JAZSupportGuide(Agent):
         """
         room = context.session.room_io.room
         try:
+            if not _meeting_id_from_room(room) and not self._operator_verified:
+                return "Operator ZKODE verification is required before I can create a tenant board issue."
             if visibility == "public" and not operator_approved:
                 return "Approval required. Confirm that I should publish this issue to the public board."
             if not _meeting_id_from_room(room):
@@ -880,6 +907,8 @@ class JAZSupportGuide(Agent):
         """
         room = context.session.room_io.room
         try:
+            if not _meeting_id_from_room(room) and not self._operator_verified:
+                return "Operator ZKODE verification is required before I can update a tenant board issue."
             if not _meeting_id_from_room(room):
                 if not issue_id:
                     return "Tell me the tenant board issue identifier you want to update."
@@ -934,6 +963,8 @@ class JAZSupportGuide(Agent):
     async def record_sim_live_run(self, context: RunContext, summary: str, mode: str = "simulation", status: str = "running", mission_id: str = "", issue_id: str = "", visibility: str = "private", operator_approved: bool = False) -> str:
         """Map a tenant simulation or live run to the board after required operator approval."""
         try:
+            if not self._operator_verified:
+                return "Operator ZKODE verification is required before I can map a simulation or live run."
             if (visibility == "public" or mode == "live") and not operator_approved:
                 return "Approval required. Confirm that I should publish or start this live board run."
             room = context.session.room_io.room

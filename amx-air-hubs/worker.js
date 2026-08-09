@@ -1564,6 +1564,15 @@ async function handleApi(request, env, url, requestId) {
     const body = await readJson(request, 64 * 1024);
     const tenantId = safeId(body.tenantId).slice(0, 64);
     if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+    if (request.method === "POST" && url.pathname === "/api/board/agent/verify-zkode") {
+      const expectedHash = String(env.AMX_AGENT_OPERATOR_ZKODE_HASH || "").trim().toLowerCase();
+      if (!expectedHash) return reply({ error: "Operator ZKODE verification is not configured", requestId }, 503);
+      const zkode = String(body.zkode || "").trim().toUpperCase();
+      if (!/^[A-Z0-9]{4,12}$/.test(zkode)) return reply({ verified: false, error: "ZKODE format is invalid", requestId }, 400);
+      const verified = await matchesSecret(await sha256(zkode), expectedHash);
+      logEvent(verified ? "info" : "warn", "board.zkode_verification", { requestId, tenantId, verified, source: safeId(body.source, "voice-agent") });
+      return reply({ verified, tenantId, requestId }, verified ? 200 : 403, { "Cache-Control": "no-store" });
+    }
     const visibility = body.visibility === "public" ? "public" : "private";
     if (visibility === "public" && body.operatorApproved !== true) return reply({ error: "Explicit operator approval is required for public board publishing", requestId }, 403);
     const now = new Date().toISOString();
