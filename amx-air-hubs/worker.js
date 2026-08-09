@@ -1561,6 +1561,13 @@ async function handleApi(request, env, url, requestId) {
     if (!await matchesSecret(token, String(env.AMX_AGENT_CONTROL_TOKEN))) return reply({ error: "Agent board authorization failed", requestId }, 401);
     if (!env.DB) return reply({ error: "Board storage is not configured", requestId }, 503);
     await initialize(env.DB);
+    if (request.method === "GET" && url.pathname === "/api/board/agent/feed") {
+      const tenantId = safeId(url.searchParams.get("tenantId")).slice(0, 64);
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      const issueRows = await env.DB.prepare("SELECT id, tenant_id, title, description, status, priority, visibility, source, actor_type, member_id, partner_id, run_id, created_at, updated_at FROM board_issues WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 100").bind(tenantId).all();
+      const runRows = await env.DB.prepare("SELECT id, tenant_id, issue_id, mission_id, room_code, mode, status, visibility, member_id, partner_id, agent_id, summary, started_at, updated_at FROM sim_live_runs WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 100").bind(tenantId).all();
+      return reply({ issues: issueRows.results || [], runs: runRows.results || [], persisted: true, visibility: "tenant", requestId }, 200, { "Cache-Control": "no-store" });
+    }
     const body = await readJson(request, 64 * 1024);
     const tenantId = safeId(body.tenantId).slice(0, 64);
     if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
