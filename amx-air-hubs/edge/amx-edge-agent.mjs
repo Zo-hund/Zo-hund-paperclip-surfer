@@ -43,6 +43,13 @@ async function applyCommand(command) {
   return { applied: true, adapter: "generic-http", evidence: payload.evidence || {} };
 }
 
+async function verifyAdapter() {
+  if (config.simulation) return;
+  const response = await fetch(`${config.adapterUrl}/health`, { headers: { Accept: "application/json", ...(config.adapterToken ? { Authorization: `Bearer ${config.adapterToken}` } : {}) } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ready !== true) throw new Error(payload.error || `AIR edge adapter preflight failed (${response.status})`);
+}
+
 async function pollCommands() {
   const query = new URLSearchParams({ tenantId: config.tenantId, nodeId: config.nodeId });
   const { commands = [] } = await api(`/api/air-connect/edge/commands?${query}`, { method: "GET" });
@@ -75,6 +82,7 @@ async function meter() {
 }
 
 async function cycle() {
+  await verifyAdapter();
   await heartbeat();
   await pollCommands();
   await meter();
