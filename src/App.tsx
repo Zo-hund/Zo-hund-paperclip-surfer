@@ -10,6 +10,7 @@ import { AMXXRStagePage } from "./pages/stage";
 import { StageLiveViewerPage } from "./pages/stage-viewer";
 import { AgentWorkbenchPage } from "./pages/agent-workbench";
 import { RuntimeStatusPage } from "./pages/runtime-status";
+import { AirConnectPage } from "./pages/air-connect";
 import { ConnectionsPage } from "./pages/connections";
 import { PodInvitePage } from "./pages/invites";
 import { AccountPage, PublicMemberProfilePage } from "./pages/account";
@@ -72,6 +73,7 @@ function ShellRoutes() {
     <Route path="/analytics" element={<RequireMember roles={["trainer", "operator"]}><AnalyticsPage/></RequireMember>}/>
     <Route path="/control" element={<RequireMember roles={["operator"]}><ControlPage/></RequireMember>}/>
     <Route path="/control/runtime" element={<RequireMember roles={["operator"]}><RuntimeStatusPage/></RequireMember>}/>
+    <Route path="/control/air-connect" element={<RequireMember roles={["operator"]}><AirConnectPage/></RequireMember>}/>
     <Route path="/training/pathfinder/facilitator" element={<RequireMember roles={["trainer", "operator"]}><PathfinderFacilitatorPage/></RequireMember>}/>
     <Route path="/connections" element={<RequireMember roles={["operator"]}><ConnectionsPage/></RequireMember>}/>
     <Route path="/nexus" element={<RequireMember><NexusPage/></RequireMember>}/>

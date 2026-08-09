@@ -11,6 +11,8 @@
     "xr:status": "iwsdk xr status",
     "reference:status": "iwsdk reference status",
     "reference:warmup": "iwsdk reference warmup",
+    "edge:run": "node edge/amx-edge-agent.mjs",
+    "edge:once": "node edge/amx-edge-agent.mjs --once",
     "build": "tsc -b && vite build && node scripts/build-worker.mjs",
     "preview": "vite preview --config vite.preview.config.ts --host 0.0.0.0",
     "typecheck": "tsc -b",
