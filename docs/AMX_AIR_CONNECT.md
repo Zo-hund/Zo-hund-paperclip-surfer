@@ -41,6 +41,17 @@ The edge agent uses a separate bearer boundary:
 
 For a local acceptance run, set `AIR_EDGE_SIMULATION=true` and run `pnpm edge:once`. Simulation acknowledgements are labeled as simulation and are not evidence that a physical router changed.
 
+## Hybrid Gateway
+
+Run `pnpm edge:adapter` beside the physical network controllers. The adapter deliberately separates responsibilities:
+
+- OPNsense is the required permanent-hub enforcement driver. Pre-create one download and one upload pipe for each room VLAN, then map their UUIDs in `OPNSENSE_ROOM_POLICIES_JSON`.
+- UniFi is the admission driver. Captive-portal client IDs supplied with a room policy receive bounded time, data, download, and upload authorization through the Network API.
+- OpenWrt is supported as the required enforcement driver for a mobile AIR Box through a separately secured local adapter URL.
+- The T-Mobile gateway is read-only upstream telemetry. Its signal endpoint never counts as QoS enforcement.
+
+The adapter exposes `GET /health`, `POST /commands`, `GET /usage`, and `GET /upstream`. The edge agent now checks `/health` before polling. A missing pipe map, controller credential, adapter token, or failed controller request prevents acknowledgement, leaving the cloud policy failed rather than falsely applied.
+
 ## Security
 
 - Worker and edge share separate `AIR_EDGE_NODE_TOKEN` and `AIR_EDGE_COMMAND_SIGNING_KEY` secrets.

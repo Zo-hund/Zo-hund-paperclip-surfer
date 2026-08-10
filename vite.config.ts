@@ -16,6 +16,14 @@ export default defineConfig({
   resolve: {
     dedupe: ["three"],
   },
+  server: {
+    proxy: {
+      "/api/media": {
+        target: "https://amx-air-hubs-stage.zohund-ai.chatgpt.site",
+        changeOrigin: true,
+      },
+    },
+  },
   optimizeDeps: {
     // Havok resolves its WASM beside the ESM module at runtime. Prebundling the
     // module moves that URL into .vite/deps without copying the binary.

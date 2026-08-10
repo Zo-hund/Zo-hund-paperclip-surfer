@@ -50,6 +50,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/membership", label: "Membership", icon: Crown },
     { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
   ];
+  const primaryLabels = new Set(["Home", "Dashboard", "Missions", "Play", "Stage", "Nexus"]);
+  const desktopPrimaryNav = member.session ? nav.filter((item) => primaryLabels.has(item.label)) : nav;
+  const desktopMoreNav = member.session ? nav.filter((item) => !primaryLabels.has(item.label)) : [];
+  const moreActive = desktopMoreNav.some((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
+  const mobileDockNav = member.session ? [
+    memberNav.find((item) => item.label === "Home")!,
+    memberNav.find((item) => item.label === "Missions")!,
+    memberNav.find((item) => item.label === "Play")!,
+    memberNav.find((item) => item.label === "Stage")!,
+    { to: "/account", label: "Account", icon: CircleUserRound },
+  ] : nav;
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -58,7 +69,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span><b>AMX AIR</b><small>HUBS / XR RUNWAY</small></span>
         </Link>
         <nav className="desktop-nav" aria-label="Primary navigation">
-          {nav.map(({to, label, icon: Icon}) => <NavLink key={to} to={to} className={({isActive}) => isActive ? "active" : ""}><Icon size={16}/>{label}</NavLink>)}
+          {desktopPrimaryNav.map(({to, label, icon: Icon}) => <NavLink key={to} to={to} className={({isActive}) => isActive ? "active" : ""}><Icon size={16}/>{label}</NavLink>)}
+          {desktopMoreNav.length > 0 && <details className={`desktop-more ${moreActive ? "active" : ""}`}>
+            <summary><LayoutGrid size={16}/>More<ChevronRight size={13}/></summary>
+            <div>{desktopMoreNav.map(({to,label,icon:Icon}) => <NavLink key={to} to={to} onClick={(event) => (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open")}><Icon size={16}/><span>{label}</span></NavLink>)}</div>
+          </details>}
         </nav>
         <div className="top-actions">
           {member.session && <span className="role-chip">{member.profile?.membership_role || role}</span>}
@@ -73,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {menuOpen && <nav className="mobile-menu">{nav.map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={18}/>{label}<ChevronRight size={16}/></NavLink>)}{member.session && <button onClick={() => { setMenuOpen(false); setXrAccessOpen(true); }}><Glasses size={18}/>Spatial access<ChevronRight size={16}/></button>}<NavLink to="/account"><CircleUserRound size={18}/>Account<ChevronRight size={16}/></NavLink></nav>}
       <main>{children}</main>
       <nav className="bottom-nav" aria-label="Mobile navigation">
-        {nav.slice(0,5).map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={20}/><span>{label}</span></NavLink>)}
+        {mobileDockNav.map(({to,label,icon:Icon})=><NavLink key={to} to={to}><Icon size={20}/><span>{label}</span></NavLink>)}
       </nav>
       {accessibilityOpen && <AccessibilityPanel onClose={() => setAccessibilityOpen(false)}/>}
       {xrAccessOpen && <XRAccessPanel missionId={activeMission.id} pathname={location.pathname} onClose={() => setXrAccessOpen(false)}/>}
