@@ -51,6 +51,10 @@ export async function createMembershipCheckout(tenantId: string, planId: string)
   return api<{ checkoutUrl: string; planId: string }>("/api/membership/checkout", { method: "POST", body: JSON.stringify({ tenantId, planId }) });
 }
 
+export async function reconcileMembershipCheckout(tenantId: string, sessionId: string) {
+  return api<{ subscription: MemberSubscription; status: string; planId: string }>("/api/membership/checkout-reconcile", { method: "POST", body: JSON.stringify({ tenantId, sessionId }) });
+}
+
 export async function createMembershipPortal(tenantId: string) {
   return api<{ portalUrl: string }>("/api/membership/portal", { method: "POST", body: JSON.stringify({ tenantId }) });
 }

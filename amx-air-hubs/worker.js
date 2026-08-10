@@ -2294,6 +2294,30 @@ async function handleApi(request, env, url, requestId) {
     logEvent("info", "membership.checkout_created", { requestId, tenantId, memberId, planId: plan.id });
     return reply({ checkoutUrl: session.url, planId: plan.id, requestId }, 201, { "Cache-Control": "no-store" });
   }
+  if (request.method === "POST" && url.pathname === "/api/membership/checkout-reconcile") {
+    if (!env.STRIPE_SECRET_KEY || !env.DB) return reply({ error: "Stripe subscriptions and membership persistence must be configured", requestId }, 503);
+    const body = await readJson(request, 16 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite");
+    await verifyTenantAccess(member, env, tenantId);
+    const memberId = safeId(member?.user?.id, "local-member");
+    const sessionId = safeId(body.sessionId).slice(0, 160);
+    if (!/^cs_(test_|live_)?[A-Za-z0-9_]+$/.test(sessionId)) return reply({ error: "A valid Stripe Checkout session id is required", requestId }, 400);
+    await initialize(env.DB);
+    const session = await stripeGet(env, `/checkout/sessions/${encodeURIComponent(sessionId)}`);
+    const metadata = isPlainObject(session.metadata) ? session.metadata : {};
+    const sessionTenant = safeId(metadata.tenant_id, "tech-at-nite");
+    const sessionMember = safeId(metadata.amx_member_id || session.client_reference_id);
+    if (sessionTenant !== tenantId || sessionMember !== memberId) return reply({ error: "Checkout session does not belong to this member workspace", requestId }, 403);
+    if (session.mode !== "subscription" || session.payment_status !== "paid") return reply({ error: "Checkout has not completed payment yet", requestId }, 409);
+    const subscriptionId = safeId(session.subscription).slice(0, 120);
+    if (!subscriptionId) return reply({ error: "Checkout completed without a managed subscription", requestId }, 409);
+    const subscription = await stripeGet(env, `/subscriptions/${encodeURIComponent(subscriptionId)}`);
+    subscription.metadata = { ...(isPlainObject(subscription.metadata) ? subscription.metadata : {}), ...metadata };
+    const saved = await persistMembershipSubscription(env, { subscriptionId: subscription.id, checkoutSessionId: sessionId, customerId: subscription.customer || session.customer, memberId, tenantId, planId: subscription.metadata?.amx_membership_plan, status: subscription.status, currentPeriodEnd: subscription.current_period_end, cancelAtPeriodEnd: subscription.cancel_at_period_end });
+    const currentPeriodEnd = Number(subscription.current_period_end) > 0 ? new Date(Number(subscription.current_period_end) * 1000).toISOString() : null;
+    logEvent("info", "membership.checkout_reconciled", { requestId, tenantId, memberId, planId: saved.planId, status: saved.status });
+    return reply({ subscription: publicMembershipSubscription({ id: subscriptionId, tenant_id: tenantId, plan_id: saved.planId, status: saved.status, stripe_subscription_id: subscriptionId, current_period_end: currentPeriodEnd, cancel_at_period_end: subscription.cancel_at_period_end ? 1 : 0 }), planId: saved.planId, status: saved.status, requestId }, 200, { "Cache-Control": "no-store" });
+  }
   if (request.method === "POST" && url.pathname === "/api/membership/portal") {
     if (!env.STRIPE_SECRET_KEY || !env.DB) return reply({ error: "Stripe membership management is not configured", requestId }, 503);
     const body = await readJson(request, 16 * 1024);
