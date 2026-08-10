@@ -147,6 +147,27 @@ function normalizePrintfulProduct(item) {
   };
 }
 
+function normalizePrintfulTemplate(item) {
+  const variants = Array.isArray(item?.available_variant_ids) ? item.available_variant_ids : [];
+  const image = safeLabel(item?.image_url || item?.thumbnail_url, "/merch/amx-merch-collection.png");
+  return {
+    id: `template-${String(item?.id || item?.product_id || "").slice(0, 70)}`,
+    name: safeLabel(item?.title || item?.name, "Printful Product Template").slice(0, 120),
+    description: "Printful template found. Sync this product to the AMX store to enable checkout and fulfillment.",
+    category: "apparel",
+    imageUrl: /^https:\/\//i.test(image) ? image : "/merch/amx-merch-collection.png",
+    partnerName: "AMX Labs",
+    collectiveSharePercent: 15,
+    variants: variants.slice(0, 8).map((variantId) => ({
+      id: `template-${String(variantId).slice(0, 60)}`,
+      name: `Template variant ${String(variantId).slice(0, 24)}`,
+      priceCents: 0,
+      currency: "USD",
+      available: false,
+    })),
+  };
+}
+
 async function loadPrintfulCatalog(env) {
   const cacheKey = String(env.PRINTFUL_STORE_ID || "default");
   const cached = printfulCatalogCache.get(cacheKey);
@@ -157,6 +178,12 @@ async function loadPrintfulCatalog(env) {
   const products = details.map(normalizePrintfulProduct).filter((product) => product.id && product.variants.length);
   printfulCatalogCache.set(cacheKey, { products, expiresAt: Date.now() + 5 * 60 * 1000 });
   return products;
+}
+
+async function loadPrintfulTemplates(env) {
+  const listed = await printfulRequest(env, "/product-templates?limit=24");
+  const summaries = Array.isArray(listed) ? listed.slice(0, 12) : [];
+  return summaries.map(normalizePrintfulTemplate).filter((product) => product.id && product.variants.length);
 }
 
 function normalizeMerchItems(value) {
@@ -2372,10 +2399,24 @@ async function handleApi(request, env, url, requestId) {
       products = await loadPrintfulCatalog(env);
     } catch (error) {
       logEvent("warn", "merch.printful_catalog_unavailable", { requestId, tenantId, reason: error instanceof Error ? safeLabel(error.message).slice(0, 160) : "unknown" });
-      return reply({ configured: false, checkoutConfigured: false, source: "printful", products: [], message: "Printful is connected, but the product catalog could not load. Check the API token scopes and synced store products.", requestId }, 200, { "Cache-Control": "no-store" });
+      try {
+        const templates = await loadPrintfulTemplates(env);
+        if (templates.length) return reply({ configured: true, checkoutConfigured: false, checkoutProvider: "none", source: "printful", products: templates, message: "Printful templates loaded. Sync these products to the connected Printful store to enable AMX checkout and fulfillment.", requestId }, 200, { "Cache-Control": "private, max-age=120" });
+      } catch (templateError) {
+        logEvent("warn", "merch.printful_templates_unavailable", { requestId, tenantId, reason: templateError instanceof Error ? safeLabel(templateError.message).slice(0, 160) : "unknown" });
+      }
+      return reply({ configured: false, checkoutConfigured: false, source: "printful", products: [], message: "Printful is connected, but the product catalog could not load. Check API token scopes, PRINTFUL_STORE_ID, synced store products, or product template permissions.", requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    if (!products.length) {
+      try {
+        const templates = await loadPrintfulTemplates(env);
+        if (templates.length) return reply({ configured: true, checkoutConfigured: false, checkoutProvider: "none", source: "printful", products: templates, message: "Printful templates loaded. Sync these products to the connected Printful store to enable AMX checkout and fulfillment.", requestId }, 200, { "Cache-Control": "private, max-age=120" });
+      } catch (error) {
+        logEvent("warn", "merch.printful_empty_templates_unavailable", { requestId, tenantId, reason: error instanceof Error ? safeLabel(error.message).slice(0, 160) : "unknown" });
+      }
     }
     const stripeCheckout = Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.MERCH_PUBLIC_BASE_URL && env.DB);
-    return reply({ configured: true, checkoutConfigured: stripeCheckout || Boolean(env.MERCH_CHECKOUT_URL), checkoutProvider: stripeCheckout ? "stripe" : env.MERCH_CHECKOUT_URL ? "hosted" : "none", source: "printful", products, requestId }, 200, { "Cache-Control": "private, max-age=120" });
+    return reply({ configured: true, checkoutConfigured: Boolean(products.length) && (stripeCheckout || Boolean(env.MERCH_CHECKOUT_URL)), checkoutProvider: stripeCheckout ? "stripe" : env.MERCH_CHECKOUT_URL ? "hosted" : "none", source: "printful", products, requestId }, 200, { "Cache-Control": "private, max-age=120" });
   }
   if (request.method === "GET" && url.pathname === "/api/merch/orders") {
     const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");

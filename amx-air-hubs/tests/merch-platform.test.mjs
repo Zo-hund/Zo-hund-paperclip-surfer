@@ -328,6 +328,7 @@ describe("AMX collective merch", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input) => {
       if (String(input).includes("/store/products?")) return Response.json({ error: { message: "Forbidden" } }, { status: 403 });
+      if (String(input).includes("/product-templates?")) return Response.json({ error: { message: "Missing scope" } }, { status: 403 });
       throw new Error(`Unexpected request: ${input}`);
     };
     try {
@@ -340,7 +341,31 @@ describe("AMX collective merch", () => {
       assert.equal(response.status, 200);
       assert.equal(body.configured, false);
       assert.equal(body.source, "printful");
-      assert.match(body.message, /API token scopes and synced store products/);
+      assert.match(body.message, /PRINTFUL_STORE_ID, synced store products, or product template permissions/);
+    } finally { globalThis.fetch = originalFetch; }
+  });
+
+  test("shows Printful product templates when store products are not synced yet", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const target = String(input);
+      if (target.includes("/store/products?")) return Response.json({ result: [] });
+      if (target.includes("/product-templates?")) return Response.json({ result: [{ id: 77, title: "AMX Labs Creator Tee", image_url: "https://images.example/template.png", available_variant_ids: [401, 402] }] });
+      throw new Error(`Unexpected request: ${target}`);
+    };
+    try {
+      const response = await worker.fetch(new Request("https://amx.example/api/merch/catalog?tenantId=amx-labs"), {
+        PRINTFUL_API_TOKEN: "printful-secret",
+        PRINTFUL_STORE_ID: "template-store",
+        ASSETS: { fetch: async () => new Response("missing", { status: 404 }) },
+      });
+      const body = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(body.configured, true);
+      assert.equal(body.checkoutConfigured, false);
+      assert.equal(body.products[0].id, "template-77");
+      assert.equal(body.products[0].variants[0].available, false);
+      assert.match(body.message, /Sync these products/);
     } finally { globalThis.fetch = originalFetch; }
   });
 });
