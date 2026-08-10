@@ -37,6 +37,8 @@ export interface StageEventState {
   sourceRoom: string;
   startsAt: string;
   runtimeMinutes: number;
+  merchHeadline: string;
+  merchProductIds: string[];
   ticketTiers: StageTicketTier[];
   seats: StageSeat[];
 }
@@ -168,6 +170,8 @@ export function defaultStageEvent(room = "AMXSTAGE"): StageEventState {
     sourceRoom: "AMX-MAIN",
     startsAt: startsAt.toISOString(),
     runtimeMinutes: preset.runtimeMinutes,
+    merchHeadline: "Official event collection",
+    merchProductIds: [],
     ticketTiers: preset.ticketTiers.map((tier) => ({ ...tier })),
     seats: createStageSeats(preset.id),
   };
@@ -212,6 +216,8 @@ export function normalizeStageEvent(value: Partial<StageEventState> | undefined,
     sourceRoom,
     startsAt: value?.startsAt && !Number.isNaN(Date.parse(value.startsAt)) ? value.startsAt : fallback.startsAt,
     runtimeMinutes: Math.max(15, Math.min(1440, Math.round(Number(value?.runtimeMinutes) || preset.runtimeMinutes))),
+    merchHeadline: String(value?.merchHeadline || fallback.merchHeadline).trim().slice(0, 80),
+    merchProductIds: Array.isArray(value?.merchProductIds) ? [...new Set(value.merchProductIds.map(String).filter(Boolean))].slice(0, 6) : [],
     ticketTiers: tiers,
     seats,
   } satisfies StageEventState;
