@@ -495,7 +495,7 @@ function publicApiRequest(request, url) {
 function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/air-connect")) return ["operator"];
   if (url.pathname.startsWith("/api/h3at/control-plane")) return ["operator"];
-  if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
+  if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/stage/tickets/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
   if (url.pathname.startsWith("/api/merch/admin/")) return ["operator"];
   if (url.pathname.startsWith("/api/membership/admin/")) return ["operator"];
@@ -2301,6 +2301,34 @@ async function handleApi(request, env, url, requestId) {
       });
   }
   }
+  if (request.method === "POST" && url.pathname === "/api/stage/tickets/payment-link") {
+    if (!env.STRIPE_SECRET_KEY) return reply({ error: "Stripe ticket payments are not configured", requestId }, 503);
+    const body = await readJson(request, 32 * 1024);
+    const eventId = safeId(body.eventId).slice(0, 80);
+    const tierId = safeId(body.tierId).slice(0, 40);
+    const eventTitle = safeLabel(body.eventTitle, "AMX Live Event").slice(0, 100);
+    const tierLabel = safeLabel(body.tierLabel, "Event Pass").slice(0, 80);
+    const priceCents = Math.round(Number(body.priceCents));
+    const capacity = Math.max(1, Math.min(500, Math.round(Number(body.capacity) || 1)));
+    const passPath = String(body.passPath || "").trim();
+    if (!eventId || !tierId || !Number.isSafeInteger(priceCents) || priceCents < 50 || priceCents > 1_000_000) return reply({ error: "A valid event, tier, and ticket price are required", requestId }, 400);
+    if (!/^\/join\/[a-zA-Z0-9_-]{8,160}$/.test(passPath)) return reply({ error: "Issue the tier pass before connecting Stripe", requestId }, 400);
+    let publicBase;
+    try { publicBase = new URL(String(env.MEMBERSHIP_PUBLIC_BASE_URL || env.MERCH_PUBLIC_BASE_URL)); } catch { return reply({ error: "A valid public AMX URL is required", requestId }, 500); }
+    if (publicBase.protocol !== "https:") return reply({ error: "Ticket checkout requires an HTTPS public URL", requestId }, 500);
+    const product = await stripeRequest(env, "/products", new URLSearchParams({ name: `${eventTitle} / ${tierLabel}`, "metadata[amx_event_id]": eventId, "metadata[amx_tier_id]": tierId }), `amx-ticket-product-${eventId}-${tierId}`);
+    const productId = safeId(product?.id).slice(0, 120);
+    if (!/^prod_[A-Za-z0-9]+$/.test(productId)) throw new HttpError(502, "Stripe did not create an admission product");
+    const price = await stripeRequest(env, "/prices", new URLSearchParams({ currency: "usd", unit_amount: String(priceCents), product: productId, "metadata[amx_event_id]": eventId, "metadata[amx_tier_id]": tierId }), `amx-ticket-price-${eventId}-${tierId}-${priceCents}`);
+    const priceId = safeId(price?.id).slice(0, 120);
+    if (!/^price_[A-Za-z0-9]+$/.test(priceId)) throw new HttpError(502, "Stripe did not create an admission price");
+    const returnUrl = new URL(passPath, publicBase); returnUrl.searchParams.set("checkout", "success");
+    const params = new URLSearchParams({ "line_items[0][price]": priceId, "line_items[0][quantity]": "1", "after_completion[type]": "redirect", "after_completion[redirect][url]": returnUrl.toString(), "metadata[amx_event_id]": eventId, "metadata[amx_tier_id]": tierId, "metadata[amx_pass_path]": passPath, "restrictions[completed_sessions][limit]": String(capacity) });
+    const link = await stripeRequest(env, "/payment_links", params, `amx-ticket-link-${eventId}-${tierId}-${priceCents}-${capacity}`);
+    if (!/^https:\/\/(buy|checkout)\.stripe\.com\//i.test(String(link?.url || ""))) throw new HttpError(502, "Stripe did not return a secure admission link");
+    logEvent("info", "stage.ticket_payment_link_created", { requestId, eventId, tierId, priceCents, capacity });
+    return reply({ checkoutUrl: link.url, eventId, tierId, priceCents, capacity, requestId }, 201, { "Cache-Control": "no-store" });
+  }
   if (request.method === "GET" && url.pathname === "/api/membership/catalog") {
     const plans = await loadMembershipCatalog(env);
     return reply({ brand: "TECH AT NITE", tagline: "Learn. Build. Ambassador. Earn. Lead.", billingConfigured: Boolean(env.STRIPE_SECRET_KEY), plans, requestId }, 200, { "Cache-Control": "public, max-age=120" });
@@ -2834,9 +2862,9 @@ async function handleApi(request, env, url, requestId) {
     await verifyTenantAccess(member, env, tenantId);
     const ownerUserId = safeId(member?.user?.id);
     const requestedPurpose = safeId(request.headers.get("X-AMX-Media-Purpose"));
-    const mediaPurpose = ["profile-avatar", "partner-logo", "stage-video"].includes(requestedPurpose) ? requestedPurpose : "";
+    const mediaPurpose = ["profile-avatar", "partner-logo", "stage-video", "stage-promo"].includes(requestedPurpose) ? requestedPurpose : "";
     const publicImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-    const visibility = request.headers.get("X-AMX-Visibility") === "public" && ["profile-avatar", "partner-logo"].includes(mediaPurpose) && publicImageTypes.has(contentType) ? "public"
+    const visibility = request.headers.get("X-AMX-Visibility") === "public" && ((["profile-avatar", "partner-logo"].includes(mediaPurpose) && publicImageTypes.has(contentType)) || (mediaPurpose === "stage-promo" && contentType.startsWith("video/"))) ? "public"
       : request.headers.get("X-AMX-Visibility") === "members" && mediaPurpose === "stage-video" && contentType.startsWith("video/") ? "members" : "private";
     const createdAt = new Date().toISOString();
     await env.MEDIA.put(id, body, { httpMetadata: { contentType }, customMetadata: { fileName, tenantId, ownerUserId, createdAt, visibility, purpose: mediaPurpose } });
@@ -2860,7 +2888,7 @@ async function handleApi(request, env, url, requestId) {
     if (!id) return reply({ error: "Media id is required", requestId }, 400);
     const object = await env.MEDIA.get(id);
     if (!object) return reply({ error: "Media not found", requestId }, 404);
-    const isPublicIdentityImage = object.customMetadata?.visibility === "public" && ["profile-avatar", "partner-logo"].includes(object.customMetadata?.purpose);
+    const isPublicIdentityImage = object.customMetadata?.visibility === "public" && ["profile-avatar", "partner-logo", "stage-promo"].includes(object.customMetadata?.purpose);
     const isSharedStageVideo = object.customMetadata?.visibility === "members" && object.customMetadata?.purpose === "stage-video";
     if (!isPublicIdentityImage && !isSharedStageVideo) {
       const viewer = await verifyMemberRequest(request, env, requiredMemberRoles(url));

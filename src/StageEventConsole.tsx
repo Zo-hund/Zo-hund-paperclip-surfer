@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, Crown, DoorOpen, ExternalLink, Eye, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, UserPlus, Users } from "lucide-react";
+import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, CreditCard, Crown, DoorOpen, ExternalLink, Eye, Play, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, Upload, UserPlus, Users, Video } from "lucide-react";
 import { QRCodeCard } from "./components";
 import { getActiveTenant } from "./operations";
 import { absoluteInviteUrl, createPodInvite, getOwnedInviteZkode, getOwnedPodInvite, resolvePodInvite, revokePodInvite, storeOwnedPodInvite, type PodInvite } from "./pod-invites";
 import { createStageSeats, stageSeatCounts, STAGE_EVENT_PRESETS, stageEventPreset, type StageEventFormat, type StageEventState, type StageEventStatus, type StageSeat, type StageSeatSection, type StageSeatStatus, type StageTicketTierId } from "./stage-events";
 import type { StageProductionState } from "./stage-production";
 import { getTenantRecord } from "./tenant-management";
+import { createStageTicketPaymentLink } from "./stage-ticketing";
+import { DEFAULT_STAGE_PROGRAM_MEDIA } from "./stage-program-media";
 
 interface Props {
   room: string;
@@ -50,6 +52,8 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   const [passes, setPasses] = useState<Partial<Record<StageTicketTierId, PodInvite>>>({});
   const [busyTier, setBusyTier] = useState<StageTicketTierId | null>(null);
   const [notice, setNotice] = useState("");
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const [selectedSection, setSelectedSection] = useState<StageSeatSection>("house");
   const [selectedSeatId, setSelectedSeatId] = useState(() => event.seats.find((seat) => seat.section === "house")?.id || event.seats[0]?.id || "");
   const [guestDraft, setGuestDraft] = useState("");
@@ -117,6 +121,39 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   const updateCapacity = (tierId: StageTicketTierId, capacity: number) => updateEvent({
     ticketTiers: event.ticketTiers.map((tier) => tier.id === tierId ? { ...tier, capacity: Math.max(1, Math.min(100, Math.round(capacity) || 1)) } : tier),
   });
+  const updateTier = (tierId: StageTicketTierId, patch: Partial<(typeof event.ticketTiers)[number]>) => updateEvent({ ticketTiers: event.ticketTiers.map((tier) => tier.id === tierId ? { ...tier, ...patch } : tier) });
+  const connectPayment = async (tierId: StageTicketTierId) => {
+    const tier = event.ticketTiers.find((item) => item.id === tierId);
+    const pass = passes[tierId];
+    if (!tier || !pass) return setNotice("Issue this admission pass before connecting Stripe.");
+    if (!tier.priceCents) return setNotice("Set a ticket price before connecting Stripe.");
+    setBusyTier(tierId);
+    try {
+      const checkoutUrl = await createStageTicketPaymentLink({ eventId: event.id, eventTitle: event.title, tierId, tierLabel: tier.label, priceCents: tier.priceCents, capacity: tier.capacity, passPath: pass.joinPath });
+      updateTier(tierId, { checkoutUrl });
+      setNotice(`${tier.label} is connected to reusable Stripe admission checkout.`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Stripe admission checkout could not be created."); }
+    finally { setBusyTier(null); }
+  };
+  const uploadPromo = async (file?: File) => {
+    if (!file) return;
+    if (!rightsConfirmed) return setNotice("Confirm media rights before uploading promo video.");
+    if (!file.type.startsWith("video/") || file.size > 25 * 1024 * 1024) return setNotice("Use an MP4 or WebM promo video up to 25 MB.");
+    setMediaBusy(true);
+    try {
+      const response = await fetch("/api/media", { method: "POST", headers: { "Content-Type": file.type, "X-AMX-Filename": file.name, "X-AMX-Tenant": tenant.id, "X-AMX-Media-Purpose": "stage-promo", "X-AMX-Visibility": "public" }, body: file });
+      const body = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !body.url) throw new Error(body.error || "Promo upload failed.");
+      updateTier(activeTier.id, { promoMediaUrl: body.url, promoMediaName: file.name });
+      setNotice(`${file.name} added to ${activeTier.label} promo inventory.`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Promo upload failed."); }
+    finally { setMediaBusy(false); }
+  };
+  const takePromo = () => {
+    if (!activeTier.promoMediaUrl) return setNotice("Add a promo video first.");
+    onUpdate({ programMedia: { ...DEFAULT_STAGE_PROGRAM_MEDIA, url: activeTier.promoMediaUrl, name: activeTier.promoMediaName || `${activeTier.label} promo`, contentType: "video/mp4", transport: "playing", startedAt: Date.now() }, cue: "sponsor" });
+    setNotice(`${activeTier.label} promo taken to Stage program.`);
+  };
   const updateSeat = (seatId: string, patch: Partial<Pick<StageSeat, "status" | "guestName">>) => {
     const seats = event.seats.map((seat) => seat.id === seatId ? { ...seat, ...patch } : seat);
     const counts = stageSeatCounts(seats);
@@ -247,9 +284,16 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
           <button className="stage-ticket-issue" disabled={busyTier === tier.id || pass?.status === "active"} onClick={() => void issuePass(tier.id)}>{pass?.status === "active" ? <TicketCheck/> : <QrCode/>}<span>{pass?.status === "active" ? `${pass.useCount}/${pass.maxUses}` : "Issue"}</span></button>
           <input className="stage-ticket-checkout" aria-label={`${tier.label} checkout URL`} value={tier.checkoutUrl || ""} placeholder="HTTPS CHECKOUT LINK" onChange={(change) => updateEvent({ ticketTiers: event.ticketTiers.map((item) => item.id === tier.id ? { ...item, checkoutUrl: change.target.value } : item) })}/>
           <input className="stage-ticket-resources" aria-label={`${tier.label} resource URLs`} value={(tier.resourceUrls || []).join(", ")} placeholder="RESOURCE LINKS, COMMA SEPARATED" onChange={(change) => updateEvent({ ticketTiers: event.ticketTiers.map((item) => item.id === tier.id ? { ...item, resourceUrls: change.target.value.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 8) } : item) })}/>
+          <button className="stage-ticket-stripe" disabled={busyTier === tier.id || !pass || !(tier.priceCents || 0)} onClick={() => void connectPayment(tier.id)}><CreditCard/><span>{tier.checkoutUrl ? "Stripe linked" : "Connect Stripe"}</span></button>
         </div>;
       })}</div>
       <p className="stage-ticket-note"><ShieldCheck/>Checkout links open your payment provider. Paid downloads remain hidden until fulfillment.</p>
+      <div className="stage-ticket-promo">
+        <header><span><Video/><b>{activeTier.label} promo / ad asset</b></span><small>{activeTier.promoMediaUrl ? "READY" : "PLACEHOLDER"}</small></header>
+        {activeTier.promoMediaUrl ? <video src={activeTier.promoMediaUrl} muted playsInline controls preload="metadata"/> : <div className="stage-ticket-promo-empty"><Video/><span>Add a short event trailer, sponsor spot, or admission promo.</span></div>}
+        <input value={activeTier.promoMediaUrl || ""} placeholder="HTTPS MP4 OR WEBM URL" onChange={(change) => updateTier(activeTier.id, { promoMediaUrl: change.target.value, promoMediaName: change.target.value.split("/").pop() || "Promo asset" })}/>
+        <div><label className={rightsConfirmed ? "confirmed" : ""}><input type="checkbox" checked={rightsConfirmed} onChange={(change) => setRightsConfirmed(change.target.checked)}/><ShieldCheck/>RIGHTS CLEARED</label><label className={`button secondary ${!rightsConfirmed || mediaBusy ? "disabled" : ""}`}><Upload/>{mediaBusy ? "Uploading" : "Upload video"}<input hidden type="file" accept="video/mp4,video/webm" disabled={!rightsConfirmed || mediaBusy} onChange={(change) => { const file=change.target.files?.[0]; change.target.value=""; void uploadPromo(file); }}/></label><button className="button primary" disabled={!activeTier.promoMediaUrl} onClick={takePromo}><Play/>Take to Stage</button></div>
+      </div>
     </section>
 
     {activePass && <section className="stage-control-section stage-pass-workspace">
