@@ -50,6 +50,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/membership", label: "Membership", icon: Crown },
     { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
   ];
+  const primaryLabels = new Set(["Home", "Dashboard", "Missions", "Play", "Stage", "Nexus"]);
+  const desktopPrimaryNav = member.session ? nav.filter((item) => primaryLabels.has(item.label)) : nav;
+  const desktopMoreNav = member.session ? nav.filter((item) => !primaryLabels.has(item.label)) : [];
+  const moreActive = desktopMoreNav.some((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -58,7 +62,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span><b>AMX AIR</b><small>HUBS / XR RUNWAY</small></span>
         </Link>
         <nav className="desktop-nav" aria-label="Primary navigation">
-          {nav.map(({to, label, icon: Icon}) => <NavLink key={to} to={to} className={({isActive}) => isActive ? "active" : ""}><Icon size={16}/>{label}</NavLink>)}
+          {desktopPrimaryNav.map(({to, label, icon: Icon}) => <NavLink key={to} to={to} className={({isActive}) => isActive ? "active" : ""}><Icon size={16}/>{label}</NavLink>)}
+          {desktopMoreNav.length > 0 && <details className={`desktop-more ${moreActive ? "active" : ""}`}>
+            <summary><LayoutGrid size={16}/>More<ChevronRight size={13}/></summary>
+            <div>{desktopMoreNav.map(({to,label,icon:Icon}) => <NavLink key={to} to={to} onClick={(event) => (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open")}><Icon size={16}/><span>{label}</span></NavLink>)}</div>
+          </details>}
         </nav>
         <div className="top-actions">
           {member.session && <span className="role-chip">{member.profile?.membership_role || role}</span>}
