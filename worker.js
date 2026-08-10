@@ -417,6 +417,99 @@ function safeLabel(value, fallback = "") {
   return String(value || fallback).replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 180);
 }
 
+const X402_SERVICES = [
+  { id: "amx-code-review", name: "Code Review", category: "code", endpoint: "/api/v1/code-analysis", provider: "AMX LABS", unit: "analysis", priceCents: 25, memberPriceCents: 10, approvalCents: 500, assets: ["AMX Builder", "AMX Operator"] },
+  { id: "amx-generate-ar-model", name: "Generate AR Model", category: "xr", endpoint: "/api/v1/xr/model", provider: "AMX AIR HUBS", unit: "asset", priceCents: 50, memberPriceCents: 25, approvalCents: 500, assets: ["AMX Builder", "AMX Partner"] },
+  { id: "amx-market-analysis", name: "Market Analysis", category: "data", endpoint: "/api/v1/market-analysis", provider: "AMX LABS", unit: "report", priceCents: 100, memberPriceCents: 50, approvalCents: 500, assets: ["AMX Partner", "AMX Operator"] },
+  { id: "amx-show-stinger", name: "Show Stinger", category: "event", endpoint: "/api/v1/stage/stinger", provider: "AMX XR Stage", unit: "clip", priceCents: 75, memberPriceCents: 40, approvalCents: 300, assets: ["AMX Producer", "AMX Operator"] },
+  { id: "partner-training-module", name: "Partner Training Module", category: "partner", endpoint: "/api/v1/partners/training-module", provider: "H3AT / Partner API", unit: "module", priceCents: 200, memberPriceCents: 125, approvalCents: 200, assets: ["AMX Partner", "AMX Operator"] },
+  { id: "ai-vision-caption", name: "Vision Caption Pass", category: "ai", endpoint: "/api/v1/vision/caption", provider: "AMX Agent Runtime", unit: "100 frames", priceCents: 5, memberPriceCents: 2, approvalCents: 100, assets: ["AMX Member", "AMX Operator"] },
+];
+
+function x402RuntimeStatus(env) {
+  const facilitator = serviceUrlConfigured(env.X402_FACILITATOR_URL, ["https:"]);
+  const wallet = Boolean(String(env.X402_WALLET_ADDRESS || "").trim());
+  const signing = Boolean(String(env.X402_SIGNING_KEY || env.X402_COMMAND_SIGNING_KEY || "").trim());
+  const policy = String(env.X402_POLICY_ENABLED || "true").trim().toLowerCase() !== "false";
+  const liveReady = facilitator && wallet && signing && policy;
+  return {
+    configured: liveReady,
+    mode: liveReady ? "live-ready" : "simulation",
+    missing: [
+      ...(!facilitator ? ["X402_FACILITATOR_URL"] : []),
+      ...(!wallet ? ["X402_WALLET_ADDRESS"] : []),
+      ...(!signing ? ["X402_SIGNING_KEY"] : []),
+      ...(!policy ? ["X402_POLICY_ENABLED"] : []),
+    ],
+    serviceCount: X402_SERVICES.length,
+    settlementEnabled: liveReady && String(env.X402_SETTLEMENT_ENABLED || "").trim().toLowerCase() === "true",
+  };
+}
+
+function x402QuoteFromBody(body, env) {
+  const service = X402_SERVICES.find((item) => item.id === safeId(body.serviceId)) || X402_SERVICES[0];
+  const quantity = Math.max(1, Math.min(1000, Math.floor(Number(body.quantity || 1))));
+  const memberAsset = safeLabel(body.memberAsset).slice(0, 80);
+  const eligible = memberAsset && service.assets.includes(memberAsset);
+  const unitCents = eligible ? service.memberPriceCents : service.priceCents;
+  const amountCents = unitCents * quantity;
+  const autopayCents = Math.max(0, Math.min(100000, Math.floor(Number(body.autopayCents ?? env.X402_AUTOPAY_LIMIT_CENTS ?? 100))));
+  const remainingCents = Math.max(0, Math.min(1000000, Math.floor(Number(body.remainingCents ?? env.X402_DAILY_REMAINING_CENTS ?? 2500))));
+  const status = amountCents > remainingCents ? "blocked" : !x402RuntimeStatus(env).configured ? "requires_connection" : amountCents > autopayCents || amountCents >= service.approvalCents ? "approval_required" : "authorized";
+  const split = {
+    serviceProviderCents: Math.round(amountCents * 0.6),
+    platformCents: Math.round(amountCents * 0.2),
+    airHubCents: Math.round(amountCents * 0.1),
+  };
+  split.partnerCreatorCents = Math.max(0, amountCents - split.serviceProviderCents - split.platformCents - split.airHubCents);
+  return {
+    id: safeId(body.quoteId, `x402q-${crypto.randomUUID()}`).slice(0, 96),
+    tenantId: safeId(body.tenantId, "tech-at-nite").slice(0, 80),
+    serviceId: service.id,
+    serviceName: service.name,
+    endpoint: service.endpoint,
+    provider: service.provider,
+    agentId: safeId(body.agentId, "amx-payment-agent").slice(0, 96),
+    identityId: safeId(body.identityId || body.memberId, "local-member").slice(0, 120),
+    amountCents,
+    currency: "USD",
+    unit: service.unit,
+    quantity,
+    memberDiscountCents: eligible ? Math.max(0, (service.priceCents - service.memberPriceCents) * quantity) : 0,
+    approvalRequired: status === "approval_required",
+    paymentRequired: amountCents > 0,
+    status,
+    payTo: `${service.provider} / ${service.endpoint}`,
+    split,
+  };
+}
+
+async function persistX402Event(env, quote, eventType, status, payload = {}) {
+  if (!env.DB) return;
+  await initialize(env.DB);
+  const now = new Date().toISOString();
+  await env.DB.prepare("INSERT INTO x402_payment_events (id, tenant_id, quote_id, service_id, agent_id, identity_id, event_type, status, amount_cents, currency, approval_status, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(`x402evt-${crypto.randomUUID()}`, quote.tenantId, quote.id, quote.serviceId, quote.agentId, quote.identityId, eventType, status, quote.amountCents, quote.currency, payload.approvalStatus || "not_required", JSON.stringify(payload), now, now).run();
+}
+
+async function createX402Approval(env, quote, reason, actorId) {
+  if (!env.DB) throw new HttpError(503, "x402 approval ledger is not configured");
+  await initialize(env.DB);
+  const now = new Date().toISOString();
+  const id = `x402appr-${crypto.randomUUID()}`;
+  await env.DB.prepare("INSERT INTO x402_approval_requests (id, tenant_id, quote_id, service_id, agent_id, identity_id, amount_cents, currency, status, reason, payload, created_at, updated_at, approved_by, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL, NULL)")
+    .bind(id, quote.tenantId, quote.id, quote.serviceId, quote.agentId, quote.identityId, quote.amountCents, quote.currency, reason, JSON.stringify({ quote, actorId }), now, now).run();
+  return { id, status: "pending", createdAt: now };
+}
+
+async function persistX402MeterEvent(env, quote, payload = {}) {
+  if (!env.DB) return;
+  await initialize(env.DB);
+  const now = new Date().toISOString();
+  await env.DB.prepare("INSERT INTO x402_service_meter_events (id, tenant_id, service_id, agent_id, identity_id, unit, quantity, amount_cents, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(`x402meter-${crypto.randomUUID()}`, quote.tenantId, quote.serviceId, quote.agentId, quote.identityId, quote.unit, quote.quantity, quote.amountCents, JSON.stringify(payload), now).run();
+}
+
 async function notifyOps(env, event, fields = {}) {
   if (!serviceUrlConfigured(env.OPS_ALERT_WEBHOOK_URL, ["https:"])) return;
   const controller = new AbortController();
@@ -496,6 +589,7 @@ function publicApiRequest(request, url) {
 function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/air-connect")) return ["operator"];
   if (url.pathname.startsWith("/api/h3at/control-plane")) return ["operator"];
+  if (url.pathname.startsWith("/api/x402/admin")) return ["operator"];
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/stage/tickets/") || url.pathname.startsWith("/api/stage/admissions/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
   if (url.pathname.startsWith("/api/merch/admin/")) return ["operator"];
@@ -665,6 +759,7 @@ function runtimeReadiness(env) {
     "proof-signing": Boolean(env.PROOF_SIGNING_SECRET),
     telemetry: Boolean(env.DB && env.DCIM_INGEST_TOKEN),
     observability: serviceUrlConfigured(env.OPS_ALERT_WEBHOOK_URL, ["https:"]) && Boolean(String(env.OPS_HEARTBEAT_TOKEN || "").trim()),
+    x402: serviceUrlConfigured(env.X402_FACILITATOR_URL, ["https:"]) && Boolean(String(env.X402_WALLET_ADDRESS || "").trim()) && Boolean(String(env.X402_SIGNING_KEY || env.X402_COMMAND_SIGNING_KEY || "").trim()),
   };
   const missingRequired = [...required].filter((name) => !configured[name]);
   const optionalMissing = Object.entries(configured).filter(([, value]) => !value).map(([name]) => name);
@@ -1872,6 +1967,13 @@ async function initialize(db) {
     db.prepare("CREATE TABLE IF NOT EXISTS membership_subscriptions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, member_id TEXT NOT NULL, plan_id TEXT NOT NULL, status TEXT NOT NULL, stripe_customer_id TEXT, stripe_subscription_id TEXT UNIQUE, stripe_checkout_session_id TEXT UNIQUE, current_period_end TEXT, cancel_at_period_end INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS membership_subscriptions_member_idx ON membership_subscriptions (tenant_id, member_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS membership_webhook_events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, stripe_object_id TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS x402_payment_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, quote_id TEXT NOT NULL, service_id TEXT NOT NULL, agent_id TEXT NOT NULL, identity_id TEXT NOT NULL, event_type TEXT NOT NULL, status TEXT NOT NULL, amount_cents INTEGER NOT NULL, currency TEXT NOT NULL, approval_status TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS x402_payment_events_tenant_idx ON x402_payment_events (tenant_id, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS x402_payment_events_quote_idx ON x402_payment_events (tenant_id, quote_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS x402_approval_requests (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, quote_id TEXT NOT NULL UNIQUE, service_id TEXT NOT NULL, agent_id TEXT NOT NULL, identity_id TEXT NOT NULL, amount_cents INTEGER NOT NULL, currency TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, approved_by TEXT, approved_at TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS x402_approval_requests_tenant_idx ON x402_approval_requests (tenant_id, status, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS x402_service_meter_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, service_id TEXT NOT NULL, agent_id TEXT NOT NULL, identity_id TEXT NOT NULL, unit TEXT NOT NULL, quantity INTEGER NOT NULL, amount_cents INTEGER NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS x402_service_meter_events_tenant_idx ON x402_service_meter_events (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS air_resource_pools (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, resource_type TEXT NOT NULL, total_units INTEGER NOT NULL, available_units INTEGER NOT NULL, status TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS air_resource_pools_tenant_idx ON air_resource_pools (tenant_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS air_room_runtimes (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, pool_id TEXT NOT NULL, room_code TEXT NOT NULL, name TEXT NOT NULL, allocation_units INTEGER NOT NULL, consumed_units INTEGER NOT NULL DEFAULT 0, learner_count INTEGER NOT NULL, trainer_count INTEGER NOT NULL, agent_count INTEGER NOT NULL DEFAULT 1, learner_ids TEXT NOT NULL DEFAULT '[]', bandwidth_mbps INTEGER NOT NULL, video_profile TEXT NOT NULL, livekit_room TEXT NOT NULL, livekit_dispatch TEXT, status TEXT NOT NULL, report_payload TEXT, started_at TEXT, ended_at TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
@@ -2390,6 +2492,96 @@ async function handleApi(request, env, url, requestId) {
         requestId,
       });
   }
+  }
+  if (request.method === "GET" && url.pathname === "/api/x402/health") {
+    const status = x402RuntimeStatus(env);
+    return reply({
+      status,
+      services: X402_SERVICES.map(({ id, name, category, endpoint, provider, unit, priceCents, memberPriceCents, approvalCents, assets }) => ({ id, name, category, endpoint, provider, unit, priceCents, memberPriceCents, approvalCents, assets })),
+      ledgerConfigured: Boolean(env.DB),
+      requestId,
+    }, 200, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/x402/quote") {
+    const body = await readJson(request, 32 * 1024);
+    const quote = x402QuoteFromBody(body, env);
+    await verifyTenantAccess(member, env, quote.tenantId);
+    const approvalStatus = quote.status === "approval_required" ? "pending" : quote.status === "blocked" ? "blocked" : "not_required";
+    await persistX402Event(env, quote, "quote", quote.status, { approvalStatus, memberAsset: safeLabel(body.memberAsset).slice(0, 80), split: quote.split });
+    const paymentRequirement = {
+      scheme: "x402",
+      status: quote.status === "blocked" ? 403 : quote.paymentRequired ? 402 : 200,
+      serviceId: quote.serviceId,
+      amountCents: quote.amountCents,
+      currency: quote.currency,
+      payTo: String(env.X402_WALLET_ADDRESS || quote.provider || quote.payTo),
+      facilitatorUrl: String(env.X402_FACILITATOR_URL || ""),
+      approvalRequired: quote.approvalRequired,
+    };
+    const statusCode = quote.status === "blocked" ? 403 : quote.paymentRequired ? 402 : 200;
+    return reply({ quote, paymentRequirement, runtime: x402RuntimeStatus(env), requestId }, statusCode, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "POST" && url.pathname === "/api/x402/authorize") {
+    const body = await readJson(request, 32 * 1024);
+    const quote = x402QuoteFromBody(body, env);
+    await verifyTenantAccess(member, env, quote.tenantId);
+    const actorId = member?.user?.id || quote.identityId;
+    if (quote.status === "blocked") {
+      await persistX402Event(env, quote, "policy_blocked", "blocked", { approvalStatus: "blocked", reason: "Budget policy blocks this request." });
+      return reply({ error: "Budget policy blocks this request", quote, requestId }, 403, { "Cache-Control": "no-store" });
+    }
+    if (quote.approvalRequired || body.operatorApproved !== true) {
+      const approval = await createX402Approval(env, quote, safeLabel(body.reason, "Operator approval required before x402 settlement").slice(0, 280), actorId);
+      await persistX402Event(env, quote, "approval_requested", "pending", { approvalStatus: "pending", approvalId: approval.id });
+      return reply({ approvalRequired: true, approval, quote, requestId }, 202, { "Cache-Control": "no-store" });
+    }
+    const runtime = x402RuntimeStatus(env);
+    if (!runtime.configured) {
+      await persistX402Event(env, quote, "requires_connection", "requires_connection", { approvalStatus: "approved", runtime });
+      return reply({ error: "x402 payment rail is not configured", quote, runtime, requestId }, 503, { "Cache-Control": "no-store" });
+    }
+    await persistX402MeterEvent(env, quote, { source: "x402-authorize", settlementMode: runtime.settlementEnabled ? "live" : "simulation" });
+    await persistX402Event(env, quote, runtime.settlementEnabled ? "authorized" : "simulated_authorized", "authorized", { approvalStatus: "approved", settlementMode: runtime.settlementEnabled ? "live" : "simulation" });
+    return reply({ authorized: true, settlementMode: runtime.settlementEnabled ? "live" : "simulation", quote, runtime, requestId }, 202, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "GET" && url.pathname === "/api/x402/ledger") {
+    const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite").slice(0, 80);
+    await verifyTenantAccess(member, env, tenantId);
+    if (!env.DB) return reply({ events: [], approvals: [], meters: [], persisted: false, requestId }, 200, { "Cache-Control": "no-store" });
+    await initialize(env.DB);
+    const events = await env.DB.prepare("SELECT id, tenant_id, quote_id, service_id, agent_id, identity_id, event_type, status, amount_cents, currency, approval_status, created_at, updated_at FROM x402_payment_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all();
+    const approvals = await env.DB.prepare("SELECT id, tenant_id, quote_id, service_id, agent_id, identity_id, amount_cents, currency, status, reason, created_at, updated_at, approved_by, approved_at FROM x402_approval_requests WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 50").bind(tenantId).all();
+    const meters = await env.DB.prepare("SELECT id, tenant_id, service_id, agent_id, identity_id, unit, quantity, amount_cents, created_at FROM x402_service_meter_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all();
+    return reply({ events: events.results || [], approvals: approvals.results || [], meters: meters.results || [], persisted: true, requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  {
+    const approvalMatch = url.pathname.match(/^\/api\/x402\/admin\/approvals\/([A-Za-z0-9_-]+)$/);
+    if (request.method === "POST" && approvalMatch) {
+      if (!env.DB) return reply({ error: "x402 approval ledger is not configured", requestId }, 503);
+      const body = await readJson(request, 16 * 1024);
+      const approvalId = safeId(approvalMatch[1]).slice(0, 120);
+      const tenantId = safeId(body.tenantId, "tech-at-nite").slice(0, 80);
+      const decision = ["approved", "rejected", "cancelled"].includes(String(body.status)) ? String(body.status) : "approved";
+      await verifyTenantAccess(member, env, tenantId);
+      await initialize(env.DB);
+      const now = new Date().toISOString();
+      const existing = await env.DB.prepare("SELECT * FROM x402_approval_requests WHERE id = ? AND tenant_id = ? LIMIT 1").bind(approvalId, tenantId).first();
+      if (!existing) return reply({ error: "Approval request not found", requestId }, 404);
+      await env.DB.prepare("UPDATE x402_approval_requests SET status = ?, reason = ?, approved_by = ?, approved_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?")
+        .bind(decision, safeLabel(body.reason, existing.reason).slice(0, 280), member?.user?.id || "operator", decision === "approved" ? now : null, now, approvalId, tenantId).run();
+      const quote = {
+        id: existing.quote_id,
+        tenantId: existing.tenant_id,
+        serviceId: existing.service_id,
+        agentId: existing.agent_id,
+        identityId: existing.identity_id,
+        amountCents: Number(existing.amount_cents),
+        currency: existing.currency,
+        unit: "approval",
+      };
+      await persistX402Event(env, quote, "approval_decision", decision, { approvalStatus: decision, approvalId, reason: safeLabel(body.reason, existing.reason).slice(0, 280) });
+      return reply({ approval: { id: approvalId, status: decision, updatedAt: now }, requestId }, 200, { "Cache-Control": "no-store" });
+    }
   }
   if (request.method === "POST" && url.pathname === "/api/stage/tickets/payment-link") {
     if (!env.STRIPE_SECRET_KEY) return reply({ error: "Stripe ticket payments are not configured", requestId }, 503);

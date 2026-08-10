@@ -367,6 +367,9 @@ describe("AMX AIR Hubs Worker API", () => {
       DCIM_INGEST_TOKEN: "dcim-secret",
       OPS_ALERT_WEBHOOK_URL: "https://alerts.example.com/amx",
       OPS_HEARTBEAT_TOKEN: "heartbeat-secret",
+      X402_FACILITATOR_URL: "https://x402.example.com",
+      X402_WALLET_ADDRESS: "0x0000000000000000000000000000000000000000",
+      X402_SIGNING_KEY: "x402-signing-secret",
     });
     const response = await worker.fetch(request("/api/ready"), env);
     const body = await response.json();
