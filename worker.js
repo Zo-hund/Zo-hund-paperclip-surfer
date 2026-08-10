@@ -126,6 +126,21 @@ async function printfulRequest(env, path, init = {}) {
   return payload?.result ?? payload;
 }
 
+async function probePrintfulCapability(env, path) {
+  if (!env.PRINTFUL_API_TOKEN) return { ok: false, status: 0, message: "API token missing" };
+  try {
+    const response = await fetch(`${PRINTFUL_API_BASE}${path}`, { headers: printfulHeaders(env) });
+    if (response.ok) return { ok: true, status: response.status, message: "Available" };
+    if (response.status === 401) return { ok: false, status: 401, message: "Token is invalid or expired" };
+    if (response.status === 403) return { ok: false, status: 403, message: "Token scope or store access is missing" };
+    if (response.status === 404) return { ok: false, status: 404, message: "Store or resource was not found" };
+    if (response.status === 429) return { ok: false, status: 429, message: "Printful rate limit reached" };
+    return { ok: false, status: response.status, message: "Printful request failed" };
+  } catch {
+    return { ok: false, status: 0, message: "Printful could not be reached" };
+  }
+}
+
 function normalizePrintfulProduct(item) {
   const variants = Array.isArray(item?.sync_variants) ? item.sync_variants : [];
   const thumbnail = safeLabel(item?.sync_product?.thumbnail_url || item?.thumbnail_url, "/merch/amx-merch-collection.png");
@@ -2441,14 +2456,27 @@ async function handleApi(request, env, url, requestId) {
       fulfillmentWebhookConfigured: Boolean(env.MERCH_PRINTFUL_WEBHOOK_TOKEN && env.MERCH_PUBLIC_BASE_URL),
       databaseConfigured: Boolean(env.DB),
     };
-    if (!env.PRINTFUL_API_TOKEN) return reply({ runtime, printful: { connected: false, webhookConfigured: false, eventTypes: [] }, requestId });
+    if (!env.PRINTFUL_API_TOKEN) return reply({ runtime, printful: { connected: false, webhookConfigured: false, eventTypes: [], diagnostics: {} }, requestId });
+    const [storeProducts, productTemplates, webhooks] = await Promise.all([
+      probePrintfulCapability(env, "/store/products?status=synced&limit=1"),
+      probePrintfulCapability(env, "/product-templates?limit=1"),
+      probePrintfulCapability(env, "/webhooks"),
+    ]);
+    const diagnostics = { storeProducts, productTemplates, webhooks };
     try {
       const webhook = await printfulRequest(env, "/webhooks");
       let callbackHost = "";
       try { callbackHost = new URL(String(webhook?.url || "")).host; } catch {}
-      return reply({ runtime, printful: { connected: true, webhookConfigured: Boolean(webhook?.url), callbackHost, eventTypes: Array.isArray(webhook?.types) ? webhook.types : [] }, requestId });
+      return reply({ runtime, printful: { connected: storeProducts.ok || productTemplates.ok || webhooks.ok, webhookConfigured: Boolean(webhook?.url), callbackHost, eventTypes: Array.isArray(webhook?.types) ? webhook.types : [], diagnostics }, requestId });
     } catch (error) {
-      return reply({ runtime, printful: { connected: false, webhookConfigured: false, eventTypes: [], error: error instanceof Error ? error.message : "Printful status is unavailable" }, requestId });
+      const recommendedAction = !runtime.storeConfigured && storeProducts.status === 403
+        ? "Set PRINTFUL_STORE_ID for the store connected to this token."
+        : storeProducts.status === 401 || productTemplates.status === 401
+          ? "Replace the expired or invalid PRINTFUL_API_TOKEN."
+          : storeProducts.status === 403 && productTemplates.status === 403
+            ? "Create a Printful token with store products and product templates read access."
+            : "Sync at least one product to the selected Printful store and retry.";
+      return reply({ runtime, printful: { connected: storeProducts.ok || productTemplates.ok || webhooks.ok, webhookConfigured: false, eventTypes: [], diagnostics, recommendedAction, error: error instanceof Error ? error.message : "Printful status is unavailable" }, requestId });
     }
   }
   if (request.method === "POST" && url.pathname === "/api/merch/admin/configure-webhook") {
