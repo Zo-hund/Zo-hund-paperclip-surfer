@@ -30,11 +30,37 @@ It provides:
 - AMX service pricing
 - member asset discounts
 - simulated `402 Payment Required` flow
+- server quote and authorization calls
+- operator approval queue
+- payment, approval, and meter ledger rows
 - daily spending limits
 - autopay thresholds
 - human approval policy
 - revenue split preview
 - payment, wallet, metering, revenue, compliance, and treasury agents
+
+## Backend Contract
+
+Release 149 adds server-side endpoints for the agent payment loop:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/x402/health` | Reports x402 runtime readiness, missing env vars, settlement mode, and service catalog. |
+| `POST /api/x402/quote` | Creates an auditable quote and returns `402 Payment Required` when payment is needed. |
+| `POST /api/x402/authorize` | Blocks over-budget work, queues operator approvals, or records simulated/live authorization. |
+| `GET /api/x402/ledger?tenantId=...` | Returns recent quote events, approval requests, and metered service usage. |
+| `POST /api/x402/admin/approvals/:id` | Operator-only approval decision endpoint. |
+
+Configure these secrets before live settlement:
+
+```text
+X402_FACILITATOR_URL=https://...
+X402_WALLET_ADDRESS=0x...
+X402_SIGNING_KEY=...
+X402_SETTLEMENT_ENABLED=false
+```
+
+Keep `X402_SETTLEMENT_ENABLED=false` until the facilitator, wallet, signing policy, RLS, and operator approval runbook have all passed staging.
 
 ## Connections
 

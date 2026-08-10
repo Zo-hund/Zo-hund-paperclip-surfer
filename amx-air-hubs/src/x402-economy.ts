@@ -1,6 +1,6 @@
 export type X402ServiceCategory = "ai" | "data" | "code" | "design" | "xr" | "event" | "partner";
 export type X402AgentRole = "payment" | "economy" | "discovery" | "wallet" | "metering" | "revenue" | "compliance" | "treasury";
-export type X402FlowStatus = "quoted" | "authorized" | "blocked" | "simulated_paid" | "requires_connection";
+export type X402FlowStatus = "quoted" | "authorized" | "approval_required" | "blocked" | "simulated_paid" | "requires_connection";
 
 export interface X402Service {
   id: string;
@@ -137,6 +137,35 @@ export function quoteX402Service(input: {
 
 export function buildX402HttpExample(quote: X402Quote) {
   if (quote.status === "blocked") return "HTTP 403 Policy Hold";
+  if (quote.status === "approval_required") return "HTTP 202 Operator Approval Required";
   if (!quote.paymentRequired) return "HTTP 200 Included by membership";
   return `HTTP 402 Payment Required -> pay ${cents(quote.amountCents)} -> retry ${quote.serviceId} -> deliver result`;
+}
+
+export async function x402Api<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok && response.status !== 402) throw new Error(payload?.error || `x402 request failed with HTTP ${response.status}`);
+  return payload as T;
+}
+
+export function serverQuotePayload(input: {
+  serviceId: string;
+  memberAsset: string;
+  remainingCents: number;
+  autopayCents: number;
+}) {
+  return {
+    tenantId: "tech-at-nite",
+    agentId: defaultX402Policy.agentId,
+    identityId: "AMX-MEMBER",
+    serviceId: input.serviceId,
+    memberAsset: input.memberAsset,
+    remainingCents: input.remainingCents,
+    autopayCents: input.autopayCents,
+    quantity: 1,
+  };
 }
