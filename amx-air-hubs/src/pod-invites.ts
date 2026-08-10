@@ -131,7 +131,15 @@ export function absoluteInviteUrl(invite: Pick<PodInvite, "joinPath">) {
   return `${window.location.origin}${invite.joinPath}`;
 }
 
+export function isStageAudiencePass(invite: Pick<PodInvite, "podId" | "role">) {
+  return invite.role === "viewer" && /-(summit|xr-con|expo)-\d{4}-\d{2}-\d{2}-general$/i.test(invite.podId);
+}
+
 export function podInviteDestination(invite: Pick<PodInvite, "podId" | "roomCode" | "role" | "token">) {
+  if (isStageAudiencePass(invite)) {
+    const query = new URLSearchParams({ pass: invite.token, access: invite.role, source: "event-pass" });
+    return `/watch/${encodeURIComponent(invite.roomCode)}?${query.toString()}`;
+  }
   const query = new URLSearchParams({ invite: invite.token, room: invite.roomCode, access: invite.role });
   return `/rooms/${encodeURIComponent(invite.podId)}/lobby?${query.toString()}`;
 }
