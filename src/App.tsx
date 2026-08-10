@@ -18,6 +18,7 @@ import { MerchOrdersPage, MerchStorefrontPage } from "./pages/merch";
 import { MembershipPage } from "./pages/membership";
 import { SkillMarketPage } from "./pages/skill-market";
 import { X402EconomyPage } from "./pages/x402-economy";
+import { LearnModePage, LearningControlPage } from "./pages/learn";
 import { PathfinderFacilitatorPage, PathfinderTrainingMissionPage } from "./pages/pathfinder-training";
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
 import { H3ATPartnerPage } from "./pages/h3at-partner";
@@ -48,6 +49,7 @@ function ShellRoutes() {
     <Route path="/role" element={<RequireMember><RoleSelectPage/></RequireMember>}/>
     <Route path="/dashboard" element={<RequireMember><RoleDashboardPage/></RequireMember>}/>
     <Route path="/missions" element={<RequireMember><MissionsPage/></RequireMember>}/>
+    <Route path="/learn" element={<RequireMember><LearnModePage/></RequireMember>}/>
     <Route path="/missions/pathfinder-educator" element={<RequireMember><PathfinderTrainingMissionPage/></RequireMember>}/>
     <Route path="/agents" element={<RequireMember><AgentsPage/></RequireMember>}/>
     <Route path="/agents/:agentId/profile" element={<RequireMember><AgentProfilePage/></RequireMember>}/>
@@ -78,6 +80,7 @@ function ShellRoutes() {
     <Route path="/control/runtime" element={<RequireMember roles={["operator"]}><RuntimeStatusPage/></RequireMember>}/>
     <Route path="/control/air-connect" element={<RequireMember roles={["operator"]}><AirConnectPage/></RequireMember>}/>
     <Route path="/control/economy" element={<RequireMember roles={["operator"]}><X402EconomyPage/></RequireMember>}/>
+    <Route path="/control/learning" element={<RequireMember roles={["trainer", "operator"]}><LearningControlPage/></RequireMember>}/>
     <Route path="/training/pathfinder/facilitator" element={<RequireMember roles={["trainer", "operator"]}><PathfinderFacilitatorPage/></RequireMember>}/>
     <Route path="/connections" element={<RequireMember roles={["operator"]}><ConnectionsPage/></RequireMember>}/>
     <Route path="/nexus" element={<RequireMember><NexusPage/></RequireMember>}/>
