@@ -476,6 +476,7 @@ function publicApiRequest(request, url) {
   if (request.method === "GET" && url.pathname === "/api/merch/catalog") return true;
   if (request.method === "GET" && url.pathname === "/api/membership/catalog") return true;
   if (request.method === "POST" && ["/api/livekit/viewer-token", "/api/analytics/events"].includes(url.pathname)) return true;
+  if (url.pathname.startsWith("/api/stage/admissions/") && (request.method === "GET" || (request.method === "POST" && url.pathname.endsWith("/reservations")))) return true;
   if (request.method === "POST" && url.pathname === "/api/merch/payment-confirmed") return true;
   if (request.method === "POST" && url.pathname === "/api/merch/printful-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/merch/stripe-webhook") return true;
@@ -495,7 +496,7 @@ function publicApiRequest(request, url) {
 function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/air-connect")) return ["operator"];
   if (url.pathname.startsWith("/api/h3at/control-plane")) return ["operator"];
-  if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/stage/tickets/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
+  if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/stage/tickets/") || url.pathname.startsWith("/api/stage/admissions/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
   if (url.pathname.startsWith("/api/merch/admin/")) return ["operator"];
   if (url.pathname.startsWith("/api/membership/admin/")) return ["operator"];
@@ -527,7 +528,7 @@ async function verifyMemberRequest(request, env, roles) {
     if (!user?.id) throw new HttpError(401, "Member session did not resolve a user");
 
     const profileUrl = new URL(`${supabaseUrl}/rest/v1/member_profiles`);
-    profileUrl.searchParams.set("select", "id,member_code,membership_role,membership_status");
+    profileUrl.searchParams.set("select", "id,member_code,display_name,handle,avatar_url,organization,profile_visibility,membership_role,membership_status");
     profileUrl.searchParams.set("id", `eq.${user.id}`);
     profileUrl.searchParams.set("limit", "1");
     const profileResponse = await fetch(profileUrl, { headers, signal: controller.signal });
@@ -1854,6 +1855,9 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS project_learning_lookup_idx ON project_learning_state (tenant_id, project_id, learner_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS stage_workflows (tenant_id TEXT NOT NULL, room_code TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL, PRIMARY KEY (tenant_id, room_code))"),
     db.prepare("CREATE INDEX IF NOT EXISTS stage_workflows_updated_idx ON stage_workflows (tenant_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS stage_admission_events (event_id TEXT PRIMARY KEY, room_code TEXT NOT NULL, title TEXT NOT NULL, starts_at TEXT NOT NULL, runtime_minutes INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS stage_admission_reservations (id TEXT PRIMARY KEY, event_id TEXT NOT NULL, seat_id TEXT NOT NULL, tier_id TEXT NOT NULL, identity_type TEXT NOT NULL, member_id TEXT, partner_id TEXT, display_label TEXT NOT NULL, profile_path TEXT, avatar_url TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(event_id, seat_id))"),
+    db.prepare("CREATE INDEX IF NOT EXISTS stage_admission_event_idx ON stage_admission_reservations (event_id, status, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS merch_orders (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, member_id TEXT NOT NULL, event_id TEXT, status TEXT NOT NULL, currency TEXT NOT NULL, total_cents INTEGER NOT NULL, checkout_url TEXT, printful_order_id TEXT, tracking_url TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS merch_orders_member_idx ON merch_orders (tenant_id, member_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS merch_revenue_allocations (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, tenant_id TEXT NOT NULL, beneficiary_type TEXT NOT NULL, beneficiary_id TEXT NOT NULL, share_basis_points INTEGER NOT NULL, amount_cents INTEGER, status TEXT NOT NULL, created_at TEXT NOT NULL)"),
@@ -2111,6 +2115,92 @@ async function handleApi(request, env, url, requestId) {
   if (request.method === "GET" && url.pathname === "/api/maps/config") {
     const apiKey = String(env.GOOGLE_MAPS_BROWSER_KEY || "").trim();
     return reply({ configured: Boolean(apiKey), ...(apiKey ? { apiKey } : {}) });
+  }
+  if (url.pathname.startsWith("/api/stage/admissions/")) {
+    if (!env.DB) return reply({ error: "Durable event admission storage is not configured", requestId }, 503);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const eventId = safeId(segments[3]).slice(0, 80);
+    const action = segments[4] || "";
+    if (!eventId) return reply({ error: "Event ID is required", requestId }, 400);
+    await initialize(env.DB);
+
+    const admissionSnapshot = async () => {
+      const eventRow = await env.DB.prepare("SELECT event_id, room_code, payload, updated_at FROM stage_admission_events WHERE event_id = ? LIMIT 1").bind(eventId).first();
+      if (!eventRow) return null;
+      let storedEvent;
+      try { storedEvent = JSON.parse(eventRow.payload); } catch { throw new HttpError(500, "Stored admission inventory is invalid"); }
+      const reservationRows = await env.DB.prepare("SELECT id, seat_id, tier_id, identity_type, display_label, profile_path, avatar_url, status FROM stage_admission_reservations WHERE event_id = ? AND status IN ('reserved','checked-in') ORDER BY updated_at DESC").bind(eventId).all();
+      const reservations = (reservationRows.results || []).map((row) => ({ id: row.id, seatId: row.seat_id, tierId: row.tier_id, identityType: row.identity_type, displayLabel: row.display_label, profilePath: row.profile_path || "", avatarUrl: row.avatar_url || "", status: row.status }));
+      const seats = Array.isArray(storedEvent.seats) ? storedEvent.seats : [];
+      const tiers = Array.isArray(storedEvent.ticketTiers) ? storedEvent.ticketTiers : [];
+      const reserved = new Set(reservations.map((item) => item.seatId));
+      const availableByTier = Object.fromEntries(tiers.map((tier) => {
+        const tierId = safeId(tier.id);
+        const tierSeats = seats.filter((seat) => safeId(seat.tierId) === tierId);
+        const claimed = reservations.filter((reservation) => reservation.tierId === tierId).length;
+        return [tierId, tierSeats.length ? tierSeats.filter((seat) => safeId(seat.status, "open") === "open" && !reserved.has(safeId(seat.id))).length : Math.max(0, Number(tier.capacity) - claimed)];
+      }));
+      return { eventId, room: eventRow.room_code, reservations, availableByTier, availableSeats: seats.filter((seat) => safeId(seat.status, "open") === "open" && !reserved.has(safeId(seat.id))).length, capacity: seats.length, updatedAt: eventRow.updated_at };
+    };
+
+    if (request.method === "GET" && !action) {
+      const snapshot = await admissionSnapshot();
+      return snapshot ? reply({ ...snapshot, requestId }, 200, { "Cache-Control": "no-store" }) : reply({ error: "Event admission inventory has not been published", requestId }, 404);
+    }
+    if (request.method === "PUT" && !action) {
+      const body = await readJson(request, 128 * 1024);
+      const event = isPlainObject(body.event) ? body.event : null;
+      const room = safeId(body.room).toUpperCase().slice(0, 24);
+      const title = safeLabel(event?.title, "AMX Live Event").slice(0, 100);
+      const startsAt = String(event?.startsAt || "");
+      const runtimeMinutes = Math.max(15, Math.min(1440, Math.round(Number(event?.runtimeMinutes) || 60)));
+      const seats = Array.isArray(event?.seats) ? event.seats.slice(0, 500).map((seat) => ({ id: safeId(seat.id).slice(0, 24), label: safeLabel(seat.label).slice(0, 16), section: safeId(seat.section).slice(0, 16), tierId: safeId(seat.tierId).slice(0, 40), status: ["open", "held", "reserved", "checked-in", "blocked"].includes(seat.status) ? seat.status : "open" })).filter((seat) => seat.id && seat.tierId) : [];
+      const ticketTiers = Array.isArray(event?.ticketTiers) ? event.ticketTiers.slice(0, 12).map((tier) => ({ id: safeId(tier.id).slice(0, 40), label: safeLabel(tier.label).slice(0, 80), capacity: Math.max(1, Math.min(500, Math.round(Number(tier.capacity) || 1))) })).filter((tier) => tier.id) : [];
+      if (!room || !seats.length || !ticketTiers.length || Number.isNaN(Date.parse(startsAt))) return reply({ error: "Room, schedule, ticket tiers, and seats are required", requestId }, 400);
+      const now = new Date().toISOString();
+      const payload = JSON.stringify({ seats, ticketTiers });
+      await env.DB.prepare("INSERT INTO stage_admission_events (event_id, room_code, title, starts_at, runtime_minutes, payload, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET room_code = excluded.room_code, title = excluded.title, starts_at = excluded.starts_at, runtime_minutes = excluded.runtime_minutes, payload = excluded.payload, updated_at = excluded.updated_at, updated_by = excluded.updated_by").bind(eventId, room, title, startsAt, runtimeMinutes, payload, now, safeId(member?.user?.id, "operator")).run();
+      const snapshot = await admissionSnapshot();
+      logEvent("info", "stage.admission_inventory_published", { requestId, eventId, room, capacity: seats.length });
+      return reply({ ...snapshot, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    if (request.method === "POST" && action === "reservations") {
+      const body = await readJson(request, 16 * 1024);
+      const tierId = safeId(body.tierId).slice(0, 40);
+      const requestedSeatId = safeId(body.seatId).slice(0, 24);
+      const eventRow = await env.DB.prepare("SELECT payload FROM stage_admission_events WHERE event_id = ? LIMIT 1").bind(eventId).first();
+      if (!eventRow) return reply({ error: "Event admission inventory has not been published", requestId }, 404);
+      let storedEvent;
+      try { storedEvent = JSON.parse(eventRow.payload); } catch { return reply({ error: "Stored admission inventory is invalid", requestId }, 500); }
+      const tiers = Array.isArray(storedEvent.ticketTiers) ? storedEvent.ticketTiers : [];
+      const tier = tiers.find((item) => item.id === tierId);
+      if (!tier) return reply({ error: "This event pass does not exist", requestId }, 404);
+      const validSeats = (Array.isArray(storedEvent.seats) ? storedEvent.seats : []).filter((seat) => seat.tierId === tierId && seat.status === "open");
+      const occupiedRows = await env.DB.prepare("SELECT seat_id FROM stage_admission_reservations WHERE event_id = ? AND status IN ('reserved','checked-in')").bind(eventId).all();
+      const occupied = new Set((occupiedRows.results || []).map((row) => row.seat_id));
+      const unseatedIndex = (occupiedRows.results || []).filter((item) => String(item.seat_id || "").startsWith(`PASS-${tierId}-`)).length + 1;
+      const seat = validSeats.length ? (requestedSeatId ? validSeats.find((item) => item.id === requestedSeatId && !occupied.has(item.id)) : validSeats.find((item) => !occupied.has(item.id))) : (unseatedIndex <= Number(tier.capacity) ? { id: `PASS-${tierId}-${String(unseatedIndex).padStart(3, "0")}` } : null);
+      if (!seat) return reply({ error: requestedSeatId ? "That seat was just reserved. Choose another available seat." : "This pass is sold out", requestId }, 409);
+      const token = memberSessionToken(request);
+      const attendee = token ? await verifyMemberRequest(request, env, ["member", "trainer", "operator"]) : null;
+      const organization = safeLabel(attendee?.profile?.organization).slice(0, 120);
+      const isPartner = Boolean(attendee && organization && !/^AMX AIR HUBS$/i.test(organization));
+      const identityType = attendee ? (isPartner ? "partner" : "member") : "guest";
+      const displayLabel = attendee ? safeLabel(attendee.profile.display_name, identityType === "partner" ? "Partner member" : "AMX member").slice(0, 80) : safeLabel(body.displayName, "Event guest").slice(0, 80);
+      const publicProfile = attendee?.profile?.profile_visibility === "public";
+      const profileSlug = safeId(attendee?.profile?.handle || attendee?.profile?.member_code).slice(0, 80);
+      const profilePath = publicProfile && profileSlug ? `/members/${encodeURIComponent(profileSlug)}` : "";
+      const avatarUrl = publicProfile && /^(https:\/\/|\/api\/media\/)/.test(String(attendee?.profile?.avatar_url || "")) ? String(attendee.profile.avatar_url).slice(0, 500) : "";
+      const now = new Date().toISOString();
+      const id = `admission-${crypto.randomUUID()}`;
+      try {
+        await env.DB.prepare("INSERT INTO stage_admission_reservations (id, event_id, seat_id, tier_id, identity_type, member_id, partner_id, display_label, profile_path, avatar_url, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?)").bind(id, eventId, seat.id, tierId, identityType, attendee?.user?.id || null, isPartner ? safeId(organization).slice(0, 96) : null, displayLabel, profilePath || null, avatarUrl || null, now, now).run();
+      } catch { return reply({ error: "That seat was just reserved. Choose another available seat.", requestId }, 409); }
+      const snapshot = await admissionSnapshot();
+      logEvent("info", "stage.admission_reserved", { requestId, eventId, tierId, seatId: seat.id, identityType });
+      return reply({ ...snapshot, reservationId: id, seatId: seat.id, requestId }, 201, { "Cache-Control": "no-store" });
+    }
+    return reply({ error: "Method not allowed", requestId }, 405, { Allow: "GET, PUT, POST" });
   }
   if (url.pathname.startsWith("/api/stage/workflows/")) {
     if (!stageOperatorHostAllowed(env, url)) return reply({ error: "Stage workflow records are restricted to the private operator host", requestId }, 403);
