@@ -51,6 +51,8 @@ export interface PrintfulRuntimeStatus {
     webhookConfigured: boolean;
     callbackHost?: string;
     eventTypes: string[];
+    diagnostics?: Record<string, { ok: boolean; status: number; message: string }>;
+    recommendedAction?: string;
     error?: string;
   };
 }
