@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.env.local
 .env.cluster
 deploy/vps/.env.vps
 # SSH/deploy keys — never commit private keys
