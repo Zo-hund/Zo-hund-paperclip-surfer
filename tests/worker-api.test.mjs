@@ -1233,6 +1233,7 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.match(csp, /script-src 'self' 'nonce-/);
     assert.match(csp, /'wasm-unsafe-eval'/);
     assert.match(csp, /https:\/\/maps\.googleapis\.com/);
+    assert.match(csp, /https:\/\/files\.cdn\.printful\.com/);
     assert.match(csp, /media-src 'self' blob: https:/);
     assert.match(csp, /frame-src https:\/\/\*\.readyplayer\.me/);
     assert.match(csp, /frame-ancestors 'none'/);
