@@ -2367,7 +2367,13 @@ async function handleApi(request, env, url, requestId) {
     const tenantId = safeId(url.searchParams.get("tenantId"), "tech-at-nite");
     await verifyTenantAccess(member, env, tenantId);
     if (!env.PRINTFUL_API_TOKEN) return reply({ configured: false, checkoutConfigured: false, source: "preview", products: [], message: "Connect PRINTFUL_API_TOKEN to load synchronized products.", requestId });
-    const products = await loadPrintfulCatalog(env);
+    let products = [];
+    try {
+      products = await loadPrintfulCatalog(env);
+    } catch (error) {
+      logEvent("warn", "merch.printful_catalog_unavailable", { requestId, tenantId, reason: error instanceof Error ? safeLabel(error.message).slice(0, 160) : "unknown" });
+      return reply({ configured: false, checkoutConfigured: false, source: "printful", products: [], message: "Printful is connected, but the product catalog could not load. Check the API token scopes and synced store products.", requestId }, 200, { "Cache-Control": "no-store" });
+    }
     const stripeCheckout = Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.MERCH_PUBLIC_BASE_URL && env.DB);
     return reply({ configured: true, checkoutConfigured: stripeCheckout || Boolean(env.MERCH_CHECKOUT_URL), checkoutProvider: stripeCheckout ? "stripe" : env.MERCH_CHECKOUT_URL ? "hosted" : "none", source: "printful", products, requestId }, 200, { "Cache-Control": "private, max-age=120" });
   }
