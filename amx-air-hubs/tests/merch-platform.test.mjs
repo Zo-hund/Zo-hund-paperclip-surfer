@@ -350,7 +350,7 @@ describe("AMX collective merch", () => {
     globalThis.fetch = async (input) => {
       const target = String(input);
       if (target.includes("/store/products?")) return Response.json({ result: [] });
-      if (target.includes("/product-templates?")) return Response.json({ result: [{ id: 77, title: "AMX Labs Creator Tee", image_url: "https://images.example/template.png", available_variant_ids: [401, 402] }] });
+      if (target.includes("/product-templates?")) return Response.json({ result: { items: [{ id: 77, title: "AMX Labs Creator Tee", mockup_file_url: "https://images.example/template.png", available_variant_ids: [401, 402] }] } });
       throw new Error(`Unexpected request: ${target}`);
     };
     try {

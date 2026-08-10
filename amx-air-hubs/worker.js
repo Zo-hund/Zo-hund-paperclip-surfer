@@ -164,7 +164,7 @@ function normalizePrintfulProduct(item) {
 
 function normalizePrintfulTemplate(item) {
   const variants = Array.isArray(item?.available_variant_ids) ? item.available_variant_ids : [];
-  const image = safeLabel(item?.image_url || item?.thumbnail_url, "/merch/amx-merch-collection.png");
+  const image = safeLabel(item?.mockup_file_url || item?.image_url || item?.thumbnail_url, "/merch/amx-merch-collection.png");
   return {
     id: `template-${String(item?.id || item?.product_id || "").slice(0, 70)}`,
     name: safeLabel(item?.title || item?.name, "Printful Product Template").slice(0, 120),
@@ -187,7 +187,7 @@ async function loadPrintfulCatalog(env) {
   const cacheKey = String(env.PRINTFUL_STORE_ID || "default");
   const cached = printfulCatalogCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.products;
-  const listed = await printfulRequest(env, "/store/products?status=synced&limit=24");
+  const listed = await printfulRequest(env, "/store/products?status=synced");
   const summaries = Array.isArray(listed) ? listed.slice(0, 12) : [];
   const details = await Promise.all(summaries.map((item) => printfulRequest(env, `/store/products/${encodeURIComponent(item.id)}`)));
   const products = details.map(normalizePrintfulProduct).filter((product) => product.id && product.variants.length);
@@ -197,7 +197,7 @@ async function loadPrintfulCatalog(env) {
 
 async function loadPrintfulTemplates(env) {
   const listed = await printfulRequest(env, "/product-templates?limit=24");
-  const summaries = Array.isArray(listed) ? listed.slice(0, 12) : [];
+  const summaries = Array.isArray(listed) ? listed.slice(0, 12) : Array.isArray(listed?.items) ? listed.items.slice(0, 12) : [];
   return summaries.map(normalizePrintfulTemplate).filter((product) => product.id && product.variants.length);
 }
 
@@ -2458,7 +2458,7 @@ async function handleApi(request, env, url, requestId) {
     };
     if (!env.PRINTFUL_API_TOKEN) return reply({ runtime, printful: { connected: false, webhookConfigured: false, eventTypes: [], diagnostics: {} }, requestId });
     const [storeProducts, productTemplates, webhooks] = await Promise.all([
-      probePrintfulCapability(env, "/store/products?status=synced&limit=1"),
+      probePrintfulCapability(env, "/store/products?status=synced"),
       probePrintfulCapability(env, "/product-templates?limit=1"),
       probePrintfulCapability(env, "/webhooks"),
     ]);
