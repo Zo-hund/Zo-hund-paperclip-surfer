@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import {
-  Accessibility, Activity, BadgeCheck, Banknote, Bot, BriefcaseBusiness, Cable, ChevronRight, CircleDollarSign, CircleUserRound, Download,
+  Accessibility, Activity, BadgeCheck, Banknote, BookOpenCheck, Bot, BriefcaseBusiness, Cable, ChevronRight, CircleDollarSign, CircleUserRound, Download,
   Camera, Clapperboard, Cpu, Crown, Gamepad2, Glasses, Home, Layers, LayoutGrid, LogIn, Menu, Move3d, Radio, ScanLine, Settings2, ShieldCheck, ShoppingBag, Smartphone, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import type { Agent, Mission } from "./data";
@@ -31,6 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const memberNav = [
     { to: "/", label: "Home", icon: Home },
     { to: "/dashboard", label: "Dashboard", icon: Activity },
+    { to: "/learn", label: "Learn", icon: BookOpenCheck },
     { to: "/partners", label: "Partners", icon: BriefcaseBusiness },
     { to: "/membership", label: "Membership", icon: Crown },
     { to: "/connect", label: "Tap + Scan", icon: ScanLine },
@@ -53,13 +54,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/connect", label: "Tap + Scan", icon: ScanLine },
     { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
   ];
-  const primaryLabels = new Set(["Home", "Dashboard", "Missions", "Play", "Stage", "Nexus"]);
+  const primaryLabels = new Set(["Home", "Dashboard", "Learn", "Play", "Stage", "Nexus"]);
   const desktopPrimaryNav = member.session ? nav.filter((item) => primaryLabels.has(item.label)) : nav;
   const desktopMoreNav = member.session ? nav.filter((item) => !primaryLabels.has(item.label)) : [];
   const moreActive = desktopMoreNav.some((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`));
   const mobileDockNav = member.session ? [
     memberNav.find((item) => item.label === "Home")!,
-    memberNav.find((item) => item.label === "Missions")!,
+    memberNav.find((item) => item.label === "Learn")!,
     memberNav.find((item) => item.label === "Play")!,
     memberNav.find((item) => item.label === "Stage")!,
     { to: "/account", label: "Account", icon: CircleUserRound },

@@ -1643,6 +1643,60 @@ function airPositiveInteger(value, fallback, maximum = 10_000_000) {
   return parsed;
 }
 
+function normalizeLmsModule(value, index = 0) {
+  const item = isPlainObject(value) ? value : {};
+  const stage = ["learn", "practice", "prove", "live", "earn"].includes(item.stage) ? item.stage : "learn";
+  return {
+    id: safeId(item.id, `module-${index + 1}`).slice(0, 96),
+    title: safeLabel(item.title, `Module ${index + 1}`).slice(0, 140),
+    stage,
+    summary: safeLabel(item.summary, "Applied learning module").slice(0, 800),
+    durationMinutes: Math.max(5, Math.min(1440, Math.round(Number(item.durationMinutes || 30)))),
+    unlockAfterModuleId: item.unlockAfterModuleId ? safeId(item.unlockAfterModuleId).slice(0, 96) : null,
+    availableAt: item.availableAt && Number.isFinite(Date.parse(item.availableAt)) ? new Date(item.availableAt).toISOString() : null,
+    missionId: item.missionId ? safeId(item.missionId).slice(0, 96) : null,
+    liveRoom: item.liveRoom ? safeId(item.liveRoom).slice(0, 96) : null,
+    rewardXp: Math.max(0, Math.min(100000, Math.round(Number(item.rewardXp || 0)))),
+    rewardCents: Math.max(0, Math.min(10000000, Math.round(Number(item.rewardCents || 0)))),
+  };
+}
+
+function validateLmsProgram(body) {
+  if (!isPlainObject(body)) throw new HttpError(400, "Program payload is required");
+  const tenantId = safeId(body.tenantId).slice(0, 64);
+  const id = safeId(body.id).slice(0, 96);
+  if (!tenantId || !id) throw new HttpError(400, "tenantId and program id are required");
+  const modules = Array.isArray(body.modules) ? body.modules.slice(0, 60).map(normalizeLmsModule) : [];
+  if (!modules.length) throw new HttpError(400, "At least one program module is required");
+  if (new Set(modules.map((item) => item.id)).size !== modules.length) throw new HttpError(400, "Module ids must be unique");
+  for (const module of modules) if (module.unlockAfterModuleId && !modules.some((item) => item.id === module.unlockAfterModuleId)) throw new HttpError(400, `Unknown prerequisite for ${module.title}`);
+  return {
+    id, tenantId, title: safeLabel(body.title, "AMX Learning Program").slice(0, 140), summary: safeLabel(body.summary).slice(0, 1200),
+    mode: ["training", "workshop", "market_sim"].includes(body.mode) ? body.mode : "training",
+    status: ["draft", "published", "archived"].includes(body.status) ? body.status : "draft",
+    facilitator: safeLabel(body.facilitator, "AMX Facilitator").slice(0, 140), modules, updatedAt: new Date().toISOString(),
+  };
+}
+
+function publicLmsProgram(row) {
+  if (!row) return null;
+  const payload = parseStoredJson(row.payload, {});
+  return { ...payload, id: row.id, tenantId: row.tenant_id, status: row.status, updatedAt: row.updated_at, modules: Array.isArray(payload.modules) ? payload.modules : [] };
+}
+
+function publicLmsEnrollment(row) {
+  if (!row) return null;
+  return {
+    id: row.id, tenantId: row.tenant_id, programId: row.program_id, learnerId: row.learner_id, learnerName: row.learner_name,
+    status: row.status, completedModuleIds: parseStoredJson(row.completed_module_ids, []), attendanceMinutes: Number(row.attendance_minutes || 0),
+    evidenceCount: Number(row.evidence_count || 0), score: Number(row.score || 0), earnedCents: Number(row.earned_cents || 0), updatedAt: row.updated_at,
+  };
+}
+
+function requireLmsOperator(member) {
+  if (member && !["trainer", "operator"].includes(member.profile.membership_role)) throw new HttpError(403, "Trainer or operator access is required");
+}
+
 function parseStoredJson(value, fallback) {
   try { return value ? JSON.parse(value) : fallback; }
   catch { return fallback; }
@@ -1948,6 +2002,13 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS data_center_telemetry_tenant_idx ON data_center_telemetry (tenant_id, observed_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS project_learning_state (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL, learner_id TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS project_learning_lookup_idx ON project_learning_state (tenant_id, project_id, learner_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS lms_programs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, title TEXT NOT NULL, mode TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS lms_programs_tenant_idx ON lms_programs (tenant_id, status, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS lms_enrollments (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, program_id TEXT NOT NULL, learner_id TEXT NOT NULL, learner_name TEXT NOT NULL, status TEXT NOT NULL, completed_module_ids TEXT NOT NULL DEFAULT '[]', attendance_minutes INTEGER NOT NULL DEFAULT 0, evidence_count INTEGER NOT NULL DEFAULT 0, score INTEGER NOT NULL DEFAULT 0, earned_cents INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE (tenant_id, program_id, learner_id))"),
+    db.prepare("CREATE INDEX IF NOT EXISTS lms_enrollments_program_idx ON lms_enrollments (tenant_id, program_id, status, updated_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS lms_enrollments_learner_idx ON lms_enrollments (tenant_id, learner_id, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS lms_activity_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, program_id TEXT NOT NULL, enrollment_id TEXT NOT NULL, module_id TEXT NOT NULL, event_type TEXT NOT NULL, value INTEGER NOT NULL, actor_id TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS lms_activity_events_enrollment_idx ON lms_activity_events (tenant_id, enrollment_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS stage_workflows (tenant_id TEXT NOT NULL, room_code TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL, PRIMARY KEY (tenant_id, room_code))"),
     db.prepare("CREATE INDEX IF NOT EXISTS stage_workflows_updated_idx ON stage_workflows (tenant_id, updated_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS stage_admission_events (event_id TEXT PRIMARY KEY, room_code TEXT NOT NULL, title TEXT NOT NULL, starts_at TEXT NOT NULL, runtime_minutes INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL)"),
@@ -2435,6 +2496,92 @@ async function handleApi(request, env, url, requestId) {
     await verifyTenantAccess(member, env, item.tenantId);
     await persistProjectLearningState(env, item);
     return reply({ item, persisted: Boolean(env.DB), requestId });
+  }
+  if (request.method === "GET" && url.pathname === "/api/lms/programs") {
+    const tenantId = safeId(url.searchParams.get("tenantId")).slice(0, 64);
+    const learnerId = safeId(url.searchParams.get("learnerId")).slice(0, 96);
+    if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+    await verifyTenantAccess(member, env, tenantId);
+    if (!env.DB) return reply({ programs: [], enrollments: [], persisted: false, requestId });
+    await initialize(env.DB);
+    const programRows = member?.profile?.membership_role === "member"
+      ? await env.DB.prepare("SELECT * FROM lms_programs WHERE tenant_id = ? AND status = 'published' ORDER BY updated_at DESC LIMIT 100").bind(tenantId).all()
+      : await env.DB.prepare("SELECT * FROM lms_programs WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 100").bind(tenantId).all();
+    const enrollmentRows = learnerId
+      ? await env.DB.prepare("SELECT * FROM lms_enrollments WHERE tenant_id = ? AND learner_id = ? ORDER BY updated_at DESC LIMIT 100").bind(tenantId, learnerId).all()
+      : await env.DB.prepare("SELECT * FROM lms_enrollments WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 500").bind(tenantId).all();
+    return reply({ programs: (programRows.results || []).map(publicLmsProgram), enrollments: (enrollmentRows.results || []).map(publicLmsEnrollment), persisted: true, requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  if (request.method === "PUT" && url.pathname === "/api/lms/programs") {
+    requireLmsOperator(member);
+    const program = validateLmsProgram(await readJson(request, 512 * 1024));
+    await verifyTenantAccess(member, env, program.tenantId);
+    if (!env.DB) return reply({ error: "Learning storage is not configured", requestId }, 503);
+    await initialize(env.DB);
+    const now = new Date().toISOString();
+    const actorId = member?.user?.id || "local-operator";
+    await env.DB.prepare("INSERT INTO lms_programs (id, tenant_id, title, mode, status, payload, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET tenant_id = excluded.tenant_id, title = excluded.title, mode = excluded.mode, status = excluded.status, payload = excluded.payload, updated_at = excluded.updated_at")
+      .bind(program.id, program.tenantId, program.title, program.mode, program.status, JSON.stringify(program), actorId, now, now).run();
+    logEvent("info", "lms.program_saved", { requestId, tenantId: program.tenantId, programId: program.id, status: program.status });
+    return reply({ program, persisted: true, requestId });
+  }
+  if (request.method === "POST" && url.pathname === "/api/lms/enrollments") {
+    const body = await readJson(request, 64 * 1024);
+    const tenantId = safeId(body.tenantId).slice(0, 64);
+    const programId = safeId(body.programId).slice(0, 96);
+    const learnerId = safeId(body.learnerId || member?.user?.id).slice(0, 96);
+    const learnerName = safeLabel(body.learnerName || member?.profile?.display_name, "AMX Learner").slice(0, 140);
+    if (!tenantId || !programId || !learnerId) return reply({ error: "tenantId, programId, and learnerId are required", requestId }, 400);
+    await verifyTenantAccess(member, env, tenantId);
+    if (member && member.profile.membership_role === "member" && member.user.id !== learnerId) return reply({ error: "Members may only enroll themselves", requestId }, 403);
+    if (!env.DB) return reply({ error: "Learning storage is not configured", requestId }, 503);
+    await initialize(env.DB);
+    const program = await env.DB.prepare("SELECT id FROM lms_programs WHERE id = ? AND tenant_id = ? AND status = 'published' LIMIT 1").bind(programId, tenantId).first();
+    if (!program) return reply({ error: "Published program not found", requestId }, 404);
+    const id = `lms_${await sha256(`${tenantId}:${programId}:${learnerId}`)}`.slice(0, 72);
+    const now = new Date().toISOString();
+    await env.DB.prepare("INSERT INTO lms_enrollments (id, tenant_id, program_id, learner_id, learner_name, status, completed_module_ids, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'active', '[]', ?, ?) ON CONFLICT(tenant_id, program_id, learner_id) DO UPDATE SET learner_name = excluded.learner_name, updated_at = excluded.updated_at")
+      .bind(id, tenantId, programId, learnerId, learnerName, now, now).run();
+    const row = await env.DB.prepare("SELECT * FROM lms_enrollments WHERE id = ?").bind(id).first();
+    return reply({ enrollment: publicLmsEnrollment(row), persisted: true, requestId }, 201);
+  }
+  if (request.method === "POST" && /^\/api\/lms\/enrollments\/[^/]+\/progress$/.test(url.pathname)) {
+    const id = safeId(url.pathname.split("/")[4]).slice(0, 96);
+    const body = await readJson(request, 64 * 1024);
+    const tenantId = safeId(body.tenantId).slice(0, 64);
+    const moduleId = safeId(body.moduleId).slice(0, 96);
+    const action = ["complete", "attendance", "evidence"].includes(body.action) ? body.action : "";
+    if (!id || !tenantId || !moduleId || !action) return reply({ error: "Valid enrollment, tenant, module, and action are required", requestId }, 400);
+    await verifyTenantAccess(member, env, tenantId);
+    if (!env.DB) return reply({ error: "Learning storage is not configured", requestId }, 503);
+    await initialize(env.DB);
+    const row = await env.DB.prepare("SELECT * FROM lms_enrollments WHERE id = ? AND tenant_id = ? LIMIT 1").bind(id, tenantId).first();
+    if (!row) return reply({ error: "Enrollment not found", requestId }, 404);
+    if (member && member.profile.membership_role === "member" && member.user.id !== row.learner_id) return reply({ error: "Members may only update their own progress", requestId }, 403);
+    const programRow = await env.DB.prepare("SELECT * FROM lms_programs WHERE id = ? AND tenant_id = ? LIMIT 1").bind(row.program_id, tenantId).first();
+    const program = publicLmsProgram(programRow);
+    const module = program?.modules.find((item) => item.id === moduleId);
+    if (!module) return reply({ error: "Program module not found", requestId }, 404);
+    const governedAction = action === "attendance" || (action === "complete" && ["prove", "live", "earn"].includes(module.stage));
+    if (governedAction && member && !["trainer", "operator"].includes(member.profile.membership_role)) return reply({ error: "Trainer or operator approval is required for this action", requestId }, 403);
+    const completed = parseStoredJson(row.completed_module_ids, []);
+    if (module.unlockAfterModuleId && !completed.includes(module.unlockAfterModuleId)) return reply({ error: "The prerequisite module is not complete", requestId }, 409);
+    if (module.availableAt && Date.parse(module.availableAt) > Date.now()) return reply({ error: "This module has not been released", requestId }, 409);
+    const value = Math.max(1, Math.min(1440, Math.round(Number(body.value || 1))));
+    const completedModuleIds = action === "complete" ? [...new Set([...completed, moduleId])] : completed;
+    const attendanceMinutes = Number(row.attendance_minutes || 0) + (action === "attendance" ? value : 0);
+    const evidenceCount = Number(row.evidence_count || 0) + (action === "evidence" ? 1 : 0);
+    const isComplete = completedModuleIds.length >= program.modules.length;
+    const earnedCents = isComplete ? program.modules.filter((item) => item.stage === "earn").reduce((sum, item) => sum + Number(item.rewardCents || 0), 0) : Number(row.earned_cents || 0);
+    const score = Math.round(completedModuleIds.length / Math.max(1, program.modules.length) * 100);
+    const now = new Date().toISOString();
+    const actorId = member?.user?.id || "local-member";
+    await env.DB.batch([
+      env.DB.prepare("UPDATE lms_enrollments SET status = ?, completed_module_ids = ?, attendance_minutes = ?, evidence_count = ?, score = ?, earned_cents = ?, updated_at = ? WHERE id = ?").bind(isComplete ? "complete" : "active", JSON.stringify(completedModuleIds), attendanceMinutes, evidenceCount, score, earnedCents, now, id),
+      env.DB.prepare("INSERT INTO lms_activity_events (id, tenant_id, program_id, enrollment_id, module_id, event_type, value, actor_id, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), tenantId, row.program_id, id, moduleId, action, value, actorId, JSON.stringify({ score, isComplete }), now),
+    ]);
+    const updated = await env.DB.prepare("SELECT * FROM lms_enrollments WHERE id = ?").bind(id).first();
+    return reply({ enrollment: publicLmsEnrollment(updated), persisted: true, requestId });
   }
   if (request.method === "POST" && url.pathname === "/api/agents/respond") {
     const payload = sanitizeAgentPayload(await readJson(request, MAX_AGENT_BODY_BYTES));
