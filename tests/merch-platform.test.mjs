@@ -323,4 +323,24 @@ describe("AMX collective merch", () => {
     assert.equal(body.checkoutConfigured, false);
     assert.deepEqual(body.products, []);
   });
+
+  test("returns a clear catalog setup message when Printful rejects the token or store", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      if (String(input).includes("/store/products?")) return Response.json({ error: { message: "Forbidden" } }, { status: 403 });
+      throw new Error(`Unexpected request: ${input}`);
+    };
+    try {
+      const response = await worker.fetch(new Request("https://amx.example/api/merch/catalog?tenantId=tech-at-nite"), {
+        PRINTFUL_API_TOKEN: "bad-or-wrong-scope",
+        PRINTFUL_STORE_ID: "isolated-bad-store",
+        ASSETS: { fetch: async () => new Response("missing", { status: 404 }) },
+      });
+      const body = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(body.configured, false);
+      assert.equal(body.source, "printful");
+      assert.match(body.message, /API token scopes and synced store products/);
+    } finally { globalThis.fetch = originalFetch; }
+  });
 });
