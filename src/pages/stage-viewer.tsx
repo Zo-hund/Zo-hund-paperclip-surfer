@@ -12,6 +12,8 @@ import { stageCameraMotionPreset, type StageCameraMotionState } from "../stage-c
 import { countStageAudienceParticipants, selectStageProgramFeed, stageFeedId } from "../stage-camera-routing";
 import { stageSeatCounts } from "../stage-events";
 import type { RendererBackend } from "../webgpu";
+import { useMemberAuth } from "../member-auth";
+import { loadStageAdmissions, reserveStageAdmission, type StageAdmissionSnapshot } from "../stage-admissions";
 
 const AMXXRStageScene = lazy(async () => ({ default: (await import("../AMXXRStageScene")).AMXXRStageScene }));
 
@@ -72,6 +74,7 @@ export function StageLiveViewerPage() {
   const roomCode = String(params.roomCode || "AMXSTAGE").toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 24) || "AMXSTAGE";
   const displayWall = new URLSearchParams(window.location.search).get("display") === "wall";
   const production = useStageProduction(roomCode, { readOnly: true });
+  const auth = useMemberAuth();
   const [status, setStatus] = useState<ViewerStatus>("connecting");
   const [mode, setMode] = useState<ViewerMode>("program");
   const [feeds, setFeeds] = useState<ViewerFeed[]>([]);
@@ -84,6 +87,10 @@ export function StageLiveViewerPage() {
   const [dismissedPassStart, setDismissedPassStart] = useState<number | null>(null);
   const [viewerNow, setViewerNow] = useState(Date.now());
   const [backend, setBackend] = useState<RendererBackend>("webgl2");
+  const [admissions, setAdmissions] = useState<StageAdmissionSnapshot | null>(null);
+  const [reserveTier, setReserveTier] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [reservationBusy, setReservationBusy] = useState(false);
   const roomRef = useRef<Room | null>(null);
   const audioHostRef = useRef<HTMLDivElement>(null);
   const programVideoRef = useRef<HTMLVideoElement>(null);
@@ -95,6 +102,12 @@ export function StageLiveViewerPage() {
 
   useEffect(() => { audioEnabledRef.current = audioEnabled; }, [audioEnabled]);
   useEffect(() => { venueAudioEnabledRef.current = venueAudio.enabled; }, [venueAudio.enabled]);
+  useEffect(() => {
+    const refresh = () => void loadStageAdmissions(production.state.event.id).then(setAdmissions).catch(() => undefined);
+    refresh();
+    const timer = window.setInterval(refresh, 5_000);
+    return () => window.clearInterval(timer);
+  }, [production.state.event.id]);
 
   const addFeed = useCallback((track: RemoteVideoTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
     const source = publication.source === Track.Source.ScreenShare ? "screen" : "camera";
@@ -307,6 +320,18 @@ export function StageLiveViewerPage() {
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
     else await document.exitFullscreen();
   };
+  const reservePass = async (tierId: string) => {
+    if (!auth.session && !guestName.trim()) { setReserveTier(tierId); setNotice("Add the guest name before reserving a seat."); return; }
+    setReservationBusy(true);
+    try {
+      const snapshot = await reserveStageAdmission(production.state.event.id, { tierId, displayName: guestName.trim() }, auth.session?.access_token);
+      setAdmissions(snapshot);
+      setReserveTier("");
+      const seatId = String((snapshot as StageAdmissionSnapshot & { seatId?: string }).seatId || "reserved");
+      setNotice(`${seatId.startsWith("PASS-") ? "Pass" : "Seat"} ${seatId} is reserved.`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Seat reservation failed."); }
+    finally { setReservationBusy(false); }
+  };
 
   return <main className={`stage-viewer-page ${showProgram ? "program-active" : "venue-active"}${displayWall ? " display-wall" : ""}`} style={{ "--viewer-accent": production.state.sponsor.accent } as React.CSSProperties}>
     <div className="stage-viewer-media" aria-label="AMX XR Stage live program">
@@ -343,7 +368,7 @@ export function StageLiveViewerPage() {
       <h1>{production.state.event.title}</h1>
       <p>{production.state.sponsor.headline}</p>
     </section>
-    {showPasses && <section className="stage-viewer-tickets" aria-label="Event passes"><header><span><Ticket/><b>EVENT PASSES</b></span>{passCueActive && <small>{Math.max(1, Math.ceil(((production.state.passOverlay.startedAt || viewerNow) + production.state.passOverlay.durationSeconds * 1000 - viewerNow) / 1000))}S</small>}<button onClick={()=>{ setPassesOpen(false); setDismissedPassStart(production.state.passOverlay.startedAt); }} aria-label="Close event passes"><X/></button></header><div>{production.state.event.ticketTiers.map((tier) => <article key={tier.id}><span><b>{tier.label}</b><small>{tier.access}</small></span><strong>{tier.priceCents ? `$${(tier.priceCents / 100).toFixed(2)}` : "PASS"}</strong>{tier.checkoutUrl ? <a href={tier.checkoutUrl} target="_blank" rel="noreferrer">GET TICKET</a> : <span>COMING SOON</span>}{tier.priceCents ? Boolean(tier.resourceUrls?.length) && <small>{tier.resourceUrls?.length || 0} DOWNLOADS INCLUDED</small> : (tier.resourceUrls || []).map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">RESOURCE {index + 1}</a>)}</article>)}</div></section>}
+    {showPasses && <section className="stage-viewer-tickets" aria-label="Event passes"><header><span><Ticket/><b>EVENT PASSES + SEATS</b></span>{passCueActive && <small>{Math.max(1, Math.ceil(((production.state.passOverlay.startedAt || viewerNow) + production.state.passOverlay.durationSeconds * 1000 - viewerNow) / 1000))}S</small>}<button onClick={()=>{ setPassesOpen(false); setDismissedPassStart(production.state.passOverlay.startedAt); }} aria-label="Close event passes"><X/></button></header><div>{production.state.event.ticketTiers.map((tier) => { const available = admissions?.availableByTier[tier.id]; return <article key={tier.id}><span><b>{tier.label}</b><small>{tier.access}</small></span><strong>{tier.priceCents ? `$${(tier.priceCents / 100).toFixed(2)}` : "PASS"}</strong><em className={available === 0 ? "sold-out" : ""}>{available == null ? "SYNCING" : `${available} AVAILABLE`}</em><button disabled={reservationBusy || available === 0} onClick={() => void reservePass(tier.id)}>{auth.session ? "RESERVE TO PROFILE" : "RESERVE AS GUEST"}</button>{tier.checkoutUrl && <a href={tier.checkoutUrl} target="_blank" rel="noreferrer">BUY PASS</a>}{reserveTier === tier.id && !auth.session && <input value={guestName} maxLength={80} autoFocus placeholder="GUEST NAME" onChange={(event) => setGuestName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void reservePass(tier.id); }}/>} {tier.priceCents ? Boolean(tier.resourceUrls?.length) && <small>{tier.resourceUrls?.length || 0} DOWNLOADS INCLUDED</small> : (tier.resourceUrls || []).map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">RESOURCE {index + 1}</a>)}</article>; })}</div>{admissions && <footer><span><Users/><b>{admissions.reservations.length} RESERVED</b><small>{admissions.availableSeats} PHYSICAL SEATS / UPDATES EVERY 5S</small></span><div>{admissions.reservations.slice(0, 8).map((reservation) => reservation.profilePath ? <a key={reservation.id} href={reservation.profilePath}>{reservation.avatarUrl ? <img src={reservation.avatarUrl} alt=""/> : <Users/>}<span>{reservation.identityType}<small>{reservation.seatId}</small></span></a> : <span key={reservation.id}>{reservation.avatarUrl ? <img src={reservation.avatarUrl} alt=""/> : <Users/>}<span>{reservation.identityType}<small>{reservation.seatId}</small></span></span>)}</div></footer>}</section>}
 
     <div className="stage-viewer-metrics">
       <span><Users/><b>{seatCounts.checkedIn}</b><small>CHECKED IN</small></span>

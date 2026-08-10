@@ -8,6 +8,7 @@ import type { StageProductionState } from "./stage-production";
 import { getTenantRecord } from "./tenant-management";
 import { createStageTicketPaymentLink } from "./stage-ticketing";
 import { DEFAULT_STAGE_PROGRAM_MEDIA } from "./stage-program-media";
+import { loadStageAdmissions, publishStageAdmissions, type StageAdmissionSnapshot } from "./stage-admissions";
 
 interface Props {
   room: string;
@@ -54,6 +55,7 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   const [notice, setNotice] = useState("");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [mediaBusy, setMediaBusy] = useState(false);
+  const [admissions, setAdmissions] = useState<StageAdmissionSnapshot | null>(null);
   const [selectedSection, setSelectedSection] = useState<StageSeatSection>("house");
   const [selectedSeatId, setSelectedSeatId] = useState(() => event.seats.find((seat) => seat.section === "house")?.id || event.seats[0]?.id || "");
   const [guestDraft, setGuestDraft] = useState("");
@@ -92,6 +94,20 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
     });
     return () => { cancelled = true; };
   }, [event.format, event.id, event.startsAt, event.ticketTiers]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void publishStageAdmissions(room, event).then(setAdmissions).catch((error) => setNotice(error instanceof Error ? error.message : "Admission inventory could not be published."));
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [event, room]);
+
+  useEffect(() => {
+    const refresh = () => void loadStageAdmissions(event.id).then(setAdmissions).catch(() => undefined);
+    refresh();
+    const timer = window.setInterval(refresh, 5_000);
+    return () => window.clearInterval(timer);
+  }, [event.id]);
 
   const updateEvent = (patch: Partial<StageEventState>) => onUpdate({ event: { ...event, ...patch } });
   const selectFormat = (format: StageEventFormat) => {
@@ -279,7 +295,7 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
     </section>
 
     <section className="stage-control-section stage-ticket-inventory">
-      <header><div><span className="eyebrow">ADMISSION INVENTORY</span><h2>Venue zones and passes</h2></div><span className="stage-seat-total">{generalSeats + vipSeats}</span></header>
+      <header><div><span className="eyebrow">ADMISSION INVENTORY</span><h2>Venue zones and passes</h2></div><span className="stage-seat-total">{admissions ? `${admissions.availableSeats}/${admissions.capacity}` : generalSeats + vipSeats}</span></header>
       <div className="stage-ticket-table">{event.ticketTiers.map((tier) => {
         const pass = passes[tier.id];
         return <div key={tier.id} className={selectedTier === tier.id ? "selected" : ""}>
@@ -293,6 +309,7 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
         </div>;
       })}</div>
       <p className="stage-ticket-note"><ShieldCheck/>Checkout links open your payment provider. Paid downloads remain hidden until fulfillment.</p>
+      {admissions && <div className="stage-admission-roster"><header><span><Users/><b>LIVE RESERVATIONS</b></span><small>{admissions.reservations.length} CLAIMED</small></header><div>{admissions.reservations.slice(0, 12).map((reservation) => <span key={reservation.id} className={reservation.identityType}>{reservation.avatarUrl ? <img src={reservation.avatarUrl} alt=""/> : <UserPlus/>}<b>{reservation.displayLabel}</b><small>{reservation.identityType} / {reservation.seatId}</small></span>)}</div></div>}
       <div className="stage-ticket-promo">
         <header><span><Video/><b>{activeTier.label} promo / ad asset</b></span><small>{activeTier.promoMediaUrl ? "READY" : "PLACEHOLDER"}</small></header>
         {activeTier.promoMediaUrl ? <video src={activeTier.promoMediaUrl} muted playsInline controls preload="metadata"/> : <div className="stage-ticket-promo-empty"><Video/><span>Add a short event trailer, sponsor spot, or admission promo.</span></div>}
