@@ -11,6 +11,7 @@ const catalog: Array<{ provider: string; name: string; kind: ConnectionKind; det
   { provider: "decart", name: "Decart AI Video", kind: "api", detail: "Lucy 2.5 realtime transformed camera sources" },
   { provider: "printful", name: "Printful Merch", kind: "api", detail: "Product catalog, order fulfillment, shipping, and tracking" },
   { provider: "stripe", name: "Stripe Commerce", kind: "api", detail: "Hosted checkout, Express onboarding, and collective payouts" },
+  { provider: "x402", name: "x402 Agent Payments", kind: "api", detail: "HTTP 402 quotes, agent wallets, metering, and partner service settlement" },
   { provider: "supabase", name: "Supabase", kind: "api", detail: "Identity, realtime state, proof, and RLS" },
   { provider: "mcp", name: "MCP Gateway", kind: "mcp", detail: "Governed remote tools and resources" },
   { provider: "streamlabs", name: "Streamlabs", kind: "webhook", detail: "Broadcast scenes, sources, and show control" },
@@ -59,7 +60,7 @@ export function ConnectionsPage() {
   const rows = useMemo(() => catalog.map((item) => ({ ...item, connection: connections.find((connection) => connection.provider === item.provider) })), [connections]);
   const configure = (item: (typeof catalog)[number]) => {
     const current = connections.find((connection) => connection.provider === item.provider);
-    const defaults = item.provider === "printful" ? { endpoint: "https://api.printful.com", scopes: "products, orders, webhooks" } : item.provider === "stripe" ? { endpoint: "https://api.stripe.com", scopes: "checkout, payments, webhooks" } : item.provider === "h3at-management" ? { endpoint: "", scopes: "projects:read, workforce:read, pods:control, tools:invoke, proof:write" } : { endpoint: "", scopes: "" };
+    const defaults = item.provider === "printful" ? { endpoint: "https://api.printful.com", scopes: "products, orders, webhooks" } : item.provider === "stripe" ? { endpoint: "https://api.stripe.com", scopes: "checkout, payments, webhooks" } : item.provider === "x402" ? { endpoint: "https://x402.org", scopes: "discover, quote, authorize, pay, verify, settle, reconcile" } : item.provider === "h3at-management" ? { endpoint: "", scopes: "projects:read, workforce:read, pods:control, tools:invoke, proof:write" } : { endpoint: "", scopes: "" };
     setSelected(item); setEndpoint(current?.endpoint_url || defaults.endpoint); setScopes(current?.scopes.join(", ") || defaults.scopes); setSecret(""); setNotice(""); setPrintfulRuntime(null); setPayouts(null);
     if (item.provider === "printful") void loadPrintfulRuntimeStatus().then(setPrintfulRuntime).catch((error) => setNotice(error instanceof Error ? error.message : "Printful runtime status is unavailable."));
     if (item.provider === "stripe") void loadMerchPayouts(tenantId).then(setPayouts).catch((error) => setNotice(error instanceof Error ? error.message : "Stripe payout status is unavailable."));
