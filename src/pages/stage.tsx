@@ -556,7 +556,7 @@ export function AMXXRStagePage() {
   };
   const updateProgramMedia = (
     programMedia: typeof production.state.programMedia,
-  ) => production.update({ programMedia });
+  ) => production.update({ programMedia, screenRoutes: { center: "program", left: "program", right: "program" }, screenMedia: {} });
   useEffect(() => {
     const route = (event: Event) => {
       const { shot, asset } = (event as CustomEvent<{ shot: StageShot; asset: StageMediaRouteAsset }>).detail;
@@ -1135,7 +1135,7 @@ export function AMXXRStagePage() {
               live={production.state.live}
               audio={production.state.audio}
               programFeed={programChannel.feed}
-              programMedia={programChannel.route.startsWith("media:") ? production.state.programMedia : null}
+              programMedia={production.state.programMedia.url ? production.state.programMedia : null}
               screenRoutes={production.state.screenRoutes}
               videoFeeds={orderedVideoFeeds}
               mediaLibrary={videoLibrary}

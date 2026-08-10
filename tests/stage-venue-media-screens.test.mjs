@@ -4,7 +4,19 @@ import { readFile } from "node:fs/promises";
 
 test("routed program media is passed into the Three.js venue", async () => {
   const stage = await readFile(new URL("../src/pages/stage.tsx", import.meta.url), "utf8");
-  assert.match(stage, /programMedia=\{programChannel\.route\.startsWith\("media:"\)/);
+  const viewer = await readFile(new URL("../src/pages/stage-viewer.tsx", import.meta.url), "utf8");
+  assert.match(stage, /programMedia=\{production\.state\.programMedia\.url/);
+  assert.match(viewer, /const programMedia = production\.state\.programMedia\.url/);
+  assert.match(stage, /screenRoutes: \{ center: "program", left: "program", right: "program" \}/);
+});
+
+test("event promo provides a scheduled public landing experience", async () => {
+  const viewer = await readFile(new URL("../src/pages/stage-viewer.tsx", import.meta.url), "utf8");
+  const events = await readFile(new URL("../src/stage-events.ts", import.meta.url), "utf8");
+  assert.match(viewer, /className="stage-event-landing"/);
+  assert.match(viewer, /GET EVENT PASS/);
+  assert.match(viewer, /runtimeMinutes/);
+  assert.match(events, /runtimeMinutes: Math\.max\(15/);
 });
 
 test("URL media is normalized to one uncropped 16:9 texture across all venue screens", async () => {

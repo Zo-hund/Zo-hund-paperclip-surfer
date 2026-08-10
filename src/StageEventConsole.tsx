@@ -151,7 +151,12 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   };
   const takePromo = () => {
     if (!activeTier.promoMediaUrl) return setNotice("Add a promo video first.");
-    onUpdate({ programMedia: { ...DEFAULT_STAGE_PROGRAM_MEDIA, url: activeTier.promoMediaUrl, name: activeTier.promoMediaName || `${activeTier.label} promo`, contentType: "video/mp4", transport: "playing", startedAt: Date.now() }, cue: "sponsor" });
+    onUpdate({
+      programMedia: { ...DEFAULT_STAGE_PROGRAM_MEDIA, url: activeTier.promoMediaUrl, name: activeTier.promoMediaName || `${activeTier.label} promo`, contentType: activeTier.promoMediaUrl.includes(".webm") ? "video/webm" : "video/mp4", transport: "playing", startedAt: Date.now() },
+      screenRoutes: { center: "program", left: "program", right: "program" },
+      screenMedia: {},
+      cue: "sponsor",
+    });
     setNotice(`${activeTier.label} promo taken to Stage program.`);
   };
   const updateSeat = (seatId: string, patch: Partial<Pick<StageSeat, "status" | "guestName">>) => {
@@ -251,7 +256,7 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
     <section className="stage-control-section stage-event-promotion">
       <header><div><span className="eyebrow">PROMOTE ROOM</span><h2>Event identity</h2></div><Sparkles/></header>
       <label>Event name<input value={event.title} maxLength={72} onChange={(change) => updateEvent({ title: change.target.value })}/></label>
-      <div className="stage-event-fields"><label>Source room<select value={event.sourceRoom} onChange={(change) => updateEvent({ sourceRoom: change.target.value })}>{[...new Set([event.sourceRoom, ...connectedPods])].map((pod) => <option key={pod}>{pod}</option>)}</select></label><label>Starts<input type="datetime-local" value={localDateTime(event.startsAt)} onChange={(change) => { if (change.target.value) updateEvent({ startsAt: new Date(change.target.value).toISOString() }); }}/></label></div>
+      <div className="stage-event-fields"><label>Source room<select value={event.sourceRoom} onChange={(change) => updateEvent({ sourceRoom: change.target.value })}>{[...new Set([event.sourceRoom, ...connectedPods])].map((pod) => <option key={pod}>{pod}</option>)}</select></label><label>Starts<input type="datetime-local" value={localDateTime(event.startsAt)} onChange={(change) => { if (change.target.value) updateEvent({ startsAt: new Date(change.target.value).toISOString() }); }}/></label><label>Runtime (minutes)<input type="number" min="15" max="1440" step="15" value={event.runtimeMinutes} onChange={(change) => updateEvent({ runtimeMinutes: Math.max(15, Math.min(1440, Number(change.target.value) || 15)) })}/></label></div>
       <div className="stage-event-status" aria-label="Event status">{STATUSES.map((status) => <button key={status.id} className={event.status === status.id ? "active" : ""} onClick={() => updateEvent({ status: status.id })}>{status.label}</button>)}</div>
       <button className="stage-promote-button" onClick={promote}><DoorOpen/><span>PROMOTE {event.sourceRoom} TO STAGE</span></button>
       <div className="stage-viewer-publish"><a href={`/watch/${room}`} target="_blank" rel="noreferrer"><Eye/><span>OPEN LIVE VIEWER</span><ExternalLink/></a><button onClick={() => void copyViewerLink()} aria-label="Copy live viewer link" title="Copy live viewer link"><Copy/></button></div>

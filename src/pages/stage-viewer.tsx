@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Clapperboard, Maximize2, MonitorPlay, Radio, Share2, ShoppingBag, Ticket, Users, Volume2, VolumeX, Wifi, X } from "lucide-react";
+import { Box, CalendarClock, Clapperboard, Clock3, Maximize2, MonitorPlay, Radio, Share2, ShoppingBag, Ticket, Users, Volume2, VolumeX, Wifi, X } from "lucide-react";
 import {
   RemoteVideoTrack, Room, RoomEvent, Track, VideoQuality,
   type RemoteParticipant, type RemoteTrack, type RemoteTrackPublication,
@@ -78,6 +78,7 @@ export function StageLiveViewerPage() {
   const [participantCount, setParticipantCount] = useState(1);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioTrackCount, setAudioTrackCount] = useState(0);
+  const [landingDismissed, setLandingDismissed] = useState(false);
   const [notice, setNotice] = useState("");
   const [passesOpen, setPassesOpen] = useState(false);
   const [dismissedPassStart, setDismissedPassStart] = useState<number | null>(null);
@@ -214,7 +215,7 @@ export function StageLiveViewerPage() {
 
   const route = production.state.cameraRoutes[production.state.shot];
   const programFeed = useMemo(() => selectStageProgramFeed(feeds, production.state.shot, route), [feeds, production.state.shot, route]);
-  const programMedia = route?.startsWith("media:") ? production.state.programMedia : null;
+  const programMedia = production.state.programMedia.url ? production.state.programMedia : null;
   const showProgram = mode === "program" && Boolean(programFeed);
   const showProgramMedia = mode === "program" && Boolean(programMedia?.url);
   const screenMediaLibrary = useMemo(() => Object.values(production.state.screenMedia || {}).filter((asset): asset is NonNullable<typeof asset> => Boolean(asset)), [production.state.screenMedia]);
@@ -228,12 +229,19 @@ export function StageLiveViewerPage() {
   const channelLive = production.state.live || status === "live";
   const passCueActive = Boolean(production.state.passOverlay.visible && production.state.passOverlay.startedAt && viewerNow < production.state.passOverlay.startedAt + production.state.passOverlay.durationSeconds * 1000 && dismissedPassStart !== production.state.passOverlay.startedAt);
   const showPasses = passesOpen || passCueActive;
+  const eventPromo = production.state.event.ticketTiers.find((tier) => tier.promoMediaUrl);
+  const eventStarts = new Date(production.state.event.startsAt);
+  const eventEnds = new Date(eventStarts.getTime() + production.state.event.runtimeMinutes * 60_000);
+  const showEventLanding = !displayWall && !landingDismissed && !production.state.live && production.state.event.status !== "complete";
+  const countdownMs = Math.max(0, eventStarts.getTime() - viewerNow);
+  const countdownHours = Math.floor(countdownMs / 3_600_000);
+  const countdownMinutes = Math.floor((countdownMs % 3_600_000) / 60_000);
 
   useEffect(() => {
-    if (!production.state.passOverlay.visible) return;
-    const timer = window.setInterval(() => setViewerNow(Date.now()), 250);
+    if (!production.state.passOverlay.visible && (production.state.live || production.state.event.status === "complete")) return;
+    const timer = window.setInterval(() => setViewerNow(Date.now()), production.state.passOverlay.visible ? 250 : 30_000);
     return () => window.clearInterval(timer);
-  }, [production.state.passOverlay.visible, production.state.passOverlay.startedAt]);
+  }, [production.state.event.status, production.state.live, production.state.passOverlay.visible, production.state.passOverlay.startedAt]);
 
   const enableAudio = async () => {
     const room = roomRef.current;
@@ -316,6 +324,19 @@ export function StageLiveViewerPage() {
       <div className={`stage-viewer-live ${channelLive ? "live" : "standby"}`}><i/><span>{production.state.live ? "LIVE" : "STANDBY"}</span></div>
       <div className="stage-viewer-header-actions"><button className={showPasses ? "active" : ""} onClick={() => setPassesOpen((value)=>!value)} aria-label="Show event passes" title="Event passes"><Ticket/></button><button onClick={() => void share()} aria-label="Share live viewer" title="Share live viewer"><Share2/></button><button onClick={() => void fullscreen()} aria-label="Toggle fullscreen" title="Toggle fullscreen"><Maximize2/></button></div>
     </header>
+
+    {showEventLanding && <section className="stage-event-landing" aria-label="Event details">
+      <div className="stage-event-landing-media">
+        {eventPromo?.promoMediaUrl ? <video src={eventPromo.promoMediaUrl} muted playsInline autoPlay loop controls preload="metadata"/> : <div><Clapperboard/><span>EVENT PROMO COMING SOON</span></div>}
+      </div>
+      <div className="stage-event-landing-copy">
+        <span>{production.state.event.format.toUpperCase()} / {production.state.event.status.replace("-", " ").toUpperCase()}</span>
+        <h1>{production.state.event.title}</h1>
+        <p>{production.state.sponsor.headline}</p>
+        <div className="stage-event-landing-schedule"><span><CalendarClock/><b>{eventStarts.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</b><small>{eventStarts.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></span><span><Clock3/><b>{production.state.event.runtimeMinutes} MIN</b><small>ENDS {eventEnds.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></span><span><Radio/><b>{countdownMs ? `${countdownHours}H ${countdownMinutes}M` : "STARTING"}</b><small>UNTIL EVENT</small></span></div>
+        <div className="stage-event-landing-actions"><button onClick={() => setPassesOpen(true)}><Ticket/>GET EVENT PASS</button>{production.state.event.status === "doors-open" && <button className="secondary" onClick={() => setLandingDismissed(true)}><Box/>ENTER VENUE</button>}</div>
+      </div>
+    </section>}
 
     <section className="stage-viewer-title">
       <span>{production.state.event.format.toUpperCase()} / {production.state.event.sourceRoom}</span>
