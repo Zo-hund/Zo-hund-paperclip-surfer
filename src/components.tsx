@@ -33,6 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/dashboard", label: "Dashboard", icon: Activity },
     { to: "/partners", label: "Partners", icon: BriefcaseBusiness },
     { to: "/membership", label: "Membership", icon: Crown },
+    { to: "/connect", label: "Tap + Scan", icon: ScanLine },
     { to: "/marketplace/earn", label: "Earn", icon: CircleDollarSign },
     { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
     { to: "/missions", label: "Missions", icon: Radio },
@@ -48,6 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     { to: "/", label: "Home", icon: Home },
     { to: "/sponsor", label: "Partners", icon: BriefcaseBusiness },
     { to: "/membership", label: "Membership", icon: Crown },
+    { to: "/connect", label: "Tap + Scan", icon: ScanLine },
     { to: "/marketplace/merch", label: "Merch", icon: ShoppingBag },
   ];
   const primaryLabels = new Set(["Home", "Dashboard", "Missions", "Play", "Stage", "Nexus"]);
