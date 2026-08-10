@@ -19,11 +19,13 @@ interface MembershipCard3DProps {
 
 export function MembershipCard3D(props: MembershipCard3DProps) {
   const [flipped,setFlipped]=useState(false);
+  const [avatarFailed,setAvatarFailed]=useState(false);
   const card=useRef<HTMLDivElement>(null);
   const qr=useRef<HTMLCanvasElement>(null);
   const profileUrl=typeof window === "undefined" ? props.profilePath : `${window.location.origin}${props.profilePath}`;
 
   useEffect(()=>{if(qr.current)void QRCode.toCanvas(qr.current,profileUrl,{width:118,margin:1,color:{dark:"#061117",light:"#f7fcff"}})},[profileUrl]);
+  useEffect(()=>setAvatarFailed(false),[props.avatarUrl]);
 
   const move=(event:PointerEvent<HTMLDivElement>)=>{
     if(event.pointerType==="touch"||!card.current)return;
@@ -45,7 +47,7 @@ export function MembershipCard3D(props: MembershipCard3DProps) {
             <div className="membership-card-scan"/>
             <header><span className="membership-card-mark"><Sparkles/></span><div><b>AMX AIR HUBS</b><small>DIGITAL MEMBERSHIP</small></div><Wifi/></header>
             <div className={`membership-card-identity ${props.avatarUrl ? "has-avatar" : ""}`}>
-              {props.avatarUrl && <img className="membership-card-avatar" src={props.avatarUrl} alt=""/>}
+              {props.avatarUrl && !avatarFailed ? <img className="membership-card-avatar" src={props.avatarUrl} alt={`${props.memberName} profile`} onError={()=>setAvatarFailed(true)}/> : <span className="membership-card-avatar membership-card-avatar-fallback" aria-hidden="true">{props.memberName.trim().slice(0,2).toUpperCase() || "AM"}</span>}
               <div><span>MEMBER</span><h2>{props.memberName}</h2><p>{props.organization} / {props.organizationType}</p></div>
             </div>
             <footer><div><small>MEMBER ID</small><code>{props.memberId}</code></div><div><small>LEVEL</small><b>{props.level}</b></div><BadgeCheck/></footer>
