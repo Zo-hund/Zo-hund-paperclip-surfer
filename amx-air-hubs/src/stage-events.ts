@@ -36,6 +36,7 @@ export interface StageEventState {
   status: StageEventStatus;
   sourceRoom: string;
   startsAt: string;
+  runtimeMinutes: number;
   ticketTiers: StageTicketTier[];
   seats: StageSeat[];
 }
@@ -49,6 +50,7 @@ export interface StageEventPreset {
   vipSeats: number;
   accent: string;
   defaultTitle: string;
+  runtimeMinutes: number;
   ticketTiers: StageTicketTier[];
 }
 
@@ -62,6 +64,7 @@ export const STAGE_EVENT_PRESETS: StageEventPreset[] = [
     vipSeats: 8,
     accent: "#55e6ff",
     defaultTitle: "AMX Future Skills Summit",
+    runtimeMinutes: 180,
     ticketTiers: [
       { id: "general", label: "General", access: "Main stage + Pods", capacity: 36 },
       { id: "vip", label: "VIP", access: "Front row + lounge", capacity: 8 },
@@ -77,6 +80,7 @@ export const STAGE_EVENT_PRESETS: StageEventPreset[] = [
     vipSeats: 8,
     accent: "#ff63de",
     defaultTitle: "AMX XR Con",
+    runtimeMinutes: 240,
     ticketTiers: [
       { id: "general", label: "Explorer", access: "Expo + creator stage", capacity: 32 },
       { id: "vip", label: "Creator VIP", access: "Priority demos + lounge", capacity: 8 },
@@ -92,6 +96,7 @@ export const STAGE_EVENT_PRESETS: StageEventPreset[] = [
     vipSeats: 4,
     accent: "#79eea8",
     defaultTitle: "AMX Innovation Expo",
+    runtimeMinutes: 360,
     ticketTiers: [
       { id: "general", label: "Expo Pass", access: "Floor + showcases", capacity: 44 },
       { id: "vip", label: "Partner", access: "Lounge + hosted tour", capacity: 8 },
@@ -162,6 +167,7 @@ export function defaultStageEvent(room = "AMXSTAGE"): StageEventState {
     status: "draft",
     sourceRoom: "AMX-MAIN",
     startsAt: startsAt.toISOString(),
+    runtimeMinutes: preset.runtimeMinutes,
     ticketTiers: preset.ticketTiers.map((tier) => ({ ...tier })),
     seats: createStageSeats(preset.id),
   };
@@ -205,6 +211,7 @@ export function normalizeStageEvent(value: Partial<StageEventState> | undefined,
     title: String(value?.title || preset.defaultTitle).trim().slice(0, 72),
     sourceRoom,
     startsAt: value?.startsAt && !Number.isNaN(Date.parse(value.startsAt)) ? value.startsAt : fallback.startsAt,
+    runtimeMinutes: Math.max(15, Math.min(1440, Math.round(Number(value?.runtimeMinutes) || preset.runtimeMinutes))),
     ticketTiers: tiers,
     seats,
   } satisfies StageEventState;
