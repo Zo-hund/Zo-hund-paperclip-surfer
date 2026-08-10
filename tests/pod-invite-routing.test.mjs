@@ -19,3 +19,12 @@ test("public pass preview signs members in before consuming an invite use", asyn
   assert.match(source, /Sign in to unlock pass/);
   assert.match(source, /QR and ZKODE are separate credentials/);
 });
+
+test("general event passes route to the live viewer instead of WebXR", async () => {
+  const invites = await readFile(new URL("../src/pod-invites.ts", import.meta.url), "utf8");
+  const page = await readFile(new URL("../src/pages/invites.tsx", import.meta.url), "utf8");
+  assert.match(invites, /isStageAudiencePass/);
+  assert.match(invites, /watch\/\$\{encodeURIComponent\(invite\.roomCode\)\}/);
+  assert.match(page, /if\(!isStageAudiencePass\(accepted\)\)joinImmersiveRoomFromInvite/);
+  assert.match(page, /Unlock pass and watch live/);
+});
