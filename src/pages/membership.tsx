@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Check, Crown, ExternalLink, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { PageHeader, StatusPill } from "../components";
 import { useMemberAuth } from "../member-auth";
-import { createMembershipCheckout, createMembershipPortal, loadMemberSubscription, loadMembershipCatalog, type MemberSubscription, type MembershipCatalog, type MembershipPlan } from "../membership-platform";
+import { createMembershipCheckout, createMembershipPortal, loadMemberSubscription, loadMembershipCatalog, reconcileMembershipCheckout, type MemberSubscription, type MembershipCatalog, type MembershipPlan } from "../membership-platform";
 import { getActiveTenant } from "../operations";
 
 const money = (amountCents: number, currency: string) => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(amountCents / 100);
@@ -28,6 +28,22 @@ export function MembershipPage() {
     if (!auth.session) { setSubscription(null); return; }
     void loadMemberSubscription(tenantId).then(setSubscription).catch((error) => setNotice(error instanceof Error ? error.message : "Membership status could not be loaded."));
   }, [auth.session?.user.id, tenantId]);
+  useEffect(() => {
+    const sessionId = searchParams.get("session_id");
+    if (!auth.session || searchParams.get("checkout") !== "success" || !sessionId) return;
+    let cancelled = false;
+    setNotice("Payment received. Activating your membership now.");
+    void reconcileMembershipCheckout(tenantId, sessionId)
+      .then((result) => {
+        if (cancelled) return;
+        setSubscription(result.subscription);
+        setNotice(`Membership activated: ${result.planId.toUpperCase()} (${result.status}).`);
+      })
+      .catch((error) => {
+        if (!cancelled) setNotice(error instanceof Error ? error.message : "Payment received, but activation is still pending webhook confirmation.");
+      });
+    return () => { cancelled = true; };
+  }, [auth.session?.user.id, searchParams, tenantId]);
 
   const activePlan = useMemo(() => catalog?.plans.find((plan) => plan.id === (subscription?.planId || "explorer")), [catalog, subscription]);
   const subscribe = async (plan: MembershipPlan) => {

@@ -74,6 +74,32 @@ describe("TECH AT NITE membership commerce", () => {
     assert.ok(writes.some((entry) => entry.sql.startsWith("INSERT INTO membership_webhook_events")));
   });
 
+  test("reconciles completed checkout returns when async webhooks are delayed", async () => {
+    const originalFetch = globalThis.fetch;
+    const period = Math.floor(Date.now() / 1000) + 604800;
+    globalThis.fetch = async (input) => {
+      const target = String(input);
+      if (target.endsWith("/checkout/sessions/cs_test_return123")) {
+        return Response.json({ id: "cs_test_return123", mode: "subscription", payment_status: "paid", client_reference_id: "local-member", customer: "cus_return123", subscription: "sub_return123", metadata: { amx_membership_plan: "learner", amx_member_id: "local-member", tenant_id: "tech-at-nite" } });
+      }
+      if (target.endsWith("/subscriptions/sub_return123")) {
+        return Response.json({ id: "sub_return123", customer: "cus_return123", status: "active", current_period_end: period, cancel_at_period_end: false, metadata: { amx_membership_plan: "learner", amx_member_id: "local-member", tenant_id: "tech-at-nite" } });
+      }
+      throw new Error(`Unexpected request: ${target}`);
+    };
+    const writes = [];
+    const db = { prepare(sql) { return { bind(...values) { return { first: async () => null, run: async () => { writes.push({ sql, values }); return { success: true }; } }; } }; }, batch: async () => [] };
+    try {
+      const response = await worker.fetch(new Request("https://amx.example/api/membership/checkout-reconcile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tenantId: "tech-at-nite", sessionId: "cs_test_return123" }) }), { DB: db, STRIPE_SECRET_KEY: "sk_test", ASSETS: { fetch: async () => new Response("missing", { status: 404 }) } });
+      const body = await response.json();
+      assert.equal(response.status, 200);
+      assert.equal(body.subscription.planId, "learner");
+      assert.equal(body.subscription.status, "active");
+      assert.ok(body.subscription.managed);
+      assert.ok(writes.some((entry) => entry.sql.startsWith("INSERT INTO membership_subscriptions") && entry.values.includes("cs_test_return123")));
+    } finally { globalThis.fetch = originalFetch; }
+  });
+
   test("enables row-level security for member subscription records", async () => {
     const migration = await read("../supabase/migrations/20260805140000_membership_commerce.sql");
     assert.match(migration, /alter table public\.membership_subscriptions enable row level security/);
