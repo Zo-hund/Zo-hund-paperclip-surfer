@@ -5,6 +5,7 @@ import App from "./App";
 import { AppProvider } from "./AppContext";
 import { MemberAuthProvider } from "./member-auth";
 import "./styles.css";
+import "./event-merch.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode><BrowserRouter><MemberAuthProvider><AppProvider><App/></AppProvider></MemberAuthProvider></BrowserRouter></StrictMode>,

@@ -297,6 +297,21 @@ describe("AMX collective merch", () => {
     assert.match(viewer, /sponsor\.ctaUrl\?\.startsWith\("\/"\)/);
   });
 
+  test("curates event merch in Stage control and publishes it to the live viewer", async () => {
+    const consolePage = await read("../src/StageEventConsole.tsx");
+    const eventState = await read("../src/stage-events.ts");
+    const viewer = await read("../src/pages/stage-viewer.tsx");
+    const styles = await read("../src/event-merch.css");
+    assert.match(eventState, /merchProductIds: string\[\]/);
+    assert.match(eventState, /slice\(0, 6\)/);
+    assert.match(consolePage, /EVENT MERCH DROP/);
+    assert.match(consolePage, /loadMerchCatalog\(tenant\.id, event\.id\)/);
+    assert.match(viewer, /SHOP EVENT DROP/);
+    assert.match(viewer, /stage-viewer-merch/);
+    assert.match(viewer, /\/events\/\$\{production\.state\.event\.id\}\/merch/);
+    assert.match(styles, /@media\(max-width:700px\)/);
+  });
+
   test("defines tenant order and allocation RLS", async () => {
     const migration = await read("../supabase/migrations/20260802010000_merch_collective_economics.sql");
     const hardening = await read("../supabase/migrations/20260805070000_merch_policy_hardening.sql");

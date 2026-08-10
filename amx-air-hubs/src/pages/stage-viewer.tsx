@@ -14,6 +14,8 @@ import { stageSeatCounts } from "../stage-events";
 import type { RendererBackend } from "../webgpu";
 import { useMemberAuth } from "../member-auth";
 import { loadStageAdmissions, reserveStageAdmission, type StageAdmissionSnapshot } from "../stage-admissions";
+import { loadMerchCatalog, type MerchCatalog } from "../merch-platform";
+import { getActiveTenant } from "../operations";
 
 const AMXXRStageScene = lazy(async () => ({ default: (await import("../AMXXRStageScene")).AMXXRStageScene }));
 
@@ -84,6 +86,8 @@ export function StageLiveViewerPage() {
   const [landingDismissed, setLandingDismissed] = useState(false);
   const [notice, setNotice] = useState("");
   const [passesOpen, setPassesOpen] = useState(false);
+  const [merchOpen, setMerchOpen] = useState(false);
+  const [merchCatalog, setMerchCatalog] = useState<MerchCatalog | null>(null);
   const [dismissedPassStart, setDismissedPassStart] = useState<number | null>(null);
   const [viewerNow, setViewerNow] = useState(Date.now());
   const [backend, setBackend] = useState<RendererBackend>("webgl2");
@@ -107,6 +111,9 @@ export function StageLiveViewerPage() {
     refresh();
     const timer = window.setInterval(refresh, 5_000);
     return () => window.clearInterval(timer);
+  }, [production.state.event.id]);
+  useEffect(() => {
+    void loadMerchCatalog(getActiveTenant(), production.state.event.id).then(setMerchCatalog).catch(() => setMerchCatalog(null));
   }, [production.state.event.id]);
 
   const addFeed = useCallback((track: RemoteVideoTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
@@ -243,6 +250,7 @@ export function StageLiveViewerPage() {
   const passCueActive = Boolean(production.state.passOverlay.visible && production.state.passOverlay.startedAt && viewerNow < production.state.passOverlay.startedAt + production.state.passOverlay.durationSeconds * 1000 && dismissedPassStart !== production.state.passOverlay.startedAt);
   const showPasses = passesOpen || passCueActive;
   const eventPromo = production.state.event.ticketTiers.find((tier) => tier.promoMediaUrl);
+  const eventMerch = (merchCatalog?.products || []).filter((product) => production.state.event.merchProductIds.includes(product.id));
   const eventStarts = new Date(production.state.event.startsAt);
   const eventEnds = new Date(eventStarts.getTime() + production.state.event.runtimeMinutes * 60_000);
   const showEventLanding = !displayWall && !landingDismissed && !production.state.live && production.state.event.status !== "complete";
@@ -347,7 +355,7 @@ export function StageLiveViewerPage() {
     <header className="stage-viewer-topbar">
       <div className="stage-viewer-brand"><img src="/brand/amx-air-hubs-brand.png" alt="AMX AIR Hubs"/><span><b>AMX AIR HUBS.CC</b><small>XR STAGE / LIVE</small></span></div>
       <div className={`stage-viewer-live ${channelLive ? "live" : "standby"}`}><i/><span>{production.state.live ? "LIVE" : "STANDBY"}</span></div>
-      <div className="stage-viewer-header-actions"><button className={showPasses ? "active" : ""} onClick={() => setPassesOpen((value)=>!value)} aria-label="Show event passes" title="Event passes"><Ticket/></button><button onClick={() => void share()} aria-label="Share live viewer" title="Share live viewer"><Share2/></button><button onClick={() => void fullscreen()} aria-label="Toggle fullscreen" title="Toggle fullscreen"><Maximize2/></button></div>
+      <div className="stage-viewer-header-actions">{eventMerch.length > 0 && <button className={merchOpen ? "active" : ""} onClick={() => { setMerchOpen((value)=>!value); setPassesOpen(false); }} aria-label="Show event merchandise" title="Event merchandise"><ShoppingBag/></button>}<button className={showPasses ? "active" : ""} onClick={() => { setPassesOpen((value)=>!value); setMerchOpen(false); }} aria-label="Show event passes" title="Event passes"><Ticket/></button><button onClick={() => void share()} aria-label="Share live viewer" title="Share live viewer"><Share2/></button><button onClick={() => void fullscreen()} aria-label="Toggle fullscreen" title="Toggle fullscreen"><Maximize2/></button></div>
     </header>
 
     {showEventLanding && <section className="stage-event-landing" aria-label="Event details">
@@ -359,7 +367,8 @@ export function StageLiveViewerPage() {
         <h1>{production.state.event.title}</h1>
         <p>{production.state.sponsor.headline}</p>
         <div className="stage-event-landing-schedule"><span><CalendarClock/><b>{eventStarts.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</b><small>{eventStarts.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></span><span><Clock3/><b>{production.state.event.runtimeMinutes} MIN</b><small>ENDS {eventEnds.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></span><span><Radio/><b>{countdownMs ? `${countdownHours}H ${countdownMinutes}M` : "STARTING"}</b><small>UNTIL EVENT</small></span></div>
-        <div className="stage-event-landing-actions"><button onClick={() => setPassesOpen(true)}><Ticket/>GET EVENT PASS</button>{production.state.event.status === "doors-open" && <button className="secondary" onClick={() => setLandingDismissed(true)}><Box/>ENTER VENUE</button>}</div>
+        <div className="stage-event-landing-actions"><button onClick={() => { setPassesOpen(true); setMerchOpen(false); }}><Ticket/>GET EVENT PASS</button>{eventMerch.length > 0 && <button className="secondary" onClick={() => { setMerchOpen(true); setPassesOpen(false); }}><ShoppingBag/>SHOP EVENT DROP</button>}{production.state.event.status === "doors-open" && <button className="secondary" onClick={() => setLandingDismissed(true)}><Box/>ENTER VENUE</button>}</div>
+        {eventMerch.length > 0 && <div className="stage-event-merch-shelf"><span>{production.state.event.merchHeadline}</span>{eventMerch.slice(0, 3).map((product) => <a key={product.id} href={`/events/${production.state.event.id}/merch`}><img src={product.imageUrl} alt="" onError={(change) => { change.currentTarget.onerror = null; change.currentTarget.src = "/merch/amx-merch-collection.png"; }}/><b>{product.name}</b><small>{product.partnerName}</small></a>)}</div>}
       </div>
     </section>}
 
@@ -369,6 +378,8 @@ export function StageLiveViewerPage() {
       <p>{production.state.sponsor.headline}</p>
     </section>
     {showPasses && <section className="stage-viewer-tickets" aria-label="Event passes"><header><span><Ticket/><b>EVENT PASSES + SEATS</b></span>{passCueActive && <small>{Math.max(1, Math.ceil(((production.state.passOverlay.startedAt || viewerNow) + production.state.passOverlay.durationSeconds * 1000 - viewerNow) / 1000))}S</small>}<button onClick={()=>{ setPassesOpen(false); setDismissedPassStart(production.state.passOverlay.startedAt); }} aria-label="Close event passes"><X/></button></header><div>{production.state.event.ticketTiers.map((tier) => { const available = admissions?.availableByTier[tier.id]; return <article key={tier.id}><span><b>{tier.label}</b><small>{tier.access}</small></span><strong>{tier.priceCents ? `$${(tier.priceCents / 100).toFixed(2)}` : "PASS"}</strong><em className={available === 0 ? "sold-out" : ""}>{available == null ? "SYNCING" : `${available} AVAILABLE`}</em><button disabled={reservationBusy || available === 0} onClick={() => void reservePass(tier.id)}>{auth.session ? "RESERVE TO PROFILE" : "RESERVE AS GUEST"}</button>{tier.checkoutUrl && <a href={tier.checkoutUrl} target="_blank" rel="noreferrer">BUY PASS</a>}{reserveTier === tier.id && !auth.session && <input value={guestName} maxLength={80} autoFocus placeholder="GUEST NAME" onChange={(event) => setGuestName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void reservePass(tier.id); }}/>} {tier.priceCents ? Boolean(tier.resourceUrls?.length) && <small>{tier.resourceUrls?.length || 0} DOWNLOADS INCLUDED</small> : (tier.resourceUrls || []).map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">RESOURCE {index + 1}</a>)}</article>; })}</div>{admissions && <footer><span><Users/><b>{admissions.reservations.length} RESERVED</b><small>{admissions.availableSeats} PHYSICAL SEATS / UPDATES EVERY 5S</small></span><div>{admissions.reservations.slice(0, 8).map((reservation) => reservation.profilePath ? <a key={reservation.id} href={reservation.profilePath}>{reservation.avatarUrl ? <img src={reservation.avatarUrl} alt=""/> : <Users/>}<span>{reservation.identityType}<small>{reservation.seatId}</small></span></a> : <span key={reservation.id}>{reservation.avatarUrl ? <img src={reservation.avatarUrl} alt=""/> : <Users/>}<span>{reservation.identityType}<small>{reservation.seatId}</small></span></span>)}</div></footer>}</section>}
+
+    {merchOpen && eventMerch.length > 0 && <section className="stage-viewer-merch" aria-label="Event merchandise"><header><span><ShoppingBag/><b>{production.state.event.merchHeadline}</b></span><small>{eventMerch.length} ITEMS</small><button onClick={() => setMerchOpen(false)} aria-label="Close event merchandise"><X/></button></header><div>{eventMerch.map((product) => { const variant = product.variants.find((item) => item.available) || product.variants[0]; return <a key={product.id} href={`/events/${production.state.event.id}/merch`}><img src={product.imageUrl} alt="" onError={(change) => { change.currentTarget.onerror = null; change.currentTarget.src = "/merch/amx-merch-collection.png"; }}/><span><b>{product.name}</b><small>{product.partnerName}</small></span><strong>{variant?.priceCents ? `$${(variant.priceCents / 100).toFixed(2)}` : "VIEW"}</strong></a>; })}</div><a className="stage-viewer-merch-shop" href={`/events/${production.state.event.id}/merch`}><ShoppingBag/>SHOP THE FULL EVENT DROP</a></section>}
 
     <div className="stage-viewer-metrics">
       <span><Users/><b>{seatCounts.checkedIn}</b><small>CHECKED IN</small></span>

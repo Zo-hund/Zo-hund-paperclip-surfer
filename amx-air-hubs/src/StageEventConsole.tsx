@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, CreditCard, Crown, DoorOpen, ExternalLink, Eye, Play, QrCode, Send, ShieldCheck, Sparkles, TicketCheck, Trash2, Upload, UserPlus, Users, Video } from "lucide-react";
+import { Armchair, Ban, CalendarClock, CheckCircle2, Circle, Clock3, Copy, CreditCard, Crown, DoorOpen, ExternalLink, Eye, PackageCheck, Play, QrCode, Send, ShieldCheck, ShoppingBag, Sparkles, TicketCheck, Trash2, Upload, UserPlus, Users, Video } from "lucide-react";
 import { QRCodeCard } from "./components";
 import { getActiveTenant } from "./operations";
 import { absoluteInviteUrl, createPodInvite, getOwnedInviteZkode, getOwnedPodInvite, resolvePodInvite, revokePodInvite, storeOwnedPodInvite, type PodInvite } from "./pod-invites";
@@ -9,6 +9,7 @@ import { getTenantRecord } from "./tenant-management";
 import { createStageTicketPaymentLink } from "./stage-ticketing";
 import { DEFAULT_STAGE_PROGRAM_MEDIA } from "./stage-program-media";
 import { loadStageAdmissions, publishStageAdmissions, type StageAdmissionSnapshot } from "./stage-admissions";
+import { loadMerchCatalog, type MerchCatalog } from "./merch-platform";
 
 interface Props {
   room: string;
@@ -56,6 +57,7 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [admissions, setAdmissions] = useState<StageAdmissionSnapshot | null>(null);
+  const [merchCatalog, setMerchCatalog] = useState<MerchCatalog | null>(null);
   const [selectedSection, setSelectedSection] = useState<StageSeatSection>("house");
   const [selectedSeatId, setSelectedSeatId] = useState(() => event.seats.find((seat) => seat.section === "house")?.id || event.seats[0]?.id || "");
   const [guestDraft, setGuestDraft] = useState("");
@@ -109,7 +111,16 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
     return () => window.clearInterval(timer);
   }, [event.id]);
 
+  useEffect(() => {
+    void loadMerchCatalog(tenant.id, event.id).then(setMerchCatalog).catch(() => setMerchCatalog(null));
+  }, [event.id, tenant.id]);
+
   const updateEvent = (patch: Partial<StageEventState>) => onUpdate({ event: { ...event, ...patch } });
+  const toggleEventMerch = (productId: string) => {
+    const selected = event.merchProductIds.includes(productId);
+    if (!selected && event.merchProductIds.length >= 6) return setNotice("Event merch is limited to six featured products.");
+    updateEvent({ merchProductIds: selected ? event.merchProductIds.filter((id) => id !== productId) : [...event.merchProductIds, productId] });
+  };
   const selectFormat = (format: StageEventFormat) => {
     const next = stageEventPreset(format);
     const seats = createStageSeats(format);
@@ -276,6 +287,17 @@ export function StageEventConsole({ room, event, connectedPods, generalSeats, vi
       <div className="stage-event-status" aria-label="Event status">{STATUSES.map((status) => <button key={status.id} className={event.status === status.id ? "active" : ""} onClick={() => updateEvent({ status: status.id })}>{status.label}</button>)}</div>
       <button className="stage-promote-button" onClick={promote}><DoorOpen/><span>PROMOTE {event.sourceRoom} TO STAGE</span></button>
       <div className="stage-viewer-publish"><a href={`/watch/${room}`} target="_blank" rel="noreferrer"><Eye/><span>OPEN LIVE VIEWER</span><ExternalLink/></a><button onClick={() => void copyViewerLink()} aria-label="Copy live viewer link" title="Copy live viewer link"><Copy/></button></div>
+    </section>
+
+    <section className="stage-control-section stage-event-merch">
+      <header><div><span className="eyebrow">EVENT MERCH DROP</span><h2>Official collection</h2></div><ShoppingBag/></header>
+      <label>Collection headline<input value={event.merchHeadline} maxLength={80} onChange={(change) => updateEvent({ merchHeadline: change.target.value })}/></label>
+      <div className="stage-event-merch-grid">{merchCatalog?.products.map((product) => {
+        const selected = event.merchProductIds.includes(product.id);
+        const price = product.variants.find((variant) => variant.available)?.priceCents || product.variants[0]?.priceCents || 0;
+        return <button key={product.id} className={selected ? "selected" : ""} onClick={() => toggleEventMerch(product.id)}><img src={product.imageUrl} alt="" onError={(change) => { change.currentTarget.onerror = null; change.currentTarget.src = "/merch/amx-merch-collection.png"; }}/><span><b>{product.name}</b><small>{price ? `$${(price / 100).toFixed(2)} / ${product.collectiveSharePercent}% to ${product.partnerName}` : "SELECT VARIANT IN STORE"}</small></span>{selected ? <PackageCheck/> : <ShoppingBag/>}</button>;
+      })}</div>
+      <div className="stage-event-merch-actions"><small>{event.merchProductIds.length}/6 FEATURED</small><a href={`/events/${event.id}/merch`} target="_blank" rel="noreferrer"><ExternalLink/>OPEN EVENT STORE</a></div>
     </section>
 
     <section className="stage-control-section stage-seat-manager">
