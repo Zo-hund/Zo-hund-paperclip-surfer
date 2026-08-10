@@ -21,6 +21,7 @@ import { PathfinderFacilitatorPage, PathfinderTrainingMissionPage } from "./page
 import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from "./pages/partners";
 import { H3ATPartnerPage } from "./pages/h3at-partner";
 import { TenantLaunchKitPage } from "./pages/tenant-launch-kit";
+import { ConnectionScannerPage } from "./pages/connect-scanner";
 import { RequireMember } from "./member-auth";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
@@ -40,6 +41,7 @@ function ShellRoutes() {
     <Route path="/" element={<HomePage/>}/>
     <Route path="/account" element={<AccountPage/>}/>
     <Route path="/membership" element={<MembershipPage/>}/>
+    <Route path="/connect" element={<ConnectionScannerPage/>}/>
     <Route path="/board" element={<PublicBoardPage/>}/>
     <Route path="/members/:slug" element={<PublicMemberProfilePage/>}/>
     <Route path="/role" element={<RequireMember><RoleSelectPage/></RequireMember>}/>
