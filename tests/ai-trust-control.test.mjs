@@ -9,6 +9,8 @@ const page = read("src/pages/trust-control.tsx");
 const styles = read("src/trust-control.css");
 const worker = read("worker.js");
 const migration = read("drizzle/0015_ai_trust_control.sql");
+const schema = read("db/schema.sql");
+const supabaseMigration = read("supabase/migrations/20260811090000_ai_trust_control.sql");
 
 test("AI Trust Command Center is operator gated and discoverable", () => {
   assert.match(routes, /path="\/control\/trust" element={<RequireMember roles=\{\["operator"\]\}>\{deferred\(<TrustControlPage\/>\)\}/);
@@ -30,10 +32,21 @@ test("trust APIs enforce operator identity and explicit Live approval", () => {
 test("trust ledger persists tenant-scoped passports, reviews, approvals, and audit evidence", () => {
   for (const table of ["trust_passports", "trust_agents", "trust_reviews", "trust_live_approvals", "trust_audit_events"]) {
     assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+    assert.match(schema, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
     assert.match(worker, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
   }
   assert.match(worker, /WHERE tenant_id = \?/);
   assert.match(worker, /trustAuditStatement/);
+});
+
+test("Supabase trust records are tenant-scoped with append-only audit permissions", () => {
+  for (const table of ["trust_passports", "trust_agents", "trust_reviews", "trust_live_approvals", "trust_audit_events"]) {
+    assert.match(supabaseMigration, new RegExp(`alter table public\\.${table} enable row level security`));
+  }
+  assert.match(supabaseMigration, /private\.can_manage_connection_tenant\(tenant_id\)/);
+  assert.match(supabaseMigration, /grant select, insert on public\.trust_audit_events to authenticated/);
+  assert.doesNotMatch(supabaseMigration, /grant .*update.*trust_audit_events/i);
+  assert.doesNotMatch(supabaseMigration, /grant .*delete.*trust_audit_events/i);
 });
 
 test("trust workspace has dedicated responsive states", () => {

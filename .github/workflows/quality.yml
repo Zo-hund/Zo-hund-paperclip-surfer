@@ -19,6 +19,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
@@ -34,4 +35,3 @@ jobs:
         run: |
           test -f drizzle/0013_amx_platform_foundation.sql
           test -f supabase/migrations/20260810230000_amx_platform_foundation.sql
-

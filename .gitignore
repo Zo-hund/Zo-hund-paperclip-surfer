@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+.iwsdk/
+dist/
+node_modules/
+*.log
+*.tsbuildinfo

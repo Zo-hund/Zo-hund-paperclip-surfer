@@ -24,6 +24,8 @@ This runs TypeScript, the Worker API contract suite, the Vite production build, 
 
 Sites owns the actual D1 and R2 resources. The `drizzle/` migration is packaged with every saved version.
 
+For the AI Trust Command Center, confirm `drizzle/0015_ai_trust_control.sql` is present in the archive. After staging deployment, sign in as an operator and verify that `/api/trust/state?tenantId=<tenant>` returns `persisted: true`. Initialize the registry once, refresh the page, and confirm the passports, reviews, and audit history remain available.
+
 Because this application is nested inside the upstream Paperclip monorepo, save Sites versions with the validated `amx-air-hubs/dist` deployment archive. A source-only Sites build starts at the monorepo root and is not the release path for this application.
 
 ## Hosted Configuration
@@ -74,3 +76,5 @@ WebXR device support cannot be fully validated in desktop browser emulation. Kee
 ## Rollback
 
 Deploy the last known-good saved Sites version. Verify `/api/health`, `/api/ready`, `/control/runtime`, an agent request, and a mission route after rollback.
+
+Trust migrations are additive. A rollback may leave the trust tables in place, but the prior application version does not use them. Do not delete trust audit data during an application rollback.
