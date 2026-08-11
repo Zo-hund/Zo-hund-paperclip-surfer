@@ -587,6 +587,7 @@ function publicApiRequest(request, url) {
 }
 
 function requiredMemberRoles(url) {
+  if (url.pathname.startsWith("/api/trust")) return ["operator"];
   if (url.pathname.startsWith("/api/air-connect")) return ["operator"];
   if (url.pathname.startsWith("/api/h3at/control-plane")) return ["operator"];
   if (url.pathname.startsWith("/api/x402/admin")) return ["operator"];
@@ -2065,6 +2066,16 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS network_alerts_tenant_idx ON network_alerts (tenant_id, status, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS connectivity_reports (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, runtime_id TEXT NOT NULL UNIQUE, event_id TEXT, program_id TEXT, report_type TEXT NOT NULL, payload TEXT NOT NULL, generated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS connectivity_reports_tenant_idx ON connectivity_reports (tenant_id, generated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS trust_passports (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, system_type TEXT NOT NULL, owner TEXT NOT NULL, risk_level TEXT NOT NULL, lifecycle_status TEXT NOT NULL, deployment_stage TEXT NOT NULL, model_provider TEXT NOT NULL, data_classification TEXT NOT NULL, disclosure_status TEXT NOT NULL, evidence_status TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS trust_passports_tenant_idx ON trust_passports (tenant_id, lifecycle_status, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS trust_agents (id TEXT NOT NULL, tenant_id TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, runtime TEXT NOT NULL, risk_level TEXT NOT NULL, tool_count INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, last_seen_at TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, id))"),
+    db.prepare("CREATE INDEX IF NOT EXISTS trust_agents_tenant_idx ON trust_agents (tenant_id, status, updated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS trust_reviews (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, subject_name TEXT NOT NULL, review_type TEXT NOT NULL, risk_level TEXT NOT NULL, status TEXT NOT NULL, requested_by TEXT NOT NULL, rationale TEXT, decided_by TEXT, created_at TEXT NOT NULL, decided_at TEXT, updated_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS trust_reviews_queue_idx ON trust_reviews (tenant_id, status, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS trust_live_approvals (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, passport_id TEXT NOT NULL, environment TEXT NOT NULL, status TEXT NOT NULL, approved_by TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS trust_live_approvals_idx ON trust_live_approvals (tenant_id, passport_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS trust_audit_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, event_type TEXT NOT NULL, actor_id TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, subject_name TEXT NOT NULL, risk_level TEXT NOT NULL, outcome TEXT NOT NULL, detail TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS trust_audit_tenant_idx ON trust_audit_events (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS api_rate_limits (bucket_key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, request_count INTEGER NOT NULL, expires_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS api_rate_limits_expiry_idx ON api_rate_limits (expires_at)"),
   ]).catch((error) => {
@@ -2074,10 +2085,129 @@ async function initialize(db) {
   await databaseInitialization;
 }
 
+function trustPassport(row) {
+  return { id: row.id, name: row.name, systemType: row.system_type, owner: row.owner, riskLevel: row.risk_level, lifecycleStatus: row.lifecycle_status, deploymentStage: row.deployment_stage, modelProvider: row.model_provider, dataClassification: row.data_classification, disclosureStatus: row.disclosure_status, evidenceStatus: row.evidence_status, updatedAt: row.updated_at };
+}
+
+async function readTrustState(db, tenantId, requestId) {
+  const [passportRows, agentRows, reviewRows, auditRows, nodeRows] = await Promise.all([
+    db.prepare("SELECT * FROM trust_passports WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 100").bind(tenantId).all(),
+    db.prepare("SELECT * FROM trust_agents WHERE tenant_id = ? ORDER BY status, updated_at DESC LIMIT 100").bind(tenantId).all(),
+    db.prepare("SELECT * FROM trust_reviews WHERE tenant_id = ? ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, created_at DESC LIMIT 100").bind(tenantId).all(),
+    db.prepare("SELECT * FROM trust_audit_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 200").bind(tenantId).all(),
+    db.prepare("SELECT id, name, location_id, status, last_heartbeat_at FROM network_nodes WHERE tenant_id = ? ORDER BY updated_at DESC LIMIT 50").bind(tenantId).all(),
+  ]);
+  return {
+    tenantId,
+    passports: (passportRows.results || []).map(trustPassport),
+    agents: (agentRows.results || []).map((row) => ({ id: row.id, name: row.name, role: row.role, runtime: row.runtime, riskLevel: row.risk_level, toolCount: Number(row.tool_count), status: row.status, lastSeenAt: row.last_seen_at })),
+    reviews: (reviewRows.results || []).map((row) => ({ id: row.id, subjectId: row.subject_id, subjectName: row.subject_name, reviewType: row.review_type, riskLevel: row.risk_level, status: row.status, requestedBy: row.requested_by, createdAt: row.created_at })),
+    audit: (auditRows.results || []).map((row) => ({ id: row.id, eventType: row.event_type, actorId: row.actor_id, subjectName: row.subject_name, riskLevel: row.risk_level, outcome: row.outcome, detail: row.detail, createdAt: row.created_at })),
+    nodes: (nodeRows.results || []).map((row) => ({ id: row.id, name: row.name, location: row.location_id, status: row.status === "active" ? "online" : row.status, lastHeartbeatAt: row.last_heartbeat_at || new Date(0).toISOString() })),
+    persisted: true,
+    requestId,
+  };
+}
+
+function trustAuditStatement(db, input) {
+  return db.prepare("INSERT INTO trust_audit_events (id, tenant_id, event_type, actor_id, subject_type, subject_id, subject_name, risk_level, outcome, detail, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(`trust-audit-${crypto.randomUUID()}`, input.tenantId, input.eventType, input.actorId, input.subjectType, input.subjectId, input.subjectName, input.riskLevel, input.outcome, input.detail, JSON.stringify(input.payload || {}), input.createdAt || new Date().toISOString());
+}
+
 async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
   if (!await allowRequest(request, env)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
   const member = !publicApiRequest(request, url) ? await verifyMemberRequest(request, env, requiredMemberRoles(url)) : null;
+  if (url.pathname.startsWith("/api/trust")) {
+    if (!env.DB) return reply({ error: "Trust ledger persistence is not configured", requestId }, 503);
+    await initialize(env.DB);
+    const actorId = safeId(member?.user?.id, "local-operator").slice(0, 96);
+    const tenantFromRequest = () => safeId(url.searchParams.get("tenantId"), "tech-at-nite").slice(0, 80);
+
+    if (request.method === "GET" && url.pathname === "/api/trust/state") {
+      const tenantId = tenantFromRequest();
+      await verifyTenantAccess(member, env, tenantId);
+      return reply(await readTrustState(env.DB, tenantId, requestId), 200, { "Cache-Control": "no-store" });
+    }
+
+    const body = await readJson(request, 64 * 1024);
+    const tenantId = safeId(body.tenantId, "tech-at-nite").slice(0, 80);
+    await verifyTenantAccess(member, env, tenantId);
+    const now = new Date().toISOString();
+
+    if (request.method === "POST" && url.pathname === "/api/trust/bootstrap") {
+      const passports = [
+        ["pass-jaz", "JAZ Learning Guide", "voice-agent", "AMX LABS", "R2", "active", "live", "LiveKit Agents", "member-context", "complete", "verified"],
+        ["pass-stage-vision", "Stage Vision Operator", "vision-agent", "AMX XR Stage", "R3", "active", "pit-stop", "AMX Vision Gateway", "camera-stream", "complete", "pending"],
+        ["pass-zero", "Zero Operator Runtime", "tool-agent", "AMX Control Plane", "R4", "draft", "simulation", "Agent Zero", "operator-private", "incomplete", "pending"],
+      ];
+      const statements = passports.map((item) => env.DB.prepare("INSERT OR IGNORE INTO trust_passports (id, tenant_id, name, system_type, owner, risk_level, lifecycle_status, deployment_stage, model_provider, data_classification, disclosure_status, evidence_status, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)").bind(`${tenantId}-${item[0]}`, tenantId, ...item.slice(1), now, now));
+      const agents = [
+        ["jaz", "JAZ", "Learning guide", "LiveKit", "R2", 6, "active"],
+        ["taz", "TAZ", "Production manager", "AMX Agent Gateway", "R3", 11, "active"],
+        ["zero", "ZERO", "Operator automation", "Isolated container", "R4", 8, "held"],
+      ];
+      for (const item of agents) statements.push(env.DB.prepare("INSERT OR IGNORE INTO trust_agents (id, tenant_id, name, role, runtime, risk_level, tool_count, status, last_seen_at, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)").bind(item[0], tenantId, ...item.slice(1), now, now, now));
+      statements.push(env.DB.prepare("INSERT OR IGNORE INTO trust_reviews (id, tenant_id, subject_type, subject_id, subject_name, review_type, risk_level, status, requested_by, created_at, updated_at) VALUES (?, ?, 'passport', ?, ?, ?, ?, 'pending', ?, ?, ?)").bind(`${tenantId}-review-stage-vision`, tenantId, `${tenantId}-pass-stage-vision`, "Stage Vision Operator", "Pit Stop evidence", "R3", "TAZ", now, now));
+      statements.push(env.DB.prepare("INSERT OR IGNORE INTO trust_reviews (id, tenant_id, subject_type, subject_id, subject_name, review_type, risk_level, status, requested_by, created_at, updated_at) VALUES (?, ?, 'passport', ?, ?, ?, ?, 'pending', ?, ?, ?)").bind(`${tenantId}-review-zero-tools`, tenantId, `${tenantId}-pass-zero`, "Zero Operator Runtime", "Live tool scope", "R4", "AMX Control Plane", now, now));
+      statements.push(trustAuditStatement(env.DB, { tenantId, eventType: "registry.initialized", actorId, subjectType: "tenant", subjectId: tenantId, subjectName: tenantId, riskLevel: "R1", outcome: "created", detail: "AMX baseline AI trust registry initialized.", createdAt: now }));
+      await env.DB.batch(statements);
+      return reply(await readTrustState(env.DB, tenantId, requestId), 201, { "Cache-Control": "no-store" });
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/trust/passports") {
+      const id = `trust-pass-${crypto.randomUUID()}`;
+      const name = safeLabel(body.name).slice(0, 140);
+      const riskLevel = ["R0", "R1", "R2", "R3", "R4", "R5"].includes(body.riskLevel) ? body.riskLevel : "R2";
+      if (!name) return reply({ error: "System name is required", requestId }, 400);
+      const reviewId = `trust-review-${crypto.randomUUID()}`;
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO trust_passports (id, tenant_id, name, system_type, owner, risk_level, lifecycle_status, deployment_stage, model_provider, data_classification, disclosure_status, evidence_status, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'draft', 'simulation', ?, ?, 'incomplete', 'pending', '{}', ?, ?)").bind(id, tenantId, name, safeId(body.systemType, "agent").slice(0, 64), safeLabel(body.owner, "AMX LABS").slice(0, 140), riskLevel, safeLabel(body.modelProvider, "AMX Agent Gateway").slice(0, 140), safeId(body.dataClassification, "internal").slice(0, 64), now, now),
+        env.DB.prepare("INSERT INTO trust_reviews (id, tenant_id, subject_type, subject_id, subject_name, review_type, risk_level, status, requested_by, created_at, updated_at) VALUES (?, ?, 'passport', ?, ?, 'Registration and disclosure', ?, 'pending', ?, ?, ?)").bind(reviewId, tenantId, id, name, riskLevel, actorId, now, now),
+        trustAuditStatement(env.DB, { tenantId, eventType: "passport.created", actorId, subjectType: "passport", subjectId: id, subjectName: name, riskLevel, outcome: "draft", detail: "AI passport registered in simulation stage.", createdAt: now }),
+      ]);
+      const row = await env.DB.prepare("SELECT * FROM trust_passports WHERE id = ? AND tenant_id = ?").bind(id, tenantId).first();
+      return reply({ passport: trustPassport(row), requestId }, 201, { "Cache-Control": "no-store" });
+    }
+
+    const reviewDecisionMatch = url.pathname.match(/^\/api\/trust\/reviews\/([A-Za-z0-9_-]{1,120})\/decision$/);
+    if (request.method === "POST" && reviewDecisionMatch) {
+      const reviewId = reviewDecisionMatch[1];
+      const decision = body.decision === "approved" ? "approved" : body.decision === "rejected" ? "rejected" : "";
+      if (!decision) return reply({ error: "Decision must be approved or rejected", requestId }, 400);
+      const review = await env.DB.prepare("SELECT * FROM trust_reviews WHERE id = ? AND tenant_id = ? LIMIT 1").bind(reviewId, tenantId).first();
+      if (!review) return reply({ error: "Trust review was not found", requestId }, 404);
+      if (review.status !== "pending") return reply({ error: "Trust review is already decided", requestId }, 409);
+      const nextStage = decision === "approved" ? "pit-stop" : "held";
+      const statements = [
+        env.DB.prepare("UPDATE trust_reviews SET status = ?, rationale = ?, decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ? AND status = 'pending'").bind(decision, safeLabel(body.rationale).slice(0, 1000), actorId, now, now, reviewId, tenantId),
+        env.DB.prepare("UPDATE trust_passports SET evidence_status = ?, deployment_stage = ?, updated_at = ? WHERE id = ? AND tenant_id = ?").bind(decision === "approved" ? "verified" : "pending", nextStage, now, review.subject_id, tenantId),
+        trustAuditStatement(env.DB, { tenantId, eventType: `review.${decision}`, actorId, subjectType: review.subject_type, subjectId: review.subject_id, subjectName: review.subject_name, riskLevel: review.risk_level, outcome: decision, detail: safeLabel(body.rationale, `Human review ${decision}.`).slice(0, 1000), createdAt: now }),
+      ];
+      await env.DB.batch(statements);
+      const updated = await env.DB.prepare("SELECT * FROM trust_reviews WHERE id = ?").bind(reviewId).first();
+      return reply({ review: { id: updated.id, subjectId: updated.subject_id, subjectName: updated.subject_name, reviewType: updated.review_type, riskLevel: updated.risk_level, status: updated.status, requestedBy: updated.requested_by, createdAt: updated.created_at }, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+
+    const liveApprovalMatch = url.pathname.match(/^\/api\/trust\/passports\/([A-Za-z0-9_-]{1,160})\/live-approval$/);
+    if (request.method === "POST" && liveApprovalMatch) {
+      if (body.operatorApproved !== true) return reply({ error: "Explicit operator approval is required", requestId }, 403);
+      const passportId = liveApprovalMatch[1];
+      const passport = await env.DB.prepare("SELECT * FROM trust_passports WHERE id = ? AND tenant_id = ? LIMIT 1").bind(passportId, tenantId).first();
+      if (!passport) return reply({ error: "AI passport was not found", requestId }, 404);
+      if (passport.evidence_status !== "verified" || passport.disclosure_status !== "complete") return reply({ error: "Verified evidence and complete disclosure are required before Live approval", requestId }, 409);
+      const unresolved = await env.DB.prepare("SELECT COUNT(*) AS count FROM trust_reviews WHERE tenant_id = ? AND subject_id = ? AND status = 'pending'").bind(tenantId, passportId).first();
+      if (Number(unresolved?.count || 0) > 0) return reply({ error: "All human reviews must be decided before Live approval", requestId }, 409);
+      const approvalId = `trust-live-${crypto.randomUUID()}`;
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO trust_live_approvals (id, tenant_id, passport_id, environment, status, approved_by, reason, created_at, expires_at) VALUES (?, ?, ?, 'production', 'approved', ?, ?, ?, NULL)").bind(approvalId, tenantId, passportId, actorId, safeLabel(body.reason, "Operator Live approval").slice(0, 1000), now),
+        env.DB.prepare("UPDATE trust_passports SET lifecycle_status = 'active', deployment_stage = 'live', updated_at = ? WHERE id = ? AND tenant_id = ?").bind(now, passportId, tenantId),
+        trustAuditStatement(env.DB, { tenantId, eventType: "deployment.live-approved", actorId, subjectType: "passport", subjectId: passportId, subjectName: passport.name, riskLevel: passport.risk_level, outcome: "approved", detail: safeLabel(body.reason, "Operator approved production deployment.").slice(0, 1000), createdAt: now, payload: { approvalId } }),
+      ]);
+      const updated = await env.DB.prepare("SELECT * FROM trust_passports WHERE id = ?").bind(passportId).first();
+      return reply({ passport: trustPassport(updated), approvalId, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+  }
   if (url.pathname.startsWith("/api/board/agent/")) {
     const token = String(request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     if (!env.AMX_AGENT_CONTROL_TOKEN) return reply({ error: "Agent board control is not configured", requestId }, 503);

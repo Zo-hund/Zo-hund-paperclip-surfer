@@ -36,6 +36,7 @@ const MissionWorldPage = lazy(async () => ({ default: (await import("./MissionWo
 const StageVenuePage = lazy(async () => ({ default: (await import("./pages/stage-venue")).StageVenuePage }));
 const PathfinderPassportPage = lazy(async () => ({ default: (await import("./PathfinderPassport")).PathfinderPassportPage }));
 const PathfinderCredentialPage = lazy(async () => ({ default: (await import("./PathfinderPassport")).PathfinderCredentialPage }));
+const TrustControlPage = lazy(async () => ({ default: (await import("./pages/trust-control")).TrustControlPage }));
 
 const deferred = (element: ReactNode) => <Suspense fallback={<div className="scene-loading" aria-label="Loading Pathfinder profile"/>}>{element}</Suspense>;
 
@@ -83,6 +84,7 @@ function ShellRoutes() {
     <Route path="/control/economy" element={<RequireMember roles={["operator"]}><X402EconomyPage/></RequireMember>}/>
     <Route path="/control/learning" element={<RequireMember roles={["trainer", "operator"]}><LearningControlPage/></RequireMember>}/>
     <Route path="/control/identity" element={<RequireMember roles={["operator"]}><IdentityControlPage/></RequireMember>}/>
+    <Route path="/control/trust" element={<RequireMember roles={["operator"]}>{deferred(<TrustControlPage/>)}</RequireMember>}/>
     <Route path="/training/pathfinder/facilitator" element={<RequireMember roles={["trainer", "operator"]}><PathfinderFacilitatorPage/></RequireMember>}/>
     <Route path="/connections" element={<RequireMember roles={["operator"]}><ConnectionsPage/></RequireMember>}/>
     <Route path="/nexus" element={<RequireMember><NexusPage/></RequireMember>}/>
