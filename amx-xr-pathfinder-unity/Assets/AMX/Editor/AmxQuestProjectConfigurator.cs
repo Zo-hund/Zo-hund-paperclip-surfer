@@ -45,6 +45,8 @@ namespace AMX.XR.Editor
         private const string MetaCameraRigPath = "Packages/com.meta.xr.sdk.core/Prefabs/OVRCameraRig.prefab";
         private const string MetaControllerPrefabPath = "Packages/com.meta.xr.sdk.core/Prefabs/OVRControllerPrefab.prefab";
         private const string DevelopmentApkPath = "Builds/Quest/AMX-XR-Path-Finder-development.apk";
+        private const string ReleaseApkPath = "Builds/Quest/AMX-XR-Path-Finder-release.apk";
+        private const string ReleaseManifestPath = "Builds/Quest/AMX-XR-Path-Finder-release.json";
         private static readonly string[] RequiredOpenXrFeatureIds =
         {
             "com.meta.openxr.feature.metaxr",
@@ -225,6 +227,107 @@ namespace AMX.XR.Editor
             }
 
             Debug.Log($"AMX Quest development APK created at {outputPath} ({report.summary.totalSize} bytes).");
+        }
+
+        [MenuItem("AMX XR/Build Quest Release APK")]
+        public static void BuildQuestReleaseApk()
+        {
+            Configure();
+            ConfigureReleaseSigning();
+            PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.Android,
+                Il2CppCompilerConfiguration.Release);
+            CreateStarterScene();
+
+            var outputPath = System.IO.Path.GetFullPath(ReleaseApkPath);
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
+            if (System.IO.File.Exists(outputPath)) System.IO.File.Delete(outputPath);
+
+            var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+            {
+                scenes = new[] { ScenePath },
+                locationPathName = outputPath,
+                target = BuildTarget.Android,
+                targetGroup = BuildTargetGroup.Android,
+                options = BuildOptions.None
+            });
+
+            if (report.summary.result != BuildResult.Succeeded)
+            {
+                throw new BuildFailedException($"Quest release APK build failed with {report.summary.totalErrors} errors.");
+            }
+
+            var sha256 = ComputeSha256(outputPath);
+            var manifest = new QuestReleaseManifest
+            {
+                appName = PlayerSettings.productName,
+                packageId = PlayerSettings.GetApplicationIdentifier(NamedBuildTarget.Android),
+                versionName = PlayerSettings.bundleVersion,
+                versionCode = PlayerSettings.Android.bundleVersionCode,
+                fileName = System.IO.Path.GetFileName(outputPath),
+                sizeBytes = new System.IO.FileInfo(outputPath).Length,
+                sha256 = sha256,
+                builtAtUtc = System.DateTime.UtcNow.ToString("O")
+            };
+            var manifestPath = System.IO.Path.GetFullPath(ReleaseManifestPath);
+            System.IO.File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
+            Debug.Log($"AMX Quest release APK created at {outputPath} ({manifest.sizeBytes} bytes, SHA256 {sha256}).");
+        }
+
+        private static void ConfigureReleaseSigning()
+        {
+            var keystorePath = RequiredEnvironmentVariable("AMX_QUEST_KEYSTORE_PATH");
+            var keystorePassword = RequiredEnvironmentVariable("AMX_QUEST_KEYSTORE_PASSWORD");
+            var keyAlias = RequiredEnvironmentVariable("AMX_QUEST_KEY_ALIAS");
+            var keyPassword = RequiredEnvironmentVariable("AMX_QUEST_KEY_PASSWORD");
+            var versionName = RequiredEnvironmentVariable("AMX_QUEST_VERSION_NAME");
+            var versionCodeValue = RequiredEnvironmentVariable("AMX_QUEST_VERSION_CODE");
+
+            if (!System.IO.File.Exists(keystorePath))
+            {
+                throw new BuildFailedException($"Quest release keystore does not exist: {keystorePath}");
+            }
+            if (!int.TryParse(versionCodeValue, out var versionCode) || versionCode < 1)
+            {
+                throw new BuildFailedException("AMX_QUEST_VERSION_CODE must be a positive integer.");
+            }
+
+            PlayerSettings.bundleVersion = versionName;
+            PlayerSettings.Android.bundleVersionCode = versionCode;
+            PlayerSettings.Android.useCustomKeystore = true;
+            PlayerSettings.Android.keystoreName = System.IO.Path.GetFullPath(keystorePath);
+            PlayerSettings.Android.keystorePass = keystorePassword;
+            PlayerSettings.Android.keyaliasName = keyAlias;
+            PlayerSettings.Android.keyaliasPass = keyPassword;
+        }
+
+        private static string RequiredEnvironmentVariable(string name)
+        {
+            var value = System.Environment.GetEnvironmentVariable(name);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new BuildFailedException($"{name} is required for a Quest release build.");
+            }
+            return value.Trim();
+        }
+
+        private static string ComputeSha256(string filePath)
+        {
+            using var stream = System.IO.File.OpenRead(filePath);
+            using var hash = System.Security.Cryptography.SHA256.Create();
+            return string.Concat(hash.ComputeHash(stream).Select(value => value.ToString("x2")));
+        }
+
+        [System.Serializable]
+        private sealed class QuestReleaseManifest
+        {
+            public string appName;
+            public string packageId;
+            public string versionName;
+            public int versionCode;
+            public string fileName;
+            public long sizeBytes;
+            public string sha256;
+            public string builtAtUtc;
         }
 
         private static void ConfigureOpenXr()

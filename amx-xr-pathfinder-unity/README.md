@@ -29,3 +29,35 @@ See `../amx-air-hubs/docs/UNITY_QUEST_INTEGRATION.md` for scene wiring, LiveKit,
 The starter scene contains a validated staging environment, mission runtime, proof replay service, a native LiveKit connector, MRUK device room loading, persistent Meta spatial anchors, bright preview lighting, a Meta XR camera rig with passthrough, and an `EditorOnly` preview camera.
 
 The official LiveKit Unity SDK can be pinned to `v1.4.0` with `https://github.com/livekit/client-sdk-unity.git#v1.4.0`. It currently identifies itself as Developer Preview; qualify it on Quest hardware before treating it as a production transport.
+
+## Meta Horizon Device Manager distribution
+
+The managed Quest release is an externally hosted APK with package ID
+`cc.amxairhubs.pathfinder`. Do not upload `AMX-XR-Path-Finder-development.apk`:
+it is a development build and uses Android's debug certificate.
+
+Set the release signing values in the current process and run the release build:
+
+```powershell
+$env:AMX_QUEST_KEYSTORE_PATH = 'C:\secure\amx-quest-release.keystore'
+$env:AMX_QUEST_KEYSTORE_PASSWORD = '<secret>'
+$env:AMX_QUEST_KEY_ALIAS = 'amx-quest-release'
+$env:AMX_QUEST_KEY_PASSWORD = '<secret>'
+$env:AMX_QUEST_VERSION_NAME = '1.0.0'
+$env:AMX_QUEST_VERSION_CODE = '1'
+.\Scripts\build-quest-release.ps1
+```
+
+The build emits:
+
+- `Builds/Quest/AMX-XR-Path-Finder-release.apk`
+- `Builds/Quest/AMX-XR-Path-Finder-release.json`
+
+The JSON contains the APK file name, package ID, version, size, build time, and
+SHA-256 value required by Device Manager. Host the APK at a direct HTTPS download
+URL, then use **Apps & content > Manage apps > Add app > Externally hosted**. Add
+the URL and SHA-256 value, complete Meta's compatibility scan, and assign the app
+first to a test preset before a fleet-wide rollout.
+
+Keep the keystore and passwords outside source control. Every future update must
+use the same signing key and a larger `AMX_QUEST_VERSION_CODE`.
