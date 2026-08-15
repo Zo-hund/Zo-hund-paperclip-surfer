@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import {
   Accessibility, Activity, BadgeCheck, Banknote, BookOpenCheck, Bot, BriefcaseBusiness, Cable, ChevronRight, CircleDollarSign, CircleUserRound, Download,
-  Camera, Clapperboard, Cpu, Crown, Gamepad2, Glasses, Home, Layers, LayoutGrid, LogIn, Menu, Move3d, Radio, ScanLine, Settings2, ShieldCheck, ShoppingBag, Smartphone, Volume2, VolumeX, X, Zap,
+  AppWindow, Camera, Clapperboard, Cpu, Crown, Gamepad2, Glasses, Home, Layers, LayoutGrid, LogIn, Menu, Move3d, Radio, ScanLine, Settings2, ShieldCheck, ShoppingBag, Smartphone, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import type { Agent, Mission } from "./data";
 import { sponsorConfig } from "./data";
@@ -31,6 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const memberNav = [
     { to: "/", label: "Home", icon: Home },
     { to: "/dashboard", label: "Dashboard", icon: Activity },
+    { to: "/portfolio", label: "Apps", icon: AppWindow },
     { to: "/learn", label: "Learn", icon: BookOpenCheck },
     { to: "/partners", label: "Partners", icon: BriefcaseBusiness },
     { to: "/membership", label: "Membership", icon: Crown },

@@ -25,6 +25,8 @@ import { PartnerCampaignResolverPage, PartnerJoinPage, PartnerPortalPage } from 
 import { H3ATPartnerPage } from "./pages/h3at-partner";
 import { TenantLaunchKitPage } from "./pages/tenant-launch-kit";
 import { ConnectionScannerPage } from "./pages/connect-scanner";
+import { PortfolioPage } from "./pages/portfolio";
+import { GPUComputePage } from "./pages/gpu-compute";
 import { RequireMember } from "./member-auth";
 import {
   AgentProfilePage, ComfortSettingsPage, ExperienceLauncherPage, HumanProfilePage,
@@ -45,6 +47,7 @@ function ShellRoutes() {
     <Route path="/account" element={<AccountPage/>}/>
     <Route path="/membership" element={<MembershipPage/>}/>
     <Route path="/connect" element={<ConnectionScannerPage/>}/>
+    <Route path="/portfolio" element={<PortfolioPage/>}/>
     <Route path="/board" element={<PublicBoardPage/>}/>
     <Route path="/members/:slug" element={<PublicMemberProfilePage/>}/>
     <Route path="/role" element={<RequireMember><RoleSelectPage/></RequireMember>}/>
@@ -83,6 +86,7 @@ function ShellRoutes() {
     <Route path="/control/economy" element={<RequireMember roles={["operator"]}><X402EconomyPage/></RequireMember>}/>
     <Route path="/control/learning" element={<RequireMember roles={["trainer", "operator"]}><LearningControlPage/></RequireMember>}/>
     <Route path="/control/identity" element={<RequireMember roles={["operator"]}><IdentityControlPage/></RequireMember>}/>
+    <Route path="/control/gpu" element={<RequireMember roles={["operator"]}><GPUComputePage/></RequireMember>}/>
     <Route path="/training/pathfinder/facilitator" element={<RequireMember roles={["trainer", "operator"]}><PathfinderFacilitatorPage/></RequireMember>}/>
     <Route path="/connections" element={<RequireMember roles={["operator"]}><ConnectionsPage/></RequireMember>}/>
     <Route path="/nexus" element={<RequireMember><NexusPage/></RequireMember>}/>

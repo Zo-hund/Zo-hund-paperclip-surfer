@@ -363,6 +363,8 @@ describe("AMX AIR Hubs Worker API", () => {
       LIVEKIT_API_KEY: "key",
       LIVEKIT_API_SECRET: "secret",
       RUNWAYML_API_SECRET: "runway-secret",
+      RUNPOD_API_KEY: "runpod-secret",
+      RUNPOD_ENDPOINT_ID: "endpoint-main",
       PROOF_SIGNING_SECRET: "proof-secret",
       DCIM_INGEST_TOKEN: "dcim-secret",
       OPS_ALERT_WEBHOOK_URL: "https://alerts.example.com/amx",
@@ -379,7 +381,7 @@ describe("AMX AIR Hubs Worker API", () => {
     assert.equal(body.mode, "full");
     assert.equal(body.deploymentTier, "production");
     assert.deepEqual(body.missingRequired, []);
-    assert.equal(body.required.length, 12);
+    assert.equal(body.required.length, 13);
   });
 
   test("requires a verified member session for private APIs", async () => {

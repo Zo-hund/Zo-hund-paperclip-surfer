@@ -53,6 +53,15 @@ function readLibrary(tenantId: string): StageMediaAsset[] {
   }
 }
 
+const STAGE_MEDIA_EVENT = "amx-stage-media-added";
+
+export function storeStageMediaAsset(tenantId: string, asset: StageMediaAsset) {
+  const next = [asset, ...readLibrary(tenantId).filter((item) => item.url !== asset.url)].slice(0, 24);
+  localStorage.setItem(mediaLibraryKey(tenantId), JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(STAGE_MEDIA_EVENT, { detail: { tenantId, asset } }));
+  return next;
+}
+
 export function StageProgramMediaDeck({ media, tenantId, onUpdate, onLibraryChange }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [source, setSource] = useState(media.url);
@@ -72,6 +81,17 @@ export function StageProgramMediaDeck({ media, tenantId, onUpdate, onLibraryChan
   useEffect(() => {
     setLibrary(readLibrary(tenantId));
     setPreview(null);
+  }, [tenantId]);
+  useEffect(() => {
+    const receiveAsset = (event: Event) => {
+      const detail = (event as CustomEvent<{ tenantId: string; asset: StageMediaAsset }>).detail;
+      if (!detail || detail.tenantId !== tenantId) return;
+      setLibrary(readLibrary(tenantId));
+      setPreview(detail.asset);
+      setMessage(`${detail.asset.name.toUpperCase()} READY FROM GPU COMPUTE`);
+    };
+    window.addEventListener(STAGE_MEDIA_EVENT, receiveAsset);
+    return () => window.removeEventListener(STAGE_MEDIA_EVENT, receiveAsset);
   }, [tenantId]);
   useEffect(() => {
     localStorage.setItem(mediaLibraryKey(tenantId), JSON.stringify(library));

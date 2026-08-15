@@ -7,6 +7,16 @@ const membershipCatalogCache = new Map();
 const PRINTFUL_API_BASE = "https://api.printful.com";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const STRIPE_API_VERSION = "2025-02-24.acacia";
+const RUNPOD_API_BASE = "https://api.runpod.ai/v2";
+const RUNPOD_TERMINAL_STATES = new Set(["COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"]);
+const RUNPOD_WORKLOAD_PROFILES = {
+  "realtime-video": { label: "Realtime video", endpointEnv: "RUNPOD_LIVE_ENDPOINT_ID", gpu: "RTX PRO 6000 Blackwell", maxSeconds: 300, approvalRequired: false, outputKind: "video" },
+  vision: { label: "Vision inspection", endpointEnv: "RUNPOD_LIVE_ENDPOINT_ID", gpu: "RTX PRO 6000 Blackwell", maxSeconds: 180, approvalRequired: false, outputKind: "analysis" },
+  render: { label: "Stage render", endpointEnv: "RUNPOD_RENDER_ENDPOINT_ID", gpu: "NVIDIA B200", maxSeconds: 1200, approvalRequired: false, outputKind: "video" },
+  "digital-twin": { label: "Digital twin simulation", endpointEnv: "RUNPOD_ENDPOINT_ID", gpu: "NVIDIA B200", maxSeconds: 1800, approvalRequired: false, outputKind: "simulation" },
+  "multimodal-agent": { label: "Multimodal agent", endpointEnv: "RUNPOD_ENDPOINT_ID", gpu: "NVIDIA B200", maxSeconds: 600, approvalRequired: false, outputKind: "analysis" },
+  training: { label: "Model training", endpointEnv: "RUNPOD_TRAINING_ENDPOINT_ID", fallbackEndpointEnv: "RUNPOD_ENDPOINT_ID", gpu: "NVIDIA B200", maxSeconds: 3600, approvalRequired: true, outputKind: "artifact" },
+};
 
 async function stripeRequest(env, path, params, idempotencyKey) {
   if (!env.STRIPE_SECRET_KEY) throw new HttpError(503, "Stripe Checkout is not configured");
@@ -295,7 +305,7 @@ const MAX_AGENT_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const MAX_GATEWAY_RESPONSE_BYTES = 2 * 1024 * 1024;
-const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "runway", "proof-signing", "telemetry", "observability"]);
+const REQUIRED_SERVICE_NAMES = new Set(["database", "media", "realtime", "rooms", "agent", "mcp", "plugins", "livekit", "runway", "runpod", "proof-signing", "telemetry", "observability"]);
 const PRODUCTION_REQUIRED_SERVICES = [...REQUIRED_SERVICE_NAMES];
 const DATA_CENTER_ADAPTERS = new Set(["redfish", "snmp", "modbus", "dcim"]);
 const MEDIA_TYPES = new Set([
@@ -574,6 +584,7 @@ function publicApiRequest(request, url) {
   if (request.method === "POST" && url.pathname === "/api/merch/printful-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/merch/stripe-webhook") return true;
   if (request.method === "POST" && url.pathname === "/api/membership/stripe-webhook") return true;
+  if (request.method === "POST" && url.pathname === "/api/runpod/callback") return true;
   if (request.method === "POST" && url.pathname === "/api/telemetry/data-center") return true;
   if (request.method === "GET" && url.pathname === "/api/board/public/feed") return true;
   if (url.pathname.startsWith("/api/board/agent/")) return true;
@@ -592,6 +603,7 @@ function requiredMemberRoles(url) {
   if (url.pathname.startsWith("/api/x402/admin")) return ["operator"];
   if (url.pathname.startsWith("/api/stage/workflows/") || url.pathname.startsWith("/api/stage/tickets/") || url.pathname.startsWith("/api/stage/admissions/") || url.pathname.startsWith("/api/livekit/egress/dj/") || url.pathname === "/api/livekit/monitor-token") return ["operator"];
   if (url.pathname.startsWith("/api/decart/")) return ["operator"];
+  if (url.pathname.startsWith("/api/runpod/")) return ["operator"];
   if (url.pathname.startsWith("/api/merch/admin/")) return ["operator"];
   if (url.pathname.startsWith("/api/membership/admin/")) return ["operator"];
   return ["member", "trainer", "operator"];
@@ -756,6 +768,7 @@ function runtimeReadiness(env) {
     plugins: serviceUrlConfigured(env.PLUGIN_GATEWAY_URL, ["https:", "http:"]),
     livekit: serviceUrlConfigured(env.LIVEKIT_URL, ["wss:", "ws:"]) && Boolean(env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET),
     runway: Boolean(String(env.RUNWAYML_API_SECRET || "").trim()),
+    runpod: Boolean(String(env.RUNPOD_API_KEY || "").trim() && runpodConfiguredEndpointIds(env).length),
     "proof-signing": Boolean(env.PROOF_SIGNING_SECRET),
     telemetry: Boolean(env.DB && env.DCIM_INGEST_TOKEN),
     observability: serviceUrlConfigured(env.OPS_ALERT_WEBHOOK_URL, ["https:"]) && Boolean(String(env.OPS_HEARTBEAT_TOKEN || "").trim()),
@@ -1973,6 +1986,222 @@ async function executeAirConnectAction(env, tenantId, action, body, actorId, req
   throw new HttpError(400, "Unsupported AIR Connect action");
 }
 
+function runpodConfiguredEndpointIds(env) {
+  return [...new Set([env.RUNPOD_ENDPOINT_ID, env.RUNPOD_LIVE_ENDPOINT_ID, env.RUNPOD_RENDER_ENDPOINT_ID, env.RUNPOD_TRAINING_ENDPOINT_ID]
+    .map((value) => safeId(value).slice(0, 96)).filter(Boolean))];
+}
+
+function runpodEndpointForWorkload(env, workload) {
+  const profile = RUNPOD_WORKLOAD_PROFILES[workload];
+  if (!profile) throw new HttpError(400, "Unsupported GPU workload");
+  const endpointId = safeId(env[profile.endpointEnv] || (profile.fallbackEndpointEnv ? env[profile.fallbackEndpointEnv] : "")).slice(0, 96);
+  if (!endpointId) throw new HttpError(503, `${profile.label} endpoint is not configured`);
+  return { endpointId, profile };
+}
+
+function runpodWorkloadCatalog(env) {
+  return Object.entries(RUNPOD_WORKLOAD_PROFILES).map(([id, profile]) => ({
+    id,
+    label: profile.label,
+    gpu: profile.gpu,
+    maxSeconds: profile.maxSeconds,
+    approvalRequired: profile.approvalRequired,
+    outputKind: profile.outputKind,
+    configured: Boolean(safeId(env[profile.endpointEnv] || (profile.fallbackEndpointEnv ? env[profile.fallbackEndpointEnv] : ""))),
+  }));
+}
+
+function runpodHourlyRate(env, gpuType) {
+  const configured = gpuType === "NVIDIA B200" ? Number(env.RUNPOD_B200_RATE_CENTS_HOUR) : Number(env.RUNPOD_LIVE_RATE_CENTS_HOUR);
+  return Number.isFinite(configured) && configured > 0 ? Math.round(configured) : gpuType === "NVIDIA B200" ? 864 : 350;
+}
+
+function runpodEstimatedCost(env, gpuType, maxSeconds) {
+  return Math.max(1, Math.ceil(runpodHourlyRate(env, gpuType) * maxSeconds / 3600));
+}
+
+async function runpodSignature(secret, jobId) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(secret)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(jobId)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function runpodRequest(env, endpointId, operation, init = {}) {
+  if (!String(env.RUNPOD_API_KEY || "").trim()) throw new HttpError(503, "Runpod API key is not configured");
+  if (!runpodConfiguredEndpointIds(env).includes(endpointId)) throw new HttpError(400, "Runpod endpoint is not allowlisted");
+  if (!/^(?:run|health|status\/[A-Za-z0-9_-]+|cancel\/[A-Za-z0-9_-]+)$/.test(operation)) throw new HttpError(400, "Runpod operation is not allowlisted");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(`${RUNPOD_API_BASE}/${endpointId}/${operation}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${String(env.RUNPOD_API_KEY)}`,
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+      },
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      logEvent("warn", "runpod.request_failed", { operation: operation.split("/")[0], status: response.status });
+      throw new HttpError(response.status === 429 ? 429 : 502, response.status === 429 ? "Runpod request limit reached" : "GPU provider request failed");
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if (error?.name === "AbortError") throw new HttpError(504, "GPU provider request timed out");
+    throw new HttpError(502, "GPU provider is unavailable");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function runpodDefaultPolicy(env, tenantId) {
+  const monthly = Math.max(100, Math.min(10_000_000, Math.round(Number(env.RUNPOD_MONTHLY_BUDGET_CENTS) || 25_000)));
+  const perJob = Math.max(25, Math.min(monthly, Math.round(Number(env.RUNPOD_PER_JOB_LIMIT_CENTS) || 2_500)));
+  return { tenantId, status: "active", monthlyBudgetCents: monthly, perJobLimitCents: perJob, allowedWorkloads: Object.keys(RUNPOD_WORKLOAD_PROFILES), allowedGpus: ["NVIDIA B200", "RTX PRO 6000 Blackwell"], maxConcurrentJobs: 3 };
+}
+
+function runpodPolicyFromRow(row, fallback) {
+  if (!row) return fallback;
+  return {
+    tenantId: row.tenant_id,
+    status: row.status,
+    monthlyBudgetCents: Number(row.monthly_budget_cents),
+    perJobLimitCents: Number(row.per_job_limit_cents),
+    allowedWorkloads: parseStoredJson(row.allowed_workloads, []),
+    allowedGpus: parseStoredJson(row.allowed_gpus, []),
+    maxConcurrentJobs: Number(row.max_concurrent_jobs),
+  };
+}
+
+async function loadRunpodPolicy(env, tenantId) {
+  const fallback = runpodDefaultPolicy(env, tenantId);
+  if (!env.DB) return fallback;
+  await initialize(env.DB);
+  const row = await env.DB.prepare("SELECT * FROM gpu_tenant_policies WHERE tenant_id = ? LIMIT 1").bind(tenantId).first();
+  return runpodPolicyFromRow(row, fallback);
+}
+
+function safeRunpodOutputUrl(value) {
+  try {
+    if (typeof value !== "string" || value.length > 2048) return "";
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password) return "";
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (hostname === "localhost" || hostname === "::1" || hostname.endsWith(".local")) return "";
+    const octets = hostname.split(".").map((part) => Number(part));
+    if (octets.length === 4 && octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+      if (octets[0] === 0 || octets[0] === 10 || octets[0] === 127 || octets[0] === 169 && octets[1] === 254 || octets[0] === 192 && octets[1] === 168 || octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return "";
+    }
+    if (hostname.includes(":") && (hostname.startsWith("fc") || hostname.startsWith("fd") || hostname.startsWith("fe80:"))) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function runpodOutputUrl(output) {
+  const candidates = [];
+  const visit = (value, depth = 0) => {
+    if (depth > 4 || candidates.length > 20) return;
+    if (typeof value === "string" && /^https:\/\//i.test(value)) candidates.push(value);
+    else if (Array.isArray(value)) value.slice(0, 10).forEach((item) => visit(item, depth + 1));
+    else if (isPlainObject(value)) {
+      ["url", "videoUrl", "video_url", "imageUrl", "image_url", "output", "result", "artifacts", "files"].forEach((key) => {
+        if (key in value) visit(value[key], depth + 1);
+      });
+    }
+  };
+  visit(output);
+  return candidates.map(safeRunpodOutputUrl).find(Boolean) || "";
+}
+
+function runpodPublicJob(row) {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    memberId: row.member_id,
+    workload: row.workload,
+    status: row.status,
+    gpuType: row.gpu_type,
+    estimatedCents: Number(row.estimated_cents),
+    actualCents: row.actual_cents == null ? null : Number(row.actual_cents),
+    durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
+    outputUrl: row.output_url || "",
+    outputContentType: row.output_content_type || "",
+    mediaObjectId: row.media_object_id || "",
+    deliveryTarget: row.delivery_target,
+    stageRoom: row.stage_room || "",
+    error: row.error_message || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at || null,
+  };
+}
+
+async function captureRunpodAsset(env, row, remoteUrl, contentTypeHint) {
+  const safeRemoteUrl = safeRunpodOutputUrl(remoteUrl);
+  if (!safeRemoteUrl) throw new Error("GPU output URL is not safe to capture");
+  if (!env.MEDIA || !env.DB) return { url: safeRemoteUrl, contentType: contentTypeHint || "application/octet-stream", mediaObjectId: null };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+  try {
+    let requestUrl = safeRemoteUrl;
+    let response;
+    for (let redirects = 0; redirects <= 3; redirects += 1) {
+      response = await fetch(requestUrl, { signal: controller.signal, redirect: "manual" });
+      if (![301, 302, 303, 307, 308].includes(response.status)) break;
+      const location = response.headers.get("location");
+      requestUrl = safeRunpodOutputUrl(location ? new URL(location, requestUrl).toString() : "");
+      if (!requestUrl) throw new Error("GPU output redirect is not safe to capture");
+      if (redirects === 3) throw new Error("GPU output has too many redirects");
+    }
+    if (!response.ok) throw new Error("GPU output download failed");
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > MAX_MEDIA_BYTES) throw new Error("GPU output exceeds the 25 MB capture limit");
+    const contentType = safeLabel(response.headers.get("content-type") || contentTypeHint, "application/octet-stream").split(";")[0].slice(0, 120);
+    if (!/^(?:video|image|audio)\//.test(contentType) && contentType !== "application/pdf") throw new Error("GPU output type is not stage-safe");
+    const data = await response.arrayBuffer();
+    if (data.byteLength > MAX_MEDIA_BYTES) throw new Error("GPU output exceeds the 25 MB capture limit");
+    const mediaObjectId = crypto.randomUUID();
+    const extensionByType = { "video/mp4": "mp4", "video/webm": "webm", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/ogg": "ogg", "application/pdf": "pdf" };
+    const extension = extensionByType[contentType] || (contentType.startsWith("video/") ? "video" : contentType.startsWith("image/") ? "image" : contentType.startsWith("audio/") ? "audio" : "pdf");
+    const objectKey = `runpod/${row.tenant_id}/${row.id}/${mediaObjectId}.${extension}`;
+    await env.MEDIA.put(objectKey, data, { httpMetadata: { contentType }, customMetadata: { tenantId: row.tenant_id, purpose: "runpod-output", jobId: row.id } });
+    const now = new Date().toISOString();
+    await env.DB.prepare("INSERT INTO media_objects (id, tenant_id, owner_user_id, visibility, purpose, file_name, content_type, size_bytes, object_key, created_at) VALUES (?, ?, ?, 'members', 'runpod-output', ?, ?, ?, ?, ?)")
+      .bind(mediaObjectId, row.tenant_id, row.member_id, `${row.workload}-${row.id}.${extension}`, contentType, data.byteLength, objectKey, now).run();
+    return { url: `/api/media/${mediaObjectId}`, contentType, mediaObjectId };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function reconcileRunpodJob(env, row, providerPayload) {
+  const status = safeId(providerPayload?.status, row.status).toUpperCase();
+  const allowedStatus = ["IN_QUEUE", "IN_PROGRESS", "RUNNING", "COMPLETED", "FAILED", "CANCELLED", "TIMED_OUT"].includes(status) ? status : row.status;
+  const durationMs = Math.max(0, Math.round(Number(providerPayload?.executionTime || providerPayload?.executionTimeMs || row.duration_ms || 0)));
+  const output = providerPayload?.output ?? {};
+  const remoteUrl = runpodOutputUrl(output);
+  const now = new Date().toISOString();
+  let asset = { url: remoteUrl || row.output_url || "", contentType: safeLabel(providerPayload?.contentType || row.output_content_type).slice(0, 120), mediaObjectId: row.media_object_id || null };
+  if (allowedStatus === "COMPLETED" && remoteUrl && !row.media_object_id) {
+    try { asset = await captureRunpodAsset(env, row, remoteUrl, asset.contentType); }
+    catch (error) { logEvent("warn", "runpod.output_capture_failed", { jobId: row.id, error: error instanceof Error ? error.message : "capture failed" }); }
+  }
+  const actualCents = RUNPOD_TERMINAL_STATES.has(allowedStatus) ? Math.max(0, Math.ceil(runpodHourlyRate(env, row.gpu_type) * durationMs / 3_600_000)) : null;
+  const errorMessage = safeLabel(providerPayload?.error || (allowedStatus === "FAILED" ? "GPU job failed" : "")).slice(0, 500);
+  await env.DB.prepare("UPDATE gpu_jobs SET status = ?, actual_cents = ?, duration_ms = ?, output_payload = ?, output_url = ?, output_content_type = ?, media_object_id = ?, error_message = ?, updated_at = ?, completed_at = ? WHERE id = ?")
+    .bind(allowedStatus, actualCents, durationMs || null, JSON.stringify(output).slice(0, 64 * 1024), asset.url || null, asset.contentType || null, asset.mediaObjectId, errorMessage || null, now, RUNPOD_TERMINAL_STATES.has(allowedStatus) ? now : null, row.id).run();
+  if (RUNPOD_TERMINAL_STATES.has(allowedStatus) && row.status !== allowedStatus) {
+    await env.DB.prepare("INSERT INTO gpu_usage_events (id, tenant_id, job_id, workload, gpu_type, event_type, active_ms, cost_cents, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), row.tenant_id, row.id, row.workload, row.gpu_type, allowedStatus.toLowerCase(), durationMs, actualCents || 0, JSON.stringify({ providerStatus: allowedStatus }), now).run();
+  }
+  return await env.DB.prepare("SELECT * FROM gpu_jobs WHERE id = ? LIMIT 1").bind(row.id).first();
+}
+
 async function initialize(db) {
   if (!db) return;
   if (!databaseInitialization) databaseInitialization = db.batch([
@@ -2065,6 +2294,14 @@ async function initialize(db) {
     db.prepare("CREATE INDEX IF NOT EXISTS network_alerts_tenant_idx ON network_alerts (tenant_id, status, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS connectivity_reports (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, runtime_id TEXT NOT NULL UNIQUE, event_id TEXT, program_id TEXT, report_type TEXT NOT NULL, payload TEXT NOT NULL, generated_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS connectivity_reports_tenant_idx ON connectivity_reports (tenant_id, generated_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS gpu_tenant_policies (tenant_id TEXT PRIMARY KEY, status TEXT NOT NULL, monthly_budget_cents INTEGER NOT NULL, per_job_limit_cents INTEGER NOT NULL, allowed_workloads TEXT NOT NULL, allowed_gpus TEXT NOT NULL, max_concurrent_jobs INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS gpu_jobs (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, member_id TEXT NOT NULL, workload TEXT NOT NULL, endpoint_id TEXT NOT NULL, provider_job_id TEXT UNIQUE, status TEXT NOT NULL, gpu_type TEXT NOT NULL, estimated_cents INTEGER NOT NULL, actual_cents INTEGER, duration_ms INTEGER, input_payload TEXT NOT NULL, output_payload TEXT NOT NULL DEFAULT '{}', output_url TEXT, output_content_type TEXT, media_object_id TEXT, delivery_target TEXT NOT NULL, stage_room TEXT, approved_by TEXT, error_message TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS gpu_jobs_tenant_idx ON gpu_jobs (tenant_id, status, created_at)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS gpu_jobs_provider_idx ON gpu_jobs (provider_job_id)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS gpu_usage_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, job_id TEXT NOT NULL, workload TEXT NOT NULL, gpu_type TEXT NOT NULL, event_type TEXT NOT NULL, active_ms INTEGER NOT NULL DEFAULT 0, cost_cents INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS gpu_usage_events_tenant_idx ON gpu_usage_events (tenant_id, created_at)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS gpu_delivery_events (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, job_id TEXT NOT NULL, target TEXT NOT NULL, room_code TEXT, source_url TEXT, content_type TEXT, status TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS gpu_delivery_events_tenant_idx ON gpu_delivery_events (tenant_id, created_at)"),
     db.prepare("CREATE TABLE IF NOT EXISTS api_rate_limits (bucket_key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, request_count INTEGER NOT NULL, expires_at TEXT NOT NULL)"),
     db.prepare("CREATE INDEX IF NOT EXISTS api_rate_limits_expiry_idx ON api_rate_limits (expires_at)"),
   ]).catch((error) => {
@@ -2078,6 +2315,163 @@ async function handleApi(request, env, url, requestId) {
   const reply = (data, status = 200, headers = {}) => json(data, status, requestId, headers);
   if (!await allowRequest(request, env)) return reply({ error: "Rate limit exceeded", requestId }, 429, { "Retry-After": "60" });
   const member = !publicApiRequest(request, url) ? await verifyMemberRequest(request, env, requiredMemberRoles(url)) : null;
+  if (request.method === "POST" && url.pathname === "/api/runpod/callback") {
+    if (!env.DB || !String(env.RUNPOD_WEBHOOK_SECRET || "").trim()) return reply({ error: "Runpod callback is not configured", requestId }, 503);
+    const jobId = safeId(url.searchParams.get("jobId")).slice(0, 96);
+    const suppliedSignature = safeLabel(url.searchParams.get("signature")).toLowerCase().slice(0, 128);
+    if (!jobId || !suppliedSignature || !secureHexEqual(suppliedSignature, await runpodSignature(env.RUNPOD_WEBHOOK_SECRET, jobId))) return reply({ error: "Runpod callback authorization failed", requestId }, 401);
+    await initialize(env.DB);
+    const row = await env.DB.prepare("SELECT * FROM gpu_jobs WHERE id = ? LIMIT 1").bind(jobId).first();
+    if (!row) return reply({ error: "GPU job was not found", requestId }, 404);
+    const payload = await readJson(request, 128 * 1024);
+    if (row.provider_job_id && safeId(payload.id).slice(0, 120) !== row.provider_job_id) return reply({ error: "Runpod callback job does not match", requestId }, 409);
+    const updated = await reconcileRunpodJob(env, row, payload);
+    logEvent("info", "runpod.callback", { requestId, jobId, tenantId: row.tenant_id, status: updated.status });
+    return reply({ accepted: true, job: runpodPublicJob(updated), requestId }, 200, { "Cache-Control": "no-store" });
+  }
+  if (url.pathname.startsWith("/api/runpod/")) {
+    const tenantId = safeId(url.searchParams.get("tenantId")).slice(0, 64);
+    if (request.method === "GET" && url.pathname === "/api/runpod/health") {
+      const endpointIds = runpodConfiguredEndpointIds(env);
+      let provider = null;
+      if (url.searchParams.get("probe") === "1" && endpointIds.length && env.RUNPOD_API_KEY) {
+        provider = await runpodRequest(env, endpointIds[0], "health");
+      }
+      return reply({
+        configured: Boolean(env.RUNPOD_API_KEY && endpointIds.length),
+        endpointCount: endpointIds.length,
+        provider,
+        workloads: runpodWorkloadCatalog(env),
+        retentionMinutes: 30,
+        durableCapture: Boolean(env.DB && env.MEDIA),
+        requestId,
+      }, 200, { "Cache-Control": "no-store" });
+    }
+    if (!env.DB) return reply({ error: "GPU workload persistence is not configured", requestId }, 503);
+    await initialize(env.DB);
+    if (request.method === "GET" && url.pathname === "/api/runpod/policy") {
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      await verifyTenantAccess(member, env, tenantId);
+      const policy = await loadRunpodPolicy(env, tenantId);
+      const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+      const usage = await env.DB.prepare("SELECT COALESCE(SUM(cost_cents), 0) AS spent_cents FROM gpu_usage_events WHERE tenant_id = ? AND created_at >= ?").bind(tenantId, monthStart).first();
+      const active = await env.DB.prepare("SELECT COUNT(*) AS active_jobs FROM gpu_jobs WHERE tenant_id = ? AND status IN ('SUBMITTING','IN_QUEUE','IN_PROGRESS','RUNNING')").bind(tenantId).first();
+      return reply({ policy, usage: { spentCents: Number(usage?.spent_cents || 0), activeJobs: Number(active?.active_jobs || 0) }, requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    if (request.method === "PUT" && url.pathname === "/api/runpod/policy") {
+      const body = await readJson(request, 32 * 1024);
+      const scopedTenantId = safeId(body.tenantId).slice(0, 64);
+      if (!scopedTenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      await verifyTenantAccess(member, env, scopedTenantId);
+      const allowedWorkloads = Array.isArray(body.allowedWorkloads) ? body.allowedWorkloads.map((value) => safeId(value)).filter((value) => RUNPOD_WORKLOAD_PROFILES[value]) : [];
+      const allowedGpus = Array.isArray(body.allowedGpus) ? body.allowedGpus.map((value) => safeLabel(value).slice(0, 80)).filter((value) => ["NVIDIA B200", "RTX PRO 6000 Blackwell"].includes(value)) : [];
+      const monthlyBudgetCents = Math.max(100, Math.min(10_000_000, Math.round(Number(body.monthlyBudgetCents))));
+      const perJobLimitCents = Math.max(25, Math.min(monthlyBudgetCents, Math.round(Number(body.perJobLimitCents))));
+      const maxConcurrentJobs = Math.max(1, Math.min(20, Math.round(Number(body.maxConcurrentJobs) || 1)));
+      const status = body.status === "paused" ? "paused" : "active";
+      if (!allowedWorkloads.length || !allowedGpus.length || !Number.isFinite(monthlyBudgetCents) || !Number.isFinite(perJobLimitCents)) return reply({ error: "A valid GPU policy is required", requestId }, 400);
+      const now = new Date().toISOString();
+      const actor = safeId(member?.profile?.id || member?.user?.id, "operator").slice(0, 120);
+      await env.DB.prepare("INSERT INTO gpu_tenant_policies (tenant_id, status, monthly_budget_cents, per_job_limit_cents, allowed_workloads, allowed_gpus, max_concurrent_jobs, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(tenant_id) DO UPDATE SET status = excluded.status, monthly_budget_cents = excluded.monthly_budget_cents, per_job_limit_cents = excluded.per_job_limit_cents, allowed_workloads = excluded.allowed_workloads, allowed_gpus = excluded.allowed_gpus, max_concurrent_jobs = excluded.max_concurrent_jobs, updated_at = excluded.updated_at, updated_by = excluded.updated_by")
+        .bind(scopedTenantId, status, monthlyBudgetCents, perJobLimitCents, JSON.stringify(allowedWorkloads), JSON.stringify(allowedGpus), maxConcurrentJobs, now, now, actor).run();
+      return reply({ policy: await loadRunpodPolicy(env, scopedTenantId), requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    if (request.method === "GET" && url.pathname === "/api/runpod/jobs") {
+      if (!tenantId) return reply({ error: "tenantId is required", requestId }, 400);
+      await verifyTenantAccess(member, env, tenantId);
+      const rows = await env.DB.prepare("SELECT * FROM gpu_jobs WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100").bind(tenantId).all();
+      return reply({ jobs: (rows.results || []).map(runpodPublicJob), requestId }, 200, { "Cache-Control": "no-store" });
+    }
+    if (request.method === "POST" && url.pathname === "/api/runpod/jobs") {
+      const body = await readJson(request, 128 * 1024);
+      const scopedTenantId = safeId(body.tenantId).slice(0, 64);
+      const workload = safeId(body.workload).slice(0, 64);
+      if (!scopedTenantId || !workload) return reply({ error: "tenantId and workload are required", requestId }, 400);
+      await verifyTenantAccess(member, env, scopedTenantId);
+      const { endpointId, profile } = runpodEndpointForWorkload(env, workload);
+      const policy = await loadRunpodPolicy(env, scopedTenantId);
+      if (policy.status !== "active") return reply({ error: "GPU compute is paused for this tenant", requestId }, 409);
+      if (!policy.allowedWorkloads.includes(workload) || !policy.allowedGpus.includes(profile.gpu)) return reply({ error: "This GPU workload is not allowed for the tenant", requestId }, 403);
+      if (profile.approvalRequired && body.operatorApproved !== true) return reply({ error: "Operator approval is required for model training", requestId }, 409);
+      const maxSeconds = Math.max(5, Math.min(profile.maxSeconds, Math.round(Number(body.maxSeconds) || profile.maxSeconds)));
+      const estimatedCents = runpodEstimatedCost(env, profile.gpu, maxSeconds);
+      if (estimatedCents > policy.perJobLimitCents) return reply({ error: "Estimated GPU cost exceeds the tenant per-job limit", requestId }, 409);
+      const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+      const usage = await env.DB.prepare("SELECT COALESCE(SUM(cost_cents), 0) AS spent_cents FROM gpu_usage_events WHERE tenant_id = ? AND created_at >= ?").bind(scopedTenantId, monthStart).first();
+      if (Number(usage?.spent_cents || 0) + estimatedCents > policy.monthlyBudgetCents) return reply({ error: "Tenant monthly GPU budget would be exceeded", requestId }, 409);
+      const active = await env.DB.prepare("SELECT COUNT(*) AS active_jobs FROM gpu_jobs WHERE tenant_id = ? AND status IN ('SUBMITTING','IN_QUEUE','IN_PROGRESS','RUNNING')").bind(scopedTenantId).first();
+      if (Number(active?.active_jobs || 0) >= policy.maxConcurrentJobs) return reply({ error: "Tenant concurrent GPU job limit reached", requestId }, 409);
+      const prompt = safeLabel(body.prompt).slice(0, 8_000);
+      const sourceUrl = safeLabel(body.sourceUrl).slice(0, 2_048);
+      if (sourceUrl && !/^https:\/\//i.test(sourceUrl)) return reply({ error: "GPU source media must use HTTPS", requestId }, 400);
+      const parameters = isPlainObject(body.parameters) ? body.parameters : {};
+      if (JSON.stringify(parameters).length > 24 * 1024) return reply({ error: "GPU parameters are too large", requestId }, 413);
+      const deliveryTarget = ["archive", "stage", "livekit"].includes(safeId(body.deliveryTarget)) ? safeId(body.deliveryTarget) : "archive";
+      const stageRoom = safeId(body.stageRoom, "AMXSTAGE").toUpperCase().slice(0, 64);
+      const jobId = `gpu-${crypto.randomUUID()}`;
+      const now = new Date().toISOString();
+      const actor = safeId(member?.profile?.id || member?.user?.id, "operator").slice(0, 120);
+      const approvedBy = profile.approvalRequired ? actor : null;
+      const inputPayload = { prompt, sourceUrl: sourceUrl || undefined, parameters, amx: { jobId, tenantId: scopedTenantId, workload, stageRoom, deliveryTarget } };
+      await env.DB.prepare("INSERT INTO gpu_jobs (id, tenant_id, member_id, workload, endpoint_id, status, gpu_type, estimated_cents, input_payload, delivery_target, stage_room, approved_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'SUBMITTING', ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(jobId, scopedTenantId, actor, workload, endpointId, profile.gpu, estimatedCents, JSON.stringify(inputPayload), deliveryTarget, stageRoom, approvedBy, now, now).run();
+      try {
+        const callbackBase = safeLabel(env.RUNPOD_CALLBACK_BASE_URL).replace(/\/$/, "");
+        if (!serviceUrlConfigured(callbackBase, ["https:"]) || !env.RUNPOD_WEBHOOK_SECRET) throw new HttpError(503, "Runpod callback URL and secret are required");
+        const signature = await runpodSignature(env.RUNPOD_WEBHOOK_SECRET, jobId);
+        const provider = await runpodRequest(env, endpointId, "run", { method: "POST", body: JSON.stringify({
+          input: inputPayload,
+          webhook: `${callbackBase}/api/runpod/callback?jobId=${encodeURIComponent(jobId)}&signature=${signature}`,
+          policy: { executionTimeout: maxSeconds * 1000, ttl: Math.min(7 * 24 * 60 * 60 * 1000, Math.max(10_000, maxSeconds * 2000)), lowPriority: Boolean(body.lowPriority) },
+        }) });
+        const providerJobId = safeId(provider.id).slice(0, 120);
+        if (!providerJobId) throw new HttpError(502, "GPU provider did not return a job id");
+        const status = safeId(provider.status, "IN_QUEUE").toUpperCase();
+        await env.DB.prepare("UPDATE gpu_jobs SET provider_job_id = ?, status = ?, updated_at = ? WHERE id = ?").bind(providerJobId, status, new Date().toISOString(), jobId).run();
+        const row = await env.DB.prepare("SELECT * FROM gpu_jobs WHERE id = ? LIMIT 1").bind(jobId).first();
+        logEvent("info", "runpod.job_submitted", { requestId, jobId, tenantId: scopedTenantId, workload, estimatedCents });
+        return reply({ job: runpodPublicJob(row), requestId }, 202, { "Cache-Control": "no-store" });
+      } catch (error) {
+        await env.DB.prepare("UPDATE gpu_jobs SET status = 'FAILED', error_message = ?, updated_at = ?, completed_at = ? WHERE id = ?").bind(error instanceof Error ? error.message.slice(0, 500) : "GPU submission failed", new Date().toISOString(), new Date().toISOString(), jobId).run();
+        throw error;
+      }
+    }
+    const jobMatch = url.pathname.match(/^\/api\/runpod\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|deliver))?$/);
+    if (jobMatch) {
+      const jobId = safeId(jobMatch[1]).slice(0, 120);
+      const action = jobMatch[2] || "status";
+      const row = await env.DB.prepare("SELECT * FROM gpu_jobs WHERE id = ? LIMIT 1").bind(jobId).first();
+      if (!row) return reply({ error: "GPU job was not found", requestId }, 404);
+      await verifyTenantAccess(member, env, row.tenant_id);
+      if (request.method === "GET" && action === "status") {
+        let current = row;
+        if (row.provider_job_id && !RUNPOD_TERMINAL_STATES.has(row.status)) current = await reconcileRunpodJob(env, row, await runpodRequest(env, row.endpoint_id, `status/${row.provider_job_id}`));
+        return reply({ job: runpodPublicJob(current), requestId }, 200, { "Cache-Control": "no-store" });
+      }
+      if (request.method === "POST" && action === "cancel") {
+        if (!row.provider_job_id || RUNPOD_TERMINAL_STATES.has(row.status)) return reply({ error: "GPU job cannot be cancelled", requestId }, 409);
+        const provider = await runpodRequest(env, row.endpoint_id, `cancel/${row.provider_job_id}`, { method: "POST" });
+        const current = await reconcileRunpodJob(env, row, provider);
+        return reply({ job: runpodPublicJob(current), requestId }, 200, { "Cache-Control": "no-store" });
+      }
+      if (request.method === "POST" && action === "deliver") {
+        const body = await readJson(request, 16 * 1024);
+        const target = ["stage", "livekit", "archive"].includes(safeId(body.target)) ? safeId(body.target) : row.delivery_target;
+        const roomCode = safeId(body.roomCode || row.stage_room, "AMXSTAGE").toUpperCase().slice(0, 64);
+        if (row.status !== "COMPLETED" || !row.output_url) return reply({ error: "Only completed GPU outputs can be delivered", requestId }, 409);
+        const contentType = safeLabel(row.output_content_type, "application/octet-stream").slice(0, 120);
+        const videoReady = contentType.startsWith("video/") || /\.m3u8(?:$|[?#])/i.test(row.output_url);
+        if (target === "stage" && !videoReady) return reply({ error: "Stage delivery currently requires a video output", requestId }, 409);
+        const livekitReady = Boolean(runtimeReadiness(env).components.livekit);
+        const status = target === "livekit" ? livekitReady ? "ready_for_ingress" : "blocked" : "ready";
+        const detail = target === "livekit" ? livekitReady ? "Output is ready for governed LiveKit ingress" : "LiveKit runtime is not configured" : target === "stage" ? "Output added to the operator Stage hot-load handoff" : "Output retained in the AMX media archive";
+        const deliveryId = crypto.randomUUID();
+        await env.DB.prepare("INSERT INTO gpu_delivery_events (id, tenant_id, job_id, target, room_code, source_url, content_type, status, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(deliveryId, row.tenant_id, row.id, target, roomCode, row.output_url, contentType, status, detail, new Date().toISOString()).run();
+        return reply({ delivery: { id: deliveryId, target, roomCode, sourceUrl: row.output_url, contentType, status, detail, stageAsset: target === "stage" ? { id: `runpod-${row.id}`, name: `${RUNPOD_WORKLOAD_PROFILES[row.workload]?.label || "GPU"} / ${row.id.slice(-8)}`, url: row.output_url, contentType, addedAt: Date.now() } : null }, requestId }, status === "blocked" ? 409 : 200, { "Cache-Control": "no-store" });
+      }
+    }
+  }
   if (url.pathname.startsWith("/api/board/agent/")) {
     const token = String(request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
     if (!env.AMX_AGENT_CONTROL_TOKEN) return reply({ error: "Agent board control is not configured", requestId }, 503);

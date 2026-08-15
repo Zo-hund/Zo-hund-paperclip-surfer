@@ -6,6 +6,8 @@ import { AppProvider } from "./AppContext";
 import { MemberAuthProvider } from "./member-auth";
 import "./styles.css";
 import "./event-merch.css";
+import "./portfolio.css";
+import "./gpu-compute.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode><BrowserRouter><MemberAuthProvider><AppProvider><App/></AppProvider></MemberAuthProvider></BrowserRouter></StrictMode>,
