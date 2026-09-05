@@ -16,6 +16,14 @@ Configure these repository or environment secrets before any deployment:
 
 `KUBE_CONFIG_DATA` must be base64-encoded kubeconfig content with permission to create namespaces, apply secrets, install Helm releases, read rollout status, and manage ingress, services, HPA, and PDB resources.
 
+Optional Cloudflare DNS automation for staging uses separate GitHub environment configuration:
+
+- secret: `CLOUDFLARE_API_TOKEN`
+- secret: `CLOUDFLARE_ZONE_ID`
+- variable: `AMX_STAGING_DNS_TARGET`
+
+`AMX_STAGING_DNS_TARGET` should be the staging ingress target, either an IPv4/IPv6 address or a hostname. When these values are configured, the deploy workflow creates or updates `staging.amx-air-hubs.cc` before it validates public DNS.
+
 ## 2. Cluster prerequisites
 
 Confirm these are already present in the target cluster:
@@ -28,7 +36,7 @@ Confirm these are already present in the target cluster:
 
 ## 3. Staging rollout
 
-Let the `CI/CD Pipeline` workflow publish the image for the target commit, then deploy the immutable tag:
+Let the `ci` workflow publish the image for the target commit, then deploy the immutable tag:
 
 ```text
 sha-<commit>

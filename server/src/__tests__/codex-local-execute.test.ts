@@ -158,7 +158,15 @@ describe("codex execute", () => {
     const resolvedCommandPath = await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
+    const previousPaperclipHome = process.env.PAPERCLIP_HOME;
+    const previousPaperclipInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
+    const previousPaperclipInWorktree = process.env.PAPERCLIP_IN_WORKTREE;
+    const previousCodexHome = process.env.CODEX_HOME;
     process.env.HOME = root;
+    process.env.PAPERCLIP_HOME = path.join(root, "paperclip-home");
+    delete process.env.PAPERCLIP_INSTANCE_ID;
+    delete process.env.PAPERCLIP_IN_WORKTREE;
+    delete process.env.CODEX_HOME;
 
     let commandNotes: string[] = [];
     try {
@@ -201,6 +209,14 @@ describe("codex execute", () => {
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
+      if (previousPaperclipHome === undefined) delete process.env.PAPERCLIP_HOME;
+      else process.env.PAPERCLIP_HOME = previousPaperclipHome;
+      if (previousPaperclipInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
+      else process.env.PAPERCLIP_INSTANCE_ID = previousPaperclipInstanceId;
+      if (previousPaperclipInWorktree === undefined) delete process.env.PAPERCLIP_IN_WORKTREE;
+      else process.env.PAPERCLIP_IN_WORKTREE = previousPaperclipInWorktree;
+      if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previousCodexHome;
       await fs.rm(root, { recursive: true, force: true });
     }
   });
@@ -410,8 +426,16 @@ describe("codex execute", () => {
     const resolvedCommandPath = await writeFakeCodexCommand(commandPath);
 
     const previousHome = process.env.HOME;
+    const previousPaperclipHome = process.env.PAPERCLIP_HOME;
+    const previousPaperclipInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
+    const previousPaperclipInWorktree = process.env.PAPERCLIP_IN_WORKTREE;
+    const previousCodexHome = process.env.CODEX_HOME;
     const previousOpenAiKey = process.env.OPENAI_API_KEY;
     process.env.HOME = root;
+    process.env.PAPERCLIP_HOME = path.join(root, "paperclip-home");
+    delete process.env.PAPERCLIP_INSTANCE_ID;
+    delete process.env.PAPERCLIP_IN_WORKTREE;
+    delete process.env.CODEX_HOME;
     process.env.OPENAI_API_KEY = "host-openai-key";
 
     try {
@@ -453,6 +477,14 @@ describe("codex execute", () => {
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
+      if (previousPaperclipHome === undefined) delete process.env.PAPERCLIP_HOME;
+      else process.env.PAPERCLIP_HOME = previousPaperclipHome;
+      if (previousPaperclipInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
+      else process.env.PAPERCLIP_INSTANCE_ID = previousPaperclipInstanceId;
+      if (previousPaperclipInWorktree === undefined) delete process.env.PAPERCLIP_IN_WORKTREE;
+      else process.env.PAPERCLIP_IN_WORKTREE = previousPaperclipInWorktree;
+      if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previousCodexHome;
       if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previousOpenAiKey;
       await fs.rm(root, { recursive: true, force: true });

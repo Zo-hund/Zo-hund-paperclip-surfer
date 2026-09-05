@@ -156,7 +156,7 @@ The GitHub Actions path now defaults to this same staging target after a success
 
 Verified staging path:
 
-1. `CI/CD Pipeline` on `main` validates the cluster compose pack, Helm chart, and publishes `ghcr.io/<owner>/amx-air-hubs:sha-<commit>`.
+1. `ci` on `main` validates the cluster compose pack, Helm chart, and publishes `ghcr.io/<owner>/amx-air-hubs:sha-<commit>`.
 2. `Deploy AMX Cluster` triggers automatically for `staging`, confirms that exact image tag exists, applies runtime secrets, deploys with `helm upgrade --install --atomic --wait`, and smoke-checks `https://staging.amx-air-hubs.cc`.
 3. Run the repo smoke script only after the workflow is green if you want a second operator-side check:
 
