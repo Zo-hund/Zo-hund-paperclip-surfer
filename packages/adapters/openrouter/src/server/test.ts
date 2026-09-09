@@ -3,16 +3,14 @@ import type {
   AdapterEnvironmentTestResult,
   AdapterEnvironmentCheck,
 } from "@paperclipai/adapter-utils";
-import { asString, parseObject } from "@paperclipai/adapter-utils/server-utils";
+import { asString } from "@paperclipai/adapter-utils/server-utils";
+import { resolveOpenRouterKey, validateOpenRouterKey, hasOpenRouterHostTools } from "./credentials.js";
 
 export async function testEnvironment(
   ctx: AdapterEnvironmentTestContext
 ): Promise<AdapterEnvironmentTestResult> {
   const { config } = ctx;
   const model = asString(config.model, "").trim();
-  const envConfig = parseObject(config.env);
-
-  const apiKey = asString(envConfig.OPENROUTER_API_KEY, "").trim() || process.env.OPENROUTER_API_KEY || "";
 
   const checks: AdapterEnvironmentCheck[] = [];
 
@@ -36,21 +34,27 @@ export async function testEnvironment(
     });
   }
 
-  if (!apiKey) {
+  try {
+    const apiKey = resolveOpenRouterKey(ctx.companyId, config);
+    await validateOpenRouterKey(apiKey);
     checks.push({
-      code: "api_key_missing",
-      level: "error",
-      message: "OPENROUTER_API_KEY is not configured in agent env or system environment.",
-    });
-  } else {
-    checks.push({
-      code: "api_key_configured",
+      code: "api_key_validated",
       level: "info",
-      message: "OPENROUTER_API_KEY is present.",
+      message: "OpenRouter accepted the selected API key. No model inference was requested.",
+    });
+  } catch (err) {
+    checks.push({
+      code: "api_key_invalid",
+      level: "error",
+      message: err instanceof Error ? err.message : "OpenRouter key validation failed.",
     });
   }
 
   const hasError = checks.some((c) => c.level === "error");
+  if (!hasOpenRouterHostTools(ctx.companyId)) checks.push({
+    code: "host_tools_unavailable", level: "warn",
+    message: "Model access only. Host commands, files, and instruction/memory files require a trusted operator grant; use an isolated worker for tenant coding tasks.",
+  });
   const hasWarning = checks.some((c) => c.level === "warn");
 
   return {

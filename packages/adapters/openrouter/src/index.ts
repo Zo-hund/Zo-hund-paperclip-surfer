@@ -13,6 +13,8 @@ export const agentConfigurationDoc = `# OpenRouter Agent Configuration
 
 Adapter: openrouter
 
+Credentials: an explicit OPENROUTER_API_KEY env secret reference takes priority, followed by the company's encrypted default in Company settings. Server-key access requires the operator to list the company UUID in PAPERCLIP_OPENROUTER_COMPANY_IDS. Rejected keys never fall back to another billing account. Test environment validates the selected key with OpenRouter without running inference.
+
 Use when:
 - You want the agent to use OpenRouter to access a wide range of LLMs (Llama 3, DeepSeek, Claude 3.5 Sonnet, etc.) via API.
 - You need structured tool executions locally inside the workspace on VPS or local host.

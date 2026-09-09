@@ -688,3 +688,4 @@ export {
 } from "./cron.js";
 
 export { MARKETPLACE_PHASE_MULTIPLIERS, MARKETPLACE_PLATFORM_FEE, AGENT_EARNINGS_SHARE } from "./credits.js";
+export type { OpenRouterCredentialStatus, OpenRouterCredentialValidation } from "./openrouter.js";

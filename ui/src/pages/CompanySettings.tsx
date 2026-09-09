@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Settings, Check, Download, Upload, Users, Trash2 } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import { CompanyContentSettings } from "../components/CompanyContentSettings";
+import { OpenRouterCredentials } from "../components/OpenRouterCredentials";
 import type { CompanyMembershipRole } from "@paperclipai/shared";
 import { COMPANY_MEMBERSHIP_ROLES } from "@paperclipai/shared";
 import {
@@ -523,6 +524,7 @@ export function CompanySettings() {
       )}
 
       <CompanyContentSettings companyId={selectedCompany.id} issuePrefix={selectedCompany.issuePrefix} />
+      <OpenRouterCredentials key={selectedCompany.id} companyId={selectedCompany.id} />
 
       {/* Invite a person (onboarding email) */}
       <div className="space-y-4">

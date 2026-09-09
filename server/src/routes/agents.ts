@@ -707,6 +707,7 @@ export function agentRoutes(db: Db) {
       const { config: runtimeAdapterConfig } = await secretsSvc.resolveAdapterConfigForRuntime(
         companyId,
         normalizedAdapterConfig,
+        type,
       );
 
       const result = await adapter.testEnvironment({

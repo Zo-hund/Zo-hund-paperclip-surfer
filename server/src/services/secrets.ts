@@ -334,7 +334,18 @@ export function secretService(db: Db) {
       return { env: resolved, secretKeys };
     },
 
-    resolveAdapterConfigForRuntime: async (companyId: string, adapterConfig: Record<string, unknown>): Promise<{ config: Record<string, unknown>; secretKeys: Set<string> }> => {
+    resolveAdapterConfigForRuntime: async (companyId: string, adapterConfig: Record<string, unknown>, adapterType?: string): Promise<{ config: Record<string, unknown>; secretKeys: Set<string> }> => {
+      if (adapterType === "openrouter") {
+        const configuredEnv = asRecord(adapterConfig.env) ?? {};
+        if (!Object.prototype.hasOwnProperty.call(configuredEnv, "OPENROUTER_API_KEY")) {
+          const companyKey = await getByName(companyId, "OPENROUTER_API_KEY");
+          if (companyKey) {
+            adapterConfig = { ...adapterConfig, env: { ...configuredEnv,
+              OPENROUTER_API_KEY: { type: "secret_ref", secretId: companyKey.id, version: "latest" },
+            } };
+          }
+        }
+      }
       const resolved = { ...adapterConfig };
       const secretKeys = new Set<string>();
       if (!Object.prototype.hasOwnProperty.call(adapterConfig, "env")) {

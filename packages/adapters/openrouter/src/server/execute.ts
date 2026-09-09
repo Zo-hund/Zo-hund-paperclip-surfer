@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveOpenRouterKey, openRouterErrorMessage, hasOpenRouterHostTools } from "./credentials.js";
 import type { AdapterExecutionContext, AdapterExecutionResult } from "@paperclipai/adapter-utils";
 import {
   asBoolean,
@@ -101,14 +102,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
   const cwd = workspaceCwd || configuredCwd || process.cwd();
-  await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
 
   const envConfig = parseObject(config.env);
-  const apiKey = asString(envConfig.OPENROUTER_API_KEY, "").trim() || process.env.OPENROUTER_API_KEY || "";
-
-  if (!apiKey) {
-    throw new Error("Missing OPENROUTER_API_KEY in agent environment configuration.");
-  }
+  const apiKey = resolveOpenRouterKey(agent.companyId, config);
+  const hostToolsEnabled = hasOpenRouterHostTools(agent.companyId);
+  if (hostToolsEnabled) await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
 
   const env: Record<string, string> = { ...buildPaperclipEnv(agent) };
   env.PAPERCLIP_RUN_ID = runId;
@@ -122,7 +120,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   // Load memories and instructions prefix
   let memoryPrefix = "";
   const memoryFilePath = asString(context.paperclipMemoryFilePath, "");
-  if (memoryFilePath) {
+  if (hostToolsEnabled && memoryFilePath) {
     try {
       memoryPrefix = await fs.readFile(memoryFilePath, "utf8");
     } catch (err) {
@@ -132,7 +130,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   let instructionsPrefix = "";
   const instructionsFilePath = asString(config.instructionsFilePath, "").trim();
-  if (instructionsFilePath) {
+  if (hostToolsEnabled && instructionsFilePath) {
     try {
       instructionsPrefix = await fs.readFile(instructionsFilePath, "utf8");
     } catch (err) {
@@ -218,14 +216,13 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       body: JSON.stringify({
         model,
         messages,
-        tools,
-        tool_choice: "auto",
+        ...(hostToolsEnabled ? { tools, tool_choice: "auto" } : {}),
       }),
     });
 
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`OpenRouter API error: ${res.status} ${errText}`);
+      // Never persist arbitrary provider response bodies in run logs.
+      throw new Error(openRouterErrorMessage(res.status));
     }
 
     const data = (await res.json()) as any;
@@ -247,6 +244,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     }
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      if (!hostToolsEnabled) {
+        throw new Error("Host tools are unavailable for this company. Use an isolated worker for tenant coding tasks.");
+      }
       for (const call of assistantMessage.tool_calls) {
         const toolName = call.function.name;
         const toolArgs = JSON.parse(call.function.arguments);

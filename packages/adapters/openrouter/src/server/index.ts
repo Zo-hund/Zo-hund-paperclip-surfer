@@ -1,5 +1,6 @@
 export { execute } from "./execute.js";
 export { testEnvironment } from "./test.js";
+export { isOpenRouterProvisioned, resolveOpenRouterKey, validateOpenRouterKey, hasOpenRouterHostTools } from "./credentials.js";
 
 export async function listModels(): Promise<Array<{ id: string; label: string }>> {
   try {
