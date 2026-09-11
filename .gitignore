@@ -69,3 +69,6 @@ tests/release-smoke/playwright-report/
 
 # nested repo — excluded from porcelain status
 packages/hermes-agent/
+**/__pycache__/
+**/release-state/
+**/release-recovery.json

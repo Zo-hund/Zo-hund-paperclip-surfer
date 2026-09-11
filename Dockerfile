@@ -40,10 +40,13 @@ RUN pnpm --filter @paperclipai/db build
 RUN pnpm --filter "@paperclipai/adapter-*" build
 RUN pnpm --filter @paperclipai/plugin-sdk build
 RUN pnpm --filter @paperclipai/ui build
-RUN cd server && node_modules/.bin/tsc; mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
+RUN cd server && node_modules/.bin/tsc && mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
 FROM node:lts-trixie-slim AS production
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
 # Production stage: slim base + agent CLI runtimes
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \

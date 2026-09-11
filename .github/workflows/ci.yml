@@ -3,7 +3,7 @@ name: ci
 # Deny all permissions by default; each job grants only what it needs
 permissions: {}
 
-# Prevent concurrent runs on the same branch/PR — cancel the old one
+# Prevent concurrent runs on the same branch/PR â€” cancel the old one
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -38,6 +38,16 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Release gate rejection tests
+        run: python3 -m unittest discover -s deploy/release -p 'test_*.py' -v
+
+      - name: Validate release workflow syntax
+        run: >-
+          docker run --rm --user 0 -v "$PWD:/repo:ro" -w /repo
+          rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -config-file .github/actionlint.yaml -shellcheck= -pyflakes= .github/workflows/ci.yml .github/workflows/deploy-vps.yml
+          .github/workflows/release-docker.yml .github/workflows/deploy-cluster.yml
 
       - name: Run smoke pipeline
         run: pnpm run pipeline:smoke
@@ -94,13 +104,12 @@ jobs:
 
       - name: Audit for critical vulnerabilities
         # Blocks CI on critical-severity issues (RCE, arbitrary file read, etc.)
-        # High-severity step below is informational — some high CVEs (e.g. lodash
+        # High-severity step below is informational â€” some high CVEs (e.g. lodash
         # <=4.17.21) have no released fix and must not block deploys indefinitely.
         run: pnpm audit --audit-level=critical
 
-      - name: Audit for high vulnerabilities (informational)
+      - name: Audit for high vulnerabilities
         run: pnpm audit --audit-level=high
-        continue-on-error: true
 
 
       - name: Validate cluster compose pack
@@ -193,11 +202,12 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set image coordinates
         id: image
@@ -226,7 +236,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' }}
           build-args: |
             BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
             VCS_REF=${{ github.sha }}
@@ -235,25 +245,73 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
-          sbom: false
+          provenance: mode=max
+          sbom: true
       - name: Scan image for vulnerabilities (Trivy)
-        if: github.event_name == 'push'
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@master
+        if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
+        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
         with:
-          image-ref: ${{ steps.image.outputs.ref }}
+          image-ref: ${{ steps.image.outputs.repository }}@${{ steps.build-push.outputs.digest }}
           severity: HIGH,CRITICAL
           exit-code: '1'   # fail the job on HIGH/CRITICAL
           format: table
 
       - name: Sign image with cosign (keyless)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
         env:
           DIGEST: ${{ steps.build-push.outputs.digest }}
         run: |
           cosign sign --yes \
             "${{ steps.image.outputs.repository }}@${DIGEST}"
+
+      - name: Test the published digest in an isolated container
+        if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
+        env:
+          RELEASE_IMAGE: ${{ steps.image.outputs.repository }}@${{ steps.build-push.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CID=$(docker run -d --cap-drop ALL --security-opt no-new-privileges:true \
+            -p 127.0.0.1:3100:3100 \
+            -e PAPERCLIP_DEPLOYMENT_MODE=authenticated \
+            -e PAPERCLIP_DEPLOYMENT_EXPOSURE=private \
+            -e PAPERCLIP_PUBLIC_URL=http://localhost:3100 \
+            -e HEARTBEAT_SCHEDULER_ENABLED=false \
+            -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" "$RELEASE_IMAGE")
+          trap 'docker rm -fv "$CID" >/dev/null' EXIT
+          for attempt in {1..60}; do
+            if python3 deploy/release/smoke.py http://localhost:3100; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+
+      - name: Write immutable release metadata
+        if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
+          IMAGE_DIGEST: ${{ steps.build-push.outputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path('release.json').write_text(json.dumps({
+            'repository': os.environ['GITHUB_REPOSITORY'],
+            'sha': os.environ['GITHUB_SHA'],
+            'run_id': os.environ['GITHUB_RUN_ID'],
+            'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+            'digest': os.environ['IMAGE_DIGEST'],
+            'image': os.environ['IMAGE_REPOSITORY'] + '@' + os.environ['IMAGE_DIGEST']
+          }))
+          PY
+
+      - name: Upload validated release metadata
+        if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: governed-release-${{ github.run_attempt }}
+          path: release.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Publish image summary
         run: |
