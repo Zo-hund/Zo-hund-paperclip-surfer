@@ -1,0 +1,42 @@
+name: amx-release-local
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: amx_local
+      POSTGRES_DB: amx_local
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Local password required}
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U amx_local -d amx_local"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - local-db:/var/lib/postgresql/data
+  amx:
+    image: amx-air-hubs:release-local
+    build:
+      context: ../..
+    ports:
+      - "127.0.0.1:3100:3100"
+    environment:
+      DATABASE_URL: postgres://amx_local:${POSTGRES_PASSWORD}@db:5432/amx_local
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Local auth secret required}
+      PAPERCLIP_AGENT_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET:?Local JWT secret required}
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_PUBLIC_URL: http://localhost:3100
+      PAPERCLIP_ALLOWED_HOSTNAMES: localhost,127.0.0.1
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+      HEARTBEAT_SCHEDULER_ENABLED: "false"
+      OPPRRC_BACKUP_WORKER_ENABLED: "false"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - local-app:/paperclip
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  local-db:
+  local-app:

@@ -19,3 +19,10 @@ deploy/** @cryppadotta @devinfoley
 deploy/k8s/rbac/** @cryppadotta @devinfoley
 deploy/scripts/create-deploy-token.sh @cryppadotta @devinfoley
 deploy/scripts/rotate-secrets.sh @cryppadotta @devinfoley
+
+# AMX release ownership (last matching rule wins).
+/.github/workflows/ @Zo-hund
+/deploy/release/ @Zo-hund
+/deploy/vps/ @Zo-hund
+/Dockerfile @Zo-hund
+/.dockerignore @Zo-hund
