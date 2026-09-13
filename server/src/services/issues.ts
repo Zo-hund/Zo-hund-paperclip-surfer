@@ -3177,6 +3177,7 @@ async function listIssueReviewAttentionMap(
 }
 
 const issueListSelect = {
+  lifecycleStage: issues.lifecycleStage,
   id: issues.id,
   companyId: issues.companyId,
   projectId: issues.projectId,
