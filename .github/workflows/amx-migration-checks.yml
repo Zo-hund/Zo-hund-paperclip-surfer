@@ -1,0 +1,103 @@
+name: AMX migration validation
+
+on:
+  push:
+    branches: ["codex/amx-upstream-migration-*"]
+
+permissions: {}
+
+concurrency:
+  group: amx-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PAPERCLIP_TELEMETRY_DISABLED: "1"
+  DO_NOT_TRACK: "1"
+
+jobs:
+  application:
+    name: Candidate typecheck, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          cache: pnpm
+      - name: Install exact candidate dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck all workspaces
+        run: pnpm --workspace-concurrency=1 -r typecheck
+      - name: Test all workspaces
+        run: pnpm test:run
+      - name: Build all workspaces
+        run: pnpm --workspace-concurrency=1 -r build
+      - name: Check UI token policy
+        run: pnpm check:token-gates
+
+  data:
+    name: Isolated AMX conversion and restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Confirm the reviewed AMX source is available
+        run: git cat-file -e daaae8eb4a885b80e3ac0dcaf611b3ed09361d9d^{commit}
+      - name: Test inventory and conversion containment
+        run: python3 -m unittest discover -s scripts/amx-migration -p 'test_*.py' -v
+      - name: Start a database with no network access
+        run: |
+          mkdir -p migration-evidence
+          docker run -d --name amx-migration-db-20260913 --label com.amx.migration.rehearsal=true \
+            --network none --memory 1g --cpus 2 -e POSTGRES_HOST_AUTH_METHOD=trust \
+            --mount type=volume,source=amx-migration-db-20260913,target=/var/lib/postgresql/data \
+            postgres@sha256:979c4379dd698aba0b890599a6104e082035f98ef31d9b9291ec22f2b13059ca
+          for attempt in $(seq 1 60); do
+            if docker exec amx-migration-db-20260913 pg_isready -U postgres; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Reconstruct separate histories
+        run: python3 scripts/amx-migration/rehearsal.py --container amx-migration-db-20260913 --report migration-evidence/schema.json
+      - name: Seed synthetic tenants
+        run: python3 scripts/amx-migration/seed_synthetic.py --container amx-migration-db-20260913 --plugin-owners migration-evidence/plugin-owners.json
+      - name: Convert with the reviewed column map
+        run: >-
+          python3 scripts/amx-migration/convert_synthetic.py --container amx-migration-db-20260913
+          --map scripts/amx-migration/conversion-map.json --plugin-owners migration-evidence/plugin-owners.json
+          --report migration-evidence/conversion.json
+      - name: Verify secret ownership and rejection rollback
+        run: python3 scripts/amx-migration/verify_bindings.py --container amx-migration-db-20260913 --report migration-evidence/bindings.json
+      - name: Back up and restore the original synthetic database
+        run: >-
+          python3 scripts/amx-migration/restore_synthetic.py --container amx-migration-db-20260913
+          --backup migration-evidence/synthetic-source.dump --report migration-evidence/restore.json
+      - name: Preserve synthetic validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: amx-migration-evidence
+          path: migration-evidence/*.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Stop the disposable database
+        if: always()
+        run: docker stop amx-migration-db-20260913
+
+  # This workflow cannot publish an image or deploy an environment. Production
+  # still requires the separate governed signature, scan, staging, restore and
+  # owner approval gates. A green migration job is not release approval.
