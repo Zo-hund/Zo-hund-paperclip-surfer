@@ -77,22 +77,27 @@ def convert(db: Rehearsal, mapping: dict, plugin_owners: dict[str, str]) -> dict
     fail_unless(all(owner in company_ids for owner in plugin_owners.values()), "Plugin owner does not exist in source")
     counts = json.loads(db.sql(TARGET, "SELECT json_object_agg(table_name, rows) FROM (" + " UNION ALL ".join(
         f"SELECT {literal(table)} AS table_name, count(*) AS rows FROM public.{ident(table)}" for table in tables) + ") counts;"))
-    # Upstream migration 0105 creates one instance settings row. Keep it as
-    # separately archived target seed state only when the AMX source has none.
-    # A populated AMX settings table needs an explicit merge, never overwrite.
+    # The only replaceable target row is the exact empty upstream seed. Archive
+    # it separately; a populated source keeps its own ID, timestamps and JSON.
+    # Unknown or operator-configured target settings must never be overwritten.
     seeded_settings = counts.get("instance_settings") == 1
+    source_settings_count = int(db.sql(SOURCE, "SELECT count(*) FROM instance_settings;"))
+    fail_unless(source_settings_count <= 1, "Only the default singleton settings row has a conversion mapping")
+    if source_settings_count:
+        fail_unless(int(db.sql(SOURCE, "SELECT count(*) FROM instance_settings WHERE singleton_key='default';")) == 1,
+                    "Unknown source settings singleton")
     fail_unless(all(count == 0 or (table == "instance_settings" and seeded_settings)
                     for table, count in counts.items()), "Target already contains application data; refusing overwrite")
     if seeded_settings:
-        fail_unless(int(db.sql(SOURCE, "SELECT count(*) FROM instance_settings;")) == 0,
-                    "Populated AMX instance settings require an explicit target seed merge")
-        fail_unless(int(db.sql(TARGET, "SELECT count(*) FROM instance_settings WHERE singleton_key='default' AND general='{}'::jsonb AND experimental='{}'::jsonb;")) == 1,
+        fail_unless(int(db.sql(TARGET, "SELECT count(*) FROM instance_settings WHERE singleton_key='default' AND default_environment_id IS NULL AND general='{}'::jsonb AND experimental='{}'::jsonb;")) == 1,
                     "Target instance settings differ from the fresh upstream seed")
     before, after = defer_foreign_keys(db)
     statements = ["BEGIN; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='120s';", before,
                   f"CREATE SCHEMA {ident(ARCHIVE)}; REVOKE ALL ON SCHEMA {ident(ARCHIVE)} FROM PUBLIC;"]
     if seeded_settings:
         statements.append(f"CREATE TABLE {ident(ARCHIVE)}.target_seed_instance_settings AS SELECT * FROM public.instance_settings;")
+        if source_settings_count:
+            statements.append("DELETE FROM public.instance_settings WHERE singleton_key='default';")
     original_hashes = {}
     for table, columns in tables.items():
         # Preserve the exact source column types, values, timestamps and JSON.
@@ -132,7 +137,7 @@ def convert(db: Rehearsal, mapping: dict, plugin_owners: dict[str, str]) -> dict
     # Validate every source value before applying explicit quarantine changes.
     for table, columns in tables.items():
         names = ",".join(map(ident, columns))
-        seed_filter = f" WHERE id NOT IN (SELECT id FROM {ident(ARCHIVE)}.target_seed_instance_settings)" if table == "instance_settings" and seeded_settings else ""
+        seed_filter = f" WHERE id NOT IN (SELECT id FROM {ident(ARCHIVE)}.target_seed_instance_settings)" if table == "instance_settings" and seeded_settings and not source_settings_count else ""
         destination = f"SELECT {names} FROM public.{ident(table)}{seed_filter}"
         statements.append(f"DO $$ BEGIN IF EXISTS ((SELECT {names} FROM {ident(ARCHIVE)}.{ident(table)} EXCEPT ALL {destination}) UNION ALL ({destination} EXCEPT ALL SELECT {names} FROM {ident(ARCHIVE)}.{ident(table)})) THEN RAISE EXCEPTION 'Preservation mismatch: {table}'; END IF; END $$;")
 

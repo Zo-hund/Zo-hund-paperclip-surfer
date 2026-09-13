@@ -76,6 +76,12 @@ jobs:
       - name: Seed synthetic tenants
         run: python3 scripts/amx-migration/seed_synthetic.py --container amx-migration-db-20260913 --plugin-owners migration-evidence/plugin-owners.json
       - name: Convert with the reviewed column map
+        # A populated source singleton may replace only an archived, exact empty seed.
+        # Prove customized target settings are rejected before the positive rehearsal.
+        run: >-
+          python3 scripts/amx-migration/verify_settings_guard.py --container amx-migration-db-20260913
+          --map scripts/amx-migration/conversion-map.json --plugin-owners migration-evidence/plugin-owners.json
+      - name: Preserve populated source settings and convert all mapped tables
         run: >-
           python3 scripts/amx-migration/convert_synthetic.py --container amx-migration-db-20260913
           --map scripts/amx-migration/conversion-map.json --plugin-owners migration-evidence/plugin-owners.json

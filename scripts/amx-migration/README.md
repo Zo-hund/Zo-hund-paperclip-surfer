@@ -26,8 +26,12 @@ production cutover tools, and they never start the application or agent runs.
    before quarantining runnable state. Foreign keys stay enabled and are checked
    before commit; their original deferral settings are restored. Plugin ownership
    must be explicit. Unknown required fields, schema drift and existing target
-   application data stop conversion. Populated legacy instance settings require
-   a separate explicit merge; the current fixture has an empty settings table.
+   application data stop conversion. The exact empty upstream settings seed is
+   archived separately. A populated AMX default singleton retains its ID,
+   timestamps and all JSON fields, including unknown legacy fields. Non-default
+   source singletons and customized target settings stop conversion. Quarantine
+   then clears the default environment and enforces managed sandbox isolation;
+   the archive retains the original settings unchanged.
 4. `verify_bindings.py` checks the tenant-bound key reference, cross-company and
    conflicting-binding rejection, rollback, idempotence and no privilege inference.
 5. `restore_synthetic.py` creates a PostgreSQL custom-format backup, restores it
@@ -36,7 +40,7 @@ production cutover tools, and they never start the application or agent runs.
    columns do not survive `pg_dump` and are not logical schema differences.
 
 The validation workflow contains the exact commands. Evidence identifies this
-as synthetic-only. Real storage/key recovery, populated-settings conversion,
+as synthetic-only. Real storage/key recovery,
 runtime migration, complete feature parity and release gates remain required.
 Never use a successful synthetic rehearsal as production approval.
 

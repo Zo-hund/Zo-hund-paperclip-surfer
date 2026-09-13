@@ -29,6 +29,11 @@ def main():
     CREATE SCHEMA amx_rehearsal_metadata;
     CREATE TABLE amx_rehearsal_metadata.fixture (baseline text NOT NULL);
     INSERT INTO amx_rehearsal_metadata.fixture VALUES ({literal(BASELINE)});
+    INSERT INTO instance_settings (id,singleton_key,general,experimental,created_at,updated_at)
+      VALUES ('88888888-8888-4888-8888-888888888888','default',
+        '{{"brand":"AMX-AIR-HUBS","nested":{{"retain":true}},"unknownLegacyField":"preserve"}}',
+        '{{"enableManagedSandboxOnly":false,"legacyExperiment":true}}',
+        '2026-01-02 03:04:05.123456+00','2026-01-02 03:04:05.123456+00');
     INSERT INTO companies (id,name,issue_prefix,require_board_approval_for_new_agents,brand_color,deployment_target,is_public,tagline)
       VALUES ('{A}','Synthetic Tenant A','SYNTA',true,'#123456','cloud',false,'Private synthetic tenant'),
              ('{B}','Synthetic Tenant B','SYNTB',false,'#654321','local',true,'Public opt-in preserved');
