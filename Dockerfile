@@ -97,6 +97,8 @@ RUN npm install --global --ignore-scripts \
       @openai/codex@latest \
       opencode-ai \
       @earendil-works/pi-coding-agent \
+  && node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs \
+  && (cd /usr/local/lib/node_modules/opencode-ai && node postinstall.mjs) \
   && pip3 install --break-system-packages --ignore-installed -e /opt/hermes runwayml \
        'cryptography>=50.0.0' 'pillow>=12.3.0' 'PyJWT>=2.13.0' \
   && pip3 check \
