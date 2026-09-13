@@ -70,6 +70,21 @@ describeEmbeddedPostgres("companyService", () => {
     await tempDb?.cleanup();
   });
 
+  it("retains AMX branding and explicit directory visibility in company reads", async () => {
+    const svc = companyService(db);
+    const company = await svc.create({ name: "AMX preservation fixture" });
+    expect(await svc.getById(company.id)).toMatchObject({
+      isPublic: false, brandColor: null, tagline: null, deploymentTarget: "cloud",
+      requireBoardApprovalForNewAgents: true,
+    });
+    await svc.update(company.id, { brandColor: "#123456", tagline: "Reviewed directory listing", isPublic: true });
+    expect(await svc.getById(company.id)).toMatchObject({
+      brandColor: "#123456", tagline: "Reviewed directory listing", isPublic: true,
+    });
+    await svc.update(company.id, { isPublic: false });
+    expect(await svc.getById(company.id)).toMatchObject({ isPublic: false, tagline: "Reviewed directory listing" });
+  });
+
   it("retries generated issue prefixes when Drizzle wraps the unique constraint error", async () => {
     await db.insert(companies).values({
       name: "Aron Existing",

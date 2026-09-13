@@ -103,6 +103,13 @@ export interface Agent {
   lastHeartbeatAt: Date | null;
   metadata: Record<string, unknown> | null;
   orgChainHealth?: AgentOrgChainHealth;
+  scheduleEnabled?: boolean;
+  cronExpression?: string | null;
+  scheduleTimezone?: string | null;
+  nextScheduledAt?: Date | null;
+  isPublicProfile?: boolean;
+  skills?: string[];
+  harnessId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

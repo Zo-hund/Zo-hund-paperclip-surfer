@@ -34,6 +34,10 @@ export interface Company {
   feedbackDataSharingTermsVersion: string | null;
   logoAssetId: string | null;
   logoUrl: string | null;
+  brandColor?: string | null;
+  deploymentTarget?: string;
+  isPublic?: boolean;
+  tagline?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
