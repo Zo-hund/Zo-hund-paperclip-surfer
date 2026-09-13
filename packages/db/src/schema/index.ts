@@ -177,3 +177,29 @@ export { pluginDatabaseNamespaces, pluginMigrations } from "./plugin_database.js
 export { pluginJobs, pluginJobRuns } from "./plugin_jobs.js";
 export { pluginWebhookDeliveries } from "./plugin_webhooks.js";
 export { pluginLogs } from "./plugin_logs.js";
+
+// AMX extension schemas; migrations are generated after the upstream history.
+export { agentChatMessages } from "./agent_chat_messages.js";
+export { agentKpis, agentKpiDefinitions, agentExperiments, agentKpiObservations } from "./agent_kpis.js";
+export { agentMemories } from "./agent_memories.js";
+export { agentProjectSessions } from "./agent_project_sessions.js";
+export { amxChainEvents, amxCertificates } from "./amx_chain.js";
+export { amxLedger, amxGlobalLedger, amxTransactions } from "./amx_ledger.js";
+export { amxNodes, amxDispatchLeases, amxDispatchEvidence } from "./amx_nodes.js";
+export { auditVerifications } from "./audit_verifications.js";
+export { companyEvents } from "./company_events.js";
+export { companyMcpServers, agentMcpExclusions } from "./company_mcp_servers.js";
+export { companyStaff } from "./company_staff.js";
+export { companyWebhooks, companyWebhookDeliveries } from "./company_webhooks.js";
+export { collectives, electives, communityBoards, boardCollaborations } from "./governance_boards.js";
+export { lmsBadgeDefinitions, lmsLearnerBadges, lmsXrSessions, lmsCommunityActivity, lmsWorkforceProfiles, lmsInterventions, lmsMarketplaceListings, lmsMarketplaceBookings } from "./lms_analytics.js";
+export { lmsModules, lmsModuleProgress } from "./lms_modules.js";
+export { lmsMemberProfiles, lmsSessions, lmsSessionAttendance, lmsAiAgentRoles } from "./lms_operations.js";
+export { lmsWorkshops, lmsEnrollments, lmsSimulations } from "./lms_training.js";
+export { meetings, meetingTranscripts, meetingGuestInvites, meetingParticipants, meetingOutcomes } from "./meetings.js";
+export { opprrcDeliveries, opprrcBackupJobs } from "./opprrc_deliveries.js";
+export { pushSubscriptions } from "./push_subscriptions.js";
+export { rqSubmissions, rqAgentConfigs } from "./rq_factory.js";
+export { skillChangeLog } from "./skill_change_log.js";
+export { stripeSubscriptions, stripeProcessedEvents, stripePrices } from "./stripe.js";
+export { toolbelts, harnesses } from "./toolbelts.js";

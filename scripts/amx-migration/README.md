@@ -1,12 +1,44 @@
-# AMX migration preflight
+# AMX migration tools
 
-This is an offline Git inventory. It does not open an application database,
+`inventory.py` is an offline Git inventory. It does not open an application database,
 apply SQL, start agents, copy credentials, or authorize a release.
 
 Requires Python 3.10+ and Git. No Python or JavaScript packages are installed.
 Run from the migration worktree. Keep local reports and temporary test files on
 F under OPPRRC. The output report is created exclusively; existing evidence is
 never overwritten. Use a new filename for each run.
+
+## Synthetic conversion and recovery
+
+The other scripts use only a dedicated Docker PostgreSQL container with the
+rehearsal label, `--network none`, no published ports and a dedicated data volume.
+They accept no live database URL. Local Docker storage is on F. They are not
+production cutover tools, and they never start the application or agent runs.
+
+1. `rehearsal.py` executes the AMX and candidate histories in different **new**
+   databases. Each journal records only SQL actually executed on that database.
+2. `seed_synthetic.py` creates two test tenants with explicit plugin ownership,
+   private/public visibility, approval policies, secret references, ledger values,
+   run history, microsecond timestamps and integers beyond JavaScript precision.
+   Secret material is a synthetic structural fixture, not a decryptable live key.
+3. `convert_synthetic.py` checks the committed column map and schema fingerprints.
+   It preserves every source value in an isolated archive and validates equality
+   before quarantining runnable state. Foreign keys stay enabled and are checked
+   before commit; their original deferral settings are restored. Plugin ownership
+   must be explicit. Unknown required fields, schema drift and existing target
+   application data stop conversion. Populated legacy instance settings require
+   a separate explicit merge; the current fixture has an empty settings table.
+4. `verify_bindings.py` checks the tenant-bound key reference, cross-company and
+   conflicting-binding rejection, rollback, idempotence and no privilege inference.
+5. `restore_synthetic.py` creates a PostgreSQL custom-format backup, restores it
+   into a third new database, and checks all source values and the original journal.
+   It compares surviving column order; physical holes from historical dropped
+   columns do not survive `pg_dump` and are not logical schema differences.
+
+The validation workflow contains the exact commands. Evidence identifies this
+as synthetic-only. Real storage/key recovery, populated-settings conversion,
+runtime migration, complete feature parity and release gates remain required.
+Never use a successful synthetic rehearsal as production approval.
 
 ```powershell
 $migrationPython = 'F:/AMX-AIR-HUBS-LOCAL/OPPRRC/04_resources/BOARD-INTERNAL/development/tools/notebooklm/venv/Scripts/python.exe'

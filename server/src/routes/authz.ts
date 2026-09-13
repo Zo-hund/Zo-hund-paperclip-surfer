@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import type { SecretBindingTargetType } from "@paperclipai/shared";
+import { hasCompanyRoleAtLeast, type CompanyMembershipRole, type SecretBindingTargetType } from "@paperclipai/shared";
 import { forbidden, HttpError, unauthorized } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { responsibleUserAuthzShadowMode } from "../services/authorization.js";
@@ -159,6 +159,19 @@ export function hasCompanyAccess(req: Request, companyId: string): boolean {
   if (req.actor.type === "agent") return req.actor.companyId === companyId;
   if (req.actor.source === "local_implicit") return true;
   return (req.actor.companyIds ?? []).includes(companyId);
+}
+
+/** AMX human-role gates preserve upstream company scope and active membership. */
+export function assertCompanyRole(req: Request, companyId: string, minRole: CompanyMembershipRole) {
+  assertCompanyAccess(req, companyId);
+  // A company role belongs to a human membership. An agent key is not a role
+  // grant and must not inherit the legacy adapter's automatic bypass.
+  assertBoard(req);
+  if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
+  const membership = req.actor.memberships?.find((entry) => entry.companyId === companyId && entry.status === "active");
+  if (!hasCompanyRoleAtLeast(membership?.membershipRole, minRole)) {
+    throw forbidden(`Requires at least '${minRole}' role for this company`);
+  }
 }
 
 /**

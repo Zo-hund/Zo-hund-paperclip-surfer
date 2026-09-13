@@ -72,10 +72,12 @@ import { testEnvironment } from "./test.js";
 
 describe("opencode remote environment diagnostics", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
 
   it("stages remote runtime config assets for sandbox hello probes", async () => {
+    vi.stubEnv("AMX_HOST_ONLY_CREDENTIAL", "host-only-secret-sentinel");
     const remoteTarget: AdapterExecutionTarget = {
       kind: "remote",
       transport: "sandbox",
@@ -125,5 +127,9 @@ describe("opencode remote environment diagnostics", () => {
     expect(probeCall?.[4].env.XDG_CONFIG_HOME).toBe(
       "/remote/workspace/.paperclip-runtime/runs/test/workspace/.paperclip-runtime/opencode/xdgConfig",
     );
+    for (const calls of [ensureAdapterExecutionTargetCommandResolvable.mock.calls,
+      maybeRunSandboxInstallCommand.mock.calls, runAdapterExecutionTargetProcess.mock.calls]) {
+      expect(JSON.stringify(calls)).not.toContain("host-only-secret-sentinel");
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { and, count, eq, gte, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
+import { AMX_REQUIRE_NEW_AGENT_APPROVAL } from "@paperclipai/shared";
 import {
   companies,
   companyLogos,
@@ -281,7 +282,11 @@ export function companyService(db: Db) {
       try {
         const rows = await db
           .insert(companies)
-          .values({ ...data, issuePrefix: candidate })
+          .values({
+            ...data,
+            requireBoardApprovalForNewAgents: data.requireBoardApprovalForNewAgents ?? AMX_REQUIRE_NEW_AGENT_APPROVAL,
+            issuePrefix: candidate,
+          })
           .returning();
         return rows[0];
       } catch (error) {

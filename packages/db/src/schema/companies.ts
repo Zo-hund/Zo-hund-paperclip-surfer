@@ -1,4 +1,4 @@
-import type { InteractionResolverGovernance } from "@paperclipai/shared";
+import { AMX_REQUIRE_NEW_AGENT_APPROVAL, type InteractionResolverGovernance } from "@paperclipai/shared";
 import { pgTable, uuid, text, integer, timestamp, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const companies = pgTable(
@@ -17,7 +17,11 @@ export const companies = pgTable(
     defaultResponsibleUserId: text("default_responsible_user_id"),
     requireBoardApprovalForNewAgents: boolean("require_board_approval_for_new_agents")
       .notNull()
-      .default(false),
+      .default(AMX_REQUIRE_NEW_AGENT_APPROVAL),
+    brandColor: text("brand_color"),
+    deploymentTarget: text("deployment_target").notNull().default("cloud"),
+    isPublic: boolean("is_public").notNull().default(false),
+    tagline: text("tagline"),
     interactionResolverGovernance: jsonb("interaction_resolver_governance")
       .$type<InteractionResolverGovernance>()
       .notNull()

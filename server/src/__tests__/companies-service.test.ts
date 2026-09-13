@@ -90,6 +90,7 @@ describeEmbeddedPostgres("companyService", () => {
     const created = await companyService(db).create({
       name: "Fresh Company",
     });
+    expect(created.requireBoardApprovalForNewAgents).toBe(true);
 
     // A new company starts clean: the Reflection Coach and Summarizer are
     // opt-in, not seeded by default for a new user.
@@ -136,6 +137,16 @@ describeEmbeddedPostgres("companyService", () => {
       kind: "schedule",
       enabled: false,
     });
+  });
+
+  it("preserves an explicit operator choice for new-agent approval", async () => {
+    const created = await companyService(db).create({
+      name: "Explicit Governance Company",
+      requireBoardApprovalForNewAgents: false,
+    });
+    expect(created.requireBoardApprovalForNewAgents).toBe(false);
+    const [stored] = await db.select().from(companies).where(eq(companies.id, created.id));
+    expect(stored.requireBoardApprovalForNewAgents).toBe(false);
   });
 
   it("archives companies by pausing runnable agents and cancelling active runs", async () => {

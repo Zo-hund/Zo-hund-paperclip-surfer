@@ -633,7 +633,7 @@ describe("company portability", () => {
     ]);
   });
 
-  it("exports hire approval policy only when approval is required", async () => {
+  it.each([true, false])("exports an explicit hire approval policy of %s", async (approvalRequired) => {
     const portability = companyPortabilityService({} as any);
 
     companySvc.getById.mockResolvedValueOnce({
@@ -643,7 +643,7 @@ describe("company portability", () => {
       issuePrefix: "PAP",
       logoAssetId: null,
       logoUrl: null,
-      requireBoardApprovalForNewAgents: true,
+      requireBoardApprovalForNewAgents: approvalRequired,
     });
 
     const exported = await portability.exportBundle("company-1", {
@@ -655,7 +655,7 @@ describe("company portability", () => {
       },
     });
 
-    expect(asTextFile(exported.files[".paperclip.yaml"])).toContain("requireBoardApprovalForNewAgents: true");
+    expect(asTextFile(exported.files[".paperclip.yaml"])).toContain(`requireBoardApprovalForNewAgents: ${approvalRequired}`);
   });
 
   it("exports legacy inline sensitive env values as declarations without values", async () => {
@@ -3307,13 +3307,11 @@ describe("company portability", () => {
       data: Buffer.from("png-bytes").toString("base64"),
       contentType: "image/png",
     };
-    // Declare the packaged logo in the bundle's company block. The exported
-    // company map is empty for this fixture, so the block is appended rather
-    // than patched into an existing one.
+    // Preserve the exported approval policy when adding the packaged logo.
     const paperclipYaml = `${exported.files[".paperclip.yaml"]}`;
-    expect(paperclipYaml).not.toContain("company:");
+    expect(paperclipYaml).toContain("company:");
     exported.files[".paperclip.yaml"] =
-      `${paperclipYaml}company:\n  logoPath: "images/company-logo.png"\n`;
+      paperclipYaml.replace("company:\n", 'company:\n  logoPath: "images/company-logo.png"\n');
 
     agentSvc.list.mockResolvedValue([]);
 
@@ -5587,7 +5585,7 @@ describe("company portability", () => {
     expect(routineSvc.createTrigger).not.toHaveBeenCalled();
   });
 
-  it("imports new agents as active while preserving future hire approval settings", async () => {
+  it.each([true, false, undefined])("preserves explicit future hire approval policy %s and defaults missing policy to approval", async (approvalRequired) => {
     const portability = companyPortabilityService({} as any);
     const exported = await portability.exportBundle("company-1", {
       include: {
@@ -5597,6 +5595,12 @@ describe("company portability", () => {
         issues: false,
       },
     });
+
+    const extension = asTextFile(exported.files[".paperclip.yaml"]);
+    exported.files[".paperclip.yaml"] = extension.replace(
+      /^.*requireBoardApprovalForNewAgents:.*\r?\n/gm,
+      approvalRequired === undefined ? "" : `  requireBoardApprovalForNewAgents: ${approvalRequired}\n`,
+    );
 
     agentSvc.list.mockResolvedValue([]);
     secretSvc.normalizeAdapterConfigForPersistence.mockResolvedValueOnce({
@@ -5650,7 +5654,7 @@ describe("company portability", () => {
       status: "idle",
     }));
     expect(companySvc.create).toHaveBeenCalledWith(expect.objectContaining({
-      requireBoardApprovalForNewAgents: false,
+      requireBoardApprovalForNewAgents: approvalRequired ?? true,
     }));
   });
 

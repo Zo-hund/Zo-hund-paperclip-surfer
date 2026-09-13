@@ -1,12 +1,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { prepareOpenCodeRuntimeConfig } from "./runtime-config.js";
 
 const cleanupPaths = new Set<string>();
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     [...cleanupPaths].map(async (filepath) => {
       await fs.rm(filepath, { recursive: true, force: true });
@@ -31,6 +32,26 @@ async function makeConfigHome(initialConfig?: Record<string, unknown>) {
 }
 
 describe("prepareOpenCodeRuntimeConfig", () => {
+  it("generates remote config without host files, provider definitions, or credential fallback", async () => {
+    const configHome = await makeConfigHome({ provider: { private_host: { options: { apiKey: "host-file-secret" } } } });
+    vi.stubEnv("XDG_CONFIG_HOME", configHome);
+    vi.stubEnv("HOST_PROVIDER_KEY", "host-env-secret");
+    vi.stubEnv("PAPERCLIP_OPENCODE_PROVIDERS", JSON.stringify({ private_host: { models: { hidden: {} } } }));
+    vi.stubEnv("PAPERCLIP_OPENCODE_SMALL_MODEL", "private_host/hidden");
+    const prepared = await prepareOpenCodeRuntimeConfig({
+      env: { XDG_CONFIG_HOME: configHome },
+      config: { model: "openrouter/example/model" },
+      targetIsRemote: true,
+    });
+    cleanupPaths.add(prepared.env.XDG_CONFIG_HOME);
+    const raw = await fs.readFile(path.join(prepared.env.XDG_CONFIG_HOME, "opencode", "opencode.json"), "utf8");
+    expect(raw).not.toContain("host-file-secret");
+    expect(raw).not.toContain("host-env-secret");
+    expect(raw).not.toContain("private_host");
+    expect(JSON.parse(raw).provider.openrouter.models).toEqual({ "example/model": {} });
+    await prepared.cleanup();
+  });
+
   it("injects an external_directory allow rule by default", async () => {
     const configHome = await makeConfigHome({
       permission: {

@@ -12,7 +12,13 @@ const {
   runSshCommand,
   syncDirectoryToSsh,
   startAdapterExecutionTargetPaperclipBridge,
+  ensureRuntimeCommandInstalled,
+  ensureTargetCommandResolvable,
+  resolveTargetCommandForLogs,
 } = vi.hoisted(() => ({
+  ensureRuntimeCommandInstalled: vi.fn(),
+  ensureTargetCommandResolvable: vi.fn(),
+  resolveTargetCommandForLogs: vi.fn(),
   runChildProcess: vi.fn(async (_runId: string, _command: string, args: string[]) => {
     if (args.includes("models")) {
       return {
@@ -95,6 +101,9 @@ vi.mock("@paperclipai/adapter-utils/execution-target", async () => {
   return {
     ...actual,
     startAdapterExecutionTargetPaperclipBridge,
+    ensureAdapterExecutionTargetRuntimeCommandInstalled: ensureRuntimeCommandInstalled.mockImplementation(actual.ensureAdapterExecutionTargetRuntimeCommandInstalled),
+    ensureAdapterExecutionTargetCommandResolvable: ensureTargetCommandResolvable.mockImplementation(actual.ensureAdapterExecutionTargetCommandResolvable),
+    resolveAdapterExecutionTargetCommandForLogs: resolveTargetCommandForLogs.mockImplementation(actual.resolveAdapterExecutionTargetCommandForLogs),
   };
 });
 
@@ -109,6 +118,7 @@ describe("opencode remote execution", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
     if (originalOpenCodeAllowAllModels === undefined) {
       delete process.env.OPENCODE_ALLOW_ALL_MODELS;
@@ -123,6 +133,7 @@ describe("opencode remote execution", () => {
   });
 
   it("prepares the workspace, syncs OpenCode skills, and restores workspace changes for remote SSH execution", async () => {
+    vi.stubEnv("AMX_HOST_ONLY_CREDENTIAL", "host-only-secret-sentinel");
     const rootDir = await mkdtemp(path.join(os.tmpdir(), "paperclip-opencode-remote-"));
     cleanupDirs.push(rootDir);
     const workspaceDir = path.join(rootDir, "workspace");
@@ -149,6 +160,7 @@ describe("opencode remote execution", () => {
       config: {
         command: "opencode",
         model: "opencode/gpt-5-nano",
+        env: { OPENROUTER_API_KEY: "tenant-scoped-test-key" },
       },
       context: {
         paperclipWorkspace: {
@@ -248,6 +260,15 @@ describe("opencode remote execution", () => {
     expect(call?.[3].remoteExecution?.remoteCwd).toBe(managedRemoteWorkspace);
     expect(startAdapterExecutionTargetPaperclipBridge).toHaveBeenCalledTimes(1);
     expect(restoreWorkspaceFromSshExecution).toHaveBeenCalledTimes(1);
+    expect(ensureRuntimeCommandInstalled).toHaveBeenCalledWith(expect.objectContaining({
+      env: expect.objectContaining({ OPENROUTER_API_KEY: "tenant-scoped-test-key" }),
+    }));
+    expect(ensureTargetCommandResolvable).toHaveBeenCalled();
+    expect(resolveTargetCommandForLogs).toHaveBeenCalled();
+    for (const calls of [ensureRuntimeCommandInstalled.mock.calls, ensureTargetCommandResolvable.mock.calls,
+      resolveTargetCommandForLogs.mock.calls, runChildProcess.mock.calls, runSshCommand.mock.calls]) {
+      expect(JSON.stringify(calls)).not.toContain("host-only-secret-sentinel");
+    }
   });
 
   it("fails before the remote run when the configured model is unavailable on the SSH target", async () => {

@@ -1,4 +1,13 @@
 export { agentAdapterTypeSchema, optionalAgentAdapterTypeSchema } from "./adapter-type.js";
+export {
+  AMX_REQUIRE_NEW_AGENT_APPROVAL,
+  OPPRRC_CATEGORY_SLUGS,
+  OPPRRC_AUDIENCES,
+  OPPRRC_DELIVERY_REVIEW_STATUSES,
+  type OpprcCategorySlug,
+  type OpprcAudience,
+  type OpprcDeliveryReviewStatus,
+} from "./amx-governance.js";
 export { ADAPTER_AUTH_MISSING_CHECK_CODE } from "./adapter-auth-check-code.js";
 export {
   nativeFinalizationResultSchema,
@@ -2586,3 +2595,14 @@ export {
   isPaperclipDevRunnerCommand,
   rewriteUrlHostToLoopback,
 } from "./runtime-exposure/loopback-bind.js";
+
+export { RESERVED_COMPANY_PREFIX_ROOTS, ADAPTER_LOCALITY, type AdapterLocality, RUN_MODES, type RunMode, ISSUE_LIFECYCLE_STAGES, type IssueLifecycleStage, AMX_NODE_KINDS, type AmxNodeKind, AMX_NODE_STATUSES, type AmxNodeStatus, AMX_NODE_TRUST_TIERS, type AmxNodeTrustTier, AMX_NODE_CONNECTION_MODES, type AmxNodeConnectionMode, AMX_NODE_CAPABILITIES, type AmxNodeCapability, AMX_COMMAND_RISK_LEVELS, type AmxCommandRiskLevel, AMX_DISPATCH_LEASE_STATUSES, type AmxDispatchLeaseStatus, COMPANY_MEMBERSHIP_ROLE_RANK, hasCompanyRoleAtLeast } from "./constants.js";
+export * from "./branding.js";
+export * from "./credits.js";
+export * from "./cron.js";
+export * from "./types/agent-chat.js";
+export * from "./types/amx-node.js";
+export * from "./types/router.js";
+export * from "./validators/agent-chat.js";
+export * from "./validators/amx-node.js";
+export * from "./validators/company-content.js";

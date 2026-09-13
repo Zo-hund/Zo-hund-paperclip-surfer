@@ -1,0 +1,3 @@
+# Contract manifests hash exact source bytes. Preserve the upstream LF form
+# when this repository is checked out on Windows and compiled in Linux.
+*.json text eol=lf

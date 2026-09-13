@@ -37,6 +37,7 @@ export const AGENT_ADAPTER_TYPES = [
   "hermes_local",
   "kimi_local",
   "opencode_local",
+  "openrouter",
   "pi_local",
   "cursor",
   "openclaw_gateway",
@@ -1721,3 +1722,188 @@ export const PLUGIN_BRIDGE_ERROR_CODES = [
   "UNKNOWN",
 ] as const;
 export type PluginBridgeErrorCode = (typeof PLUGIN_BRIDGE_ERROR_CODES)[number];
+
+// Preserved AMX contracts.
+export const RESERVED_COMPANY_PREFIX_ROOTS = [
+  "dashboard",
+  "companies",
+  "company",
+  "skills",
+  "org",
+  "agents",
+  "projects",
+  "issues",
+  "routines",
+  "goals",
+  "approvals",
+  "costs",
+  "usage",
+  "activity",
+  "inbox",
+  "design-guide",
+  "meetings",
+  "calendar",
+  "tests",
+  "analytics",
+  "mcp-servers",
+  "xp",
+  "rq",
+  "lms",
+  "dispatch",
+  "marketplace",
+  "audit",
+  "briefcase",
+  "auth",
+  "invite",
+  "board-claim",
+  "cli-auth",
+  "docs",
+  "instance",
+  "board",
+] as const;
+
+export const ADAPTER_LOCALITY: Record<AgentAdapterType, "local" | "cloud" | "custom"> = {
+  cursor_cloud: "cloud",
+  grok_local: "local",
+  hermes_gateway: "cloud",
+  kimi_local: "local",
+  paperclip_runner: "custom",
+  claude_local: "local",
+  codex_local: "local",
+  gemini_local: "local",
+  opencode_local: "local",
+  pi_local: "local",
+  hermes_local: "local",
+  cursor: "local",
+  openrouter: "cloud",
+  hermes_advanced: "cloud",
+  openclaw_gateway: "cloud",
+  process: "custom",
+  http: "custom",
+};
+
+export type AdapterLocality = (typeof ADAPTER_LOCALITY)[AgentAdapterType];
+
+export const RUN_MODES = ["sim", "live"] as const;
+
+export type RunMode = (typeof RUN_MODES)[number];
+
+export const ISSUE_LIFECYCLE_STAGES = [
+  "sim",
+  "pit_stop",
+  "live",
+  "opprrc",
+  "reports",
+  "certified",
+  "learning",
+] as const;
+
+export type IssueLifecycleStage = (typeof ISSUE_LIFECYCLE_STAGES)[number];
+
+export const AMX_NODE_KINDS = [
+  "local_desktop",
+  "laptop",
+  "phone",
+  "tablet",
+  "hmd",
+  "cloud_vm",
+  "cloud_container",
+  "edge_device",
+] as const;
+
+export type AmxNodeKind = (typeof AMX_NODE_KINDS)[number];
+
+export const AMX_NODE_STATUSES = [
+  "enrolling",
+  "online",
+  "idle",
+  "busy",
+  "degraded",
+  "offline",
+  "suspended",
+] as const;
+
+export type AmxNodeStatus = (typeof AMX_NODE_STATUSES)[number];
+
+export const AMX_NODE_TRUST_TIERS = [
+  "untrusted",
+  "paired",
+  "personal_admin",
+  "company_managed",
+  "privileged",
+] as const;
+
+export type AmxNodeTrustTier = (typeof AMX_NODE_TRUST_TIERS)[number];
+
+export const AMX_NODE_CONNECTION_MODES = [
+  "outbound_websocket",
+  "webrtc_relay",
+  "tailscale",
+  "cloudflare_tunnel",
+  "local_loopback",
+] as const;
+
+export type AmxNodeConnectionMode = (typeof AMX_NODE_CONNECTION_MODES)[number];
+
+export const AMX_NODE_CAPABILITIES = [
+  "heartbeat_worker",
+  "browser_control",
+  "shell",
+  "filesystem_read",
+  "filesystem_write",
+  "screen_stream",
+  "input_control",
+  "local_models",
+  "gpu",
+  "camera",
+  "microphone",
+  "hmd_runtime",
+  "cloud_models",
+  "docker",
+  "git",
+  "github_repo",
+  "github_actions",
+] as const;
+
+export type AmxNodeCapability = (typeof AMX_NODE_CAPABILITIES)[number];
+
+export const AMX_COMMAND_RISK_LEVELS = [
+  "view",
+  "read",
+  "write",
+  "execute",
+  "destructive",
+] as const;
+
+export type AmxCommandRiskLevel = (typeof AMX_COMMAND_RISK_LEVELS)[number];
+
+export const AMX_DISPATCH_LEASE_STATUSES = [
+  "pending_approval",
+  "granted",
+  "consumed",
+  "revoked",
+  "expired",
+  "denied",
+] as const;
+
+export type AmxDispatchLeaseStatus = (typeof AMX_DISPATCH_LEASE_STATUSES)[number];
+
+// Legacy AMX role ranking does not imply permissions for upstream's operator
+// role. That role must use the upstream capability checks, not an inferred rank.
+export const COMPANY_MEMBERSHIP_ROLE_RANK: Partial<Record<CompanyMembershipRole, number>> = {
+  owner: 40,
+  admin: 30,
+  member: 20,
+  viewer: 10,
+};
+
+export function hasCompanyRoleAtLeast(
+  actual: CompanyMembershipRole | string | null | undefined,
+  required: CompanyMembershipRole,
+): boolean {
+  if (!actual) return false;
+  const actualRank = COMPANY_MEMBERSHIP_ROLE_RANK[actual as CompanyMembershipRole] ?? 0;
+  const requiredRank = COMPANY_MEMBERSHIP_ROLE_RANK[required];
+  return requiredRank !== undefined && actualRank >= requiredRank;
+}
+export { OPPRRC_AUDIENCES, OPPRRC_CATEGORY_SLUGS, OPPRRC_DELIVERY_REVIEW_STATUSES, type OpprcAudience, type OpprcCategorySlug, type OpprcDeliveryReviewStatus } from "./amx-governance.js";

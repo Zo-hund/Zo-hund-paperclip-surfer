@@ -46,6 +46,7 @@ import type {
 } from "@paperclipai/shared";
 import {
   AGENT_DEFAULT_MAX_CONCURRENT_RUNS,
+  AMX_REQUIRE_NEW_AGENT_APPROVAL,
   ISSUE_PRIORITIES,
   ISSUE_STATUSES,
   PROJECT_ICON_NAMES,
@@ -2976,7 +2977,7 @@ function writeManifestEnvBinding(
 }
 
 function readCompanyApprovalDefault(_frontmatter: Record<string, unknown>) {
-  return false;
+  return AMX_REQUIRE_NEW_AGENT_APPROVAL;
 }
 
 function readIncludeEntries(frontmatter: Record<string, unknown>): CompanyPackageIncludeEntry[] {
@@ -4683,7 +4684,7 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         schemaVersion: BUNDLE_SCHEMA_VERSION,
         company: stripEmptyValues({
           logoPath: companyLogoPath,
-          requireBoardApprovalForNewAgents: company.requireBoardApprovalForNewAgents ? true : undefined,
+          requireBoardApprovalForNewAgents: company.requireBoardApprovalForNewAgents,
           feedbackDataSharingEnabled: company.feedbackDataSharingEnabled ? true : undefined,
           feedbackDataSharingConsentAt: company.feedbackDataSharingConsentAt?.toISOString() ?? null,
           feedbackDataSharingConsentByUserId: company.feedbackDataSharingConsentByUserId ?? null,
@@ -5293,8 +5294,8 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         name: companyName,
         description: include.company ? (sourceManifest.company?.description ?? null) : null,
         requireBoardApprovalForNewAgents: include.company
-          ? (sourceManifest.company?.requireBoardApprovalForNewAgents ?? false)
-          : false,
+          ? (sourceManifest.company?.requireBoardApprovalForNewAgents ?? AMX_REQUIRE_NEW_AGENT_APPROVAL)
+          : AMX_REQUIRE_NEW_AGENT_APPROVAL,
         feedbackDataSharingEnabled: include.company
           ? (sourceManifest.company?.feedbackDataSharingEnabled ?? false)
           : false,

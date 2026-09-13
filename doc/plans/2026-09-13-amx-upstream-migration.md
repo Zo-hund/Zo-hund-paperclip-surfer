@@ -1,7 +1,33 @@
 # AMX-AIR-HUBS upstream migration
 
-Status: migration preparation implemented; application port and data conversion
-are incomplete. This branch is not a replacement deployment.
+Status: schema extensions, synthetic conversion and restore, and initial tenant
+security adapters are implemented. Application integration and release validation
+remain incomplete. This branch is not a replacement deployment.
+
+## Implementation evidence
+
+- Drizzle generated the AMX extension migration with 59 retained AMX tables and
+  18 retained columns. The constructed target has 238 tables.
+- An explicit conversion map preserves all columns in the 123 source tables.
+  Synthetic conversion validates values before quarantining runnable state.
+  A separate backup restore validates all source tables and the original journal.
+- Secret references receive explicit company bindings. Foreign-company references,
+  conflicting versions and inferred privileged projections fail the rehearsal.
+- OpenRouter uses an isolated OpenCode runtime, explicit tenant credentials and
+  bounded execution. Remote execution no longer inherits host provider environment
+  variables or provider configuration files.
+- Company creation and import preserve the AMX approval default and explicit opt-outs.
+- Focused results: 18 Python guard tests, 7 shared compatibility tests, 19 remote
+  adapter tests, 107 portability/OpenRouter tests, 20 database-backed company tests,
+  6 company-role tests, 250 Worker contract tests and 9 release helper tests pass.
+  Shared, OpenCode and focused OpenRouter typechecks pass.
+- Full server typechecking exceeded the local container memory limit. Full
+  workspace checks, complete feature integration, image scanning, real storage/key
+  recovery and staging are not validated. No application or release was deployed.
+
+The synthetic converter does not yet handle populated legacy instance settings.
+Restored Worker, XR and AMX route/service source is preservation work; unmounted
+modules and contract tests do not establish runtime feature parity.
 
 The owner selected a reviewed upstream migration on September 13, 2026.
 Preserve the AMX feature set, data and human release controls. AMX-HUBS.cc is a
@@ -146,8 +172,9 @@ upstream configuration honors that opt-out. This is first-party telemetry,
 separate from optional OTLP export and local run-log storage. Keep external
 providers and communications unconfigured during synthetic tests.
 
-The candidate has not been booted or installed. Full application checks are
-pending; the offline preflight tests do not substitute for them.
+Candidate dependencies are installed in isolated F-backed Docker storage. The
+candidate application has not been booted. Full application checks are pending;
+focused tests and synthetic conversion do not substitute for them.
 
 ## Release acceptance
 

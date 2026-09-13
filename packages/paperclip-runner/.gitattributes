@@ -1,0 +1,3 @@
+# Generated contracts are checked byte for byte on both Windows and Linux.
+src/protocol/generated/*.ts text eol=lf
+generated/*.json text eol=lf

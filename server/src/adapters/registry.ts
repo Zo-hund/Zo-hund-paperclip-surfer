@@ -5,6 +5,7 @@ import type {
 } from "./types.js";
 import { parseAdapterModelsEnv } from "../services/adapter-models-env.js";
 import { stampClaudeAgentIdHeader } from "./claude-agent-id-header.js";
+import { openRouterAdapter } from "./openrouter.js";
 import {
   buildSandboxNpmInstallCommand,
   getAdapterSessionManagement,
@@ -566,6 +567,7 @@ function registerBuiltInAdapters() {
     codexLocalAdapter,
     paperclipRunnerAdapter,
     openCodeLocalAdapter,
+    { ...openRouterAdapter, getRuntimeCommandSpec: () => buildNpmRuntimeCommandSpec({}, "opencode", "opencode-ai") },
     piLocalAdapter,
     cursorCloudAdapter,
     cursorLocalAdapter,

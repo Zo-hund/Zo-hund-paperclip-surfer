@@ -37,6 +37,7 @@ export const issues = pgTable(
     lastStatusDecisionId: uuid("last_status_decision_id"),
     workMode: text("work_mode").notNull().default("standard"),
     harnessKind: text("harness_kind"),
+    lifecycleStage: text("lifecycle_stage"),
     priority: text("priority").notNull().default("medium"),
     reviewPolicy: text("review_policy").$type<IssueReviewPolicy>(),
     assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
