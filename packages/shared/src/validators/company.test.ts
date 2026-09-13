@@ -56,7 +56,7 @@ describe("company schemas with AMX branding compatibility", () => {
 });
 
 describe("portability company manifest tolerance", () => {
-  it("accepts a legacy manifest entry carrying the retired keys and ignores them", () => {
+  it("retains AMX branding in legacy manifests while ignoring the retired attachment limit", () => {
     const parsed = portabilityCompanyManifestEntrySchema.parse({
       path: "company.md",
       name: "Acme",
@@ -67,7 +67,7 @@ describe("portability company manifest tolerance", () => {
       requireBoardApprovalForNewAgents: false,
     });
 
-    expect(parsed).not.toHaveProperty("brandColor");
+    expect(parsed.brandColor).toBe("#5c5fff");
     expect(parsed).not.toHaveProperty("attachmentMaxBytes");
     expect(parsed.name).toBe("Acme");
   });

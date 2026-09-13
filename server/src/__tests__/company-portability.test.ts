@@ -521,6 +521,24 @@ describe("company portability", () => {
     });
   });
 
+  it("round-trips AMX company branding through export and import", async () => {
+    companySvc.getById.mockResolvedValue({ id: "company-1", name: "AMX", description: null,
+      issuePrefix: "AMX", logoAssetId: null, logoUrl: null, requireBoardApprovalForNewAgents: true,
+      brandColor: "#123abc", tagline: "Local factory" });
+    const portability = companyPortabilityService({} as any);
+    const exported = await portability.exportBundle("company-1", {
+      include: { company: true, agents: false, projects: false, issues: false, skills: false },
+    });
+    const input = { source: { type: "inline" as const, rootPath: "round-trip", files: exported.files },
+      include: { company: true, agents: false, projects: false, issues: false, skills: false },
+      target: { mode: "new_company" as const, newCompanyName: "AMX restored" },
+      agents: "all" as const, collisionStrategy: "rename" as const };
+    const preview = await portability.previewImport(input);
+    expect(preview.manifest.company).toMatchObject({ brandColor: "#123abc", tagline: "Local factory" });
+    await portability.importBundle(input, "user-1");
+    expect(companySvc.create).toHaveBeenCalledWith(expect.objectContaining({ brandColor: "#123abc", tagline: "Local factory" }));
+  });
+
   it("exports referenced skills as stubs by default with sanitized Paperclip extension data", async () => {
     const portability = companyPortabilityService({} as any);
 
@@ -5081,7 +5099,7 @@ describe("company portability", () => {
     expect(preview.warnings.some((warning) => warning.startsWith("This package declares schemaVersion 1"))).toBe(true);
   });
 
-  it("imports a legacy package carrying the retired brand color and attachment limit", async () => {
+  it("preserves AMX brand color and tagline while ignoring the retired attachment limit", async () => {
     const portability = companyPortabilityService({} as any);
 
     companySvc.create.mockResolvedValue({ id: "company-imported", name: "Legacy Import" });
@@ -5096,6 +5114,7 @@ describe("company portability", () => {
         files: legacyPackageFiles([
           "company:",
           '  brandColor: "#5c5fff"',
+          '  tagline: "AMX local factory"',
           "  attachmentMaxBytes: 25000000",
         ]),
       },
@@ -5107,13 +5126,13 @@ describe("company portability", () => {
 
     const preview = await portability.previewImport(request);
     expect(preview.errors).toEqual([]);
-    expect(preview.manifest.company).not.toHaveProperty("brandColor");
+    expect(preview.manifest.company).toMatchObject({ brandColor: "#5c5fff", tagline: "AMX local factory" });
     expect(preview.manifest.company).not.toHaveProperty("attachmentMaxBytes");
 
     await portability.importBundle(request, "user-1");
 
     expect(companySvc.create).toHaveBeenCalledWith(
-      expect.not.objectContaining({ brandColor: expect.anything() }),
+      expect.objectContaining({ brandColor: "#5c5fff", tagline: "AMX local factory" }),
     );
     expect(companySvc.create).toHaveBeenCalledWith(
       expect.not.objectContaining({ attachmentMaxBytes: expect.anything() }),

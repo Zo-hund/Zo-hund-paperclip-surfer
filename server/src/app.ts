@@ -31,6 +31,7 @@ import { statusCardRoutes } from "./routes/status-cards.js";
 import { teamsCatalogRoutes } from "./routes/teams-catalog.js";
 import { agentRoutes } from "./routes/agents.js";
 import { agentMemoryRoutes } from "./routes/agent-memories.js";
+import { directoryProfileRoutes } from "./routes/directory-profiles.js";
 import type { SetupTokenSessionService } from "./services/setup-token-session.js";
 import {
   buildSetupTokenLoginTransport,
@@ -419,6 +420,7 @@ export async function createApp(
   api.use(llmRoutes(db));
   api.use(folderRoutes(db));
   api.use(agentMemoryRoutes(db));
+  api.use(directoryProfileRoutes(db));
   api.use(companySkillRoutes(db));
   api.use(companySkillPolicyRoutes(db));
   api.use(inboxAgentPolicyRoutes(db));

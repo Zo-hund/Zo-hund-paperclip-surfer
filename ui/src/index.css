@@ -70,6 +70,13 @@
 }
 
 :root {
+  /* Fixed brand artwork colors; identical in light and dark themes. */
+  --onboarding-art-eyes: #060606;
+  --onboarding-art-dormant-start: #626262;
+  --onboarding-art-dormant-end: #101010;
+  --onboarding-art-tuft: #2D200D;
+  --onboarding-art-alive-start: #3028AA;
+  --onboarding-art-alive-end: #FF0000;
   color-scheme: light;
   --radius: 0.5rem;
   --background: oklch(1 0 0);

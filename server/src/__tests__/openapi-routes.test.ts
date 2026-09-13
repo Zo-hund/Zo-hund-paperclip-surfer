@@ -16,6 +16,8 @@ const apiPrefixes: Record<string, string> = {
   "activity.ts": "/api",
   "adapters.ts": "/api",
   "agents.ts": "/api",
+  "agent-memories.ts": "/api",
+  "directory-profiles.ts": "/api",
   "attention.ts": "/api",
   "approvals.ts": "/api",
   "assets.ts": "/api",
@@ -183,6 +185,12 @@ describe("openapi routes", () => {
       AgentBearerAuth: { type: "http", scheme: "bearer" },
     });
     expect(res.body.paths["/api/health"].get.security).toEqual([]);
+    expect(res.body.paths["/api/public/directory/profiles"].get.security).toEqual([]);
+    expect(res.body.paths["/api/instance/directory/profiles"].get["x-paperclip-authorization"])
+      .toEqual({ actor: "board", instanceAdmin: true });
+    expect(res.body.paths["/api/agents/{agentId}/memories"].post.responses["201"]).toBeDefined();
+    expect(res.body.paths["/api/agents/{agentId}/memories/{memoryId}"].patch.requestBody.content["application/json"].schema)
+      .toMatchObject({ additionalProperties: false });
     expect(res.body.paths["/mcp/gateways/{gatewayPublicId}"].post.security).toEqual([]);
     expect(res.body.paths["/api/mcp/gateways/{gatewayPublicId}"]).toBeUndefined();
     expect(res.body.paths["/api/companies"].post.responses["201"]).toBeDefined();

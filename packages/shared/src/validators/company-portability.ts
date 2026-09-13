@@ -38,13 +38,15 @@ export const portabilityFileEntrySchema = z.union([
 ]);
 
 // Deliberately non-strict: packages exported by older versions still carry
-// retired company keys such as `brandColor` and `attachmentMaxBytes`. Zod
+// retired company keys such as `attachmentMaxBytes`. AMX branding is retained. Zod
 // strips keys the schema does not name, so those bundles keep importing —
 // the retired settings are simply ignored.
 export const portabilityCompanyManifestEntrySchema = z.object({
   path: z.string().min(1),
   name: z.string().min(1),
   description: z.string().nullable(),
+  brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  tagline: z.string().max(200).nullable().optional(),
   logoPath: z.string().nullable(),
   requireBoardApprovalForNewAgents: z.boolean(),
   feedbackDataSharingEnabled: z.boolean().default(false),

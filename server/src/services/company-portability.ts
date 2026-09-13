@@ -62,6 +62,7 @@ import {
   issueCommentMetadataSchema,
   issueCommentPresentationSchema,
   normalizeAgentUrlKey,
+  portabilityCompanyManifestEntrySchema,
   PERMISSION_KEYS,
 } from "@paperclipai/shared";
 import { sha256HexOfBytes } from "@paperclipai/shared/portability-hash";
@@ -3087,6 +3088,7 @@ function buildManifestFromPackageFiles(
     throw unprocessable(`Company package declares schemaVersion ${bundleSchemaVersion}, which was produced by a newer Paperclip; this board reads up to schemaVersion ${BUNDLE_SCHEMA_VERSION}.`);
   }
   const paperclipCompany = isPlainRecord(paperclipExtension.company) ? paperclipExtension.company : {};
+  const amxBranding = portabilityCompanyManifestEntrySchema.pick({ brandColor: true, tagline: true }).parse(paperclipCompany);
   const paperclipSidebar = normalizePortableSidebarOrder(paperclipExtension.sidebar);
   const paperclipLabels = normalizePortableLabelDefinitions(paperclipExtension.labels);
   const paperclipBlobs = normalizePortableBlobIndex(paperclipExtension.blobs);
@@ -3149,6 +3151,7 @@ function buildManifestFromPackageFiles(
       path: resolvedCompanyPath,
       name: companyName,
       description: asString(companyFrontmatter.description),
+      ...amxBranding,
       logoPath: asString(paperclipCompany.logoPath) ?? asString(paperclipCompany.logo),
       requireBoardApprovalForNewAgents:
         typeof paperclipCompany.requireBoardApprovalForNewAgents === "boolean"
@@ -4684,6 +4687,8 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         schemaVersion: BUNDLE_SCHEMA_VERSION,
         company: stripEmptyValues({
           logoPath: companyLogoPath,
+          brandColor: company.brandColor,
+          tagline: company.tagline,
           requireBoardApprovalForNewAgents: company.requireBoardApprovalForNewAgents,
           feedbackDataSharingEnabled: company.feedbackDataSharingEnabled ? true : undefined,
           feedbackDataSharingConsentAt: company.feedbackDataSharingConsentAt?.toISOString() ?? null,
@@ -5293,6 +5298,10 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
       const created = await companies.create({
         name: companyName,
         description: include.company ? (sourceManifest.company?.description ?? null) : null,
+        ...(include.company && sourceManifest.company?.brandColor !== undefined
+          ? { brandColor: sourceManifest.company.brandColor } : {}),
+        ...(include.company && sourceManifest.company?.tagline !== undefined
+          ? { tagline: sourceManifest.company.tagline } : {}),
         requireBoardApprovalForNewAgents: include.company
           ? (sourceManifest.company?.requireBoardApprovalForNewAgents ?? AMX_REQUIRE_NEW_AGENT_APPROVAL)
           : AMX_REQUIRE_NEW_AGENT_APPROVAL,
@@ -5330,6 +5339,8 @@ export function companyPortabilityService(db: Db, storage?: StorageService) {
         const updated = await companies.update(targetCompany.id, {
           name: sourceManifest.company.name,
           description: sourceManifest.company.description,
+          ...(sourceManifest.company.brandColor !== undefined ? { brandColor: sourceManifest.company.brandColor } : {}),
+          ...(sourceManifest.company.tagline !== undefined ? { tagline: sourceManifest.company.tagline } : {}),
           requireBoardApprovalForNewAgents: sourceManifest.company.requireBoardApprovalForNewAgents,
           feedbackDataSharingEnabled: sourceManifest.company.feedbackDataSharingEnabled,
           feedbackDataSharingConsentAt: sourceManifest.company.feedbackDataSharingConsentAt

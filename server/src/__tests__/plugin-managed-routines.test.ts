@@ -5,6 +5,7 @@ import {
   activityLog,
   agentConfigRevisions,
   agents,
+  approvals,
   companies,
   createDb,
   documentRevisions,
@@ -118,6 +119,7 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
     await db.delete(documentRevisions);
     await db.delete(documents);
     await db.delete(issues);
+    await db.delete(approvals);
     await db.delete(agentConfigRevisions);
     await db.delete(activityLog);
     await db.delete(pluginManagedResources);
@@ -139,6 +141,9 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
       name: "Paperclip",
       issuePrefix: issuePrefix(companyId),
       defaultResponsibleUserId: "responsible-user",
+      // Routine reconciliation fixtures explicitly permit automatic hiring.
+      // AMX's default approval requirement remains enabled in the application.
+      requireBoardApprovalForNewAgents: false,
     });
     await db.insert(plugins).values({
       id: pluginId,
@@ -156,6 +161,19 @@ describeEmbeddedPostgres("plugin-managed routines", () => {
     });
     return { companyId, pluginId, pluginManifest, services };
   }
+
+  it("keeps managed agents pending and blocks routines when human hiring approval is required", async () => {
+    const { companyId, services } = await seedCompanyAndPlugin();
+    await db.update(companies).set({ requireBoardApprovalForNewAgents: true }).where(eq(companies.id, companyId));
+    const agent = await services.agents.managedReconcile({ companyId, agentKey: "wiki-maintainer" });
+    await services.projects.reconcileManaged({ companyId, projectKey: "operations" });
+    const [saved] = await db.select().from(agents).where(eq(agents.id, agent.agentId!));
+    expect(saved.status).toBe("pending_approval");
+    expect(await db.select().from(approvals).where(eq(approvals.companyId, companyId))).toHaveLength(1);
+    await expect(services.routines.managedReconcile({ companyId, routineKey: "nightly-lint" }))
+      .rejects.toThrow("pending approval");
+    expect(await db.select().from(routines).where(eq(routines.companyId, companyId))).toHaveLength(0);
+  });
 
   it("resolves routine agent and project refs by stable managed keys", async () => {
     const { companyId, services } = await seedCompanyAndPlugin();

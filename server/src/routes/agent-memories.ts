@@ -7,7 +7,7 @@ import { createAgentMemorySchema, updateAgentMemorySchema, agentMemoryQuerySchem
 import { memoryLoaderService, type AgentMemoryOwner } from "../services/agent-runtime/memory-loader.js";
 import { logActivity } from "../services/activity-log.js";
 import { forbidden, unauthorized } from "../errors.js";
-import { assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
+import { getAccessibleResource, getActorInfo } from "./authz.js";
 
 export function agentMemoryRoutes(db: Db) {
   const router = Router();
@@ -22,7 +22,6 @@ export function agentMemoryRoutes(db: Db) {
       .where(eq(agents.id, agentId)).limit(1);
     const owner = await getAccessibleResource(req, res, row, "Agent not found");
     if (!owner) return null;
-    assertCompanyAccess(req, owner.companyId);
     if (req.actor.type === "agent" && req.actor.agentId !== owner.agentId) {
       throw forbidden("Agents can access only their own memory");
     }

@@ -4,6 +4,32 @@ Status: schema extensions, synthetic conversion and restore, and initial tenant
 security adapters are implemented. Application integration and release validation
 remain incomplete. This branch is not a replacement deployment.
 
+## Resumed validation, September 13
+
+Cloud run `34749568147` at `4a8024de5` passed all workspace typechecks and
+builds, the isolated conversion/restore job, and nine of thirteen test
+partitions. The four failing partitions identified missing OpenAPI coverage,
+a redundant memory access assertion, routine fixtures assuming automatic
+hiring, and a telemetry fixture inheriting the runner's privacy opt-out.
+The final application gate identified nine onboarding artwork color literals.
+
+The resumed change adds the API contracts, preserves the real hiring approval
+and telemetry opt-out behavior while making fixtures explicit, and moves the
+artwork's exact colors into CSS tokens. The Windows token parser now reads CRLF
+files correctly: 105 pre-existing documented exceptions were incorrectly
+reported locally; all four token gates now pass without adding exceptions.
+
+Company package export/import now retains AMX brand color and tagline; its
+94-test portability suite and shared typecheck passed locally before pause.
+The profile directory port requires both company and individual public opt-in,
+protects its private view with instance-admin authorization, and avoids exposing
+internal user identifiers as display-name fallbacks. Current complete CI and
+browser validation remain required; restored source is not full feature parity.
+
+Docker Desktop was resumed with process-local `LOCALAPPDATA=F:/AppData/Local`,
+using the existing F-drive data disk. Its broken C-drive reparse path was not
+reset or rewritten. This launcher workaround is not a persistent system repair.
+
 ## Implementation evidence
 
 - Drizzle generated the AMX extension migration with 59 retained AMX tables and

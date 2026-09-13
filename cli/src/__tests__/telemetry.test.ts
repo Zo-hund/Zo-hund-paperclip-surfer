@@ -74,6 +74,10 @@ describe("cli telemetry", () => {
     for (const key of CI_ENV_VARS) {
       delete process.env[key];
     }
+    // These tests exercise both opt-in and opt-out with a mocked transport.
+    // The runner's global privacy settings must not pre-disable the opt-in case.
+    delete process.env.PAPERCLIP_TELEMETRY_DISABLED;
+    delete process.env.DO_NOT_TRACK;
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true })));
   });
 
@@ -94,6 +98,13 @@ describe("cli telemetry", () => {
 
     expect(client).toBeNull();
     expect(fs.existsSync(path.join(root, "home", "instances", "telemetry-test", "telemetry", "state.json"))).toBe(false);
+  });
+
+  it.each(["PAPERCLIP_TELEMETRY_DISABLED", "DO_NOT_TRACK"])("honors %s even when configuration enables telemetry", async (key) => {
+    process.env[key] = "1";
+    const { initTelemetry } = await import("../telemetry.js");
+    expect(initTelemetry({ enabled: true })).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("creates telemetry state only after the first event is tracked", async () => {

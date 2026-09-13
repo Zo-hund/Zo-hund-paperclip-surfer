@@ -3,6 +3,9 @@ import { z } from "zod";
 import {
   // Agent
   createAgentSchema,
+  createAgentMemorySchema,
+  updateAgentMemorySchema,
+  agentMemoryQuerySchema,
   createAgentHireSchema,
   updateAgentSchema,
   updateAgentPermissionsSchema,
@@ -805,6 +808,7 @@ const AUTHENTICATED_SECURITY: Array<Record<string, string[]>> = [
 ];
 
 const PUBLIC_OPERATIONS = new Set([
+  "GET /api/public/directory/profiles",
   "GET /api/health",
   "GET /api/openapi.json",
   "GET /api/board-claim/{token}",
@@ -972,6 +976,7 @@ const BOARD_ONLY_OPERATIONS = new Set([
 ]);
 
 const INSTANCE_ADMIN_OPERATIONS = new Set([
+  "GET /api/instance/directory/profiles",
   "POST /api/companies",
   "POST /api/plugins/install",
   "POST /api/instance/database-backups",
@@ -981,6 +986,7 @@ const INSTANCE_ADMIN_OPERATIONS = new Set([
 ]);
 
 const CREATED_OPERATIONS = new Set([
+  "POST /api/agents/{agentId}/memories",
   "POST /api/adapters/install",
   "POST /api/companies/{companyId}/agent-hires",
   "POST /api/companies/{companyId}/agents",
@@ -1461,6 +1467,29 @@ for (const route of [
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
+
+registerCurrentRoute({ method: "get", path: "/api/agents/{agentId}/memories", tags: ["agents"],
+  summary: "List company-scoped agent memories; agents may read only their own",
+  query: agentMemoryQuerySchema,
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound } });
+registerCurrentRoute({ method: "post", path: "/api/agents/{agentId}/memories", tags: ["agents"],
+  summary: "Create a memory after validating agent, project and source ownership", body: createAgentMemorySchema,
+  responses: { 201: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound } });
+registerCurrentRoute({ method: "patch", path: "/api/agents/{agentId}/memories/{memoryId}", tags: ["agents"],
+  summary: "Update mutable fields of an owned agent memory", body: updateAgentMemorySchema,
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound } });
+registerCurrentRoute({ method: "delete", path: "/api/agents/{agentId}/memories/{memoryId}", tags: ["agents"],
+  summary: "Delete an owned agent memory",
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound } });
+for (const [path, summary] of [
+  ["/api/public/directory/profiles", "List profiles with both company and individual public opt-in"],
+  ["/api/instance/directory/profiles", "Inspect public and private profiles as an instance administrator"],
+] as const) {
+  registerCurrentRoute({ method: "get", path, tags: ["directory"], summary,
+    query: z.object({ type: z.enum(["agent", "human"]).optional(), companyId: z.string().uuid().optional(),
+      skill: z.string().min(1).max(200).optional(), limit: z.coerce.number().int().positive().optional() }),
+    responses: { 200: r.ok(), 400: r.badRequest, 403: r.forbidden } });
+}
 
 registry.registerPath({
   method: "get",

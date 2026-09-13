@@ -34,6 +34,8 @@ export interface CompanyPortabilityCompanyManifestEntry {
   path: string;
   name: string;
   description: string | null;
+  brandColor?: string | null;
+  tagline?: string | null;
   logoPath: string | null;
   requireBoardApprovalForNewAgents: boolean;
   feedbackDataSharingEnabled: boolean;
