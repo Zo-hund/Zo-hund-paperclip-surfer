@@ -1,5 +1,7 @@
 import json
 import unittest
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 from rehearsal import Rehearsal
@@ -7,6 +9,14 @@ from restore_synthetic import logical_schema
 
 
 class ConversionContainmentTests(unittest.TestCase):
+    def test_command_help_imports_without_accessing_a_database(self):
+        for script in Path(__file__).parent.glob("*.py"):
+            if script.name.startswith("test_"):
+                continue
+            with self.subTest(script=script.name):
+                result = subprocess.run([sys.executable, "-B", str(script), "--help"], capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+
     def test_rejects_non_rehearsal_container_before_docker_access(self):
         with patch("rehearsal.command") as run:
             with self.assertRaises(ValueError):

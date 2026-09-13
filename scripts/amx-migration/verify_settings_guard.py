@@ -2,8 +2,8 @@
 import argparse
 import json
 from pathlib import Path
-from rehearsal import Rehearsal, BASELINE, fail_unless
-from convert_synthetic import convert, SOURCE, TARGET
+from rehearsal import Rehearsal, BASELINE
+from convert_synthetic import convert, SOURCE, TARGET, fail_unless
 
 
 def main():
