@@ -12,6 +12,7 @@ This change starts from experimental commit `90472a4bed6e874ce03eba64d3469392b96
 - Worktree configuration tests clear ambient instance overrides so sibling-port fixtures use their own temporary homes.
 - A version-scoped pnpm hook removes Better Auth's optional Vitest and drizzle-kit peer links, which otherwise keep vulnerable build binaries in the production graph. Drizzle ORM and explicitly declared development tools remain available.
 - The runtime updates npm's bundled brace-expansion, ip-address, and tar dependencies to compatible patched versions. Agent CLI commands are retained and checked by the isolated image smoke test, which now also runs for pull requests.
+- Before that update, npm's source-only development/workspace metadata is removed from its runtime manifest. Otherwise npm resolves the unpublished `@npmcli/docs` development dependency even with `--omit=dev`, preventing the image from building. Runtime package identity is retained, patched dependency versions are recorded, and installed versions are verified.
 
 ## Evidence and limits
 

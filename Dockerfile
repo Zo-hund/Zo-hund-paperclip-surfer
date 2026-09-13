@@ -70,7 +70,10 @@ COPY --chown=node:node --from=runtime-deps /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # Node's bundled npm still contains vulnerable compatible dependency versions.
 # Upgrade the actual dependency code, retaining npm and every agent CLI.
-RUN npm install --prefix /usr/local/lib/node_modules/npm --no-save --ignore-scripts \
+# npm's source-only development/workspace metadata references unpublished
+# packages, which npm resolves even with --omit=dev. Keep its runtime manifest.
+RUN node -e "const fs = require('node:fs'); const p = '/usr/local/lib/node_modules/npm/package.json'; const j = JSON.parse(fs.readFileSync(p)); delete j.devDependencies; delete j.workspaces; fs.writeFileSync(p, JSON.stringify(j, null, 2));" \
+  && npm install --prefix /usr/local/lib/node_modules/npm --save-exact --ignore-scripts \
       --omit=dev --package-lock=false brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 \
   && node -e "for (const [name, version] of Object.entries({'brace-expansion':'5.0.9','ip-address':'10.3.1','tar':'7.5.21'})) { if (require('/usr/local/lib/node_modules/npm/node_modules/' + name + '/package.json').version !== version) throw new Error('npm dependency version mismatch: ' + name); }" \
   && npm --version
