@@ -11,7 +11,7 @@ RUN corepack enable
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc .pnpmfile.cjs ./
 COPY cli/package.json cli/
 COPY server/package.json server/
 COPY ui/package.json ui/
@@ -68,6 +68,12 @@ RUN corepack enable
 WORKDIR /app
 COPY --chown=node:node --from=runtime-deps /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Node's bundled npm still contains vulnerable compatible dependency versions.
+# Upgrade the actual dependency code, retaining npm and every agent CLI.
+RUN npm install --prefix /usr/local/lib/node_modules/npm --no-save --ignore-scripts \
+      --omit=dev --package-lock=false brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 \
+  && node -e "for (const [name, version] of Object.entries({'brace-expansion':'5.0.9','ip-address':'10.3.1','tar':'7.5.21'})) { if (require('/usr/local/lib/node_modules/npm/node_modules/' + name + '/package.json').version !== version) throw new Error('npm dependency version mismatch: ' + name); }" \
+  && npm --version
 # Install adapter CLIs:
 #   claude_local  → @anthropic-ai/claude-code
 #   codex_local   → @openai/codex

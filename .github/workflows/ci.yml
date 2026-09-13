@@ -248,7 +248,14 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && 'mode=max' || 'false' }}
           sbom: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' }}
+      - name: Test the pull-request image in an isolated container
+        if: github.event_name == 'pull_request'
+        env:
+          RELEASE_IMAGE: ${{ steps.image.outputs.ref }}
+        run: bash deploy/release/smoke-image.sh
+
       - name: Scan image for vulnerabilities (Trivy)
+        if: ${{ !cancelled() && steps.build-push.outcome == 'success' }}
         uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
         with:
           image-ref: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && format('{0}@{1}', steps.image.outputs.repository, steps.build-push.outputs.digest) || steps.image.outputs.ref }}
@@ -269,21 +276,7 @@ jobs:
         env:
           RELEASE_IMAGE: ${{ steps.image.outputs.repository }}@${{ steps.build-push.outputs.digest }}
         shell: bash
-        run: |
-          set -euo pipefail
-          CID=$(docker run -d --cap-drop ALL --security-opt no-new-privileges:true \
-            -p 127.0.0.1:3100:3100 \
-            -e PAPERCLIP_DEPLOYMENT_MODE=authenticated \
-            -e PAPERCLIP_DEPLOYMENT_EXPOSURE=private \
-            -e PAPERCLIP_PUBLIC_URL=http://localhost:3100 \
-            -e HEARTBEAT_SCHEDULER_ENABLED=false \
-            -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" "$RELEASE_IMAGE")
-          trap 'docker rm -fv "$CID" >/dev/null' EXIT
-          for attempt in {1..60}; do
-            if python3 deploy/release/smoke.py http://localhost:3100; then exit 0; fi
-            sleep 2
-          done
-          exit 1
+        run: bash deploy/release/smoke-image.sh
 
       - name: Write immutable release metadata
         if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
