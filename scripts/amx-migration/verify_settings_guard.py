@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 from rehearsal import Rehearsal, BASELINE
-from convert_synthetic import convert, SOURCE, TARGET, fail_unless
+from convert_synthetic import convert, SOURCE, TARGET, fail_unless, target_seed_is_unchanged
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     fail_unless(db.sql(SOURCE, "SELECT baseline FROM amx_rehearsal_metadata.fixture;").decode().strip() == BASELINE,
                 "Synthetic fixture marker is absent")
     fail_unless(int(db.sql(TARGET, "SELECT count(*) FROM companies;")) == 0, "Target is not fresh")
-    fail_unless(int(db.sql(TARGET, "SELECT count(*) FROM instance_settings WHERE singleton_key='default' AND general='{}'::jsonb AND experimental='{}'::jsonb AND default_environment_id IS NULL;")) == 1,
+    fail_unless(target_seed_is_unchanged(db, "instance_settings"),
                 "Target settings are not the empty seed")
     mapping = json.loads(args.map.read_text())
     owners = json.loads(args.plugin_owners.read_text())

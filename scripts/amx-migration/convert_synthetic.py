@@ -19,6 +19,11 @@ def fail_unless(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
+def target_seed_is_unchanged(db: Rehearsal, table: str) -> bool:
+    return db.sql(TARGET, "SELECT seed_rows=(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) "
+                  f"FROM public.{ident(table)} t) FROM amx_rehearsal_metadata.target_seed WHERE table_name={literal(table)};").strip() == b"t"
+
+
 def schema_digest(columns: dict) -> str:
     return hashlib.sha256(json.dumps(columns, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -89,8 +94,12 @@ def convert(db: Rehearsal, mapping: dict, plugin_owners: dict[str, str]) -> dict
     fail_unless(all(count == 0 or (table == "instance_settings" and seeded_settings)
                     for table, count in counts.items()), "Target already contains application data; refusing overwrite")
     if seeded_settings:
-        fail_unless(int(db.sql(TARGET, "SELECT count(*) FROM instance_settings WHERE singleton_key='default' AND default_environment_id IS NULL AND general='{}'::jsonb AND experimental='{}'::jsonb;")) == 1,
+        fail_unless(target_seed_is_unchanged(db, "instance_settings"),
                     "Target instance settings differ from the fresh upstream seed")
+    # Check upstream-only tables too. They can contain runtime or provider
+    # configuration even when all 123 AMX tables appear empty.
+    for table in db.columns(TARGET):
+        fail_unless(target_seed_is_unchanged(db, table), f"Target table differs from fresh seed: {table}")
     before, after = defer_foreign_keys(db)
     statements = ["BEGIN; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='120s';", before,
                   f"CREATE SCHEMA {ident(ARCHIVE)}; REVOKE ALL ON SCHEMA {ident(ARCHIVE)} FROM PUBLIC;"]

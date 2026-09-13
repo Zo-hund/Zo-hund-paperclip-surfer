@@ -77,6 +77,16 @@ class Rehearsal:
             self.sql(database, "BEGIN;\n" + sql + "\nINSERT INTO drizzle.__drizzle_migrations "
                      f"(hash, created_at, name) VALUES ({literal(digest)}, {int(entry['when'])}, {literal(tag + '.sql')});\nCOMMIT;")
             hashes.append({"name": tag, "sha256": digest})
+        if not baseline:
+            # Record exact fresh target data, including migration-created IDs
+            # and the default environment pointer. Conversion must not infer
+            # that an arbitrary existing row is a safe seed to replace.
+            statements = ["CREATE SCHEMA amx_rehearsal_metadata;",
+                          "CREATE TABLE amx_rehearsal_metadata.target_seed (table_name text PRIMARY KEY, seed_rows jsonb NOT NULL);"]
+            for table in self.columns(database):
+                statements.append("INSERT INTO amx_rehearsal_metadata.target_seed SELECT "
+                                  f"{literal(table)},coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM public.{identifier(table)} t;")
+            self.sql(database, "BEGIN;" + "\n".join(statements) + "COMMIT;")
         return {"database": database, "migrations_executed": hashes}
 
     def columns(self, database: str) -> dict:
