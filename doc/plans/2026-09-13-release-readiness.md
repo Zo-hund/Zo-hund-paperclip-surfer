@@ -5,6 +5,7 @@ This change starts from experimental commit `90472a4bed6e874ce03eba64d3469392b96
 ## Fixed behavior
 
 - Agent API-key listing, creation, and revocation load the target agent and verify company access before accessing keys. Revocation also binds the database update to both agent ID and key ID.
+- Agent pause, resume, terminate, and deletion verify the target company before mutating agents or cancelling runs. These sibling routes shared the same advisory's authorization flaw.
 - Heartbeat-run issue lookup rejects anonymous callers and verifies access to the run's company. Activity creation verifies the target company as well.
 - Pull-request images are loaded locally on the hosted CI runner and scanned with the same blocking HIGH/CRITICAL threshold. Experimental releases retain immutable digest scanning, provenance, SBOM generation, signing, and release metadata gates.
 - The runtime image reinstalls only locked production dependencies after compilation. `tsx` is an explicit runtime dependency because workspace exports reference TypeScript source. OS updates and patched Python dependency minimums are installed without disabling the scanner.
@@ -20,6 +21,7 @@ Relevant upstream advisories:
 
 - https://github.com/advisories/GHSA-3xx2-mqjm-hg9x
 - https://github.com/advisories/GHSA-xfqj-r5qw-8g4j
+- https://github.com/advisories/GHSA-47wq-cj9q-wpmp
 
 Other application advisories, agent execution isolation, complete end-to-end staging verification, and release-specific backup/restore evidence still require review. Do not change package versions merely to hide an advisory or infer that a backport cleared the scanner. Any applicability exception needs separate evidence and explicit review.
 
