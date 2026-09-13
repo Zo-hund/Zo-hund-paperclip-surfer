@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env
+.env.*
+.git
+*.log
+.DS_Store
+.claude/
+CLAUDE.md
+*.md

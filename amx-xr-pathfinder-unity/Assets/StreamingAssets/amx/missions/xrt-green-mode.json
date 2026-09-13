@@ -1,0 +1,35 @@
+{
+  "id": "xrt-green-mode",
+  "title": "XRT Green Mode",
+  "domain": "WebXR and Mixed Reality Foundations",
+  "objective": "Place an AMX learning station safely, complete the guided interaction, and issue portable mission proof.",
+  "agentId": "jaz",
+  "badge": "XRT Green Mode",
+  "xp": 130,
+  "steps": [
+    {
+      "id": "scan-room",
+      "title": "Confirm the room model",
+      "prompt": "Use MRUK to identify the floor, walls, and a clear learning zone.",
+      "xp": 30
+    },
+    {
+      "id": "place-station",
+      "title": "Place the learning station",
+      "prompt": "Anchor the station inside the safe zone using hands or controllers.",
+      "xp": 40
+    },
+    {
+      "id": "agent-checkpoint",
+      "title": "Complete the guided checkpoint",
+      "prompt": "Ask JAZ for the objective and complete the hand-tracked interaction.",
+      "xp": 30
+    },
+    {
+      "id": "issue-proof",
+      "title": "Review and issue proof",
+      "prompt": "Confirm the evidence and synchronize the OPPRRC completion record.",
+      "xp": 30
+    }
+  ]
+}

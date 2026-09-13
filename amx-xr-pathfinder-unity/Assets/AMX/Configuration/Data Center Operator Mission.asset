@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!49 &4900000
+TextAsset:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Data Center Operator Mission
+  m_Script: "{\n  \"id\": \"data-center-operator\",\n  \"title\": \"Mini Data Center
+    Digital Twin\",\n  \"domain\": \"AI Infrastructure and Digital Twin Operations\",\n 
+    \"objective\": \"Read tenant telemetry, diagnose simulated infrastructure events,
+    use governed agent tools, and issue portable completion proof.\",\n  \"agentId\":
+    \"jaz\",\n  \"badge\": \"AMX Data Center Operator\",\n  \"xp\": 240,\n  \"steps\":
+    [\n    {\n      \"id\": \"know-baseline\",\n      \"title\": \"Know the operating
+    baseline\",\n      \"prompt\": \"Read IT load, PUE, thermal, network, availability,
+    tenant, and source provenance.\",\n      \"xp\": 50\n    },\n    {\n      \"id\":
+    \"do-scenarios\",\n      \"title\": \"Do the incident simulations\",\n      \"prompt\":
+    \"Compare normal operations with tenant burst, hot aisle, network loss, and UPS
+    transfer states.\",\n      \"xp\": 70\n    },\n    {\n      \"id\": \"be-governance\",\n     
+    \"title\": \"Be a governed operator\",\n      \"prompt\": \"Use inspection, thermal
+    mapping, and incident planning without claiming unverified physical action.\",\n     
+    \"xp\": 70\n    },\n    {\n      \"id\": \"issue-proof\",\n      \"title\": \"Issue
+    portable proof\",\n      \"prompt\": \"Review the completed tool traces and queue
+    or synchronize the OPPRRC record.\",\n      \"xp\": 50\n    }\n  ]\n}\n"

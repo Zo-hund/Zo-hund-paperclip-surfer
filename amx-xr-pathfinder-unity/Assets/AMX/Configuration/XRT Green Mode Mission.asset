@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!49 &4900000
+TextAsset:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: XRT Green Mode Mission
+  m_Script: "{\n  \"id\": \"xrt-green-mode\",\n  \"title\": \"XRT Green Mode\",\n
+    \"domain\": \"WebXR and Mixed Reality Foundations\",\n  \"objective\": \"Place
+    an AMX learning station safely, complete the guided interaction, and issue portable
+    mission proof.\",\n  \"agentId\": \"jaz\",\n  \"badge\": \"XRT Green Mode\",\n
+    \"xp\": 130,\n  \"steps\": [\n    {\n      \"id\": \"scan-room\",\n      \"title\":
+    \"Confirm the room model\",\n      \"prompt\": \"Use MRUK to identify the floor,
+    walls, and a clear learning zone.\",\n      \"xp\": 30\n    },\n    {\n
+    \"id\": \"place-station\",\n      \"title\": \"Place the learning station\",\n
+    \"prompt\": \"Anchor the station inside the safe zone using hands or controllers.\",\n
+    \"xp\": 40\n    },\n    {\n      \"id\": \"agent-checkpoint\",\n      \"title\":
+    \"Complete the guided checkpoint\",\n      \"prompt\": \"Ask JAZ for the objective
+    and complete the hand-tracked interaction.\",\n      \"xp\": 30\n    },\n
+    {\n      \"id\": \"issue-proof\",\n      \"title\": \"Review and issue proof\",\n
+    \"prompt\": \"Confirm the evidence and synchronize the OPPRRC completion record.\",\n
+    \"xp\": 30\n    }\n  ]\n}\n"

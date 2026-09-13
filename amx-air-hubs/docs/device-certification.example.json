@@ -1,0 +1,11 @@
+{
+  "testedAt": "2026-07-22T00:00:00.000Z",
+  "release": "replace-with-release-number",
+  "tester": "replace-with-member-id",
+  "devices": {
+    "quest3": { "passed": false, "capabilities": { "webxr": false, "controllers": false, "camera": false, "microphone": false, "reconnect": false, "multiplayer": false } },
+    "android": { "passed": false, "capabilities": { "camera": false, "microphone": false, "reconnect": false, "multiplayer": false } },
+    "iphone": { "passed": false, "capabilities": { "camera": false, "microphone": false, "reconnect": false, "multiplayer": false } },
+    "desktop": { "passed": false, "capabilities": { "camera": false, "microphone": false, "reconnect": false, "multiplayer": false } }
+  }
+}

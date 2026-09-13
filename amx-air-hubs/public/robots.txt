@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+Disallow: /api/
+Disallow: /account/orders
+Disallow: /admin
+Disallow: /analytics
+Disallow: /connections
+Disallow: /control
+Disallow: /dashboard
+Disallow: /tenants
+
+Sitemap: https://www.amx-hubs.cc/sitemap.xml

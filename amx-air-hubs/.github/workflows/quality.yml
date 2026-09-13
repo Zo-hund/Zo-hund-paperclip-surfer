@@ -1,0 +1,37 @@
+name: AMX quality gate
+
+on:
+  pull_request:
+  push:
+    branches: [main, experimental]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Reject committed private keys and live secret assignments
+        shell: bash
+        run: |
+          if git grep -nE -- 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|(^|[^A-Z_])(sk_live_|rk_live_|whsec_[A-Za-z0-9]{12,})' -- ':!package-lock.json'; then
+            echo 'Potential private key or live provider secret committed.' >&2
+            exit 1
+          fi
+      - name: Require dual migrations for platform schema changes
+        shell: bash
+        run: |
+          test -f drizzle/0013_amx_platform_foundation.sql
+          test -f supabase/migrations/20260810230000_amx_platform_foundation.sql
+

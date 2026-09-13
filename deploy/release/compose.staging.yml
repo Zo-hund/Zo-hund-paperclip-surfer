@@ -1,0 +1,60 @@
+name: amx-staging
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: amx_staging
+      POSTGRES_DB: amx_staging
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Staging password required}
+    volumes:
+      - staging-db:/var/lib/postgresql/data
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U amx_staging -d amx_staging"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+  amx:
+    image: ${AMX_IMAGE:?Signed release digest required}
+    restart: unless-stopped
+    user: node
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:3102:3100"]
+    environment:
+      DATABASE_URL: postgres://amx_staging:${POSTGRES_PASSWORD}@db:5432/amx_staging
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Staging auth secret required}
+      PAPERCLIP_AGENT_JWT_SECRET: ${PAPERCLIP_AGENT_JWT_SECRET:?Staging JWT secret required}
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: public
+      PAPERCLIP_PUBLIC_URL: https://staging.amx-air-hubs.cc
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+      PAPERCLIP_SECRETS_STRICT_MODE: "true"
+      HEARTBEAT_SCHEDULER_ENABLED: "false"
+      OPPRRC_BACKUP_WORKER_ENABLED: "false"
+    volumes: [staging-app:/paperclip]
+    networks: [database, proxy]
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${AMX_PROXY_NETWORK:?Proxy network required}
+      - traefik.http.routers.amx-staging.rule=Host(`staging.amx-air-hubs.cc`)
+      - traefik.http.routers.amx-staging.entrypoints=websecure
+      - traefik.http.routers.amx-staging.tls=true
+      - traefik.http.routers.amx-staging.tls.certresolver=letsencrypt
+      - traefik.http.services.amx-staging.loadbalancer.server.port=3100
+      - traefik.http.routers.amx-staging.middlewares=amx-staging-headers
+      - traefik.http.middlewares.amx-staging-headers.headers.contenttypenosniff=true
+      - traefik.http.middlewares.amx-staging-headers.headers.referrerpolicy=same-origin
+volumes:
+  staging-db:
+  staging-app:
+networks:
+  database:
+    internal: true
+  proxy:
+    external: true
+    name: ${AMX_PROXY_NETWORK:?Proxy network required}

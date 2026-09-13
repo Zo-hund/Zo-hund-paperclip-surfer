@@ -1,0 +1,35 @@
+{
+  "id": "data-center-operator",
+  "title": "Mini Data Center Digital Twin",
+  "domain": "AI Infrastructure and Digital Twin Operations",
+  "objective": "Read tenant telemetry, diagnose simulated infrastructure events, use governed agent tools, and issue portable completion proof.",
+  "agentId": "jaz",
+  "badge": "AMX Data Center Operator",
+  "xp": 240,
+  "steps": [
+    {
+      "id": "know-baseline",
+      "title": "Know the operating baseline",
+      "prompt": "Read IT load, PUE, thermal, network, availability, tenant, and source provenance.",
+      "xp": 50
+    },
+    {
+      "id": "do-scenarios",
+      "title": "Do the incident simulations",
+      "prompt": "Compare normal operations with tenant burst, hot aisle, network loss, and UPS transfer states.",
+      "xp": 70
+    },
+    {
+      "id": "be-governance",
+      "title": "Be a governed operator",
+      "prompt": "Use inspection, thermal mapping, and incident planning without claiming unverified physical action.",
+      "xp": 70
+    },
+    {
+      "id": "issue-proof",
+      "title": "Issue portable proof",
+      "prompt": "Review the completed tool traces and queue or synchronize the OPPRRC record.",
+      "xp": 50
+    }
+  ]
+}

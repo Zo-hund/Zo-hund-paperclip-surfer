@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "AMX AIR Hubs",
+  "short_name": "AMX AIR",
+  "description": "Agent-powered WebXR missions, badges, proof, and opportunity.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#05090d",
+  "theme_color": "#05090d",
+  "orientation": "any",
+  "categories": ["education", "productivity", "utilities"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Missions", "short_name": "Missions", "url": "/missions", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Agent Toolbelts", "short_name": "Agents", "url": "/agents", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "Production Status", "short_name": "Status", "url": "/control/runtime", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+  ]
+}
