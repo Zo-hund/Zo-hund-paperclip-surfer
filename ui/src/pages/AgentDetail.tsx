@@ -92,6 +92,7 @@ import { Input } from "@/components/ui/input";
 import { AgentIcon, AgentIconPicker } from "../components/AgentIconPicker";
 import { RunTranscriptView, type TranscriptMode } from "../components/transcript/RunTranscriptView";
 import { AgentToolsTab } from "./AgentToolsTab";
+import { AgentMemoryTab } from "../components/AgentMemoryTab";
 import {
   appendCapped,
   LIVE_TRANSCRIPT_RENDER_LIMIT,
@@ -275,12 +276,13 @@ function scrollToContainerBottom(container: ScrollContainer, behavior: ScrollBeh
   container.scrollTo({ top: container.scrollHeight, behavior });
 }
 
-type AgentDetailView = "dashboard" | "instructions" | "configuration" | "secrets" | "skills" | "tools" | "runs" | "audit" | "budget";
+type AgentDetailView = "dashboard" | "instructions" | "configuration" | "secrets" | "skills" | "tools" | "runs" | "audit" | "budget" | "memories";
 
 export const AGENT_DETAIL_TABS: ReadonlyArray<{ value: AgentDetailView; label: string }> = [
   { value: "dashboard", label: "Dashboard" },
   { value: "instructions", label: "Instructions" },
   { value: "skills", label: "Skills" },
+  { value: "memories", label: "Memories" },
   { value: "configuration", label: "Configuration" },
   { value: "secrets", label: "Secrets" },
   { value: "tools", label: "Tools" },
@@ -324,6 +326,7 @@ export function restoreAgentConfigHistoryEntry(
 }
 
 export function parseAgentDetailView(value: string | null): AgentDetailView {
+  if (value === "memories" || value === "memory") return "memories";
   if (value === "instructions" || value === "prompts") return "instructions";
   if (value === "configure" || value === "configuration") return "configuration";
   if (value === "secrets") return "secrets";
@@ -953,7 +956,7 @@ export function AgentDetail() {
       return;
     }
     const canonicalTab =
-      activeView === "instructions"
+      activeView === "memories" ? "memories" : activeView === "instructions"
         ? "instructions"
         : activeView === "configuration"
           ? "configuration"
@@ -1530,6 +1533,10 @@ export function AgentDetail() {
           agent={agent}
           companyId={resolvedCompanyId ?? undefined}
         />
+      )}
+
+      {activeView === "memories" && resolvedCompanyId && (
+        <AgentMemoryTab key={agent.id} agentId={agent.id} companyId={resolvedCompanyId} />
       )}
 
       {activeView === "tools" && resolvedCompanyId && (
