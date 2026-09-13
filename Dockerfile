@@ -52,6 +52,14 @@ RUN rm -rf node_modules cli/node_modules server/node_modules ui/node_modules \
       packages/plugins/*/node_modules packages/plugins/examples/*/node_modules \
   && pnpm install --prod --frozen-lockfile --ignore-scripts
 
+# Hermes v0.21.2 is released on GitHub but not on PyPI. Upstream requires a
+# source/editable installation to preserve its runtime assets; pin the release.
+FROM base AS hermes-source
+ADD https://github.com/NousResearch/hermes-agent/archive/939e45c91d751fadd94dcd1b873ac3cb44846213.tar.gz /tmp/hermes.tar.gz
+RUN mkdir -p /opt/hermes \
+  && tar -xzf /tmp/hermes.tar.gz -C /opt/hermes --strip-components=1 \
+  && printf '%s\n' '939e45c91d751fadd94dcd1b873ac3cb44846213' > /opt/hermes/.hermes_build_sha
+
 FROM node:lts-trixie-slim AS production
 ARG BUILD_DATE
 ARG VCS_REF
@@ -68,6 +76,7 @@ RUN corepack enable
 WORKDIR /app
 COPY --chown=node:node --from=runtime-deps /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --from=hermes-source /opt/hermes /opt/hermes
 # Node's bundled npm still contains vulnerable compatible dependency versions.
 # Upgrade the actual dependency code, retaining npm and every agent CLI.
 # npm's source-only development/workspace metadata references unpublished
@@ -88,14 +97,16 @@ RUN npm install --global --ignore-scripts \
       @openai/codex@latest \
       opencode-ai \
       @earendil-works/pi-coding-agent \
-  && pip3 install --break-system-packages --ignore-installed hermes-agent runwayml \
-       'cryptography>=50.0.0' 'pillow>=12.3.0' \
+  && pip3 install --break-system-packages --ignore-installed -e /opt/hermes runwayml \
+       'cryptography>=50.0.0' 'pillow>=12.3.0' 'PyJWT>=2.13.0' \
+  && pip3 check \
   && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
 ENV NODE_ENV=production \
+  PYTHONDONTWRITEBYTECODE=1 \
   HOME=/paperclip \
   HOST=0.0.0.0 \
   PORT=3100 \

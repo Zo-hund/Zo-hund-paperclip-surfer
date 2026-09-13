@@ -20,7 +20,7 @@ Focused authorization tests cover cross-company rejection, non-board rejection, 
 
 The last experimental release was blocked by its image scan. Its findings cover OS packages, Python dependencies, build binaries, and application advisories; an npm audit alone does not establish image safety. Some OS findings have no listed fix. These changes must pass the full image scan before they can produce a promotable release.
 
-The first PR image scan (CI run `34739979860`, before the follow-up dependency fixes) still blocked with 233 OS findings (232 HIGH, one CRITICAL), 13 Node findings, one Python finding, and 49 findings across two old esbuild binaries. These section counts are not unique CVE totals. The Python finding is PyJWT 2.12.1, pinned by Hermes 0.16.0; newer published Hermes versions pin either Pillow 12.2.0 or cryptography 46.0.7, conflicting with the patched minimums. No dependency constraints or advisories are silently ignored to force a successful install. A compatible, tested Hermes dependency solution and remaining OS/application findings are unresolved.
+The first PR image scan (CI run `34739979860`, before the follow-up dependency fixes) still blocked with 233 OS findings (232 HIGH, one CRITICAL), 13 Node findings, one Python finding, and 49 findings across two old esbuild binaries. These section counts are not unique CVE totals. The Python finding is PyJWT 2.12.1, pinned by Hermes 0.16.0; newer published Hermes versions pin either Pillow 12.2.0 or cryptography 46.0.7, conflicting with the patched minimums. No dependency constraints or advisories are silently ignored to force a successful install. That PyPI-only constraint is addressed by the pinned official Hermes v0.21.2 release below; remaining OS/application findings still require remediation.
 
 Relevant upstream advisories:
 
@@ -33,3 +33,11 @@ Other application advisories, agent execution isolation, complete end-to-end sta
 ## Promotion boundary
 
 The staging database may be prepared independently with fresh secrets, separate storage, and an internal network. The application must still be deployed through the governed workflow with a scan-passing signed digest. Staging readiness requires both authenticated-runtime smoke checks and the public HTTPS route. Production additionally requires release-specific restore evidence and human approval; neither is supplied by this document.
+
+## Hermes source release
+
+PyPI stops at Hermes 0.19.0, but the official v2026.9.11 GitHub release is 0.21.2, commit `939e45c91d751fadd94dcd1b873ac3cb44846213`. It pins PyJWT 2.13.0, cryptography 50.0.0 and Pillow 12.3.0. The image installs that exact source release using upstream's editable-source layout, retaining its runtime assets and recording its build SHA. It does not bypass the upstream wheel guard or force incompatible dependency constraints.
+
+An isolated Linux probe verified normal dependency resolution with RunwayML 5.20.0, `pip check`, and Hermes help startup as both root and the unprivileged node user. These checks do not validate provider authentication, paid agent execution, or every interactive feature. The complete application image must still pass the blocking scan and runtime checks.
+
+Upstream release: https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.11
