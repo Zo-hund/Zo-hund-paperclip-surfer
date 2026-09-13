@@ -17,7 +17,16 @@ function normalizeDocumentKey(key: string) {
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  return !!error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "23505";
+  // Drizzle wraps the Postgres error in its query error's cause. Preserve the
+  // existing conflict/retry behavior for both driver and wrapped failures.
+  const seen = new Set<object>();
+  let current = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && current.code === "23505") return true;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
 }
 
 function nextAvailableDocumentKey(sourceKey: string, existingKeys: string[]) {

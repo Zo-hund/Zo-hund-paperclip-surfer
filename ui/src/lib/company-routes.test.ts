@@ -7,6 +7,10 @@ import {
 } from "./company-routes";
 
 describe("company routes", () => {
+  it("keeps the public directory independent of company routing", () => {
+    expect(extractCompanyPrefixFromPath("/directory/profiles")).toBeNull();
+    expect(applyCompanyPrefix("/directory/profiles", "AMXA")).toBe("/directory/profiles");
+  });
   it("treats execution workspace paths as board routes that need a company prefix", () => {
     expect(isBoardPathWithoutPrefix("/execution-workspaces/workspace-123")).toBe(true);
     expect(isBoardPathWithoutPrefix("/execution-workspaces/workspace-123/routines")).toBe(true);

@@ -218,6 +218,34 @@ focused tests and synthetic conversion do not substitute for them.
 
 ## Release acceptance
 
+### Follow-up validation and profile browser port
+
+At `4889309`, hosted run `34778619092` passed workspace typechecks, builds,
+token enforcement, conversion/restore and 11 of 13 test partitions. The two
+failures exposed a wrapped Postgres unique violation and an unrealistic CLI
+fixture that removed a journal row without removing the migration's schema.
+The follow-up recognizes nested error causes and constructs a separate,
+actually lagging synthetic database from the predecessor journal. No production
+journal or schema is modified by this fixture repair.
+
+The public and instance profile browsers use the shared directory contract.
+Public requests omit credentials. Private cache keys include the active account,
+are not retained after unmount, and hide stale data after authorization failure.
+Public and private cache keys never overlap. Filters, load-more limits, clear
+and retry controls are connected. Public company choices come only from public
+results. A new account remounts private filters and company choices.
+
+The browser pages reuse the existing UI primitives and semantic tokens. Local
+UI/transport/routing tests pass 24 cases; the directory database privacy suite
+passes 10 cases after a serial rerun. Profile-detail and marketplace pages,
+actual browser inspection, and the remaining capability ports are still open.
+
+The document repair passes 16 focused tests, including real concurrent
+materialization and nested/non-conflict/cyclic error cases. The CLI predecessor
+recovery test passes locally; the other 62 tests in that file were not selected
+for that focused run. Directory UI typechecking passes with a bounded heap.
+The next complete hosted run remains required for the new commit.
+
 ```mermaid
 flowchart LR
   A[AMX immutable reference] --> B[Inventory and feature mapping]

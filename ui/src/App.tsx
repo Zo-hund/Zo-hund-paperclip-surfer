@@ -76,6 +76,7 @@ import { CompanyImport } from "./pages/CompanyImport";
 import { DesignGuide } from "./pages/DesignGuide";
 import { InstanceExperimentalSettings } from "./pages/InstanceExperimentalSettings";
 import { InstanceAccess } from "./pages/InstanceAccess";
+import { PublicProfileDirectory, InstanceProfileDirectory } from "./pages/ProfileDirectory";
 import { ProfileSettings } from "./pages/ProfileSettings";
 import { PluginManager } from "./pages/PluginManager";
 import { PluginSettings } from "./pages/PluginSettings";
@@ -188,6 +189,7 @@ function boardRoutes() {
       </Route>
       <Route element={<HiddenSettingsPageGate pageKey="instance.access" />}>
         <Route path="company/settings/instance/access" element={<InstanceAccess />} />
+        <Route path="company/settings/instance/profiles" element={<InstanceProfileDirectory />} />
       </Route>
       <Route element={<HiddenSettingsPageGate pageKey="instance.experimental" />}>
         <Route path="company/settings/instance/experimental" element={<InstanceExperimentalSettings />} />
@@ -633,6 +635,7 @@ export function App() {
     <>
       <Routes>
         <Route path="auth" element={<AuthPage />} />
+        <Route path="directory/profiles" element={<PublicProfileDirectory />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
         <Route path="cli-auth/:id" element={<CliAuthPage />} />
         <Route path="invite/:token" element={<InviteLandingPage />} />

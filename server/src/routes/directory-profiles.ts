@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { agents, authUsers, companies, lmsMemberProfiles } from "@paperclipai/db";
 import { and, asc, count, eq, sql, type SQL } from "drizzle-orm";
-import { z } from "zod";
+import { directoryProfileQuerySchema, type DirectoryProfile as DirectoryProfileRow } from "@paperclipai/shared";
 import { assertInstanceAdmin } from "./authz.js";
 
 /**
@@ -17,33 +17,6 @@ import { assertInstanceAdmin } from "./authz.js";
  * result sets are queried independently and merged into one normalized
  * `DirectoryProfileRow[]` in application code, not a SQL UNION.
  */
-
-const directoryProfileQuerySchema = z.object({
-  type: z.enum(["agent", "human"]).optional(),
-  companyId: z.string().uuid().optional(),
-  // Substring match against an agent's skills tags. Humans have no skills
-  // column yet, so this only narrows the agent side of the result set.
-  skill: z.string().min(1).max(200).optional(),
-  // Clamped (not rejected) below — an oversized limit is a client asking
-  // for "everything", not an invalid request.
-  limit: z.coerce.number().int().positive().optional(),
-});
-
-interface DirectoryProfileRow {
-  id: string;
-  type: "agent" | "human";
-  name: string;
-  title: string;
-  companyId: string;
-  companyName: string;
-  companyPrefix: string;
-  skills: string[];
-  avatarUrl?: string;
-  href: string;
-  // Only populated on the instance-admin route — the public route only ever
-  // returns rows where this would be true, so it's omitted there.
-  isPublicProfile?: boolean;
-}
 
 interface AgentDirectoryRow {
   id: string;

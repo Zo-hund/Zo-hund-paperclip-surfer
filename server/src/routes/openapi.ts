@@ -6,6 +6,7 @@ import {
   createAgentMemorySchema,
   updateAgentMemorySchema,
   agentMemoryQuerySchema,
+  directoryProfileQuerySchema,
   createAgentHireSchema,
   updateAgentSchema,
   updateAgentPermissionsSchema,
@@ -1486,8 +1487,7 @@ for (const [path, summary] of [
   ["/api/instance/directory/profiles", "Inspect public and private profiles as an instance administrator"],
 ] as const) {
   registerCurrentRoute({ method: "get", path, tags: ["directory"], summary,
-    query: z.object({ type: z.enum(["agent", "human"]).optional(), companyId: z.string().uuid().optional(),
-      skill: z.string().min(1).max(200).optional(), limit: z.coerce.number().int().positive().optional() }),
+    query: directoryProfileQuerySchema,
     responses: { 200: r.ok(), 400: r.badRequest, 403: r.forbidden } });
 }
 

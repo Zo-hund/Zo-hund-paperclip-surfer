@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { useCompany } from "@/context/CompanyContext";
 import { useToast } from "@/context/ToastContext";
 import { queryKeys } from "@/lib/queryKeys";
+import { Link } from "@/lib/router";
 
 export function InstanceAccess() {
   const { companies } = useCompany();
@@ -109,6 +110,7 @@ export function InstanceAccess() {
         <p className="max-w-3xl text-sm text-muted-foreground">
           Search users, manage instance-admin status, and control which organizations they can access.
         </p>
+        <Button variant="outline" asChild><Link to="/company/settings/instance/profiles">Browse profile directory</Link></Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-(--gtc-34)">

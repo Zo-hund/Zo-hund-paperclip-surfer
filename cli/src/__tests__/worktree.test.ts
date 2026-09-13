@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { eq } from "drizzle-orm";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   agents,
@@ -13,6 +14,7 @@ import {
   companies,
   companyMemberships,
   createDb,
+  ensurePostgresDatabase,
   executionWorkspaces,
   inspectMigrations,
   issueComments,
@@ -139,27 +141,14 @@ async function seedValidWorktreeSource(
     userId,
     role: "instance_admin",
   });
-  await db.insert(companies).values({
-    id: companyId,
-    name: "Seed Source",
-    issuePrefix: "SEED",
-    requireBoardApprovalForNewAgents: false,
-  });
-  await db.insert(companyMemberships).values({
-    companyId,
-    principalType: "user",
-    principalId: userId,
-    status: "active",
-  });
-  await db.insert(issues).values({
-    id: issueId,
-    companyId,
-    title: "Representative seed issue",
-    status: "backlog",
-    priority: "medium",
-    issueNumber: 1,
-    identifier: "SEED-1",
-  });
+  // This fixture also targets the actual predecessor schema. Explicit common
+  // columns avoid Drizzle emitting DEFAULT for fields added by the next migration.
+  await db.$client`INSERT INTO companies (id, name, issue_prefix, require_board_approval_for_new_agents)
+    VALUES (${companyId}, 'Seed Source', 'SEED', false)`;
+  await db.$client`INSERT INTO company_memberships (company_id, principal_type, principal_id, status)
+    VALUES (${companyId}, 'user', ${userId}, 'active')`;
+  await db.$client`INSERT INTO issues (id, company_id, title, status, priority, issue_number, identifier)
+    VALUES (${issueId}, ${companyId}, 'Representative seed issue', 'backlog', 'medium', 1, 'SEED-1')`;
   await db.$client.end({ timeout: 5 });
   return { companyId, issueId };
 }
@@ -1633,17 +1622,32 @@ describe("worktree helpers", () => {
       const sourceKeyPath = path.join(sourceConfigDir, "secrets", "master.key");
       const worktreeHome = path.join(tempRoot, ".paperclip-worktrees");
       const originalCwd = process.cwd();
-      const sourceDb = await startEmbeddedPostgresTestDatabase("paperclip-worktree-auth-source-");
+      const sourceCluster = await startEmbeddedPostgresTestDatabase("paperclip-worktree-auth-source-");
+      const sourceUrl = new URL(sourceCluster.connectionString);
+      sourceUrl.pathname = "/lagging_source";
+      const sourceDb = { ...sourceCluster, connectionString: sourceUrl.toString() };
 
       try {
+        // Build a real predecessor database. Removing only the final journal
+        // row from a current schema would replay non-idempotent CREATE TABLEs.
+        await ensurePostgresDatabase(sourceCluster.connectionString, "lagging_source");
+        const migrationsRoot = path.resolve(import.meta.dirname, "../../../packages/db/src/migrations");
+        const fixtureMigrations = path.join(tempRoot, "predecessor-migrations");
+        const journal = JSON.parse(fs.readFileSync(path.join(migrationsRoot, "meta/_journal.json"), "utf8")) as {
+          entries: Array<{ tag: string }>; [key: string]: unknown;
+        };
+        const predecessorEntries = journal.entries.slice(0, -1);
+        fs.mkdirSync(path.join(fixtureMigrations, "meta"), { recursive: true });
+        fs.writeFileSync(path.join(fixtureMigrations, "meta/_journal.json"), JSON.stringify({ ...journal, entries: predecessorEntries }));
+        for (const entry of predecessorEntries) {
+          fs.copyFileSync(path.join(migrationsRoot, `${entry.tag}.sql`), path.join(fixtureMigrations, `${entry.tag}.sql`));
+        }
+        const predecessorDb = createDb(sourceDb.connectionString);
+        try { await migrate(predecessorDb, { migrationsFolder: fixtureMigrations }); }
+        finally { await predecessorDb.$client.end({ timeout: 5 }); }
         await seedValidWorktreeSource(sourceDb.connectionString);
         const sourceDbClient = createDb(sourceDb.connectionString);
         await sourceDbClient.$client.unsafe(`
-          DELETE FROM "drizzle"."__drizzle_migrations"
-          WHERE "id" = (
-            SELECT max("id") FROM "drizzle"."__drizzle_migrations"
-          );
-
           WITH pair AS (
             SELECT
               array_agg("id" ORDER BY "id" DESC) AS ids,

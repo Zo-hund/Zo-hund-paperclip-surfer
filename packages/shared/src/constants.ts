@@ -1725,6 +1725,7 @@ export type PluginBridgeErrorCode = (typeof PLUGIN_BRIDGE_ERROR_CODES)[number];
 
 // Preserved AMX contracts.
 export const RESERVED_COMPANY_PREFIX_ROOTS = [
+  "directory",
   "dashboard",
   "companies",
   "company",
