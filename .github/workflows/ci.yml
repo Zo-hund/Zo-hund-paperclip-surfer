@@ -237,6 +237,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' }}
+          load: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/experimental') }}
           build-args: |
             BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_id }}
             VCS_REF=${{ github.sha }}
@@ -245,13 +246,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
+          provenance: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' }}
       - name: Scan image for vulnerabilities (Trivy)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'
         uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
         with:
-          image-ref: ${{ steps.image.outputs.repository }}@${{ steps.build-push.outputs.digest }}
+          image-ref: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && format('{0}@{1}', steps.image.outputs.repository, steps.build-push.outputs.digest) || steps.image.outputs.ref }}
           severity: HIGH,CRITICAL
           exit-code: '1'   # fail the job on HIGH/CRITICAL
           format: table

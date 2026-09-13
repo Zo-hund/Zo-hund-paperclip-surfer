@@ -43,12 +43,22 @@ RUN pnpm --filter @paperclipai/ui build
 RUN cd server && node_modules/.bin/tsc && mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
+FROM build AS runtime-deps
+# Reinstall the locked production graph so build-only binaries are not shipped.
+# The TypeScript loader remains an explicit server runtime dependency because
+# workspace packages export TypeScript source in this checkout.
+RUN rm -rf node_modules cli/node_modules server/node_modules ui/node_modules \
+      amx-air-hubs/node_modules packages/*/node_modules packages/adapters/*/node_modules \
+      packages/plugins/*/node_modules packages/plugins/examples/*/node_modules \
+  && pnpm install --prod --frozen-lockfile --ignore-scripts
+
 FROM node:lts-trixie-slim AS production
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION
 # Production stage: slim base + agent CLI runtimes
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
        ca-certificates curl git \
        python3 python3-pip \
@@ -56,7 +66,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
-COPY --chown=node:node --from=build /app /app
+COPY --chown=node:node --from=runtime-deps /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 # Install adapter CLIs:
 #   claude_local  → @anthropic-ai/claude-code
@@ -70,6 +80,7 @@ RUN npm install --global --ignore-scripts \
       opencode-ai \
       @earendil-works/pi-coding-agent \
   && pip3 install --break-system-packages --ignore-installed hermes-agent runwayml \
+       'cryptography>=50.0.0' 'pillow>=12.3.0' \
   && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /paperclip \

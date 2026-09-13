@@ -12,6 +12,11 @@ export interface ActivityFilters {
 export function activityService(db: Db) {
   const issueIdAsText = sql<string>`${issues.id}::text`;
   return {
+    getRunScope: async (runId: string) => {
+      const rows = await db.select({ companyId: heartbeatRuns.companyId })
+        .from(heartbeatRuns).where(eq(heartbeatRuns.id, runId)).limit(1);
+      return rows[0] ?? null;
+    },
     list: (filters: ActivityFilters) => {
       const conditions = [eq(activityLog.companyId, filters.companyId)];
 
