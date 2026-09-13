@@ -51,6 +51,12 @@ RUN rm -rf node_modules cli/node_modules server/node_modules ui/node_modules \
       amx-air-hubs/node_modules packages/*/node_modules packages/adapters/*/node_modules \
       packages/plugins/*/node_modules packages/plugins/examples/*/node_modules \
   && pnpm install --prod --frozen-lockfile --ignore-scripts
+# Restore the platform package's bundled library symlinks explicitly. Without
+# its vendor initializer, initdb/postgres exit 127 despite the binaries existing.
+RUN for script in node_modules/.pnpm/@embedded-postgres+linux-*/node_modules/@embedded-postgres/linux-*/scripts/hydrate-symlinks.js; do \
+      test -f "$script" || exit 1; \
+      (cd "$(dirname "$script")/.." && node scripts/hydrate-symlinks.js) || exit 1; \
+    done
 
 # Hermes v0.21.2 is released on GitHub but not on PyPI. Upstream requires a
 # source/editable installation to preserve its runtime assets; pin the release.
