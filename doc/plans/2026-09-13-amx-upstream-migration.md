@@ -17,15 +17,29 @@ remain incomplete. This branch is not a replacement deployment.
   bounded execution. Remote execution no longer inherits host provider environment
   variables or provider configuration files.
 - Company creation and import preserve the AMX approval default and explicit opt-outs.
-- Focused results: 18 Python guard tests, 7 shared compatibility tests, 19 remote
-  adapter tests, 107 portability/OpenRouter tests, 20 database-backed company tests,
-  6 company-role tests, 250 Worker contract tests and 9 release helper tests pass.
+- Focused results: 19 Python guard tests, 7 shared compatibility tests, 19 remote
+  adapter tests, 107 portability/OpenRouter tests, 21 database-backed company tests,
+  22 company branding/visibility/role tests, 9 company schema tests, 15 memory
+  database tests, 3 memory editor tests, 250 Worker contract tests and 9 release
+  helper tests pass. The local branding test rerun used a 60-second per-test
+  limit because cold module imports exceeded the default 15 seconds.
   Shared, OpenCode and focused OpenRouter typechecks pass.
-- Full server typechecking exceeded the local container memory limit. Full
-  workspace checks, complete feature integration, image scanning, real storage/key
+- Full workspace typechecking passed in cloud CI at `e720791ae`; later changes
+  still need current-commit checks. Local full typechecking exceeded the bounded
+  container memory limit. Full tests/build, complete feature integration, image scanning, real storage/key
   recovery and staging are not validated. No application or release was deployed.
 
-The synthetic converter does not yet handle populated legacy instance settings.
+The fresh `settings-r2` rehearsal preserves populated legacy instance settings,
+rejects customized destination settings and unknown source singletons, verifies
+tenant binding rejection/rollback, and restores all 123 original source tables
+and their migration journal. Every destination table must match its recorded
+fresh seed before conversion. This remains synthetic-only evidence.
+
+The draft migration PR is **Migrate AMX AIR HUBS to reviewed upstream with explicit
+data conversion**. CI now uses all upstream general and serialized test
+partitions, with four concurrent test runners, separately from typecheck/build.
+All partitions must pass; the split does not waive failures or coverage.
+
 Restored Worker, XR and AMX route/service source is preservation work; unmounted
 modules and contract tests do not establish runtime feature parity.
 

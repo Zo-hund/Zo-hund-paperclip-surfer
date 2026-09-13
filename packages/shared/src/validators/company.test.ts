@@ -6,7 +6,7 @@ import {
 } from "./company.js";
 import { portabilityCompanyManifestEntrySchema } from "./company-portability.js";
 
-describe("company schemas without the retired settings", () => {
+describe("company schemas with AMX branding compatibility", () => {
   it("strips brandColor and attachmentMaxBytes from a create payload", () => {
     const parsed = createCompanySchema.parse({
       name: "Acme",
@@ -19,25 +19,25 @@ describe("company schemas without the retired settings", () => {
     expect(parsed.name).toBe("Acme");
   });
 
-  it("strips brandColor and attachmentMaxBytes from an update payload", () => {
+  it("preserves AMX brandColor and strips attachmentMaxBytes from an update payload", () => {
     const parsed = updateCompanySchema.parse({
       description: "Updated",
       brandColor: "#123456",
       attachmentMaxBytes: 25_000_000,
     });
 
-    expect(parsed).not.toHaveProperty("brandColor");
+    expect(parsed.brandColor).toBe("#123456");
     expect(parsed).not.toHaveProperty("attachmentMaxBytes");
     expect(parsed.description).toBe("Updated");
   });
 
-  it("rejects brandColor on the strict branding schema", () => {
+  it("accepts AMX brandColor on the strict branding schema", () => {
     const result = updateCompanyBrandingSchema.safeParse({
       name: "Acme",
       brandColor: "#123456",
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("still accepts the remaining branding fields", () => {

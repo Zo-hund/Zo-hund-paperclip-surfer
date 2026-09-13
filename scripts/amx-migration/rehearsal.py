@@ -37,7 +37,7 @@ def literal(value: str) -> str:
 
 class Rehearsal:
     def __init__(self, root: Path, container: str):
-        if not re.fullmatch(r"amx-migration-db-[0-9]{8}", container):
+        if not re.fullmatch(r"amx-migration-db-[0-9]{8}(?:-r[1-9][0-9]*)?", container):
             raise ValueError("Only a named AMX disposable migration database is allowed")
         state = json.loads(command(["docker", "inspect", container]))[0]
         if state["Config"].get("Labels", {}).get("com.amx.migration.rehearsal") != "true":

@@ -211,7 +211,8 @@ describe("PATCH /api/companies/:companyId/branding", () => {
     expect(res.body.logoAssetId ?? null).toBeNull();
   });
 
-  it("rejects the retired brandColor field in the request body", async () => {
+  it("accepts the restored AMX brandColor field in the request body", async () => {
+    mockCompanyService.update.mockResolvedValue({ ...createCompany(), brandColor: "#123456" });
     const app = await createApp({
       type: "board",
       userId: "user-1",
@@ -225,9 +226,11 @@ describe("PATCH /api/companies/:companyId/branding", () => {
         brandColor: "#123456",
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("Validation error");
-    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body.brandColor).toBe("#123456");
+    expect(mockCompanyService.update).toHaveBeenCalledWith("company-1", {
+      logoAssetId: "11111111-1111-4111-8111-111111111111", brandColor: "#123456",
+    });
   });
 
   it("rejects non-branding fields in the request body", async () => {
@@ -257,6 +260,36 @@ describe("PATCH /api/companies/:companyId", () => {
     vi.doUnmock("../routes/authz.js");
     vi.doUnmock("../middleware/index.js");
     vi.clearAllMocks();
+  });
+
+  it.each(["viewer", "member", "operator"])("rejects public visibility changes by %s", async (membershipRole) => {
+    const app = await createApp({ type: "board", source: "session", userId: "user-1", companyIds: ["company-1"],
+      memberships: [{ companyId: "company-1", membershipRole, status: "active" }] });
+    const res = await request(app).patch("/api/companies/company-1").send({ isPublic: true });
+    expect(res.status).toBe(403);
+    expect(mockCompanyService.update).not.toHaveBeenCalled();
+    expect(mockLogActivity).not.toHaveBeenCalled();
+  });
+
+  it.each(["admin", "owner"])("allows an active %s to change public visibility and records the change", async (membershipRole) => {
+    mockCompanyService.getById.mockResolvedValue({ ...createCompany(), isPublic: false });
+    mockCompanyService.update.mockResolvedValue({ ...createCompany(), isPublic: true });
+    const app = await createApp({ type: "board", source: "session", userId: "user-1", companyIds: ["company-1"],
+      memberships: [{ companyId: "company-1", membershipRole, status: "active" }] });
+    const res = await request(app).patch("/api/companies/company-1").send({ isPublic: true });
+    expect(res.status).toBe(200);
+    expect(mockCompanyService.update).toHaveBeenCalledWith("company-1", { isPublic: true }, expect.anything());
+    expect(mockLogActivity).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      companyId: "company-1", action: "company.updated", details: { isPublic: true },
+    }));
+  });
+
+  it("rejects public visibility changes by CEO agents", async () => {
+    mockAgentService.getById.mockResolvedValue({ id: "agent-1", companyId: "company-1", role: "ceo" });
+    const app = await createApp({ type: "agent", source: "agent_key", agentId: "agent-1", companyId: "company-1" });
+    const res = await request(app).patch("/api/companies/company-1").send({ isPublic: true });
+    expect(res.status).toBe(400);
+    expect(mockCompanyService.update).not.toHaveBeenCalled();
   });
 
   it("rejects non-CEO agent callers before loading the company or validating settings body shape", async () => {
