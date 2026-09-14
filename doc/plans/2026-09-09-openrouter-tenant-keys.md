@@ -13,7 +13,7 @@ Runtime order:
 
 An empty, unresolved, rejected, disabled, or expired tenant key never falls through to operator billing. Changing the company default does not replace explicit agent overrides. Remove a stale override to use the new default.
 
-Operator provisioning: set the server key privately and set `PAPERCLIP_OPENROUTER_COMPANY_IDS` to comma-separated approved company UUIDs, then recreate the app container. Wildcards are not supported. The VPS Compose file passes both variables to the app. No shared keys or grants are shipped in Git. All existing server-key consumers need an explicit grant before deploying this change; otherwise their runs will stop with a configuration error. This change does not alter budgets or create OpenRouter subkeys automatically.
+Operator provisioning: set the server key privately and set `PAPERCLIP_OPENROUTER_COMPANY_IDS` to comma-separated approved company UUIDs, then recreate the app container. Wildcards are not supported. Every Compose service exposing the server key forwards both billing and host-tool grants, with empty defaults. The corresponding environment examples document both settings. Kubernetes uses the base ConfigMap and Helm uses `values.yaml` under `env`; both default to empty grants. These are operator settings, not tenant-editable environment overrides. No shared keys or grants are shipped in Git. All existing server-key consumers need an explicit grant before deploying this change; otherwise their runs will stop with a configuration error. This change does not alter budgets or create OpenRouter subkeys automatically.
 
 API: `GET`, `PUT { value }`, `DELETE /api/companies/:companyId/openrouter-credentials`; `POST .../validate`. PUT validates before storage and returns 422 on rejection. GET returns configuration status, not proof of provider acceptance. Validation returns `{ valid, message }`. Removing a company default may switch to operator billing only if previously provisioned; the UI explains and confirms this effect.
 
@@ -34,7 +34,7 @@ Validation must cover tenant isolation, role restrictions, credential precedence
 
 The feature is ported separately onto the current `experimental` branch. No database migration is introduced. Existing shared-key users must receive explicit billing grants or their own tenant key before rollout; host-tool grants are a separate operator decision and must not be given to external tenants.
 
-Completion requests now reject redirects, bound each request to the configured `timeoutSec` (default 120 seconds, maximum 600), and sanitize transport, malformed JSON, and provider error-envelope failures. Model discovery has a ten-second timeout. The credential form discards unsaved secrets and feedback when switching companies.
+Completion requests reject redirects and sanitize transport, malformed JSON, and provider error-envelope failures. A positive `timeoutSec` supplies one deadline for setup, all model requests and response bodies, and tool execution. Command tools receive only the remaining budget. Explicit zero means no run timeout; the default is 120 seconds. Deadline timers are cleared when the run settles. The isolated preflight explicitly sets a 120-second run budget. Model discovery has a ten-second timeout. The credential form discards unsaved secrets and feedback when switching companies.
 
 The isolated command validates authentication without calling the Paperclip API or connecting to a database:
 
@@ -53,3 +53,7 @@ Browser review used the real React component with simulated API responses, no pr
 ![After simulated key save](../assets/openrouter-tenant-keys/after-save.png)
 
 Deployment remains gated on candidate CI, security scans, signed image, staging, recovery evidence, and human approval of the exact production release. Updating local code or submitting this PR does not repair an invalid production provider key.
+
+## Review fixes (2026-09-14)
+
+The initial candidate passed all required PR checks. Automated review then identified missing grant forwarding outside the VPS manifest and a mismatch with the whole-run timeout contract; these are fixed in the follow-up commit. Six deadline regressions cover unlimited requests, multiple model turns, response bodies, setup, command budgets, and timer cleanup. A deployment regression renders every provider-enabled Compose manifest with synthetic inputs in two cases: empty grants and explicit, distinct billing/tool grants. It starts no services and excludes real environment files and provider keys. Fresh candidate CI is required after this commit; earlier green checks do not certify the new head.

@@ -55,6 +55,9 @@ env:
   PORT: "3100"
   SERVE_UI: "true"
   PAPERCLIP_HOME: "/paperclip"
+  # Explicit company UUIDs only; billing and host-tool trust are separate.
+  PAPERCLIP_OPENROUTER_COMPANY_IDS: ""
+  PAPERCLIP_OPENROUTER_TRUSTED_TOOL_COMPANY_IDS: ""
   PAPERCLIP_INSTANCE_ID: "default"
   PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
   PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"

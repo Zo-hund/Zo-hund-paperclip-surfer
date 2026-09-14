@@ -90,7 +90,47 @@ const tools = [
   }
 ];
 
+class OpenRouterRunTimeoutError extends Error {
+  constructor() {
+    super("OpenRouter run exceeded its configured timeout. No fallback key was used.");
+  }
+}
+
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
+  const timeoutSec = asNumber(ctx.config.timeoutSec, 120);
+  const deadline = Number.isFinite(timeoutSec) && timeoutSec > 0 ? Date.now() + timeoutSec * 1000 : null;
+  const controller = new AbortController();
+  // One deadline covers setup, every completion (including its body), and tools.
+  // Explicit zero retains the shared adapter contract: no run timeout.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleDeadline = () => {
+    if (deadline === null) return;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) controller.abort();
+    else timer = setTimeout(scheduleDeadline, Math.min(remaining, 2_147_483_647));
+  };
+  scheduleDeadline();
+  const checkDeadline = () => {
+    if (controller.signal.aborted || (deadline !== null && Date.now() >= deadline)) {
+      throw new OpenRouterRunTimeoutError();
+    }
+  };
+  try {
+    return await executeRun(ctx, deadline === null ? undefined : controller.signal, checkDeadline, () => {
+      checkDeadline();
+      return deadline === null ? 0 : Math.max(0.001, (deadline - Date.now()) / 1000);
+    });
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function executeRun(
+  ctx: AdapterExecutionContext,
+  signal: AbortSignal | undefined,
+  checkDeadline: () => void,
+  remainingTimeoutSec: () => number,
+): Promise<AdapterExecutionResult> {
   const { runId, agent, runtime, config, context, onLog, onMeta, onSpawn, authToken } = ctx;
 
   const promptTemplate = asString(
@@ -107,6 +147,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const apiKey = resolveOpenRouterKey(agent.companyId, config);
   const hostToolsEnabled = hasOpenRouterHostTools(agent.companyId);
   if (hostToolsEnabled) await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
+  checkDeadline();
 
   const env: Record<string, string> = { ...buildPaperclipEnv(agent) };
   env.PAPERCLIP_RUN_ID = runId;
@@ -122,21 +163,23 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const memoryFilePath = asString(context.paperclipMemoryFilePath, "");
   if (hostToolsEnabled && memoryFilePath) {
     try {
-      memoryPrefix = await fs.readFile(memoryFilePath, "utf8");
+      memoryPrefix = await fs.readFile(memoryFilePath, { encoding: "utf8", signal });
     } catch (err) {
       // ignore
     }
   }
+  checkDeadline();
 
   let instructionsPrefix = "";
   const instructionsFilePath = asString(config.instructionsFilePath, "").trim();
   if (hostToolsEnabled && instructionsFilePath) {
     try {
-      instructionsPrefix = await fs.readFile(instructionsFilePath, "utf8");
+      instructionsPrefix = await fs.readFile(instructionsFilePath, { encoding: "utf8", signal });
     } catch (err) {
       // ignore
     }
   }
+  checkDeadline();
 
   const runModeNote = asString(context.paperclipRunModeNote, "").trim();
 
@@ -198,8 +241,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   let outputTokens = 0;
   const maxTurns = 20;
   let turn = 0;
-  const timeoutSec = asNumber(config.timeoutSec, 120);
-  const requestTimeoutMs = Math.round(Math.min(600, Math.max(1, Number.isFinite(timeoutSec) && timeoutSec > 0 ? timeoutSec : 120)) * 1000);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -209,8 +250,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   while (turn < maxTurns) {
+    checkDeadline();
     turn++;
     await onLog("stdout", `[OpenRouter Turn ${turn}/${maxTurns}] Sending request to model ${model}...\n`);
+    checkDeadline();
 
     let res: Response;
     try {
@@ -218,7 +261,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         method: "POST",
         headers,
         redirect: "error",
-        signal: AbortSignal.timeout(requestTimeoutMs),
+        signal,
         body: JSON.stringify({
           model,
           messages,
@@ -226,8 +269,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         }),
       });
     } catch {
+      checkDeadline();
       throw new Error("OpenRouter request could not complete. Check connectivity and the configured timeout. No fallback key was used.");
     }
+    checkDeadline();
 
     if (!res.ok) {
       // Never persist arbitrary provider response bodies in run logs.
@@ -236,8 +281,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
     let data: any;
     try { data = await res.json(); } catch {
+      checkDeadline();
       throw new Error("OpenRouter returned an invalid or incomplete response. No fallback key was used.");
     }
+    checkDeadline();
     if (data?.error) {
       // Some gateways return a provider error inside an HTTP 200 envelope.
       const status = Number(data.error.code);
@@ -268,9 +315,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         throw new Error("Host tools are unavailable for this company. Use an isolated worker for tenant coding tasks.");
       }
       for (const call of assistantMessage.tool_calls) {
+        checkDeadline();
         const toolName = call.function.name;
         const toolArgs = JSON.parse(call.function.arguments);
         await onLog("stdout", `\n[Tool Call] Executing ${toolName} with args: ${JSON.stringify(toolArgs)}\n`);
+        checkDeadline();
 
         let result = "";
         let isError = false;
@@ -280,19 +329,24 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             const cmdResult = await runChildProcess(runId, "powershell", ["-Command", toolArgs.command], {
               cwd,
               env,
-              timeoutSec: 0,
+              timeoutSec: remainingTimeoutSec(),
               graceSec: 15,
               onLog,
+              onSpawn,
             });
+            if (cmdResult.timedOut) {
+              throw new OpenRouterRunTimeoutError();
+            }
             result = cmdResult.stdout + (cmdResult.stderr ? `\nError:\n${cmdResult.stderr}` : "");
             if (cmdResult.exitCode !== 0) isError = true;
           } else if (toolName === "read_file") {
             const fullPath = path.resolve(cwd, toolArgs.filePath);
-            result = await fs.readFile(fullPath, "utf8");
+            result = await fs.readFile(fullPath, { encoding: "utf8", signal });
           } else if (toolName === "write_file") {
             const fullPath = path.resolve(cwd, toolArgs.filePath);
             await fs.mkdir(path.dirname(fullPath), { recursive: true });
-            await fs.writeFile(fullPath, toolArgs.content, "utf8");
+            checkDeadline();
+            await fs.writeFile(fullPath, toolArgs.content, { encoding: "utf8", signal });
             result = `File successfully written to ${toolArgs.filePath}`;
           } else if (toolName === "list_dir") {
             const fullPath = path.resolve(cwd, toolArgs.dirPath);
@@ -303,9 +357,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
             isError = true;
           }
         } catch (err) {
+          if (err instanceof OpenRouterRunTimeoutError) throw err;
+          checkDeadline();
           result = err instanceof Error ? err.message : String(err);
           isError = true;
         }
+        checkDeadline();
 
         const previewText = result.slice(0, 500) + (result.length > 500 ? "..." : "");
         await onLog("stdout", `[Tool Result] ${isError ? "Error: " : ""}${previewText}\n`);
@@ -322,6 +379,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       break;
     }
   }
+  checkDeadline();
 
   const lastMsg = messages[messages.length - 1];
 

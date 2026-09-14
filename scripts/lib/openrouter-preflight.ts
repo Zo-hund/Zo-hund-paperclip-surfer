@@ -15,6 +15,7 @@ export async function preflightOpenRouter(input: {
     throw new Error("Disable host-tool grants in the probe process before running this check.");
   }
   const config = {
+    timeoutSec: 120,
     model: input.model,
     env: { OPENROUTER_API_KEY: input.key },
     promptTemplate: "Reply with exactly OPENROUTER_OK. Do not call tools or perform any other work.",
