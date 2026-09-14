@@ -198,6 +198,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   let outputTokens = 0;
   const maxTurns = 20;
   let turn = 0;
+  const timeoutSec = asNumber(config.timeoutSec, 120);
+  const requestTimeoutMs = Math.round(Math.min(600, Math.max(1, Number.isFinite(timeoutSec) && timeoutSec > 0 ? timeoutSec : 120)) * 1000);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -210,33 +212,51 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     turn++;
     await onLog("stdout", `[OpenRouter Turn ${turn}/${maxTurns}] Sending request to model ${model}...\n`);
 
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model,
-        messages,
-        ...(hostToolsEnabled ? { tools, tool_choice: "auto" } : {}),
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers,
+        redirect: "error",
+        signal: AbortSignal.timeout(requestTimeoutMs),
+        body: JSON.stringify({
+          model,
+          messages,
+          ...(hostToolsEnabled ? { tools, tool_choice: "auto" } : {}),
+        }),
+      });
+    } catch {
+      throw new Error("OpenRouter request could not complete. Check connectivity and the configured timeout. No fallback key was used.");
+    }
 
     if (!res.ok) {
       // Never persist arbitrary provider response bodies in run logs.
       throw new Error(openRouterErrorMessage(res.status));
     }
 
-    const data = (await res.json()) as any;
-    if (data.usage) {
+    let data: any;
+    try { data = await res.json(); } catch {
+      throw new Error("OpenRouter returned an invalid or incomplete response. No fallback key was used.");
+    }
+    if (data?.error) {
+      // Some gateways return a provider error inside an HTTP 200 envelope.
+      const status = Number(data.error.code);
+      throw new Error(openRouterErrorMessage(Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502));
+    }
+    if (data?.usage) {
       inputTokens += data.usage.prompt_tokens || 0;
       outputTokens += data.usage.completion_tokens || 0;
     }
 
-    const choice = data.choices?.[0];
+    const choice = data?.choices?.[0];
     if (!choice) {
       throw new Error("OpenRouter API returned an empty choices array.");
     }
 
     const assistantMessage = choice.message;
+    if (!assistantMessage || typeof assistantMessage !== "object") {
+      throw new Error("OpenRouter returned an invalid assistant message.");
+    }
     messages.push(assistantMessage);
 
     if (assistantMessage.content) {

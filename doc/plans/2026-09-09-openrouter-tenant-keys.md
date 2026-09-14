@@ -29,3 +29,27 @@ Validation must cover tenant isolation, role restrictions, credential precedence
 - The AMX UI bundle attempt stops on missing `html2canvas` in the verification image. The full test attempt reports three embedded database startup timeouts and stalls with `initdb` in disk I/O wait. Broader app typechecks also stall in disk I/O wait. These are incomplete checks, not a passing release gate.
 - Verification used an isolated, network-disabled container from the existing local AMX image (Node 24.18.0, Vitest 4.1.8) with the F-drive source snapshot overlaid. It did not use production database volumes or invoke any paid model. The native F-drive dependency install was stopped after very slow progress and low available memory.
 - Logs and focused-check configurations are under the F-drive OPPRRC reports and resources directories. Production deployment, live credential replacement, real-provider validation, and isolated tenant coding workers remain pending.
+
+## Rollout preparation (2026-09-14)
+
+The feature is ported separately onto the current `experimental` branch. No database migration is introduced. Existing shared-key users must receive explicit billing grants or their own tenant key before rollout; host-tool grants are a separate operator decision and must not be given to external tenants.
+
+Completion requests now reject redirects, bound each request to the configured `timeoutSec` (default 120 seconds, maximum 600), and sanitize transport, malformed JSON, and provider error-envelope failures. Model discovery has a ten-second timeout. The credential form discards unsaved secrets and feedback when switching companies.
+
+The isolated command validates authentication without calling the Paperclip API or connecting to a database:
+
+```sh
+node cli/node_modules/tsx/dist/cli.mjs scripts/openrouter-preflight.ts --company-id <company-id> --agent-id <agent-id> --model <model> --key-file <private-file>
+```
+
+The private file contains only the provider key and stays outside Git. Alternatively, the probe reads `OPENROUTER_API_KEY` from its own environment. Add `--infer` to test the actual adapter against the configured model with a fixed short prompt. This may incur provider charges. It disables host tools, carries no agent JWT, memory, saved session, or instructions, and never writes production run/task/cost records. A live provider pass is separate from mocked regression results.
+
+Local validation of these source changes: 51 focused server tests and one interactive tenant-switch UI regression passed using the installed Vitest 3.2.4 runner. Adapter and UI typechecks passed. The earlier preflight baseline also passed full workspace typecheck and build. The installed default Vitest runner has a cache startup error; clean candidate CI remains required. No claim is made that tests from a different source/dependency snapshot replace candidate CI.
+
+Browser review used the real React component with simulated API responses, no production data, and no real credentials. Save clears the input and updates account status; switching tenants resets the form. The only browser console error was a missing preview favicon. These are screenshots of form states, not evidence of a live credential save:
+
+![Before simulated key save](../assets/openrouter-tenant-keys/before-save.png)
+
+![After simulated key save](../assets/openrouter-tenant-keys/after-save.png)
+
+Deployment remains gated on candidate CI, security scans, signed image, staging, recovery evidence, and human approval of the exact production release. Updating local code or submitting this PR does not repair an invalid production provider key.

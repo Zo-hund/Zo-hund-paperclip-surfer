@@ -48,7 +48,26 @@ describe("OpenRouter run and environment authentication", () => {
     })).rejects.toThrow("No fallback key was used");
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer tenant-key");
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("error");
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
     expect(JSON.stringify(onMeta.mock.calls)).not.toContain("tenant-key");
     expect(JSON.stringify(onLog.mock.calls)).not.toContain("tenant-key");
+  });
+
+  it.each(["transport", "json", "provider-envelope"])("sanitizes %s failures without retrying another account", async (failure) => {
+    vi.stubEnv("PAPERCLIP_OPENROUTER_TRUSTED_TOOL_COMPANY_IDS", "");
+    const fetchMock = vi.fn();
+    if (failure === "transport") fetchMock.mockRejectedValue(new Error("tenant-key in transport"));
+    else if (failure === "json") fetchMock.mockResolvedValue(new Response("tenant-key"));
+    else fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: { code: 401, message: "tenant-key" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    const promise = execute({
+      runId: "probe", agent: { id: "a", companyId: "tenant", name: "CEO", adapterType: "openrouter", adapterConfig: {} },
+      runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+      config: { env: { OPENROUTER_API_KEY: "tenant-key" } }, context: {}, onLog: vi.fn(),
+    });
+    await expect(promise).rejects.toThrow("No fallback key was used");
+    await expect(promise).rejects.not.toThrow("tenant-key");
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

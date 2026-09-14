@@ -5,6 +5,8 @@ export { isOpenRouterProvisioned, resolveOpenRouterKey, validateOpenRouterKey, h
 export async function listModels(): Promise<Array<{ id: string; label: string }>> {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
+      signal: AbortSignal.timeout(10_000),
+      redirect: "error",
       headers: {
         "HTTP-Referer": "https://amx-air-hubs.cc",
         "X-Title": "AMX Air Hubs Orchestrator",

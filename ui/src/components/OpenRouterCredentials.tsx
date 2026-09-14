@@ -5,6 +5,11 @@ import { useCompanyRole } from "../hooks/useCompanyRole";
 import { Button } from "./ui/button";
 
 export function OpenRouterCredentials({ companyId }: { companyId: string }) {
+  // Navigation must discard a key typed for the previous company immediately.
+  return <CompanyOpenRouterCredentials key={companyId} companyId={companyId} />;
+}
+
+function CompanyOpenRouterCredentials({ companyId }: { companyId: string }) {
   const { hasRoleAtLeast } = useCompanyRole(companyId);
   const canManage = hasRoleAtLeast("admin");
   const queryClient = useQueryClient();
