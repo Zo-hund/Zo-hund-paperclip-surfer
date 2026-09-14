@@ -26,12 +26,19 @@ class OpenRouterDeploymentGrants(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="openrouter-compose-test-") as directory:
             empty_env = Path(directory) / "empty.env"
             empty_env.write_text("", encoding="utf-8")
+            # Older Compose versions stat service env_file entries even with
+            # --no-env-resolution. Render unchanged manifests in a private fixture
+            # directory containing only empty env files, never beside real secrets.
+            for name in (".env", ".env.vps", ".env.cluster"):
+                (Path(directory) / name).write_text("", encoding="utf-8")
             for values in ({}, {GRANTS[0]: "company-a,company-b", GRANTS[1]: "company-b"}):
                 for manifest in manifests:
                     with self.subTest(manifest=manifest.name, grants=bool(values)):
+                        fixture_manifest = Path(directory) / manifest.name
+                        fixture_manifest.write_bytes(manifest.read_bytes())
                         rendered = subprocess.run([
-                            "docker", "compose", "--env-file", str(empty_env), "-f", str(manifest),
-                            "config", "--format", "json", "--no-env-resolution",
+                            "docker", "compose", "--env-file", str(empty_env), "-f", str(fixture_manifest),
+                            "config", "--format", "json",
                         ], env={**env, **values}, cwd=directory, capture_output=True, text=True, timeout=30)
                         self.assertEqual(rendered.returncode, 0, rendered.stderr)
                         consumers = [service["environment"] for service in json.loads(rendered.stdout)["services"].values()
