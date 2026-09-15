@@ -254,14 +254,59 @@ jobs:
           RELEASE_IMAGE: ${{ steps.image.outputs.ref }}
         run: bash deploy/release/smoke-image.sh
 
-      - name: Scan image for vulnerabilities (Trivy)
+      - name: Collect unfiltered image vulnerabilities (Trivy)
+        id: raw-scan
         if: ${{ !cancelled() && steps.build-push.outcome == 'success' }}
         uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
+        env:
+          TRIVY_IGNOREFILE: /dev/null
         with:
+          version: v0.74.0
           image-ref: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && format('{0}@{1}', steps.image.outputs.repository, steps.build-push.outputs.digest) || steps.image.outputs.ref }}
+          scanners: vuln
           severity: HIGH,CRITICAL
-          exit-code: '1'   # fail the job on HIGH/CRITICAL
-          format: table
+          exit-code: '0'  # collection only; the two enforcing gates below must pass
+          format: json
+          output: trivy-raw.json
+
+      - name: Verify exact backport source and prepare scoped VEX
+        env:
+          RELEASE_IMAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && format('{0}@{1}', steps.image.outputs.repository, steps.build-push.outputs.digest) || steps.image.outputs.ref }}
+        shell: bash
+        run: |
+          docker image inspect "$RELEASE_IMAGE" >/dev/null 2>&1 || docker pull "$RELEASE_IMAGE"
+          python3 deploy/release/backport-vex.py generate --image "$RELEASE_IMAGE" --raw trivy-raw.json
+
+      - name: Enforce unresolved HIGH and CRITICAL gate (Trivy)
+        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
+        env:
+          TRIVY_IGNOREFILE: /dev/null
+          TRIVY_VEX: backports.vex.json
+          TRIVY_SKIP_DB_UPDATE: 'true'
+        with:
+          version: v0.74.0
+          image-ref: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && format('{0}@{1}', steps.image.outputs.repository, steps.build-push.outputs.digest) || steps.image.outputs.ref }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          format: json
+          output: trivy-filtered.json
+
+      - name: Reject exclusions outside reviewed package paths
+        run: python3 deploy/release/backport-vex.py verify-filter --raw trivy-raw.json --filtered trivy-filtered.json
+
+      - name: Preserve raw scan and backport evidence
+        if: always() && steps.raw-scan.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: image-security-${{ github.run_attempt }}
+          path: |
+            trivy-raw.json
+            trivy-filtered.json
+            backports.vex.json
+            deploy/release/backports.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Sign image with cosign (keyless)
         if: github.event_name == 'push' && github.ref == 'refs/heads/experimental'

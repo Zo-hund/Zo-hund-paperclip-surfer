@@ -39,7 +39,10 @@ docker exec "$CID" sh -ec '
   ffprobe -v error -show_entries stream=codec_name -of csv=p=0 "$media_dir/probe.mp4"
 '
 for attempt in {1..60}; do
-  if python3 deploy/release/smoke.py "http://localhost:${SMOKE_PORT}"; then exit 0; fi
+  if python3 deploy/release/smoke.py "http://localhost:${SMOKE_PORT}"; then
+    python3 deploy/release/smoke-cli-auth.py "http://localhost:${SMOKE_PORT}"
+    exit 0
+  fi
   sleep 2
 done
 exit 1

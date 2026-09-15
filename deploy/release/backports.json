@@ -1,0 +1,143 @@
+{
+  "reviewer": "Codex automated source review for AMX fork; not human production approval",
+  "reviewed_on": "2026-09-15",
+  "expires_on": "2026-10-15",
+  "source_sha256": {
+    "Dockerfile": "6af10b2ea4bcccbb1b1cd89796e9cb13b0191336292eb9231b11c743d099ca2f",
+    "server/src/routes/authz.ts": "4be66c3ff0a1e97ef864cfb01ca2ac8b296e28b00a60c3ebbe636e61334188e2",
+    "server/src/routes/access.ts": "d2d565e9aabda19d6799d5bfedc17b9928c367138f6483f9459c315eda15aa54",
+    "server/src/routes/health.ts": "cb56445a19d768d51f3b06bf8acdc08539adb9f5a134496adfa656c83c4fbe6e",
+    "server/src/routes/activity.ts": "eb64036ad7e7edaf9305a074f390f5c55dfe766098ca1b1d13eb6fa4adf1e3e5",
+    "server/src/routes/companies.ts": "409383a7db8324cbc5e5bc3b4a7cf1ca3a43afb7787a56ffe2360617d843ee37",
+    "server/src/routes/agents.ts": "83c776c79c795b67895bb98b95163daa642954c9f081022dc296bd9d02c3bbe8",
+    "server/src/routes/projects.ts": "10abb99e5859076274f795d60e66f3e0d99cea59f2616254e51ff2639009133a",
+    "server/src/routes/execution-workspaces.ts": "43e31aa8d62970c6916d9c757257d1c5191ae1e97fa079b57c8feff2b6219f2c",
+    "server/src/routes/issues.ts": "5c99f97427759234b6bf2ef7f8351ecbea5ad40dca93be22a982ba6d5ae0ac29",
+    "server/src/services/workspace-runtime.ts": "3421435cac27103aafa6ac444d3b45826f777e0f09ac6012fc6a8ce8ab4fb4a7",
+    "server/src/services/board-auth.ts": "b99cd1665522dcb299b1552e4c882a552cf13045db242eb7f5b0270dd394b8d7",
+    "packages/adapters/codex-local/src/server/codex-home.ts": "377b366cfd4834754fb566f301074fcc2ca274fdf92c91e9980509bf46fca7e8",
+    "packages/adapters/codex-local/src/server/execute.ts": "78115d726beb5333922e55a0b363b5d1e2be4315f9b3881b2a7810eef871d90a",
+    "deploy/release/smoke-cli-auth.py": "def94e10546a0b0de5b0a2a631cf0a51d2886c6c214f06b5d386b01afc97a5c8",
+    "deploy/release/smoke-image.sh": "23990becca8c3f749eaf2fa599d4c5b18e21a36f70c8430492e7d816fce719a6",
+    "server/src/__tests__/agent-key-authorization.test.ts": "a5badea10126225fcf792bf1e7459e6f0a02fa0ecd0afe9fc7a20d02a939219e",
+    "server/src/__tests__/agent-execution-authorization.test.ts": "51c7ffcc5f4aa382891f9bd2bcf1f0b3f0ac79e57b7d74d3b67ecab0fe600825",
+    "server/src/__tests__/project-execution-authorization.test.ts": "2e4e19acc378b75cca978544e4d58d489419e7e9acf996b680176845e1c2504a",
+    "server/src/__tests__/issue-execution-authorization.test.ts": "491645c5a599730c75dec5722f048fda36df26e51eb260abfde342df8bf72e0e",
+    "server/src/__tests__/company-portability-routes.test.ts": "111a796e8f426ebfa3b1082b51fbd0f70a6c1977df3b9380681149bbf07bb3cc",
+    "server/src/__tests__/activity-routes.test.ts": "b72b5a2a5428d18182c07a82f251860fa7098e1551f249088d9c6139e90c1003",
+    "server/src/__tests__/codex-local-execute.test.ts": "0b3d3d42aecc4f06b6d0ce19b2f1fbe97fd930c983fa888544c5c9ac5c6cb08c",
+    "server/src/__tests__/workspace-runtime.test.ts": "daaa453df468b4743a7f85d4b8395643d340a225467462e9dcdcdff88969acee",
+    "server/src/__tests__/health-disclosure.test.ts": "68585abea0273c261c68c1b5506e372231a51b6066e6b869be45402ed6fa707f",
+    "server/src/__tests__/cli-auth-routes.test.ts": "607f94c19c7da41e3b57e8510c8161a029bbc530004c3aacffe66f63cce2de36"
+  },
+  "findings": [
+    {
+      "VulnerabilityID": "CVE-2026-41679",
+      "PkgName": "@paperclipai/server",
+      "PkgPath": "app/server/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "CRITICAL",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/%40paperclipai/server@0.3.1",
+        "UID": "5187802cca59a0dc"
+      },
+      "evidence": "Company creation/import preview/import apply require instance administrator before importer execution; company-portability-routes.test.ts verifies rejection before service or persistence."
+    },
+    {
+      "VulnerabilityID": "GHSA-3xx2-mqjm-hg9x",
+      "PkgName": "@paperclipai/server",
+      "PkgPath": "app/server/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "CRITICAL",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/%40paperclipai/server@0.3.1",
+        "UID": "5187802cca59a0dc"
+      },
+      "evidence": "Agent key list/create/delete require company access and board actor; agent-key-authorization.test.ts verifies cross-company and agent rejection before key service calls."
+    },
+    {
+      "VulnerabilityID": "GHSA-47wq-cj9q-wpmp",
+      "PkgName": "@paperclipai/server",
+      "PkgPath": "app/server/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "CRITICAL",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/%40paperclipai/server@0.3.1",
+        "UID": "5187802cca59a0dc"
+      },
+      "evidence": "Agent key creation requires company access and board actor before key insertion; agent-key-authorization.test.ts covers foreign agent IDs and own-company agent rejection."
+    },
+    {
+      "VulnerabilityID": "GHSA-vr7g-88fq-vhq3",
+      "PkgName": "@paperclipai/server",
+      "PkgPath": "app/server/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "CRITICAL",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/%40paperclipai/server@0.3.1",
+        "UID": "5187802cca59a0dc"
+      },
+      "evidence": "Workspace executable configuration and cleanup-triggering lifecycle changes require instance administrator; project-execution-authorization.test.ts covers agent/tenant denial and operator success."
+    },
+    {
+      "VulnerabilityID": "CVE-2026-41208",
+      "PkgName": "@paperclipai/server",
+      "PkgPath": "app/server/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "HIGH",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/%40paperclipai/server@0.3.1",
+        "UID": "5187802cca59a0dc"
+      },
+      "evidence": "Agent executable configuration, creation/hire, rollback and live-run override require instance administrator. Workspace provisioning uses sanitized env. Agent/project/issue authorization and workspace-runtime tests cover these paths."
+    },
+    {
+      "VulnerabilityID": "GHSA-w8hx-hqjv-vjcq",
+      "PkgName": "@paperclipai/server",
+      "PkgPath": "app/server/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "HIGH",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/%40paperclipai/server@0.3.1",
+        "UID": "5187802cca59a0dc"
+      },
+      "evidence": "Agent runtimeConfig and project/workspace execution policy changes require instance administrator. Untrusted skill/agent actor cannot install runtime service shell configuration; agent/project/issue execution authorization tests cover injection paths."
+    },
+    {
+      "VulnerabilityID": "GHSA-xfqj-r5qw-8g4j",
+      "PkgName": "@paperclipai/server",
+      "PkgPath": "app/server/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "HIGH",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/%40paperclipai/server@0.3.1",
+        "UID": "5187802cca59a0dc"
+      },
+      "evidence": "Heartbeat run issues require authenticated company access; host skills require instance administrator; public health is bootstrap-only; challenge polling hides unrelated tenant/user details. Isolated smoke proves pending CLI token cannot access companies or approve itself. Public bundled skills are a fixed whitelist of documentation, not host files."
+    },
+    {
+      "VulnerabilityID": "CVE-2026-41679",
+      "PkgName": "paperclipai",
+      "PkgPath": "app/cli/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "CRITICAL",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/paperclipai@0.3.1",
+        "UID": "b43e6d32e1379954"
+      },
+      "evidence": "Company creation/import preview/import apply require instance administrator before importer execution; company-portability-routes.test.ts verifies rejection before service or persistence."
+    },
+    {
+      "VulnerabilityID": "GHSA-gqqj-85qm-8qhf",
+      "PkgName": "paperclipai",
+      "PkgPath": "app/cli/package.json",
+      "InstalledVersion": "0.3.1",
+      "Severity": "HIGH",
+      "PkgIdentifier": {
+        "PURL": "pkg:npm/paperclipai@0.3.1",
+        "UID": "b43e6d32e1379954"
+      },
+      "evidence": "Managed Codex home uses a new per-company namespace without copying/linking host auth/config; inherited OpenAI/Codex keys are overridden empty; sandbox bypass defaults false. codex-local-execute.test.ts proves credential isolation. Explicit operator-selected tenant credentials remain supported."
+    }
+  ]
+}
