@@ -3,6 +3,12 @@ const SECRET_PAYLOAD_KEY_RE =
 const JWT_VALUE_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?$/;
 export const REDACTED_EVENT_VALUE = "***REDACTED***";
 
+/** Secret forms use generic `value` fields, which key-name redaction cannot detect. */
+export function sanitizeRequestBody(url: string, body: unknown): unknown {
+  if (/\/(?:openrouter-credentials|secrets)(?:\/|\?|$)/.test(url)) return REDACTED_EVENT_VALUE;
+  return isPlainObject(body) ? sanitizeRecord(body) : body;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);

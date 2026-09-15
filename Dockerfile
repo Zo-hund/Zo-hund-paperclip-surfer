@@ -1,8 +1,4 @@
-FROM node:lts-trixie-slim AS base
-# Build-time metadata args (injected by CI)
-ARG BUILD_DATE
-ARG VCS_REF
-ARG VERSION
+FROM node:lts-trixie-slim@sha256:6950b66b4c0cb0151ce89fa75074673850763d096b044f422c6729b588dd4956 AS base
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git \
@@ -11,7 +7,7 @@ RUN corepack enable
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc .pnpmfile.cjs ./
 COPY cli/package.json cli/
 COPY server/package.json server/
 COPY ui/package.json ui/
@@ -43,21 +39,62 @@ RUN pnpm --filter @paperclipai/ui build
 RUN cd server && node_modules/.bin/tsc && mkdir -p dist/onboarding-assets && cp -R src/onboarding-assets/. dist/onboarding-assets/
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
-FROM node:lts-trixie-slim AS production
-ARG BUILD_DATE
-ARG VCS_REF
-ARG VERSION
-# Production stage: slim base + agent CLI runtimes
+FROM build AS runtime-deps
+# Reinstall the locked production graph so build-only binaries are not shipped.
+# The TypeScript loader remains an explicit server runtime dependency because
+# workspace packages export TypeScript source in this checkout.
+RUN rm -rf node_modules cli/node_modules server/node_modules ui/node_modules \
+      amx-air-hubs/node_modules packages/*/node_modules packages/adapters/*/node_modules \
+      packages/plugins/*/node_modules packages/plugins/examples/*/node_modules \
+  && pnpm install --prod --frozen-lockfile --ignore-scripts
+# Restore the platform package's bundled library symlinks explicitly. Without
+# its vendor initializer, initdb/postgres exit 127 despite the binaries existing.
+RUN for script in node_modules/.pnpm/@embedded-postgres+linux-*/node_modules/@embedded-postgres/linux-*/scripts/hydrate-symlinks.js; do \
+      test -f "$script" || exit 1; \
+      (cd "$(dirname "$script")/.." && node scripts/hydrate-symlinks.js) || exit 1; \
+    done
+
+# Hermes v0.21.2 is released on GitHub but not on PyPI. Upstream requires a
+# source/editable installation to preserve its runtime assets; pin the release.
+FROM base AS hermes-source
+ADD https://github.com/NousResearch/hermes-agent/archive/939e45c91d751fadd94dcd1b873ac3cb44846213.tar.gz /tmp/hermes.tar.gz
+RUN mkdir -p /opt/hermes \
+  && tar -xzf /tmp/hermes.tar.gz -C /opt/hermes --strip-components=1 \
+  && printf '%s\n' '939e45c91d751fadd94dcd1b873ac3cb44846213' > /opt/hermes/.hermes_build_sha
+
+FROM node:lts-trixie-slim@sha256:6950b66b4c0cb0151ce89fa75074673850763d096b044f422c6729b588dd4956 AS node-runtime
+
+FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS production
+# Keep the full agent/media runtime on Ubuntu's maintained security packages.
+# Copy Node from the same official distribution used by the build stages;
+# do not copy Debian's system libraries or package database.
 RUN apt-get update \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
        ca-certificates curl git \
        python3 python3-pip \
-       ffmpeg \
+       ffmpeg libstdc++6 \
   && rm -rf /var/lib/apt/lists/*
-RUN corepack enable
+COPY --from=node-runtime /usr/local /usr/local
+COPY --from=node-runtime /opt /opt
+# The official Ubuntu image reserves UID/GID 1000 for ubuntu. Preserve the
+# existing node UID/GID so application data volumes remain compatible.
+RUN groupmod -n node ubuntu \
+  && usermod -l node -d /home/node -m ubuntu \
+  && node --version \
+  && corepack enable
 WORKDIR /app
-COPY --chown=node:node --from=build /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --from=hermes-source /opt/hermes /opt/hermes
+# Node's bundled npm still contains vulnerable compatible dependency versions.
+# Upgrade the actual dependency code, retaining npm and every agent CLI.
+# npm's source-only development/workspace metadata references unpublished
+# packages, which npm resolves even with --omit=dev. Keep its runtime manifest.
+RUN node -e "const fs = require('node:fs'); const p = '/usr/local/lib/node_modules/npm/package.json'; const j = JSON.parse(fs.readFileSync(p)); delete j.devDependencies; delete j.workspaces; fs.writeFileSync(p, JSON.stringify(j, null, 2));" \
+  && npm install --prefix /usr/local/lib/node_modules/npm --save-exact --ignore-scripts \
+      --omit=dev --package-lock=false brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 \
+  && node -e "for (const [name, version] of Object.entries({'brace-expansion':'5.0.9','ip-address':'10.3.1','tar':'7.5.21'})) { if (require('/usr/local/lib/node_modules/npm/node_modules/' + name + '/package.json').version !== version) throw new Error('npm dependency version mismatch: ' + name); }" \
+  && npm --version
 # Install adapter CLIs:
 #   claude_local  → @anthropic-ai/claude-code
 #   codex_local   → @openai/codex
@@ -69,13 +106,21 @@ RUN npm install --global --ignore-scripts \
       @openai/codex@latest \
       opencode-ai \
       @earendil-works/pi-coding-agent \
-  && pip3 install --break-system-packages --ignore-installed hermes-agent runwayml \
+  && node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs \
+  && (cd /usr/local/lib/node_modules/opencode-ai && node postinstall.mjs) \
+  && pip3 install --break-system-packages --ignore-installed -e /opt/hermes runwayml \
+       'cryptography>=50.0.0' 'pillow>=12.3.0' 'PyJWT>=2.13.0' \
+  && pip3 check \
   && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
+# Source edits must not invalidate the unchanged agent/media tool installation.
+COPY --chown=node:node --from=runtime-deps /app /app
+
 ENV NODE_ENV=production \
+  PYTHONDONTWRITEBYTECODE=1 \
   HOME=/paperclip \
   HOST=0.0.0.0 \
   PORT=3100 \
@@ -88,6 +133,9 @@ ENV NODE_ENV=production \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private
 
 # OCI image labels for traceability
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}" \

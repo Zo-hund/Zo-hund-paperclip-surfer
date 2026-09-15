@@ -10,7 +10,21 @@ import {
 import { validate } from "../middleware/validate.js";
 import { projectService, logActivity } from "../services/index.js";
 import { conflict } from "../errors.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
+
+function assertProjectExecutionAccess(req: Request) {
+  if (Object.hasOwn(req.body, "executionWorkspacePolicy") || Object.hasOwn(req.body, "workspace")) {
+    assertInstanceAdmin(req);
+  }
+}
+
+function assertWorkspaceExecutionAccess(req: Request) {
+  // Display labels may be edited by company collaborators. Every other workspace
+  // field can select or configure the runtime and remains operator-owned.
+  if (Object.keys(req.body).some((key) => key !== "name" && key !== "visibility")) {
+    assertInstanceAdmin(req);
+  }
+}
 
 export function projectRoutes(db: Db) {
   const router = Router();
@@ -73,6 +87,7 @@ export function projectRoutes(db: Db) {
   router.post("/companies/:companyId/projects", validate(createProjectSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    assertProjectExecutionAccess(req);
     type CreateProjectPayload = Parameters<typeof svc.create>[1] & {
       workspace?: Parameters<typeof svc.createWorkspace>[1];
     };
@@ -116,6 +131,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    assertProjectExecutionAccess(req);
     const body = { ...req.body };
     if (typeof body.archivedAt === "string") {
       body.archivedAt = new Date(body.archivedAt);
@@ -161,6 +177,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    assertInstanceAdmin(req);
     const workspace = await svc.createWorkspace(id, req.body);
     if (!workspace) {
       res.status(422).json({ error: "Invalid project workspace payload" });
@@ -199,6 +216,7 @@ export function projectRoutes(db: Db) {
         return;
       }
       assertCompanyAccess(req, existing.companyId);
+      assertWorkspaceExecutionAccess(req);
       const workspaceExists = (await svc.listWorkspaces(id)).some((workspace) => workspace.id === workspaceId);
       if (!workspaceExists) {
         res.status(404).json({ error: "Project workspace not found" });
@@ -238,6 +256,7 @@ export function projectRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    assertInstanceAdmin(req);
     const workspace = await svc.removeWorkspace(id, workspaceId);
     if (!workspace) {
       res.status(404).json({ error: "Project workspace not found" });

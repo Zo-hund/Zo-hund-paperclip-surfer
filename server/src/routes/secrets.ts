@@ -8,7 +8,7 @@ import {
   updateSecretSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertCompanyRole } from "./authz.js";
 import { logActivity, secretService } from "../services/index.js";
 
 export function secretRoutes(db: Db) {
@@ -40,6 +40,7 @@ export function secretRoutes(db: Db) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    if (req.body.name === "OPENROUTER_API_KEY") assertCompanyRole(req, companyId, "admin");
 
     const created = await svc.create(
       companyId,
@@ -75,6 +76,7 @@ export function secretRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    if (existing.name === "OPENROUTER_API_KEY") assertCompanyRole(req, existing.companyId, "admin");
 
     const rotated = await svc.rotate(
       id,
@@ -107,6 +109,9 @@ export function secretRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    if (existing.name === "OPENROUTER_API_KEY" || req.body.name === "OPENROUTER_API_KEY") {
+      assertCompanyRole(req, existing.companyId, "admin");
+    }
 
     const updated = await svc.update(id, {
       name: req.body.name,
@@ -141,6 +146,7 @@ export function secretRoutes(db: Db) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    if (existing.name === "OPENROUTER_API_KEY") assertCompanyRole(req, existing.companyId, "admin");
 
     const removed = await svc.remove(id);
     if (!removed) {

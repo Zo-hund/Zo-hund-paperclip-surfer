@@ -345,6 +345,10 @@ pnpm secrets:migrate-inline-env         # dry run
 pnpm secrets:migrate-inline-env --apply # apply migration
 ```
 
+### OpenRouter tenant keys
+
+Company settings → OpenRouter access stores and validates a company's own encrypted key. Agent overrides take priority. Operator-provisioned access uses the private server `OPENROUTER_API_KEY` only for company UUIDs listed in `PAPERCLIP_OPENROUTER_COMPANY_IDS` (comma-separated; no wildcard). Set grants explicitly before upgrading deployments that currently rely on the server key. Validation calls OpenRouter's key endpoint without inference. See [credential behavior and rollout](plans/2026-09-09-openrouter-tenant-keys.md).
+
 ## Company Deletion Toggle
 
 Company deletion is intended as a dev/debug capability and can be disabled at runtime:

@@ -4,8 +4,6 @@ import path from "node:path";
 import type { AdapterExecutionContext } from "@paperclipai/adapter-utils";
 
 const TRUTHY_ENV_RE = /^(1|true|yes|on)$/i;
-const COPIED_SHARED_FILES = ["config.json", "config.toml", "instructions.md"] as const;
-const SYMLINKED_SHARED_FILES = ["auth.json"] as const;
 const DEFAULT_PAPERCLIP_INSTANCE_ID = "default";
 
 function nonEmpty(value: string | undefined): string | null {
@@ -34,59 +32,8 @@ export function resolveManagedCodexHomeDir(
   const paperclipHome = nonEmpty(env.PAPERCLIP_HOME) ?? path.resolve(os.homedir(), ".paperclip");
   const instanceId = nonEmpty(env.PAPERCLIP_INSTANCE_ID) ?? DEFAULT_PAPERCLIP_INSTANCE_ID;
   return companyId
-    ? path.resolve(paperclipHome, "instances", instanceId, "companies", companyId, "codex-home")
-    : path.resolve(paperclipHome, "instances", instanceId, "codex-home");
-}
-
-async function ensureParentDir(target: string): Promise<void> {
-  await fs.mkdir(path.dirname(target), { recursive: true });
-}
-
-async function ensureSymlink(target: string, source: string): Promise<void> {
-  const createOrReplaceWithCopy = async (): Promise<void> => {
-    await ensureParentDir(target);
-    await fs.copyFile(source, target);
-  };
-
-  const createSymlinkOrCopy = async (): Promise<void> => {
-    try {
-      await fs.symlink(source, target);
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code === "EPERM" || err.code === "EACCES" || err.code === "UNKNOWN") {
-        await createOrReplaceWithCopy();
-        return;
-      }
-      throw error;
-    }
-  };
-
-  const existing = await fs.lstat(target).catch(() => null);
-  if (!existing) {
-    await ensureParentDir(target);
-    await createSymlinkOrCopy();
-    return;
-  }
-
-  if (!existing.isSymbolicLink()) {
-    return;
-  }
-
-  const linkedPath = await fs.readlink(target).catch(() => null);
-  if (!linkedPath) return;
-
-  const resolvedLinkedPath = path.resolve(path.dirname(target), linkedPath);
-  if (resolvedLinkedPath === source) return;
-
-  await fs.unlink(target);
-  await createSymlinkOrCopy();
-}
-
-async function ensureCopiedFile(target: string, source: string): Promise<void> {
-  const existing = await fs.lstat(target).catch(() => null);
-  if (existing) return;
-  await ensureParentDir(target);
-  await fs.copyFile(source, target);
+    ? path.resolve(paperclipHome, "instances", instanceId, "companies", companyId, "codex-home-isolated")
+    : path.resolve(paperclipHome, "instances", instanceId, "codex-home-isolated");
 }
 
 export async function prepareManagedCodexHome(
@@ -96,26 +43,13 @@ export async function prepareManagedCodexHome(
 ): Promise<string> {
   const targetHome = resolveManagedCodexHomeDir(env, companyId);
 
-  const sourceHome = resolveSharedCodexHomeDir(env);
-  if (path.resolve(sourceHome) === path.resolve(targetHome)) return targetHome;
-
+  // A new namespace avoids reusing previously inherited operator credentials.
+  // Explicit tenant login/configuration belongs here; never seed it from host state.
   await fs.mkdir(targetHome, { recursive: true });
-
-  for (const name of SYMLINKED_SHARED_FILES) {
-    const source = path.join(sourceHome, name);
-    if (!(await pathExists(source))) continue;
-    await ensureSymlink(path.join(targetHome, name), source);
-  }
-
-  for (const name of COPIED_SHARED_FILES) {
-    const source = path.join(sourceHome, name);
-    if (!(await pathExists(source))) continue;
-    await ensureCopiedFile(path.join(targetHome, name), source);
-  }
 
   await onLog(
     "stdout",
-    `[paperclip] Using ${isWorktreeMode(env) ? "worktree-isolated" : "Paperclip-managed"} Codex home "${targetHome}" (seeded from "${sourceHome}").\n`,
+    `[paperclip] Using ${isWorktreeMode(env) ? "worktree-isolated" : "Paperclip-managed"} Codex home "${targetHome}" (without inherited host credentials).\n`,
   );
   return targetHome;
 }

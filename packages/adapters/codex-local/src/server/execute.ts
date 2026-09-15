@@ -379,10 +379,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   for (const [k, v] of Object.entries(envConfig)) {
     if (typeof v === "string") env[k] = v;
   }
-  const resolvedOpenAiApiKey = resolveOpenAiApiKey(env, process.env);
-  if (resolvedOpenAiApiKey) {
-    env.OPENAI_API_KEY = resolvedOpenAiApiKey;
-  }
+  const resolvedOpenAiApiKey = resolveOpenAiApiKey(env, {});
+  // Empty overrides prevent runChildProcess from inheriting the host account key.
+  env.OPENAI_API_KEY = resolvedOpenAiApiKey ?? "";
+  env.CODEX_API_KEY = asString(envConfig.CODEX_API_KEY, "");
   if (!hasExplicitApiKey && authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }

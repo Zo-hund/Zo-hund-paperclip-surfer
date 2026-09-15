@@ -1,7 +1,7 @@
 export const type = "codex_local";
 export const label = "Codex (local)";
 export const DEFAULT_CODEX_LOCAL_MODEL = "gpt-5.3-codex";
-export const DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX = true;
+export const DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX = false;
 
 export const models = [
   { id: "gpt-5.4", label: "gpt-5.4" },
@@ -27,7 +27,7 @@ Core fields:
 - modelReasoningEffort (string, optional): reasoning effort override (minimal|low|medium|high) passed via -c model_reasoning_effort=...
 - promptTemplate (string, optional): run prompt template
 - search (boolean, optional): run codex with --search
-- dangerouslyBypassApprovalsAndSandbox (boolean, optional): run with bypass flag
+- dangerouslyBypassApprovalsAndSandbox (boolean, optional): run with bypass flag; defaults to false
 - command (string, optional): defaults to "codex"
 - extraArgs (string[], optional): additional CLI args
 - env (object, optional): KEY=VALUE environment variables
@@ -42,8 +42,8 @@ Notes:
 - Prompts are piped via stdin (Codex receives "-" prompt argument).
 - If instructionsFilePath is configured, Paperclip prepends that file's contents to the stdin prompt on every run.
 - Codex exec automatically applies repo-scoped AGENTS.md instructions from the active workspace. Paperclip cannot suppress that discovery in exec mode, so repo AGENTS.md files may still apply even when you only configured an explicit instructionsFilePath.
-- Paperclip injects desired local skills into the effective CODEX_HOME/skills/ directory at execution time so Codex can discover "$paperclip" and related skills without polluting the project working directory. In managed-home mode (the default) this is ~/.paperclip/instances/<id>/companies/<companyId>/codex-home/skills/; when CODEX_HOME is explicitly overridden in adapter config, that override is used instead.
-- Unless explicitly overridden in adapter config, Paperclip runs Codex with a per-company managed CODEX_HOME under the active Paperclip instance and seeds auth/config from the shared Codex home (the CODEX_HOME env var, when set, or ~/.codex).
+- Paperclip injects desired local skills into the effective CODEX_HOME/skills/ directory at execution time so Codex can discover "$paperclip" and related skills without polluting the project working directory. In managed-home mode (the default) this is ~/.paperclip/instances/<id>/companies/<companyId>/codex-home-isolated/skills/; when CODEX_HOME is explicitly overridden in adapter config, that override is used instead.
+- Unless explicitly overridden by an operator in adapter config, Paperclip runs Codex with a per-company managed CODEX_HOME under the active Paperclip instance. Host authentication, configuration, and API keys are not inherited; configure tenant authentication explicitly.
 - Some model/tool combinations reject certain effort levels (for example minimal with web search enabled).
 - When Paperclip realizes a workspace/runtime for a run, it injects PAPERCLIP_WORKSPACE_* and PAPERCLIP_RUNTIME_* env vars for agent-side tooling.
 `;

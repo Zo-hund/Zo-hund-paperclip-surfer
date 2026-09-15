@@ -1734,6 +1734,14 @@ export function accessRoutes(
 
     res.json({
       ...challenge,
+      requestedCompanyName:
+        req.actor.type === "board" &&
+        (isLocalImplicit(req) || req.actor.isInstanceAdmin ||
+          (challenge.requestedCompanyId && req.actor.companyIds?.includes(challenge.requestedCompanyId)))
+          ? challenge.requestedCompanyName : null,
+      approvedByUser:
+        req.actor.type === "board" && req.actor.userId === challenge.approvedByUser?.id
+          ? challenge.approvedByUser : null,
       requiresSignIn: !isSignedInBoardUser,
       canApprove,
       currentUserId: req.actor.type === "board" ? req.actor.userId ?? null : null,
@@ -1981,7 +1989,8 @@ export function accessRoutes(
     return { token, created, normalizedAgentMessage };
   }
 
-  router.get("/skills/available", (_req, res) => {
+  router.get("/skills/available", async (req, res) => {
+    await assertInstanceAdmin(req);
     res.json({ skills: listAvailableSkills() });
   });
 

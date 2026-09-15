@@ -23,9 +23,9 @@ export function healthRoutes(
 ) {
   const router = Router();
 
-  router.get("/", async (_req, res) => {
+  router.get("/", async (req, res) => {
     if (!db) {
-      res.json({ status: "ok", version: serverVersion });
+      res.json({ status: "ok" });
       return;
     }
 
@@ -55,6 +55,13 @@ export function healthRoutes(
           .then((rows) => Number(rows[0]?.count ?? 0));
         bootstrapInviteActive = inviteCount > 0;
       }
+    }
+
+    // The sign-in UI needs bootstrap state, but anonymous health probes do
+    // not need software versions, feature flags, or local development paths.
+    if (opts.deploymentMode === "authenticated" && (!req.actor || req.actor.type === "none")) {
+      res.json({ status: "ok", deploymentMode: opts.deploymentMode, bootstrapStatus, bootstrapInviteActive });
+      return;
     }
 
     const persistedDevServerStatus = readPersistedDevServerStatus();

@@ -1,9 +1,12 @@
 export { execute } from "./execute.js";
 export { testEnvironment } from "./test.js";
+export { isOpenRouterProvisioned, resolveOpenRouterKey, validateOpenRouterKey, hasOpenRouterHostTools } from "./credentials.js";
 
 export async function listModels(): Promise<Array<{ id: string; label: string }>> {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
+      signal: AbortSignal.timeout(10_000),
+      redirect: "error",
       headers: {
         "HTTP-Referer": "https://amx-air-hubs.cc",
         "X-Title": "AMX Air Hubs Orchestrator",
@@ -21,7 +24,7 @@ export async function listModels(): Promise<Array<{ id: string; label: string }>
     // Ignore and return fallback
   }
   return [
-    { id: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet (anthropic/claude-3.5-sonnet)" },
+    { id: "openai/gpt-4o-mini", label: "GPT-4o mini (openai/gpt-4o-mini)" },
     { id: "openai/gpt-4o", label: "GPT-4o (openai/gpt-4o)" },
     { id: "meta-llama/llama-3-70b-instruct", label: "Llama 3 70B (meta-llama/llama-3-70b-instruct)" },
     { id: "google/gemini-flash-1.5", label: "Gemini Flash 1.5 (google/gemini-flash-1.5)" },

@@ -293,6 +293,8 @@ Operational policy:
 
 ## 7.13 Required Indexes
 
+AMX-AIR-HUBS OpenRouter addendum (2026-09-09): company owners/admins may manage an encrypted company default provider key. Explicit agent secret references take precedence; operator-funded access requires an exact company grant in server configuration. Invalid tenant credentials never fall back to operator billing. Credential settings report configuration separately from live provider validation. See `doc/plans/2026-09-09-openrouter-tenant-keys.md` for API and rollout requirements.
+
 - `agents(company_id, status)`
 - `agents(company_id, reports_to)`
 - `issues(company_id, status)`

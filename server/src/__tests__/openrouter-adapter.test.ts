@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionCodec, testEnvironment } from "@paperclipai/adapter-openrouter/server";
 import { parseStdoutLine } from "@paperclipai/adapter-openrouter/ui";
 import { printOpenRouterStreamEvent } from "@paperclipai/adapter-openrouter/cli";
@@ -103,6 +103,12 @@ describe("OpenRouter CLI printOpenRouterStreamEvent", () => {
 });
 
 describe("OpenRouter testEnvironment check", () => {
+  beforeEach(() => {
+    vi.stubEnv("PAPERCLIP_OPENROUTER_COMPANY_IDS", "");
+    vi.stubEnv("PAPERCLIP_OPENROUTER_TRUSTED_TOOL_COMPANY_IDS", "");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: {} }))));
+  });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   it("fails test when API key is missing", async () => {
     const result = await testEnvironment({
       companyId: "comp-1",
@@ -113,10 +119,10 @@ describe("OpenRouter testEnvironment check", () => {
       },
     });
     expect(result.status).toBe("fail");
-    expect(result.checks.some((c) => c.code === "api_key_missing")).toBe(true);
+    expect(result.checks.some((c) => c.code === "api_key_invalid")).toBe(true);
   });
 
-  it("passes test when API key and model are configured", async () => {
+  it("validates a tenant key and warns that host tools are unavailable", async () => {
     const result = await testEnvironment({
       companyId: "comp-1",
       adapterType: "openrouter",
@@ -127,12 +133,14 @@ describe("OpenRouter testEnvironment check", () => {
         },
       },
     });
-    expect(result.status).toBe("pass");
-    expect(result.checks.some((c) => c.code === "api_key_configured")).toBe(true);
+    expect(result.status).toBe("warn");
+    expect(result.checks.some((c) => c.code === "api_key_validated")).toBe(true);
     expect(result.checks.some((c) => c.code === "model_configured")).toBe(true);
   });
 
   it("passes test when API key is set in host system environment", async () => {
+    vi.stubEnv("PAPERCLIP_OPENROUTER_COMPANY_IDS", "comp-1");
+    vi.stubEnv("PAPERCLIP_OPENROUTER_TRUSTED_TOOL_COMPANY_IDS", "comp-1");
     const originalKey = process.env.OPENROUTER_API_KEY;
     process.env.OPENROUTER_API_KEY = "sk-or-host-key";
     try {
@@ -145,7 +153,7 @@ describe("OpenRouter testEnvironment check", () => {
         },
       });
       expect(result.status).toBe("pass");
-      expect(result.checks.some((c) => c.code === "api_key_configured")).toBe(true);
+      expect(result.checks.some((c) => c.code === "api_key_validated")).toBe(true);
     } finally {
       if (originalKey === undefined) {
         delete process.env.OPENROUTER_API_KEY;
