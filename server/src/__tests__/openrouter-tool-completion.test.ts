@@ -27,6 +27,52 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("OpenRouter command and completion semantics", () => {
+  it("accepts an assigned run only after persisted document readback", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response(false))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "agent", companyId: "tenant" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "task", companyId: "tenant", assigneeAgentId: "agent", status: "in_review" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ companyId: "tenant", issueId: "task", status: "active", isPrimary: true, provider: "agent-sync", url: "/api/issues/task/documents/deliverable/export" }])))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ body: "Persisted report" })));
+    vi.stubGlobal("fetch", fetch);
+    const ctx = context(); ctx.authToken = "runtime-key"; ctx.context = { taskId: "task" };
+    const result = await execute(ctx);
+    expect(result.exitCode).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(5);
+  });
+  it("fails a native HTTP error instead of treating curl-style exit success as completion", async () => {
+    const tool = new Response(JSON.stringify({ choices: [{ message: { role: "assistant", tool_calls: [{ id: "checkout", function: {
+      name: "paperclip_api", arguments: JSON.stringify({ method: "POST", path: "/api/issues/task/checkout", body: {} }),
+    } }] } }] }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(tool).mockResolvedValueOnce(new Response("secret error", { status: 400 })));
+    const ctx = context(); ctx.authToken = "runtime-key";
+    const result = await execute(ctx);
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toContain("paperclip_api failed");
+    expect(JSON.stringify(result)).not.toContain("secret error");
+  });
+  it("rejects final prose when the assigned issue is still backlog", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response(false))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "agent", companyId: "tenant" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "task", companyId: "tenant", assigneeAgentId: "agent", status: "backlog" }))));
+    const ctx = context(); ctx.authToken = "runtime-key"; ctx.context = { taskId: "task" };
+    const result = await execute(ctx);
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toContain("not in review");
+  });
+  it("verifies successful native checkout on an initially unassigned wake", async () => {
+    const tool = new Response(JSON.stringify({ choices: [{ message: { role: "assistant", tool_calls: [{ id: "checkout", function: {
+      name: "paperclip_api", arguments: JSON.stringify({ method: "POST", path: "/api/issues/task/checkout", body: { agentId: "agent", expectedStatuses: ["backlog"] } }),
+    } }] } }] }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(tool)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "task" })))
+      .mockResolvedValueOnce(response(false))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "agent", companyId: "tenant" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "task", companyId: "tenant", assigneeAgentId: "agent", status: "backlog" }))));
+    const ctx = context(); ctx.authToken = "runtime-key";
+    const result = await execute(ctx);
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toContain("not in review");
+  });
   it("uses a POSIX shell on Linux and noninteractive PowerShell on Windows", () => {
     expect(resolveShellCommand("echo test", "linux")).toEqual({ executable: "/bin/sh", args: ["-c", "echo test"] });
     expect(resolveShellCommand("echo test", "win32")).toEqual({ executable: "powershell", args: ["-NoProfile", "-NonInteractive", "-Command", "echo test"] });

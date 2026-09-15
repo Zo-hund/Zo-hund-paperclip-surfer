@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createPaperclipApi, verifyAssignedDelivery } from "./paperclip-api.js";
 import { resolveOpenRouterKey, openRouterErrorMessage, hasOpenRouterHostTools } from "./credentials.js";
 import { buildOpenRouterWakeEnv, buildOpenRouterTaskPrompt } from "./task-context.js";
 import type { AdapterExecutionContext, AdapterExecutionResult } from "@paperclipai/adapter-utils";
@@ -17,6 +18,18 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 
 const tools = [
+  {
+    type: "function",
+    function: {
+      name: "paperclip_api",
+      description: "Call the configured Paperclip platform API. Runtime supplies authentication, audit headers and JSON serialization. Use this for all platform operations, including memory; never curl the platform.",
+      parameters: { type: "object", additionalProperties: false, properties: {
+        method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        path: { type: "string", description: "Relative API path starting /api/. No host or credentials." },
+        body: { type: "object", description: "JSON mutation body; omit for GET." },
+      }, required: ["method", "path"] },
+    },
+  },
   {
     type: "function",
     function: {
@@ -173,6 +186,11 @@ async function executeRun(
   if (authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }
+  const paperclipApi = createPaperclipApi({
+    baseUrl: buildPaperclipEnv(agent).PAPERCLIP_API_URL,
+    token: authToken ?? "", runId, signal,
+  });
+  const claimedTaskIds = new Set<string>(env.PAPERCLIP_TASK_ID ? [env.PAPERCLIP_TASK_ID] : []);
 
   // Load memories and instructions prefix
   let memoryPrefix = "";
@@ -202,6 +220,7 @@ async function executeRun(
   const systemPrompt = [
     runModeNote,
     "You are a helpful AI coding agent working in a local workspace environment.",
+    "Use paperclip_api for every Paperclip platform operation including memory. It supplies runtime authentication and JSON headers. Never use shell commands to call this platform.",
     instructionsPrefix,
     memoryPrefix,
   ].filter(Boolean).join("\n\n");
@@ -332,14 +351,20 @@ async function executeRun(
         checkDeadline();
         const toolName = call.function.name;
         const toolArgs = JSON.parse(call.function.arguments);
-        await onLog("stdout", `\n[Tool Call] Executing ${toolName} with args: ${JSON.stringify(toolArgs)}\n`);
+        await onLog("stdout", toolName === "paperclip_api"
+          ? "\n[Tool Call] Executing paperclip_api (arguments omitted from logs)\n"
+          : `\n[Tool Call] Executing ${toolName} with args: ${JSON.stringify(toolArgs)}\n`);
         checkDeadline();
 
         let result = "";
         let isError = false;
 
         try {
-          if (toolName === "run_command") {
+          if (toolName === "paperclip_api") {
+            result = JSON.stringify(await paperclipApi(toolArgs));
+            const checkout = typeof toolArgs.path === "string" && toolArgs.path.match(/^\/api\/issues\/([a-zA-Z0-9_-]+)\/checkout$/);
+            if (toolArgs.method === "POST" && checkout) claimedTaskIds.add(checkout[1]);
+          } else if (toolName === "run_command") {
             const shell = resolveShellCommand(toolArgs.command);
             const cmdResult = await runChildProcess(runId, shell.executable, shell.args, {
               cwd,
@@ -405,6 +430,18 @@ async function executeRun(
   if (!completed && !runFailure) {
     runFailure = `OpenRouter reached its ${maxTurns}-turn limit without completing. The task is not complete.`;
   }
+  if (completed && !runFailure && claimedTaskIds.size) {
+    try {
+      for (const taskId of claimedTaskIds) await verifyAssignedDelivery(paperclipApi, {
+        taskId, companyId: agent.companyId, agentId: agent.id,
+        baseUrl: buildPaperclipEnv(agent).PAPERCLIP_API_URL,
+      });
+    } catch (error) {
+      checkDeadline();
+      runFailure = error instanceof Error ? error.message : "Assigned delivery verification failed.";
+    }
+  }
+  checkDeadline();
 
   return {
     exitCode: runFailure ? 1 : 0,
