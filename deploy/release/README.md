@@ -7,10 +7,14 @@ Hostinger host; it is not a generic multi-VPS installer.
 ## Release sequence
 
 1. A PR passes `smoke`, `build and test`, `helm validate`, and `docker`.
-2. After merge to `experimental`, CI builds one image, pushes it, blocks on HIGH/CRITICAL
-   Trivy findings, signs its digest, tests that digest in an isolated container, and
+2. After merge to `experimental`, CI builds one image, pushes it, blocks on unresolved
+   HIGH/CRITICAL Trivy findings, signs its digest, tests that digest in an isolated container, and
    uploads `governed-release-<run_attempt>`. Unsigned or failed candidates may exist
    in GHCR, but do not have successful release evidence and cannot be promoted.
+   First-party fork backports require the source/hash/expiry checks and raw-to-filtered
+   comparison described in [the backport review](../../doc/plans/2026-09-15-reviewed-security-backports.md).
+   Raw findings remain in the `image-security-<run_attempt>` artifact. An unknown
+   vulnerability, changed package location, or changed reviewed source blocks signing.
 3. `Deploy AMX VPS` validates the originating repository, push event, branch, workflow,
    conclusion, attempt, commit and artifact digest before accessing the host runner.
 4. Staging verifies the exact signing identity and commit, deploys the digest with
