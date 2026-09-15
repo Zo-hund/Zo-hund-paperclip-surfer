@@ -34,12 +34,23 @@ import {
 } from "../services/index.js";
 import { logger } from "../middleware/logger.js";
 import { forbidden, HttpError, unauthorized } from "../errors.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { shouldWakeAssigneeOnCheckout } from "./issues-checkout-wakeup.js";
 import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
 import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
+
+function assertCanConfigureIssueExecution(req: Request, patch: Record<string, unknown>) {
+  // These objects can override host commands, environment and workspace setup.
+  // Clearing/replacing them also changes operator-owned execution policy.
+  if (
+    Object.prototype.hasOwnProperty.call(patch, "assigneeAdapterOverrides") ||
+    Object.prototype.hasOwnProperty.call(patch, "executionWorkspaceSettings")
+  ) {
+    assertInstanceAdmin(req);
+  }
+}
 
 export function issueRoutes(db: Db, storage: StorageService) {
   const router = Router();
@@ -905,6 +916,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
   router.post("/companies/:companyId/issues", validate(createIssueSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+    assertCanConfigureIssueExecution(req, req.body);
     if (req.body.assigneeAgentId || req.body.assigneeUserId) {
       await assertCanAssignTasks(req, companyId);
     }
@@ -949,6 +961,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       assertCompanyAccess(req, companyId);
 
       const { ids, update } = req.body as BulkUpdateIssue;
+      assertCanConfigureIssueExecution(req, update);
       const assigneeWillChange =
         Object.prototype.hasOwnProperty.call(update, "assigneeAgentId") ||
         Object.prototype.hasOwnProperty.call(update, "assigneeUserId");
@@ -1018,6 +1031,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       return;
     }
     assertCompanyAccess(req, existing.companyId);
+    assertCanConfigureIssueExecution(req, req.body);
     const assigneeWillChange =
       (req.body.assigneeAgentId !== undefined && req.body.assigneeAgentId !== existing.assigneeAgentId) ||
       (req.body.assigneeUserId !== undefined && req.body.assigneeUserId !== existing.assigneeUserId);

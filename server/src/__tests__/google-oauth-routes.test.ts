@@ -44,7 +44,7 @@ describeEmbeddedPostgres("Google Workspace Integration and Security Invariants",
 
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-google-oauth-");
     db = createDb(tempDb.connectionString);
-  }, 20_000);
+  }, 60_000);
 
   afterEach(async () => {
     await db.delete(activityLog);

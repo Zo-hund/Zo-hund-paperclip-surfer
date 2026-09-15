@@ -24,7 +24,7 @@ export async function testEnvironment(
     checks.push({
       code: "model_missing",
       level: "error",
-      message: "No model configured. Select an OpenRouter model (e.g. anthropic/claude-3.5-sonnet).",
+      message: "No model configured. Select an OpenRouter model (e.g. openai/gpt-4o-mini).",
     });
   } else {
     checks.push({

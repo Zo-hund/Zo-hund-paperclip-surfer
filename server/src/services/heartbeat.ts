@@ -1,3 +1,4 @@
+import { buildMemoryPrompt } from "./agent-runtime/memory-prompt.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
@@ -2936,41 +2937,18 @@ export function heartbeatService(db: Db) {
             }\n\n`
           : "";
 
-        // Self-reflection instructions — always injected so agent can write memories
-        const apiUrl = process.env.PAPERCLIP_API_URL ?? `http://localhost:${process.env.PORT ?? 3100}`;
-        const reflectionInstructions = `# Self-Improvement Instructions
-
-At the end of your work on this task, write 1-3 memory entries about what you learned. Be specific and actionable.
-
-Call this API for each memory entry:
-\`\`\`
-POST ${apiUrl}/api/agents/me/memories
-Authorization: Bearer $PAPERCLIP_API_KEY
-Content-Type: application/json
-
-{
-  "scope": "global" | "project",
-  "projectId": "<project id if project-scoped, omit for global>",
-  "category": "pattern" | "preference" | "decision" | "learning" | "feedback",
-  "title": "<short title>",
-  "content": "<what you learned, what worked, what to do differently next time>",
-  "confidence": 0.0-1.0
-}
-\`\`\`
-
-Write memories for:
-- **Patterns** you noticed (recurring problems, solutions that work)
-- **Preferences** expressed by the team (how they like things done)
-- **Decisions** you made and why (so you don't re-litigate them)
-- **Learnings** from failures or surprises
-- **Feedback** you received (implicit or explicit)
-
-Keep memories concise and specific. Don't write vague platitudes.`;
+        // Only the persisted operator-owned config can opt in; wake/issue overrides cannot.
+        const memoryCapture = parseObject(agent.adapterConfig).memoryCapture === true;
+        const verifiedMemoryProject = memoryCapture && executionProjectId
+          ? await db.select({ id: projects.id }).from(projects)
+              .where(and(eq(projects.id, executionProjectId), eq(projects.companyId, agent.companyId)))
+              .limit(1).then((rows) => rows[0]?.id ?? null)
+          : null;
 
         const experimentSection = typeof context.v2ExperimentInstruction === "string"
           ? `\n\n${context.v2ExperimentInstruction}`
           : "";
-        const memoryContent = memorySection + reflectionInstructions + experimentSection;
+        const memoryContent = buildMemoryPrompt({ memorySection, memoryCapture, verifiedProjectId: verifiedMemoryProject, experimentSection });
         const memoryPath = pathMod.join(tempDir, "agent-memory.md");
         fsSync.writeFileSync(memoryPath, memoryContent);
         context.paperclipMemoryFilePath = memoryPath;

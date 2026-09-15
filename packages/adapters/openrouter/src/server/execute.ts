@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createPaperclipApi, verifyAssignedDelivery, type VerifiedDelivery } from "./paperclip-api.js";
 import { resolveOpenRouterKey, openRouterErrorMessage, hasOpenRouterHostTools } from "./credentials.js";
+import { buildOpenRouterWakeEnv, buildOpenRouterTaskPrompt } from "./task-context.js";
 import type { AdapterExecutionContext, AdapterExecutionResult } from "@paperclipai/adapter-utils";
 import {
   asBoolean,
@@ -16,6 +18,18 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 
 const tools = [
+  {
+    type: "function",
+    function: {
+      name: "paperclip_api",
+      description: "Call the configured Paperclip platform API. Runtime supplies authentication, audit headers and JSON serialization. Use this for all platform operations, including memory; never curl the platform.",
+      parameters: { type: "object", additionalProperties: false, properties: {
+        method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        path: { type: "string", description: "Relative API path starting /api/. No host or credentials." },
+        body: { type: "object", description: "JSON mutation body; omit for GET." },
+      }, required: ["method", "path"] },
+    },
+  },
   {
     type: "function",
     function: {
@@ -96,6 +110,12 @@ class OpenRouterRunTimeoutError extends Error {
   }
 }
 
+export function resolveShellCommand(command: string, platform: NodeJS.Platform = process.platform) {
+  return platform === "win32"
+    ? { executable: "powershell", args: ["-NoProfile", "-NonInteractive", "-Command", command] }
+    : { executable: "/bin/sh", args: ["-c", command] };
+}
+
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const timeoutSec = asNumber(ctx.config.timeoutSec, 120);
   const deadline = Number.isFinite(timeoutSec) && timeoutSec > 0 ? Date.now() + timeoutSec * 1000 : null;
@@ -137,7 +157,7 @@ async function executeRun(
     config.promptTemplate,
     "You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.",
   );
-  const model = asString(config.model, "anthropic/claude-3.5-sonnet").trim();
+  const model = asString(config.model, "openai/gpt-4o-mini").trim();
   const configuredCwd = asString(config.cwd, "");
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
@@ -154,9 +174,23 @@ async function executeRun(
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }
+  Object.assign(env, buildPaperclipEnv(agent));
+  env.PAPERCLIP_RUN_ID = runId;
+  for (const key of ["PAPERCLIP_TASK_ID", "PAPERCLIP_WAKE_REASON", "PAPERCLIP_WAKE_COMMENT_ID", "PAPERCLIP_APPROVAL_ID", "PAPERCLIP_APPROVAL_STATUS", "PAPERCLIP_LINKED_ISSUE_IDS"]) {
+    env[key] = "";
+  }
+  Object.assign(env, buildOpenRouterWakeEnv(context));
+  if (env.PAPERCLIP_TASK_ID && !hostToolsEnabled) {
+    throw new Error("This assigned task requires an isolated worker or company-authorized host tools. The task is not complete.");
+  }
   if (authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }
+  const paperclipApi = createPaperclipApi({
+    baseUrl: buildPaperclipEnv(agent).PAPERCLIP_API_URL,
+    token: authToken ?? "", runId, signal,
+  });
+  const claimedTaskIds = new Set<string>(env.PAPERCLIP_TASK_ID ? [env.PAPERCLIP_TASK_ID] : []);
 
   // Load memories and instructions prefix
   let memoryPrefix = "";
@@ -186,6 +220,7 @@ async function executeRun(
   const systemPrompt = [
     runModeNote,
     "You are a helpful AI coding agent working in a local workspace environment.",
+    "Use paperclip_api for every Paperclip platform operation including memory. It supplies runtime authentication and JSON headers. Never use shell commands to call this platform.",
     instructionsPrefix,
     memoryPrefix,
   ].filter(Boolean).join("\n\n");
@@ -202,20 +237,6 @@ async function executeRun(
       content: systemPrompt,
     });
 
-    const templateData = {
-      agentId: agent.id,
-      companyId: agent.companyId,
-      runId,
-      company: { id: agent.companyId },
-      agent,
-      run: { id: runId, source: "on_demand" },
-      context,
-    };
-    const renderedPrompt = renderTemplate(promptTemplate, templateData);
-    messages.push({
-      role: "user",
-      content: renderedPrompt,
-    });
   } else {
     // If resuming, inject system prompt update in case memories/instructions changed
     messages[0] = {
@@ -223,6 +244,16 @@ async function executeRun(
       content: systemPrompt,
     };
   }
+  // A resumed conversation must receive this wake's assignment too.
+  const renderedPrompt = renderTemplate(promptTemplate, {
+    agentId: agent.id, companyId: agent.companyId, runId,
+    company: { id: agent.companyId }, agent,
+    run: { id: runId, source: "on_demand" }, context,
+  });
+  messages.push({
+    role: "user",
+    content: [renderedPrompt, hostToolsEnabled ? buildOpenRouterTaskPrompt(context) : ""].filter(Boolean).join("\n\n"),
+  });
 
   if (onMeta) {
     await onMeta({
@@ -240,6 +271,8 @@ async function executeRun(
   let inputTokens = 0;
   let outputTokens = 0;
   const maxTurns = 20;
+  let completed = false;
+  let runFailure: string | null = null;
   let turn = 0;
 
   const headers: Record<string, string> = {
@@ -249,7 +282,7 @@ async function executeRun(
     "X-Title": "Paperclip Orchestrator",
   };
 
-  while (turn < maxTurns) {
+  conversation: while (turn < maxTurns) {
     checkDeadline();
     turn++;
     await onLog("stdout", `[OpenRouter Turn ${turn}/${maxTurns}] Sending request to model ${model}...\n`);
@@ -307,7 +340,7 @@ async function executeRun(
     messages.push(assistantMessage);
 
     if (assistantMessage.content) {
-      await onLog("stdout", `\n${assistantMessage.content}\n`);
+      await onLog("stdout", `\n[Generated model text - unverified]\n${assistantMessage.content}\n`);
     }
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -318,15 +351,22 @@ async function executeRun(
         checkDeadline();
         const toolName = call.function.name;
         const toolArgs = JSON.parse(call.function.arguments);
-        await onLog("stdout", `\n[Tool Call] Executing ${toolName} with args: ${JSON.stringify(toolArgs)}\n`);
+        await onLog("stdout", toolName === "paperclip_api"
+          ? "\n[Tool Call] Executing paperclip_api (arguments omitted from logs)\n"
+          : `\n[Tool Call] Executing ${toolName} with args: ${JSON.stringify(toolArgs)}\n`);
         checkDeadline();
 
         let result = "";
         let isError = false;
 
         try {
-          if (toolName === "run_command") {
-            const cmdResult = await runChildProcess(runId, "powershell", ["-Command", toolArgs.command], {
+          if (toolName === "paperclip_api") {
+            result = JSON.stringify(await paperclipApi(toolArgs));
+            const checkout = typeof toolArgs.path === "string" && toolArgs.path.match(/^\/api\/issues\/([a-zA-Z0-9_-]+)\/checkout$/);
+            if (toolArgs.method === "POST" && checkout) claimedTaskIds.add(checkout[1]);
+          } else if (toolName === "run_command") {
+            const shell = resolveShellCommand(toolArgs.command);
+            const cmdResult = await runChildProcess(runId, shell.executable, shell.args, {
               cwd,
               env,
               timeoutSec: remainingTimeoutSec(),
@@ -373,21 +413,45 @@ async function executeRun(
           name: toolName,
           content: result,
         });
+        if (isError) {
+          runFailure = `OpenRouter tool ${toolName} failed. Inspect the tool result before retrying; the task is not complete.`;
+          break conversation;
+        }
       }
     } else {
       // Completed conversation turn
+      completed = true;
       break;
     }
   }
   checkDeadline();
 
   const lastMsg = messages[messages.length - 1];
+  const verifiedDeliveries: VerifiedDelivery[] = [];
+  if (!completed && !runFailure) {
+    runFailure = `OpenRouter reached its ${maxTurns}-turn limit without completing. The task is not complete.`;
+  }
+  if (completed && !runFailure && claimedTaskIds.size) {
+    try {
+      for (const taskId of claimedTaskIds) verifiedDeliveries.push(await verifyAssignedDelivery(paperclipApi, {
+        taskId, companyId: agent.companyId, agentId: agent.id,
+        baseUrl: buildPaperclipEnv(agent).PAPERCLIP_API_URL,
+      }));
+    } catch (error) {
+      checkDeadline();
+      runFailure = error instanceof Error ? error.message : "Assigned delivery verification failed.";
+    }
+  }
+  checkDeadline();
+  const verifiedSummary = verifiedDeliveries.map(delivery =>
+    `Verified delivery ${delivery.status === "in_review" ? "ready for review" : "completed"}: [Deliverable](${delivery.documentUrl})`,
+  ).join("\n");
 
   return {
-    exitCode: 0,
+    exitCode: runFailure ? 1 : 0,
     signal: null,
     timedOut: false,
-    errorMessage: null,
+    errorMessage: runFailure,
     usage: {
       inputTokens,
       outputTokens,
@@ -399,6 +463,7 @@ async function executeRun(
     sessionDisplayId: `openrouter-${messages.length}-turns`,
     provider: "openrouter",
     model,
-    summary: typeof lastMsg?.content === "string" ? lastMsg.content : "Run finished.",
+    resultJson: !runFailure && verifiedDeliveries.length ? { kind: "verified_deliveries", deliveries: verifiedDeliveries } : null,
+    summary: runFailure ?? (verifiedSummary || (typeof lastMsg?.content === "string" ? lastMsg.content : "Run finished.")),
   };
 }

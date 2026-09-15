@@ -1088,6 +1088,7 @@ export function agentRoutes(db: Db) {
   });
 
   router.post("/agents/:id/config-revisions/:revisionId/rollback", async (req, res) => {
+    assertInstanceAdmin(req);
     const id = req.params.id as string;
     const revisionId = req.params.revisionId as string;
     const existing = await svc.getById(id);
@@ -1185,6 +1186,7 @@ export function agentRoutes(db: Db) {
   });
 
   router.post("/companies/:companyId/agent-hires", validate(createAgentHireSchema), async (req, res) => {
+    assertInstanceAdmin(req);
     const companyId = req.params.companyId as string;
     await assertCanCreateAgentsForCompany(req, companyId);
     const sourceIssueIds = parseSourceIssueIds(req.body);
@@ -1343,6 +1345,7 @@ export function agentRoutes(db: Db) {
   });
 
   router.post("/companies/:companyId/agents", validate(createAgentSchema), async (req, res) => {
+    assertInstanceAdmin(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
 
@@ -1720,6 +1723,10 @@ export function agentRoutes(db: Db) {
   });
 
   router.patch("/agents/:id", validate(updateAgentSchema), async (req, res) => {
+    // Execution authority is operator-owned, even for agent self-updates.
+    if (["adapterType", "adapterConfig", "runtimeConfig", "replaceAdapterConfig"].some(
+      (key) => Object.prototype.hasOwnProperty.call(req.body, key),
+    )) assertInstanceAdmin(req);
     const id = req.params.id as string;
     const existing = await svc.getById(id);
     if (!existing) {
@@ -1865,6 +1872,12 @@ export function agentRoutes(db: Db) {
   router.post("/agents/:id/pause", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const target = await svc.getById(id);
+    if (!target) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, target.companyId);
     const agent = await svc.pause(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -1888,6 +1901,12 @@ export function agentRoutes(db: Db) {
   router.post("/agents/:id/resume", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const target = await svc.getById(id);
+    if (!target) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, target.companyId);
     const agent = await svc.resume(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -1909,6 +1928,12 @@ export function agentRoutes(db: Db) {
   router.post("/agents/:id/terminate", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const target = await svc.getById(id);
+    if (!target) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, target.companyId);
     const agent = await svc.terminate(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -1932,6 +1957,12 @@ export function agentRoutes(db: Db) {
   router.delete("/agents/:id", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const target = await svc.getById(id);
+    if (!target) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, target.companyId);
     const agent = await svc.remove(id);
     if (!agent) {
       res.status(404).json({ error: "Agent not found" });
@@ -1953,6 +1984,9 @@ export function agentRoutes(db: Db) {
   router.get("/agents/:id/keys", async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const agent = await svc.getById(id);
+    if (!agent) throw notFound("Agent not found");
+    assertCompanyAccess(req, agent.companyId);
     const keys = await svc.listKeys(id);
     res.json(keys);
   });
@@ -1960,9 +1994,11 @@ export function agentRoutes(db: Db) {
   router.post("/agents/:id/keys", validate(createAgentKeySchema), async (req, res) => {
     assertBoard(req);
     const id = req.params.id as string;
+    const agent = await svc.getById(id);
+    if (!agent) throw notFound("Agent not found");
+    assertCompanyAccess(req, agent.companyId);
     const key = await svc.createApiKey(id, req.body.name);
 
-    const agent = await svc.getById(id);
     if (agent) {
       await logActivity(db, {
         companyId: agent.companyId,
@@ -1980,8 +2016,12 @@ export function agentRoutes(db: Db) {
 
   router.delete("/agents/:id/keys/:keyId", async (req, res) => {
     assertBoard(req);
+    const id = req.params.id as string;
+    const agent = await svc.getById(id);
+    if (!agent) throw notFound("Agent not found");
+    assertCompanyAccess(req, agent.companyId);
     const keyId = req.params.keyId as string;
-    const revoked = await svc.revokeKey(keyId);
+    const revoked = await svc.revokeKey(id, keyId);
     if (!revoked) {
       res.status(404).json({ error: "Key not found" });
       return;
@@ -2474,6 +2514,7 @@ export function agentRoutes(db: Db) {
   });
 
   router.patch("/heartbeat-runs/:runId/config", async (req, res) => {
+    assertInstanceAdmin(req);
     assertBoard(req);
     const runId = req.params.runId as string;
     const adapterType = typeof req.body.adapterType === "string" ? req.body.adapterType : undefined;

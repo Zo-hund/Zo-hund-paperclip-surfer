@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyRuntimePortSelectionToConfig,
   maybePersistWorktreeRuntimePorts,
@@ -10,6 +10,21 @@ import {
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_CWD = process.cwd();
+
+beforeEach(() => {
+  // Each fixture supplies its own worktree paths; a developer's configured home
+  // must not override PAPERCLIP_WORKTREES_DIR and hide the fixture's siblings.
+  for (const key of [
+    "PAPERCLIP_HOME",
+    "PAPERCLIP_INSTANCE_ID",
+    "PAPERCLIP_CONFIG",
+    "PAPERCLIP_CONTEXT",
+    "PORT",
+    "DATABASE_URL",
+  ]) {
+    delete process.env[key];
+  }
+});
 
 afterEach(() => {
   process.chdir(ORIGINAL_CWD);

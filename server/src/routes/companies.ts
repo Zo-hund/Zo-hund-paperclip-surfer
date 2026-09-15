@@ -22,7 +22,7 @@ import {
   workProductService,
 } from "../services/index.js";
 import type { StorageService } from "../storage/types.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
 
 export function companyRoutes(db: Db, storage?: StorageService) {
   const router = Router();
@@ -885,7 +885,7 @@ function copyToClipboard(btn) {
   });
 
   router.post("/import/preview", validate(companyPortabilityPreviewSchema), async (req, res) => {
-    assertBoard(req);
+    assertInstanceAdmin(req);
     if (req.body.target.mode === "existing_company") {
       assertCompanyAccess(req, req.body.target.companyId);
     }
@@ -894,7 +894,7 @@ function copyToClipboard(btn) {
   });
 
   router.post("/import", validate(companyPortabilityImportSchema), async (req, res) => {
-    assertBoard(req);
+    assertInstanceAdmin(req);
     if (req.body.target.mode === "existing_company") {
       assertCompanyAccess(req, req.body.target.companyId);
     }
@@ -950,6 +950,8 @@ function copyToClipboard(btn) {
   });
 
   router.post("/:companyId/imports/apply", validate(companyPortabilityImportSchema), async (req, res) => {
+    // Imported agent configuration can execute on the host, including agent-safe imports.
+    assertInstanceAdmin(req);
     const companyId = req.params.companyId as string;
     await assertCanManagePortability(req, companyId, "imports");
     if (req.body.target.mode === "existing_company" && req.body.target.companyId !== companyId) {
@@ -984,8 +986,8 @@ function copyToClipboard(btn) {
   });
 
   router.post("/", validate(createCompanySchema), async (req, res) => {
-    assertBoard(req);
-    // Any signed-in board user may create their own company and become its owner.
+    assertInstanceAdmin(req);
+    // Company creation can enable host execution; reserve it for trusted operators.
     const ownerUserId = req.actor.userId
       ?? (req.actor.source === "local_implicit" ? "local-board" : null);
     if (!ownerUserId) {

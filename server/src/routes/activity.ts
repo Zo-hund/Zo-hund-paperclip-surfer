@@ -6,6 +6,7 @@ import { activityService } from "../services/activity.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
 import { issueService } from "../services/index.js";
 import { sanitizeRecord } from "../redaction.js";
+import { notFound, unauthorized } from "../errors.js";
 
 const createActivitySchema = z.object({
   actorType: z.enum(["agent", "user", "system"]).optional().default("system"),
@@ -46,6 +47,7 @@ export function activityRoutes(db: Db) {
   router.post("/companies/:companyId/activity", validate(createActivitySchema), async (req, res) => {
     assertBoard(req);
     const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
     const event = await svc.create({
       companyId,
       ...req.body,
@@ -79,7 +81,11 @@ export function activityRoutes(db: Db) {
   });
 
   router.get("/heartbeat-runs/:runId/issues", async (req, res) => {
+    if (req.actor.type === "none") throw unauthorized();
     const runId = req.params.runId as string;
+    const run = await svc.getRunScope(runId);
+    if (!run) throw notFound("Run not found");
+    assertCompanyAccess(req, run.companyId);
     const result = await svc.issuesForRun(runId);
     res.json(result);
   });
