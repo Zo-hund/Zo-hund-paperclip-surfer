@@ -1,6 +1,6 @@
 # Runtime image hardening review
 
-Status: review only; no Dockerfile, runtime, deployment, or scan policy changed. Candidate inspected at `4165d236dfa5b407e43f048ced8428b74482aed1`, with other contributors' uncommitted security repairs preserved. The current candidate's final image scan was not available to this review.
+Status: the initial review inspected `4165d236dfa5b407e43f048ced8428b74482aed1`. Its completed scan and a subsequent Docker build-cache change are documented below. Production and scan policy remain unchanged.
 
 ## Recommended immediate scope
 
@@ -50,4 +50,4 @@ The critical OS finding is libxml2 CVE-2026-6653. The [Debian security tracker](
 
 No scanner exceptions, version relabeling, production promotion, or runtime removals were applied. Application repairs can be tested independently, but the current full-feature image cannot pass the existing release policy until its remaining package findings are resolved.
 
-Build-cache repair: the application copy now follows the unchanged agent/media installation layers, and metadata-only build arguments are declared immediately before their OCI labels. This preserves tool versions, runtime contents, labels, and scan policy while allowing unchanged tool layers to be reused between source changes. Actual image smoke validation remains required; this ordering change does not resolve vulnerability findings.
+Build-cache repair: the application copy now follows the unchanged agent/media installation layers, and metadata-only build arguments are declared immediately before their OCI labels. This retains the installation commands, labels, and scan policy while allowing unchanged tool layers to be reused between source changes. Existing mutable tool selectors still require a separately tested pinning change. Actual image smoke validation remains required; this ordering change does not resolve vulnerability findings.
