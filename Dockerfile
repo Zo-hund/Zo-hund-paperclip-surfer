@@ -1,8 +1,4 @@
 FROM node:lts-trixie-slim AS base
-# Build-time metadata args (injected by CI)
-ARG BUILD_DATE
-ARG VCS_REF
-ARG VERSION
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git \
@@ -67,9 +63,6 @@ RUN mkdir -p /opt/hermes \
   && printf '%s\n' '939e45c91d751fadd94dcd1b873ac3cb44846213' > /opt/hermes/.hermes_build_sha
 
 FROM node:lts-trixie-slim AS production
-ARG BUILD_DATE
-ARG VCS_REF
-ARG VERSION
 # Production stage: slim base + agent CLI runtimes
 RUN apt-get update \
   && apt-get upgrade -y \
@@ -80,7 +73,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
-COPY --chown=node:node --from=runtime-deps /app /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=hermes-source /opt/hermes /opt/hermes
 # Node's bundled npm still contains vulnerable compatible dependency versions.
@@ -113,6 +105,9 @@ RUN npm install --global --ignore-scripts \
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
+# Source edits must not invalidate the unchanged agent/media tool installation.
+COPY --chown=node:node --from=runtime-deps /app /app
+
 ENV NODE_ENV=production \
   PYTHONDONTWRITEBYTECODE=1 \
   HOME=/paperclip \
@@ -127,6 +122,9 @@ ENV NODE_ENV=production \
   PAPERCLIP_DEPLOYMENT_EXPOSURE=private
 
 # OCI image labels for traceability
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}" \
