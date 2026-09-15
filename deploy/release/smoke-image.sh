@@ -3,7 +3,7 @@
 set -euo pipefail
 : "${RELEASE_IMAGE:?An exact built image is required}"
 : "${SMOKE_PORT:=3100}"
-if ! [[ "$SMOKE_PORT" =~ ^[0-9]+$ ]] || (( SMOKE_PORT < 1024 || SMOKE_PORT > 65535 )); then
+if ! [[ "$SMOKE_PORT" =~ ^[1-9][0-9]{3,4}$ ]] || (( SMOKE_PORT < 1024 || SMOKE_PORT > 65535 )); then
   echo "SMOKE_PORT must be a port between 1024 and 65535" >&2
   exit 1
 fi
@@ -30,7 +30,7 @@ docker exec "$CID" sh -ec '
   done
   timeout 30 hermes --help >/dev/null
   timeout 30 ffmpeg -version >/dev/null
-  python3 -c "import ssl; import cryptography; import PIL; import runway; import jwt"
+  python3 -c "import ssl; import cryptography; import PIL; import runwayml; import jwt"
   media_dir=$(mktemp -d)
   trap '\''rm -rf "$media_dir"'\'' EXIT
   timeout 30 ffmpeg -hide_banner -loglevel error \
