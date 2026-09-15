@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import {
   applyPendingMigrations,
@@ -43,11 +43,17 @@ if (!embeddedPostgresSupport.supported) {
 }
 
 describeEmbeddedPostgres("applyPendingMigrations", () => {
+  let connectionString: string;
+
+  // Cluster initialization and the full migration bootstrap are setup, not the
+  // operation under test. Allow slower disks without weakening assertion timeouts.
+  beforeEach(async () => {
+    connectionString = await createTempDatabase();
+  }, 60_000);
+
   it(
     "applies an inserted earlier migration without replaying later legacy migrations",
     async () => {
-      const connectionString = await createTempDatabase();
-
       await applyPendingMigrations(connectionString);
 
       const sql = postgres(connectionString, { max: 1, onnotice: () => {} });
@@ -99,8 +105,6 @@ describeEmbeddedPostgres("applyPendingMigrations", () => {
   it(
     "replays migration 0044 safely when its schema changes already exist",
     async () => {
-      const connectionString = await createTempDatabase();
-
       await applyPendingMigrations(connectionString);
 
       const sql = postgres(connectionString, { max: 1, onnotice: () => {} });
@@ -143,8 +147,6 @@ describeEmbeddedPostgres("applyPendingMigrations", () => {
   it(
     "enforces a unique board_api_keys.key_hash after migration 0044",
     async () => {
-      const connectionString = await createTempDatabase();
-
       await applyPendingMigrations(connectionString);
 
       const sql = postgres(connectionString, { max: 1, onnotice: () => {} });

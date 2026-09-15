@@ -96,6 +96,12 @@ class OpenRouterRunTimeoutError extends Error {
   }
 }
 
+export function resolveShellCommand(command: string, platform: NodeJS.Platform = process.platform) {
+  return platform === "win32"
+    ? { executable: "powershell", args: ["-NoProfile", "-NonInteractive", "-Command", command] }
+    : { executable: "/bin/sh", args: ["-c", command] };
+}
+
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const timeoutSec = asNumber(ctx.config.timeoutSec, 120);
   const deadline = Number.isFinite(timeoutSec) && timeoutSec > 0 ? Date.now() + timeoutSec * 1000 : null;
@@ -137,7 +143,7 @@ async function executeRun(
     config.promptTemplate,
     "You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.",
   );
-  const model = asString(config.model, "anthropic/claude-3.5-sonnet").trim();
+  const model = asString(config.model, "openai/gpt-4o-mini").trim();
   const configuredCwd = asString(config.cwd, "");
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
@@ -240,6 +246,8 @@ async function executeRun(
   let inputTokens = 0;
   let outputTokens = 0;
   const maxTurns = 20;
+  let completed = false;
+  let runFailure: string | null = null;
   let turn = 0;
 
   const headers: Record<string, string> = {
@@ -249,7 +257,7 @@ async function executeRun(
     "X-Title": "Paperclip Orchestrator",
   };
 
-  while (turn < maxTurns) {
+  conversation: while (turn < maxTurns) {
     checkDeadline();
     turn++;
     await onLog("stdout", `[OpenRouter Turn ${turn}/${maxTurns}] Sending request to model ${model}...\n`);
@@ -326,7 +334,8 @@ async function executeRun(
 
         try {
           if (toolName === "run_command") {
-            const cmdResult = await runChildProcess(runId, "powershell", ["-Command", toolArgs.command], {
+            const shell = resolveShellCommand(toolArgs.command);
+            const cmdResult = await runChildProcess(runId, shell.executable, shell.args, {
               cwd,
               env,
               timeoutSec: remainingTimeoutSec(),
@@ -373,21 +382,29 @@ async function executeRun(
           name: toolName,
           content: result,
         });
+        if (isError) {
+          runFailure = `OpenRouter tool ${toolName} failed. Inspect the tool result before retrying; the task is not complete.`;
+          break conversation;
+        }
       }
     } else {
       // Completed conversation turn
+      completed = true;
       break;
     }
   }
   checkDeadline();
 
   const lastMsg = messages[messages.length - 1];
+  if (!completed && !runFailure) {
+    runFailure = `OpenRouter reached its ${maxTurns}-turn limit without completing. The task is not complete.`;
+  }
 
   return {
-    exitCode: 0,
+    exitCode: runFailure ? 1 : 0,
     signal: null,
     timedOut: false,
-    errorMessage: null,
+    errorMessage: runFailure,
     usage: {
       inputTokens,
       outputTokens,
@@ -399,6 +416,6 @@ async function executeRun(
     sessionDisplayId: `openrouter-${messages.length}-turns`,
     provider: "openrouter",
     model,
-    summary: typeof lastMsg?.content === "string" ? lastMsg.content : "Run finished.",
+    summary: runFailure ?? (typeof lastMsg?.content === "string" ? lastMsg.content : "Run finished."),
   };
 }
