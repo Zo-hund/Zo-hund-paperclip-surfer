@@ -165,6 +165,46 @@ describe("cli auth routes", () => {
     );
   });
 
+  it.each([{ type: "none" }, { type: "agent", companyId: "company-1" }])(
+    "rejects challenge approval and host skill enumeration for $type actors", async (actor) => {
+      const app = await createApp(actor);
+      const approval = await request(app).post("/api/cli-auth/challenges/challenge-1/approve")
+        .send({ token: "pcp_cli_auth_secret" });
+      expect(approval.status).toBe(401);
+      expect(mockBoardAuthService.approveCliAuthChallenge).not.toHaveBeenCalled();
+      const skills = await request(app).get("/api/skills/available");
+      expect(skills.status).toBe(401);
+      expect(skills.body.skills).toBeUndefined();
+    },
+  );
+
+  it("requires instance administration to list installed host skills", async () => {
+    mockAccessService.isInstanceAdmin.mockResolvedValue(false);
+    const app = await createApp({ type: "board", source: "session", userId: "tenant" });
+    expect((await request(app).get("/api/skills/available")).status).toBe(403);
+    mockAccessService.isInstanceAdmin.mockResolvedValue(true);
+    const allowed = await request(app).get("/api/skills/available");
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.skills).toEqual(expect.any(Array));
+  });
+
+  it.each([
+    { type: "none" },
+    { type: "agent", companyId: "company-1" },
+    { type: "board", source: "session", userId: "other", companyIds: ["company-2"] },
+  ])("does not disclose tenant names or approver identity to unrelated $type viewers", async (actor) => {
+    mockBoardAuthService.describeCliAuthChallenge.mockResolvedValue({
+      id: "challenge-1", status: "approved", requestedAccess: "board",
+      requestedCompanyId: "company-1", requestedCompanyName: "Private company",
+      approvedByUser: { id: "user-1", name: "Private name", email: "private@example.com" },
+    });
+    const app = await createApp(actor);
+    const res = await request(app).get("/api/cli-auth/challenges/challenge-1?token=secret");
+    expect(res.status).toBe(200);
+    expect(res.body.requestedCompanyName).toBeNull();
+    expect(res.body.approvedByUser).toBeNull();
+  });
+
   it("logs approve activity for instance admins without company memberships", async () => {
     mockBoardAuthService.approveCliAuthChallenge.mockResolvedValue({
       status: "approved",

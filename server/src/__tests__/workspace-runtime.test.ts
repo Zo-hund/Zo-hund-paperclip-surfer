@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupExecutionWorkspaceArtifacts,
   ensureRuntimeServicesForRun,
@@ -117,6 +117,7 @@ function createWorkspaceOperationRecorderDouble() {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     Array.from(leasedRunIds).map(async (runId) => {
       await releaseRuntimeServicesForRun(runId);
@@ -200,12 +201,15 @@ describe("realizeExecutionWorkspace", () => {
   });
 
   it("runs a configured provision command inside the derived worktree", async () => {
+    vi.stubEnv("DATABASE_URL", "postgres://must-not-reach-provisioner");
+    vi.stubEnv("PAPERCLIP_AGENT_JWT_SECRET", "must-not-reach-provisioner");
     const repoRoot = await createTempRepo();
     await fs.mkdir(path.join(repoRoot, "scripts"), { recursive: true });
     await fs.writeFile(
       path.join(repoRoot, "scripts", "provision.js"),
       [
         "const fs = require('node:fs');",
+        "if (process.env.DATABASE_URL || process.env.PAPERCLIP_AGENT_JWT_SECRET) throw new Error('Provisioning inherited control-plane secrets');",
         "fs.writeFileSync('.paperclip-provision-branch', `${process.env.PAPERCLIP_WORKSPACE_BRANCH ?? ''}\\n`);",
         "fs.writeFileSync('.paperclip-provision-base', `${process.env.PAPERCLIP_WORKSPACE_BASE_CWD ?? ''}\\n`);",
         "fs.writeFileSync('.paperclip-provision-created', `${process.env.PAPERCLIP_WORKSPACE_CREATED ?? ''}\\n`);",
