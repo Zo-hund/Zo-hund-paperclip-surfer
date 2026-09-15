@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveOpenRouterKey, openRouterErrorMessage, hasOpenRouterHostTools } from "./credentials.js";
+import { buildOpenRouterWakeEnv, buildOpenRouterTaskPrompt } from "./task-context.js";
 import type { AdapterExecutionContext, AdapterExecutionResult } from "@paperclipai/adapter-utils";
 import {
   asBoolean,
@@ -160,6 +161,15 @@ async function executeRun(
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }
+  Object.assign(env, buildPaperclipEnv(agent));
+  env.PAPERCLIP_RUN_ID = runId;
+  for (const key of ["PAPERCLIP_TASK_ID", "PAPERCLIP_WAKE_REASON", "PAPERCLIP_WAKE_COMMENT_ID", "PAPERCLIP_APPROVAL_ID", "PAPERCLIP_APPROVAL_STATUS", "PAPERCLIP_LINKED_ISSUE_IDS"]) {
+    env[key] = "";
+  }
+  Object.assign(env, buildOpenRouterWakeEnv(context));
+  if (env.PAPERCLIP_TASK_ID && !hostToolsEnabled) {
+    throw new Error("This assigned task requires an isolated worker or company-authorized host tools. The task is not complete.");
+  }
   if (authToken) {
     env.PAPERCLIP_API_KEY = authToken;
   }
@@ -208,20 +218,6 @@ async function executeRun(
       content: systemPrompt,
     });
 
-    const templateData = {
-      agentId: agent.id,
-      companyId: agent.companyId,
-      runId,
-      company: { id: agent.companyId },
-      agent,
-      run: { id: runId, source: "on_demand" },
-      context,
-    };
-    const renderedPrompt = renderTemplate(promptTemplate, templateData);
-    messages.push({
-      role: "user",
-      content: renderedPrompt,
-    });
   } else {
     // If resuming, inject system prompt update in case memories/instructions changed
     messages[0] = {
@@ -229,6 +225,16 @@ async function executeRun(
       content: systemPrompt,
     };
   }
+  // A resumed conversation must receive this wake's assignment too.
+  const renderedPrompt = renderTemplate(promptTemplate, {
+    agentId: agent.id, companyId: agent.companyId, runId,
+    company: { id: agent.companyId }, agent,
+    run: { id: runId, source: "on_demand" }, context,
+  });
+  messages.push({
+    role: "user",
+    content: [renderedPrompt, hostToolsEnabled ? buildOpenRouterTaskPrompt(context) : ""].filter(Boolean).join("\n\n"),
+  });
 
   if (onMeta) {
     await onMeta({

@@ -12,11 +12,19 @@ $version = & $NodeExecutable --version
 if ($LASTEXITCODE -ne 0 -or [version]$version.TrimStart('v') -lt [version]'24.0.0') {
   throw 'This Windows test launcher requires Node 24 or newer.'
 }
+# Keep only disposable Postgres clusters on the system disk. Other test temp
+# directories must retain their original volume for skill directory links.
+$previousPostgresTemp = $env:PAPERCLIP_TEST_POSTGRES_TMPDIR
+if (-not $previousPostgresTemp) {
+  $env:PAPERCLIP_TEST_POSTGRES_TMPDIR = Join-Path $env:USERPROFILE 'AppData/Local/Temp'
+  New-Item -ItemType Directory -Force -Path $env:PAPERCLIP_TEST_POSTGRES_TMPDIR | Out-Null
+}
 Push-Location $repo
 try {
   & $NodeExecutable node_modules/vitest/vitest.mjs run --maxWorkers=1 --testTimeout=120000 --hookTimeout=120000 @TestArguments
   $testExitCode = $LASTEXITCODE
 } finally {
   Pop-Location
+  $env:PAPERCLIP_TEST_POSTGRES_TMPDIR = $previousPostgresTemp
 }
 exit $testExitCode

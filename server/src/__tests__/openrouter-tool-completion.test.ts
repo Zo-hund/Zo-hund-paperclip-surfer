@@ -39,6 +39,36 @@ describe("OpenRouter command and completion semantics", () => {
     const shell = resolveShellCommand("echo test");
     expect(runChildProcess).toHaveBeenCalledWith("completion-test", shell.executable, shell.args, expect.any(Object));
   });
+  it("refreshes the assignment and command environment on a resumed conversation", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false));
+    vi.stubGlobal("fetch", fetch);
+    const ctx = context();
+    ctx.config.promptTemplate = "Current task {{context.taskId}}";
+    ctx.config.env = { OPENROUTER_API_KEY: "test-key", PAPERCLIP_TASK_ID: "old-task" };
+    ctx.context = { taskId: "new-task" };
+    ctx.runtime.sessionParams = { messages: [{ role: "system", content: "old" }, { role: "assistant", content: "previous task" }] };
+    await execute(ctx);
+    const firstRequest = JSON.parse(fetch.mock.calls[0][1].body);
+    expect(firstRequest.messages.at(-1)).toMatchObject({ role: "user" });
+    expect(firstRequest.messages.at(-1).content).toContain("Current task new-task");
+    expect(vi.mocked(runChildProcess).mock.calls[0][3].env.PAPERCLIP_TASK_ID).toBe("new-task");
+  });
+  it("clears stale task configuration on an unassigned wake and preserves the current run ID", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response(true)).mockResolvedValueOnce(response(false)));
+    const ctx = context();
+    ctx.config.env = { OPENROUTER_API_KEY: "test-key", PAPERCLIP_TASK_ID: "old-task", PAPERCLIP_RUN_ID: "old-run" };
+    await execute(ctx);
+    const env = vi.mocked(runChildProcess).mock.calls[0][3].env;
+    expect(env.PAPERCLIP_TASK_ID).toBe("");
+    expect(env.PAPERCLIP_RUN_ID).toBe("completion-test");
+  });
+  it("rejects an assigned workflow without authorized tools before generating a response", async () => {
+    vi.stubEnv("PAPERCLIP_OPENROUTER_TRUSTED_TOOL_COMPANY_IDS", "");
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const ctx = context(); ctx.context = { taskId: "current" };
+    await expect(execute(ctx)).rejects.toThrow("task is not complete");
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it.each(["exit", "spawn"])("stops on a %s failure instead of returning success or looping", async (kind) => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(response(true)));
     vi.stubGlobal("fetch", fetch);
