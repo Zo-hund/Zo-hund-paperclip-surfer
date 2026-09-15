@@ -59,12 +59,13 @@ export function createPaperclipApi(options: ApiOptions) {
 }
 
 type Api = ReturnType<typeof createPaperclipApi>;
+export type VerifiedDelivery = { taskId: string; status: 'in_review' | 'done'; documentUrl: string };
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 /** Read persisted state; model prose and generic process exit are not delivery evidence. */
-export async function verifyAssignedDelivery(api: Api, input: { taskId: string; companyId: string; agentId: string; baseUrl: string }) {
+export async function verifyAssignedDelivery(api: Api, input: { taskId: string; companyId: string; agentId: string; baseUrl: string }): Promise<VerifiedDelivery> {
   const root = `/api/issues/${encodeURIComponent(input.taskId)}`;
   const identity = record(await api({ method: 'GET', path: '/api/agents/me' }));
   if (identity.id !== input.agentId || identity.companyId !== input.companyId) throw new Error('Delivery verification failed: runtime identity mismatch.');
@@ -86,7 +87,9 @@ export async function verifyAssignedDelivery(api: Api, input: { taskId: string; 
     const key = url.pathname.slice(prefix.length, -'/export'.length);
     if (!/^[a-z0-9_-]+$/.test(key)) continue;
     const doc = record(await api({ method: 'GET', path: `${prefix}${key}` }));
-    if (typeof doc.body === 'string' && doc.body.trim()) return;
+    if (typeof doc.body === 'string' && doc.body.trim()) return {
+      taskId: input.taskId, status: issue.status as VerifiedDelivery['status'], documentUrl: url.pathname,
+    };
   }
   throw new Error('Delivery verification failed: no registered readable primary document. External or non-document outputs require a verified platform document containing their evidence; their URLs are not fetched automatically.');
 }

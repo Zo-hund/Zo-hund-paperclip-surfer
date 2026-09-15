@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createPaperclipApi, verifyAssignedDelivery } from "./paperclip-api.js";
+import { createPaperclipApi, verifyAssignedDelivery, type VerifiedDelivery } from "./paperclip-api.js";
 import { resolveOpenRouterKey, openRouterErrorMessage, hasOpenRouterHostTools } from "./credentials.js";
 import { buildOpenRouterWakeEnv, buildOpenRouterTaskPrompt } from "./task-context.js";
 import type { AdapterExecutionContext, AdapterExecutionResult } from "@paperclipai/adapter-utils";
@@ -340,7 +340,7 @@ async function executeRun(
     messages.push(assistantMessage);
 
     if (assistantMessage.content) {
-      await onLog("stdout", `\n${assistantMessage.content}\n`);
+      await onLog("stdout", `\n[Generated model text - unverified]\n${assistantMessage.content}\n`);
     }
 
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -427,21 +427,25 @@ async function executeRun(
   checkDeadline();
 
   const lastMsg = messages[messages.length - 1];
+  const verifiedDeliveries: VerifiedDelivery[] = [];
   if (!completed && !runFailure) {
     runFailure = `OpenRouter reached its ${maxTurns}-turn limit without completing. The task is not complete.`;
   }
   if (completed && !runFailure && claimedTaskIds.size) {
     try {
-      for (const taskId of claimedTaskIds) await verifyAssignedDelivery(paperclipApi, {
+      for (const taskId of claimedTaskIds) verifiedDeliveries.push(await verifyAssignedDelivery(paperclipApi, {
         taskId, companyId: agent.companyId, agentId: agent.id,
         baseUrl: buildPaperclipEnv(agent).PAPERCLIP_API_URL,
-      });
+      }));
     } catch (error) {
       checkDeadline();
       runFailure = error instanceof Error ? error.message : "Assigned delivery verification failed.";
     }
   }
   checkDeadline();
+  const verifiedSummary = verifiedDeliveries.map(delivery =>
+    `Verified delivery ${delivery.status === "in_review" ? "ready for review" : "completed"}: [Deliverable](${delivery.documentUrl})`,
+  ).join("\n");
 
   return {
     exitCode: runFailure ? 1 : 0,
@@ -459,6 +463,7 @@ async function executeRun(
     sessionDisplayId: `openrouter-${messages.length}-turns`,
     provider: "openrouter",
     model,
-    summary: runFailure ?? (typeof lastMsg?.content === "string" ? lastMsg.content : "Run finished."),
+    resultJson: !runFailure && verifiedDeliveries.length ? { kind: "verified_deliveries", deliveries: verifiedDeliveries } : null,
+    summary: runFailure ?? (verifiedSummary || (typeof lastMsg?.content === "string" ? lastMsg.content : "Run finished.")),
   };
 }

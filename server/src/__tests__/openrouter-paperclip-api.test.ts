@@ -50,8 +50,13 @@ describe('assigned delivery readback', () => {
   const product = { companyId: 'company', issueId: 'task', status: 'active', isPrimary: true, provider: 'agent-sync', url: '/api/issues/task/documents/deliverable/export' };
   it('requires readable persisted content after matching ownership and status', async () => {
     const api = vi.fn().mockResolvedValueOnce(identity).mockResolvedValueOnce(issue).mockResolvedValueOnce([product]).mockResolvedValueOnce({ body: '# Verified artifact' });
-    await expect(verifyAssignedDelivery(api, input)).resolves.toBeUndefined();
+    await expect(verifyAssignedDelivery(api, input)).resolves.toEqual({ taskId: 'task', status: 'in_review', documentUrl: product.url });
     expect(api).toHaveBeenLastCalledWith({ method: 'GET', path: '/api/issues/task/documents/deliverable' });
+  });
+  it('normalizes a registered same-origin absolute document link to its verified relative path', async () => {
+    const api = vi.fn().mockResolvedValueOnce(identity).mockResolvedValueOnce({ ...issue, status: 'done' })
+      .mockResolvedValueOnce([{ ...product, url: options.baseUrl + product.url }]).mockResolvedValueOnce({ body: 'Verified content' });
+    await expect(verifyAssignedDelivery(api, input)).resolves.toEqual({ taskId: 'task', status: 'done', documentUrl: product.url });
   });
   it.each([{ ...identity, companyId: 'other' }, { ...identity, id: 'other' }])('rejects runtime scope mismatch', async me => {
     await expect(verifyAssignedDelivery(vi.fn().mockResolvedValue(me), input)).rejects.toThrow('identity mismatch');

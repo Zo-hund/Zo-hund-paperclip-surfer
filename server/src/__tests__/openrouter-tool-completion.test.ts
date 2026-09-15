@@ -28,7 +28,8 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("OpenRouter command and completion semantics", () => {
   it("accepts an assigned run only after persisted document readback", async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(response(false))
+    const invented = "Completed: https://api.paperclip.com/wrong";
+    const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: invented } }] })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "agent", companyId: "tenant" })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "task", companyId: "tenant", assigneeAgentId: "agent", status: "in_review" })))
       .mockResolvedValueOnce(new Response(JSON.stringify([{ companyId: "tenant", issueId: "task", status: "active", isPrimary: true, provider: "agent-sync", url: "/api/issues/task/documents/deliverable/export" }])))
@@ -38,6 +39,29 @@ describe("OpenRouter command and completion semantics", () => {
     const result = await execute(ctx);
     expect(result.exitCode).toBe(0);
     expect(fetch).toHaveBeenCalledTimes(5);
+    expect(result.summary).toBe("Verified delivery ready for review: [Deliverable](/api/issues/task/documents/deliverable/export)");
+    expect(result.resultJson).toEqual({ kind: "verified_deliveries", deliveries: [{ taskId: "task", status: "in_review", documentUrl: "/api/issues/task/documents/deliverable/export" }] });
+    expect(JSON.stringify(result.resultJson)).not.toContain("api.paperclip.com");
+    expect(JSON.stringify(result.sessionParams)).toContain(invented);
+    expect(ctx.onLog).toHaveBeenCalledWith("stdout", expect.stringContaining("[Generated model text - unverified]"));
+  });
+  it("preserves failure when a later claimed task fails after a verified delivery", async () => {
+    const asJson = (data: unknown) => new Response(JSON.stringify(data));
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(asJson({ choices: [{ message: { role: "assistant", tool_calls: [{ id: "claim", function: { name: "paperclip_api", arguments: JSON.stringify({ method: "POST", path: "/api/issues/second/checkout", body: { agentId: "agent" } }) } }] } }] }))
+      .mockResolvedValueOnce(asJson({ id: "second" })).mockResolvedValueOnce(response(false))
+      .mockResolvedValueOnce(asJson({ id: "agent", companyId: "tenant" }))
+      .mockResolvedValueOnce(asJson({ id: "task", companyId: "tenant", assigneeAgentId: "agent", status: "done" }))
+      .mockResolvedValueOnce(asJson([{ companyId: "tenant", issueId: "task", status: "active", isPrimary: true, provider: "agent-sync", url: "/api/issues/task/documents/deliverable/export" }]))
+      .mockResolvedValueOnce(asJson({ body: "Saved" }))
+      .mockResolvedValueOnce(asJson({ id: "agent", companyId: "tenant" }))
+      .mockResolvedValueOnce(asJson({ id: "second", companyId: "tenant", assigneeAgentId: "agent", status: "backlog" })));
+    const ctx = context(); ctx.authToken = "runtime-key"; ctx.context = { taskId: "task" };
+    const result = await execute(ctx);
+    expect(result.exitCode).toBe(1);
+    expect(result.resultJson).toBeNull();
+    expect(result.summary).toBe(result.errorMessage);
+    expect(result.summary).toContain("not in review");
   });
   it("fails a native HTTP error instead of treating curl-style exit success as completion", async () => {
     const tool = new Response(JSON.stringify({ choices: [{ message: { role: "assistant", tool_calls: [{ id: "checkout", function: {
