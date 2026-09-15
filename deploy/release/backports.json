@@ -13,7 +13,7 @@
     "server/src/routes/projects.ts": "10abb99e5859076274f795d60e66f3e0d99cea59f2616254e51ff2639009133a",
     "server/src/routes/execution-workspaces.ts": "43e31aa8d62970c6916d9c757257d1c5191ae1e97fa079b57c8feff2b6219f2c",
     "server/src/routes/issues.ts": "5c99f97427759234b6bf2ef7f8351ecbea5ad40dca93be22a982ba6d5ae0ac29",
-    "server/src/services/workspace-runtime.ts": "3421435cac27103aafa6ac444d3b45826f777e0f09ac6012fc6a8ce8ab4fb4a7",
+    "server/src/services/workspace-runtime.ts": "688d283655f5f8e5e41dc65ecee9b48ab5fe751e2e5a3b077bc0ce7ff28bb387",
     "server/src/services/board-auth.ts": "b99cd1665522dcb299b1552e4c882a552cf13045db242eb7f5b0270dd394b8d7",
     "packages/adapters/codex-local/src/server/codex-home.ts": "377b366cfd4834754fb566f301074fcc2ca274fdf92c91e9980509bf46fca7e8",
     "packages/adapters/codex-local/src/server/execute.ts": "78115d726beb5333922e55a0b363b5d1e2be4315f9b3881b2a7810eef871d90a",
@@ -28,7 +28,9 @@
     "server/src/__tests__/codex-local-execute.test.ts": "0b3d3d42aecc4f06b6d0ce19b2f1fbe97fd930c983fa888544c5c9ac5c6cb08c",
     "server/src/__tests__/workspace-runtime.test.ts": "daaa453df468b4743a7f85d4b8395643d340a225467462e9dcdcdff88969acee",
     "server/src/__tests__/health-disclosure.test.ts": "68585abea0273c261c68c1b5506e372231a51b6066e6b869be45402ed6fa707f",
-    "server/src/__tests__/cli-auth-routes.test.ts": "607f94c19c7da41e3b57e8510c8161a029bbc530004c3aacffe66f63cce2de36"
+    "server/src/__tests__/cli-auth-routes.test.ts": "607f94c19c7da41e3b57e8510c8161a029bbc530004c3aacffe66f63cce2de36",
+    "scripts/provision-worktree.sh": "888a5785b635d0ebfd1dfaf7c19cc25c78d1b5fa237bcb8d845bf0ea07123fa9",
+    ".gitattributes": "56aa2329a5cd9d3c61c1c9e954a9f8a5a38590f22d90499535019cf5831eb832"
   },
   "findings": [
     {

@@ -318,6 +318,11 @@ function buildWorkspaceCommandEnv(input: {
   created: boolean;
 }) {
   const env = sanitizeRuntimeServiceBaseEnv(process.env);
+  // Keep the operator's destination for new isolated worktrees, without
+  // restoring the parent instance's config paths or authentication secrets.
+  if (process.env.PAPERCLIP_WORKTREES_DIR) {
+    env.PAPERCLIP_WORKTREES_DIR = process.env.PAPERCLIP_WORKTREES_DIR;
+  }
   env.PAPERCLIP_WORKSPACE_CWD = input.worktreePath;
   env.PAPERCLIP_WORKSPACE_PATH = input.worktreePath;
   env.PAPERCLIP_WORKSPACE_WORKTREE_PATH = input.worktreePath;
