@@ -177,3 +177,31 @@ describe("company portability routes", () => {
     expect(res.body.error).toContain("Board access required");
   });
 });
+
+
+describe("operator-owned company creation and import", () => {
+  const source = { type: "inline", files: { "COMPANY.md": "---\nname: Test\n---\n" } };
+  const companyId = "11111111-1111-4111-8111-111111111111";
+  const body = { source, target: { mode: "new_company", newCompanyName: "Test" }, include: { company: true, agents: true, projects: false, issues: false }, collisionStrategy: "rename" };
+
+  it.each(["/import", "/import/preview"])("rejects non-admin board on %s before reading or executing import", async (route) => {
+    mockCompanyPortabilityService.importBundle.mockClear();
+    mockCompanyPortabilityService.previewImport.mockClear();
+    const app = await createApp({ type: "board", userId: "member", source: "session", companyIds: [companyId], isInstanceAdmin: false });
+    expect((await request(app).post(`/api/companies${route}`).send(body)).status).toBe(403);
+    expect(mockCompanyPortabilityService.importBundle).not.toHaveBeenCalled();
+    expect(mockCompanyPortabilityService.previewImport).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-admin company creation and agent-safe apply", async () => {
+    const app = await createApp({ type: "board", userId: "member", source: "session", companyIds: [companyId], isInstanceAdmin: false });
+    expect((await request(app).post("/api/companies").send({ name: "Test" })).status).toBe(403);
+    expect((await request(app).post(`/api/companies/${companyId}/imports/apply`).send({ ...body, target: { mode: "existing_company", companyId } })).status).toBe(403);
+  });
+
+  it.each([{ isInstanceAdmin: true, source: "session" }, { isInstanceAdmin: false, source: "local_implicit" }])("allows trusted operator import preview", async (authority) => {
+    mockCompanyPortabilityService.previewImport.mockResolvedValue({ warnings: [] });
+    const app = await createApp({ type: "board", userId: "operator", ...authority });
+    expect((await request(app).post("/api/companies/import/preview").send(body)).status).toBe(200);
+  });
+});

@@ -64,7 +64,7 @@ describe("codex execute", () => {
       "default",
       "companies",
       "company-1",
-      "codex-home",
+      "codex-home-isolated",
     );
     await fs.mkdir(workspace, { recursive: true });
     await fs.mkdir(sharedCodexHome, { recursive: true });
@@ -123,10 +123,8 @@ describe("codex execute", () => {
 
       const managedAuth = path.join(managedCodexHome, "auth.json");
       const managedConfig = path.join(managedCodexHome, "config.toml");
-      const managedAuthStat = await fs.lstat(managedAuth);
-      expect(managedAuthStat.isSymbolicLink() || managedAuthStat.isFile()).toBe(true);
-      expect((await fs.lstat(managedConfig)).isFile()).toBe(true);
-      expect(await fs.readFile(managedConfig, "utf8")).toBe('model = "codex-mini-latest"\n');
+      await expect(fs.lstat(managedAuth)).rejects.toThrow();
+      await expect(fs.lstat(managedConfig)).rejects.toThrow();
       await expect(fs.lstat(path.join(sharedCodexHome, "companies", "company-1"))).rejects.toThrow();
       expect(logs).toContainEqual(
         expect.objectContaining({
@@ -234,7 +232,7 @@ describe("codex execute", () => {
       "worktree-1",
       "companies",
       "company-1",
-      "codex-home",
+      "codex-home-isolated",
     );
     const homeSkill = path.join(isolatedCodexHome, "skills", "paperclip");
     await fs.mkdir(workspace, { recursive: true });
@@ -306,10 +304,8 @@ describe("codex execute", () => {
       const isolatedAuth = path.join(isolatedCodexHome, "auth.json");
       const isolatedConfig = path.join(isolatedCodexHome, "config.toml");
 
-      const isolatedAuthStat = await fs.lstat(isolatedAuth);
-      expect(isolatedAuthStat.isSymbolicLink() || isolatedAuthStat.isFile()).toBe(true);
-      expect((await fs.lstat(isolatedConfig)).isFile()).toBe(true);
-      expect(await fs.readFile(isolatedConfig, "utf8")).toBe('model = "codex-mini-latest"\n');
+      await expect(fs.lstat(isolatedAuth)).rejects.toThrow();
+      await expect(fs.lstat(isolatedConfig)).rejects.toThrow();
       const homeSkillStat = await fs.lstat(homeSkill).catch(() => null);
       expect(homeSkillStat == null || homeSkillStat.isSymbolicLink() || homeSkillStat.isDirectory()).toBe(true);
       expect(logs).toContainEqual(
@@ -401,7 +397,7 @@ describe("codex execute", () => {
       const explicitSkillPath = path.join(explicitCodexHome, "skills", "paperclip");
       const explicitSkillStat = await fs.lstat(explicitSkillPath).catch(() => null);
       expect(explicitSkillStat == null || explicitSkillStat.isSymbolicLink() || explicitSkillStat.isDirectory()).toBe(true);
-      await expect(fs.lstat(path.join(paperclipHome, "instances", "worktree-1", "codex-home"))).rejects.toThrow();
+      await expect(fs.lstat(path.join(paperclipHome, "instances", "worktree-1", "codex-home-isolated"))).rejects.toThrow();
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;
@@ -417,7 +413,7 @@ describe("codex execute", () => {
     }
   });
 
-  it("falls back to host OPENAI_API_KEY when adapter env value is empty", async () => {
+  it("does not inherit host OPENAI_API_KEY when adapter env value is empty", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-codex-execute-host-key-"));
     const workspace = path.join(root, "workspace");
     const commandPath = path.join(root, "codex");
@@ -472,8 +468,8 @@ describe("codex execute", () => {
       expect(result.errorMessage).toBeNull();
 
       const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
-      expect(capture.openAiApiKeyPresent).toBe(true);
-      expect(capture.argv).toEqual(expect.arrayContaining(["--ignore-user-config"]));
+      expect(capture.openAiApiKeyPresent).toBe(false);
+      expect(capture.argv).not.toContain("--dangerously-bypass-approvals-and-sandbox");
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;

@@ -90,7 +90,7 @@ async function probeEmbeddedPostgresSupport(): Promise<EmbeddedPostgresTestSuppo
     };
   } finally {
     await instance.stop().catch(() => {});
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    await fs.promises.rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
@@ -131,12 +131,12 @@ export async function startEmbeddedPostgresTestDatabase(
       connectionString,
       cleanup: async () => {
         await instance.stop().catch(() => {});
-        fs.rmSync(dataDir, { recursive: true, force: true });
+        await fs.promises.rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
       },
     };
   } catch (error) {
     await instance.stop().catch(() => {});
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    await fs.promises.rm(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     throw new Error(
       `Failed to start embedded PostgreSQL test database: ${formatEmbeddedPostgresError(error)}`,
     );
