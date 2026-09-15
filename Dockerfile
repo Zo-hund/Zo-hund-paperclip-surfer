@@ -1,4 +1,4 @@
-FROM node:lts-trixie-slim AS base
+FROM node:lts-trixie-slim@sha256:6950b66b4c0cb0151ce89fa75074673850763d096b044f422c6729b588dd4956 AS base
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git \
@@ -62,16 +62,27 @@ RUN mkdir -p /opt/hermes \
   && tar -xzf /tmp/hermes.tar.gz -C /opt/hermes --strip-components=1 \
   && printf '%s\n' '939e45c91d751fadd94dcd1b873ac3cb44846213' > /opt/hermes/.hermes_build_sha
 
-FROM node:lts-trixie-slim AS production
-# Production stage: slim base + agent CLI runtimes
+FROM node:lts-trixie-slim@sha256:6950b66b4c0cb0151ce89fa75074673850763d096b044f422c6729b588dd4956 AS node-runtime
+
+FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254 AS production
+# Keep the full agent/media runtime on Ubuntu's maintained security packages.
+# Copy Node from the same official distribution used by the build stages;
+# do not copy Debian's system libraries or package database.
 RUN apt-get update \
   && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends \
        ca-certificates curl git \
        python3 python3-pip \
-       ffmpeg \
+       ffmpeg libstdc++6 \
   && rm -rf /var/lib/apt/lists/*
-RUN corepack enable
+COPY --from=node-runtime /usr/local /usr/local
+COPY --from=node-runtime /opt /opt
+# The official Ubuntu image reserves UID/GID 1000 for ubuntu. Preserve the
+# existing node UID/GID so application data volumes remain compatible.
+RUN groupmod -n node ubuntu \
+  && usermod -l node -d /home/node -m ubuntu \
+  && node --version \
+  && corepack enable
 WORKDIR /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=hermes-source /opt/hermes /opt/hermes
