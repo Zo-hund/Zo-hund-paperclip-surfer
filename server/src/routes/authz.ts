@@ -3,13 +3,21 @@ import type { CompanyMembershipRole } from "@paperclipai/shared";
 import { hasCompanyRoleAtLeast } from "@paperclipai/shared";
 import { forbidden, unauthorized } from "../errors.js";
 
-export function assertBoard(req: Request) {
+/**
+ * Anything carrying a resolved actor. Express `Request` satisfies this, so all
+ * existing route callers are unchanged — but service-layer code (which has an
+ * actor but no Request) can reuse these same checks instead of reimplementing
+ * them. One authorization implementation, many callers.
+ */
+export type ActorHolder = Pick<Request, "actor">;
+
+export function assertBoard(req: ActorHolder) {
   if (req.actor.type !== "board") {
     throw forbidden("Board access required");
   }
 }
 
-export function assertInstanceAdmin(req: Request) {
+export function assertInstanceAdmin(req: ActorHolder) {
   assertBoard(req);
   if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
     return;
@@ -17,7 +25,7 @@ export function assertInstanceAdmin(req: Request) {
   throw forbidden("Instance admin access required");
 }
 
-export function assertCompanyAccess(req: Request, companyId: string) {
+export function assertCompanyAccess(req: ActorHolder, companyId: string) {
   if (req.actor.type === "none") {
     throw unauthorized();
   }
@@ -37,7 +45,7 @@ export function assertCompanyAccess(req: Request, companyId: string) {
  * Instance admins and local_trusted board always pass.
  * Call after `assertCompanyAccess` or `assertBoard`.
  */
-export function assertCompanyRole(req: Request, companyId: string, minRole: CompanyMembershipRole) {
+export function assertCompanyRole(req: ActorHolder, companyId: string, minRole: CompanyMembershipRole) {
   if (req.actor.type !== "board") return; // agents bypass role check
   if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) return;
   const role = req.actor.companyRoles?.[companyId];
@@ -47,7 +55,7 @@ export function assertCompanyRole(req: Request, companyId: string, minRole: Comp
 }
 
 
-export function getActorInfo(req: Request) {
+export function getActorInfo(req: ActorHolder) {
   if (req.actor.type === "none") {
     throw unauthorized();
   }
