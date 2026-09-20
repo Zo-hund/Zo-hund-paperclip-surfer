@@ -15,7 +15,7 @@
 // without LIVEKIT_PITSTOP_APPROVED, which is the Pit Stop gate in code.
 // =====================================================================
 import { Router } from "express";
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import type { Db } from "@paperclipai/db";
 import { instanceUserRoles } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
@@ -92,7 +92,9 @@ async function checkDatabase(db: Db): Promise<ComponentHealth> {
  */
 async function checkOpprrc(): Promise<ComponentHealth> {
   const root = getOpprrcRoot();
-  const result = await timed(() => fs.access(root));
+  // W_OK, not existence: a read-only or stale mount would otherwise report
+  // healthy while every OPPRRC delivery fails.
+  const result = await timed(() => fs.access(root, fsConstants.W_OK));
   if (result.ok) {
     return { status: "healthy", required: true, latencyMs: result.ms, detail: root };
   }
@@ -100,7 +102,7 @@ async function checkOpprrc(): Promise<ComponentHealth> {
     status: "unhealthy",
     required: true,
     latencyMs: result.ms,
-    detail: `OPPRRC root unreachable: ${root}`,
+    detail: `OPPRRC root unreachable or not writable: ${root}`,
   };
 }
 

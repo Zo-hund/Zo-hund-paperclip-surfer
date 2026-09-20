@@ -44,6 +44,17 @@ export interface ExternalClientAuthConfig {
   isRevoked(jti: string): boolean;
 }
 
+/**
+ * Compose injects `${VAR:-}` as an EMPTY STRING rather than leaving the variable
+ * unset, and `??` only falls back on null/undefined — so a blank value would
+ * silently defeat these defaults (an empty client_id rejects every authorize
+ * request). Treat blank as absent.
+ */
+function envOr(name: string, fallback: string): string {
+  const raw = process.env[name];
+  return raw && raw.trim().length > 0 ? raw.trim() : fallback;
+}
+
 function splitList(raw: string | undefined): string[] {
   return (raw ?? "")
     .split(",")
@@ -59,7 +70,7 @@ function splitList(raw: string | undefined): string[] {
 function resolveRedirectUris(): string[] {
   const explicit = splitList(process.env.AMX_EXTERNAL_CLIENT_REDIRECT_URIS);
   if (explicit.length > 0) return explicit;
-  const callbackPath = process.env.AMX_EXTERNAL_CLIENT_CALLBACK_PATH ?? DEFAULT_CALLBACK_PATH;
+  const callbackPath = envOr("AMX_EXTERNAL_CLIENT_CALLBACK_PATH", DEFAULT_CALLBACK_PATH);
   return Array.from(parseAllowedOrigins(process.env.BASE44_ALLOWED_ORIGINS)).map(
     (origin) => `${origin}${callbackPath}`,
   );
@@ -92,8 +103,8 @@ let cached: ExternalClientAuthConfig | null = null;
 export function getExternalClientAuthConfig(): ExternalClientAuthConfig {
   if (cached) return cached;
 
-  const secret = process.env.AMX_EXTERNAL_CLIENT_SECRET ?? "";
-  const clientId = process.env.AMX_EXTERNAL_CLIENT_ID ?? DEFAULT_CLIENT_ID;
+  const secret = (process.env.AMX_EXTERNAL_CLIENT_SECRET ?? "").trim();
+  const clientId = envOr("AMX_EXTERNAL_CLIENT_ID", DEFAULT_CLIENT_ID);
   const redirectUris = resolveRedirectUris();
   const allowedScopes = (splitList(process.env.AMX_EXTERNAL_CLIENT_SCOPES) as Scope[]).filter((s) =>
     SUPPORTED_SCOPES.includes(s),
@@ -106,7 +117,7 @@ export function getExternalClientAuthConfig(): ExternalClientAuthConfig {
   };
 
   const revocations = new RevocationList();
-  const ttlSeconds = Number(process.env.AMX_EXTERNAL_CLIENT_TTL_SECONDS ?? DEFAULT_EXTERNAL_TTL_SECONDS);
+  const ttlSeconds = Number(envOr("AMX_EXTERNAL_CLIENT_TTL_SECONDS", String(DEFAULT_EXTERNAL_TTL_SECONDS)));
 
   cached = {
     // A secret is required to sign anything; without one there is no external
@@ -116,8 +127,8 @@ export function getExternalClientAuthConfig(): ExternalClientAuthConfig {
     store: new MemoryAuthCodeStore(),
     sign: hs256Signer(secret),
     verify: secret.length > 0 ? hs256Verifier(secret) : () => false,
-    iss: process.env.AMX_EXTERNAL_CLIENT_ISS ?? DEFAULT_EXTERNAL_ISS,
-    aud: process.env.AMX_EXTERNAL_CLIENT_AUD ?? DEFAULT_EXTERNAL_AUD,
+    iss: envOr("AMX_EXTERNAL_CLIENT_ISS", DEFAULT_EXTERNAL_ISS),
+    aud: envOr("AMX_EXTERNAL_CLIENT_AUD", DEFAULT_EXTERNAL_AUD),
     ttlSeconds: Number.isFinite(ttlSeconds) && ttlSeconds > 0 ? ttlSeconds : DEFAULT_EXTERNAL_TTL_SECONDS,
     revoke: (jti, exp) => revocations.revoke(jti, exp),
     isRevoked: (jti) => revocations.isRevoked(jti),
