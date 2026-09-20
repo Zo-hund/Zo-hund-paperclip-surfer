@@ -9,6 +9,9 @@ import type { BetterAuthSessionResult } from "../auth/better-auth.js";
 import { logger } from "./logger.js";
 import { boardAuthService } from "../services/board-auth.js";
 import { unauthorized } from "../errors.js";
+import { createDbMembershipLoader, resolveExternalClientActor } from "../auth/external-client-actor.js";
+import { TokenError } from "../auth/external-client-token.js";
+import { getExternalClientAuthConfig } from "../auth/external-client-config.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -42,6 +45,9 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
   const boardAuth = boardAuthService(db);
   // 20 unrecognised bearer tokens per IP per minute before 429
   const failedAuthLimiter = createFailedAuthLimiter(20, 60_000);
+  // 6.8B external-client credentials (Base44 et al). Off unless configured.
+  const externalAuth = getExternalClientAuthConfig();
+  const reloadMemberships = createDbMembershipLoader(db);
   return async (req, res, next) => {
     req.actor =
       opts.deploymentMode === "local_trusted"
@@ -130,6 +136,35 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
         };
         next();
         return;
+      }
+    }
+
+    // AMX external-client token (6.8B). Identity comes from the verified `sub`;
+    // authority is RELOADED from the DB on every request, so a revoked
+    // membership is denied on the very next call. Roles in the token — if any
+    // were ever added — are ignored by construction.
+    if (externalAuth.enabled && token.split(".").length === 3) {
+      try {
+        const externalActor = await resolveExternalClientActor(token, {
+          verify: externalAuth.verify,
+          reloadMemberships,
+          verifyOptions: {
+            expectedIss: externalAuth.iss,
+            expectedAud: externalAuth.aud,
+            isRevoked: (jti) => externalAuth.isRevoked(jti),
+          },
+        });
+        req.actor = { ...externalActor, runId: runIdHeader || undefined };
+        next();
+        return;
+      } catch (err) {
+        if (!(err instanceof TokenError)) {
+          next(err);
+          return;
+        }
+        // Not an AMX external token (a local-agent JWT is also 3 segments), or
+        // it failed verification. Fall through to the remaining bearer paths,
+        // which rate-limit unknown tokens.
       }
     }
 

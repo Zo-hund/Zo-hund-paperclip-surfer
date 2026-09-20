@@ -6,6 +6,7 @@ import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import { readPersistedDevServerStatus, toDevServerHealthStatus } from "../dev-server-status.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { serverVersion } from "../version.js";
+import { buildReadinessReport } from "../health/readiness.js";
 
 export function healthRoutes(
   db?: Db,
@@ -81,6 +82,15 @@ export function healthRoutes(
       });
     }
 
+    // AMX readiness block — ADDITIVE. Component detail can name filesystem
+    // paths and driver errors, so it is attached only for an authenticated
+    // board actor; anonymous probes already returned the minimal response
+    // above. Use /readyz for the unauthenticated readiness gate.
+    let readiness: Awaited<ReturnType<typeof buildReadinessReport>> | undefined;
+    if (req.actor?.type === "board") {
+      readiness = await buildReadinessReport(db);
+    }
+
     res.json({
       status: "ok",
       version: serverVersion,
@@ -93,6 +103,7 @@ export function healthRoutes(
         companyDeletionEnabled: opts.companyDeletionEnabled,
       },
       ...(devServer ? { devServer } : {}),
+      ...(readiness ? { readiness } : {}),
     });
   });
 

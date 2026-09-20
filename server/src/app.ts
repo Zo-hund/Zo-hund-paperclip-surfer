@@ -10,6 +10,7 @@ import { actorMiddleware } from "./middleware/auth.js";
 import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
 import { privateHostnameGuard, resolvePrivateHostnameAllowSet } from "./middleware/private-hostname-guard.js";
 import { healthRoutes } from "./routes/health.js";
+import { healthProbeRoutes } from "./health/readiness.js";
 import { companyRoutes } from "./routes/companies.js";
 import { companyMembersRoutes } from "./routes/company-members.js";
 import { companySkillRoutes } from "./routes/company-skills.js";
@@ -51,6 +52,10 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { mcpEndpointRoutes } from "./routes/mcp-endpoint.js";
 import { openApiRoutes } from "./routes/openapi.js";
 import { livekitRoutes } from "./routes/livekit.js";
+import { meetingHubBridge } from "./routes/meeting-hub.bridge.js";
+import { externalClientAuthRoutes } from "./routes/external-client-auth.js";
+import { externalClientSurfaceGuard } from "./middleware/external-client-surface.js";
+import { base44Cors, parseAllowedOrigins } from "./meeting/base44-cors.js";
 import { meetingGuestRoutes } from "./routes/meeting-guests.js";
 import { pushRoutes } from "./routes/push.js";
 import { meRoutes } from "./routes/me.js";
@@ -207,6 +212,10 @@ export async function createApp(
       (req as unknown as { rawBody: Buffer }).rawBody = buf;
     },
   }));
+  // Base44 cross-origin boundary. Mounted BEFORE actorMiddleware so the
+  // browser OPTIONS preflight is answered without entering AMX authorization.
+  // Exact-origin echo only — no wildcard, no Allow-Credentials.
+  app.use(base44Cors({ allowedOrigins: parseAllowedOrigins(process.env.BASE44_ALLOWED_ORIGINS) }));
   app.use(httpLogger);
   const privateHostnameGateEnabled =
     opts.deploymentMode === "authenticated" && opts.deploymentExposure === "private";
@@ -221,6 +230,10 @@ export async function createApp(
       bindHost: opts.bindHost,
     }),
   );
+  // Liveness / readiness / version probes. Unauthenticated by design (they are
+  // the container + deploy gate) and mounted at the app root, separate from the
+  // existing /api/health, which keeps its contract untouched.
+  app.use(healthProbeRoutes(db));
   app.use(
     actorMiddleware(db, {
       deploymentMode: opts.deploymentMode,
@@ -244,6 +257,10 @@ export async function createApp(
       },
     });
   });
+  // 6.8B external-client credential exchange. Must be mounted BEFORE the
+  // BetterAuth catch-all below, which would otherwise swallow /api/auth/*,
+  // and AFTER actorMiddleware so /authorize can read the first-party session.
+  app.use("/api/auth/external", externalClientAuthRoutes(db));
   if (opts.betterAuthHandler) {
     app.all("/api/auth/*authPath", opts.betterAuthHandler);
   }
@@ -252,6 +269,10 @@ export async function createApp(
 
   // Mount API routes
   const api = Router();
+  // An external-client bearer is scoped to the meeting surface only. This runs
+  // before every other api route so a meeting token can never reach the rest of
+  // the control plane just by being a "board" actor.
+  api.use(externalClientSurfaceGuard());
   api.use(boardMutationGuard());
   api.use(
     "/health",
@@ -303,6 +324,8 @@ export async function createApp(
   api.use(mcpEndpointRoutes(db));
   api.use(openApiRoutes());
   api.use(livekitRoutes(db));
+  // Thin Base44 façade over the same meeting token service livekitRoutes uses.
+  api.use(meetingHubBridge(db));
   api.use(meetingGuestRoutes(db));
   api.use(pushRoutes(db));
   api.use(meRoutes(db));

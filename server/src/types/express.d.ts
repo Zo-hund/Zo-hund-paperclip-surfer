@@ -14,7 +14,20 @@ declare global {
         isInstanceAdmin?: boolean;
         keyId?: string;
         runId?: string;
-        source?: "local_implicit" | "session" | "board_key" | "agent_key" | "agent_jwt" | "none";
+        /**
+         * OAuth-style scopes carried by an AMX external-client token (6.8B).
+         * Only ever set for source === "external_client"; first-party sources
+         * are unscoped because they already hold full board authority.
+         */
+        scope?: string[];
+        source?:
+          | "local_implicit"
+          | "session"
+          | "board_key"
+          | "agent_key"
+          | "agent_jwt"
+          | "external_client"
+          | "none";
       };
     }
   }

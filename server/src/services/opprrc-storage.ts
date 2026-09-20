@@ -52,7 +52,7 @@ export interface DeliverResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getOpprrcRoot(): string {
+export function getOpprrcRoot(): string {
   return process.env.PAPERCLIP_OPPRRC_ROOT ?? "/paperclip/opprrc";
 }
 
