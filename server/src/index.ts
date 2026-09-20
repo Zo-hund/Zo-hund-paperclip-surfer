@@ -33,6 +33,10 @@ import { createStorageServiceFromConfig } from "./storage/index.js";
 import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
 import { maybePersistWorktreeRuntimePorts } from "./worktree-config.js";
+import { markDraining } from "./health/readiness.js";
+
+/** Max time to let in-flight HTTP requests finish before forcing exit. */
+const SHUTDOWN_DRAIN_TIMEOUT_MS = Number(process.env.PAPERCLIP_SHUTDOWN_DRAIN_TIMEOUT_MS ?? 15_000);
 
 type BetterAuthSessionUser = {
   id: string;
@@ -740,25 +744,55 @@ export async function startServer(): Promise<StartedServer> {
     });
   });
   
-  if (embeddedPostgres && embeddedPostgresStartedByThisProcess) {
-    const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
+  // Graceful shutdown for EVERY deployment, not just embedded-Postgres dev.
+  // This used to live inside `if (embeddedPostgres && ...)`, so a production
+  // instance on external Postgres received no HTTP drain at all on SIGTERM —
+  // Docker/Compose would cut in-flight requests at the stop timeout.
+  //
+  //   signal -> markDraining() (/readyz 503, LB stops sending work)
+  //          -> server.close() (finish in-flight requests, refuse new)
+  //          -> stop embedded Postgres ONLY if this process owns it
+  //          -> exit
+  const shutdown = async (signal: "SIGINT" | "SIGTERM") => {
+    logger.info({ signal }, "Shutdown signal received — draining");
+    markDraining();
+
+    try {
+      await Promise.race([
+        new Promise<void>((resolveClose) => {
+          server.close(() => resolveClose());
+        }),
+        // Never hang forever on a stuck keep-alive connection.
+        new Promise<void>((resolveTimeout) => {
+          const timer = setTimeout(() => {
+            logger.warn({ signal }, "HTTP drain timed out — closing anyway");
+            resolveTimeout();
+          }, SHUTDOWN_DRAIN_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (err) {
+      logger.error({ err }, "Failed to drain HTTP server cleanly");
+    }
+
+    if (embeddedPostgres && embeddedPostgresStartedByThisProcess) {
       logger.info({ signal }, "Stopping embedded PostgreSQL");
       try {
-        await embeddedPostgres?.stop();
+        await embeddedPostgres.stop();
       } catch (err) {
         logger.error({ err }, "Failed to stop embedded PostgreSQL cleanly");
-      } finally {
-        process.exit(0);
       }
-    };
-  
-    process.once("SIGINT", () => {
-      void shutdown("SIGINT");
-    });
-    process.once("SIGTERM", () => {
-      void shutdown("SIGTERM");
-    });
-  }
+    }
+
+    process.exit(0);
+  };
+
+  process.once("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
+  process.once("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
 
   return {
     server,

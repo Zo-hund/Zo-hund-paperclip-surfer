@@ -1,101 +1,17 @@
 import { Router } from "express";
-import { and, eq } from "drizzle-orm";
-import { AccessToken, AgentDispatchClient, RoomServiceClient, DataPacket_Kind } from "livekit-server-sdk";
+import { eq } from "drizzle-orm";
+import { RoomServiceClient, DataPacket_Kind } from "livekit-server-sdk";
 import type { Db } from "@paperclipai/db";
-import { meetings, meetingParticipants } from "@paperclipai/db";
+import { meetings } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
-import { agentService, companyService } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, assertCompanyRole } from "./authz.js";
 import { HttpError } from "../errors.js";
+import { mintMeetingToken } from "../services/meeting-token-service.js";
 
-// Agent name the server dispatches to (and matches personas against). Overridable
-// via LIVEKIT_AGENT_NAME so a local dev stack can register an isolated worker
-// (e.g. "amx-voice-agent-dev") on the shared LiveKit Cloud project without
-// intercepting production meeting dispatches.
-const LIVEKIT_VOICE_AGENT_NAME = process.env.LIVEKIT_AGENT_NAME ?? "amx-voice-agent";
-
-/**
- * Looks up the company's designated LiveKit voice persona (an agent row
- * tagged metadata.livekitAgentName === "amx-voice-agent"), if any. Used to
- * give the single shared voice-agent process a per-company persona via
- * dispatch metadata instead of registering a separate agent identity.
- */
-async function findVoicePersonaAgent(db: Db, companyId: string) {
-  const agents = agentService(db);
-  const companyAgents = await agents.list(companyId);
-  return (
-    companyAgents.find(
-      (agent: any) => agent.metadata?.livekitAgentName === LIVEKIT_VOICE_AGENT_NAME,
-    ) ?? null
-  );
-}
-
-/**
- * Dispatches the AMX voice agent into a room so JAZ auto-joins. If the room's
- * company has a designated voice-persona agent, its name/title/persona
- * instructions are passed through dispatch metadata so the single shared
- * voice-agent process can answer in that persona for this room only — no new
- * agent identity or registry needed. Non-blocking: callers should not let a
- * dispatch failure fail the whole request (matches prior inline behavior).
- */
-export async function dispatchVoiceAgent(
-  db: Db,
-  params: { roomName: string; companyId?: string; avatarEnabled?: boolean },
-) {
-  const { roomName, companyId, avatarEnabled } = params;
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
-  const livekitUrl = process.env.LIVEKIT_URL;
-  if (!apiKey || !apiSecret || !livekitUrl) return;
-
-  try {
-    const httpUrl = livekitUrl.replace("wss://", "https://").replace("ws://", "http://");
-    const dispatchClient = new AgentDispatchClient(httpUrl, apiKey, apiSecret);
-
-    // Fetch all companies so JAZ can navigate cross-company by voice
-    const allCompanies = await companyService(db).list().catch(() => []);
-    const companyRoster = allCompanies.map((c) => ({
-      name: c.name,
-      prefix: c.issuePrefix.toUpperCase(),
-    }));
-
-    // Active company prefix — lets JAZ know which company it's talking to
-    const activeCompanyPrefix =
-      allCompanies.find((c: any) => c.id === companyId)?.issuePrefix?.toUpperCase() ?? null;
-
-    let dispatchMetadata: string | undefined;
-    if (companyId) {
-      const personaAgent = await findVoicePersonaAgent(db, companyId);
-      if (personaAgent) {
-        dispatchMetadata = JSON.stringify({
-          companyId,
-          companyPrefix: activeCompanyPrefix,
-          companies: companyRoster,
-          agentPersonaName: personaAgent.name,
-          agentPersonaTitle: personaAgent.title ?? null,
-          systemPromptOverride:
-            (personaAgent.metadata as Record<string, unknown> | null)?.voiceSystemPrompt ?? null,
-          avatarEnabled: avatarEnabled === true,
-        });
-      } else if (avatarEnabled) {
-        dispatchMetadata = JSON.stringify({ companyId, companyPrefix: activeCompanyPrefix, companies: companyRoster, avatarEnabled: true });
-      } else {
-        dispatchMetadata = JSON.stringify({ companyId, companyPrefix: activeCompanyPrefix, companies: companyRoster });
-      }
-    } else if (companyRoster.length > 0) {
-      dispatchMetadata = JSON.stringify({ companies: companyRoster });
-    }
-
-    await dispatchClient.createDispatch(
-      roomName,
-      LIVEKIT_VOICE_AGENT_NAME,
-      dispatchMetadata ? { metadata: dispatchMetadata } : undefined,
-    );
-    logger.info({ roomName, companyId, hasPersona: Boolean(dispatchMetadata) }, "dispatched amx-voice-agent to room");
-  } catch (dispatchErr) {
-    logger.warn({ err: dispatchErr, roomName }, "agent dispatch failed (non-blocking)");
-  }
-}
+// Voice-agent dispatch now lives in the service layer so the shared meeting
+// token service can dispatch without importing a route module. Re-exported here
+// because `meeting-guests.ts` (and its tests) import it from this path.
+export { dispatchVoiceAgent, LIVEKIT_VOICE_AGENT_NAME } from "../services/livekit-agent-dispatch.js";
 
 export function livekitRoutes(db: Db) {
   const router = Router();
@@ -104,19 +20,13 @@ export function livekitRoutes(db: Db) {
    * POST /api/livekit/token
    * Generate a LiveKit access token for the board user to join a room.
    * Body: { roomName?: string; identity?: string; companyId?: string }
+   *
+   * Contract is unchanged — the authorization, grant, and dispatch logic now
+   * lives in the shared meeting token service, which the Base44 bridge
+   * (/api/meeting/token) also calls. One security implementation, two façades.
    */
   router.post("/livekit/token", async (req, res) => {
     try {
-      const apiKey = process.env.LIVEKIT_API_KEY;
-      const apiSecret = process.env.LIVEKIT_API_SECRET;
-      const livekitUrl = process.env.LIVEKIT_URL;
-
-      if (!apiKey || !apiSecret || !livekitUrl) {
-        return res.status(503).json({
-          error: "LiveKit is not configured. Add LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET to .env",
-        });
-      }
-
       const { roomName = "amx-command-room", identity = "board-user", companyId, avatarEnabled } = req.body as {
         roomName?: string;
         identity?: string;
@@ -131,54 +41,22 @@ export function livekitRoutes(db: Db) {
         return res.status(400).json({ error: "Invalid identity" });
       }
 
-      // Company-scoped rooms require membership; the global cross-company
-      // orb room ("amx-command-room", no companyId) only requires board auth.
-      // Exception: a user explicitly invited to a meeting (meeting_participants
-      // row) may join that one room even below the `member` role tier — the
-      // invite route accepts viewer/client members, so the token route must too.
-      if (companyId) {
-        assertCompanyAccess(req, companyId);
-        const meetingId = roomName.startsWith("meeting-") ? roomName.slice("meeting-".length) : null;
-        let isInvitedParticipant = false;
-        if (meetingId && req.actor.type === "board" && req.actor.userId) {
-          const [row] = await db
-            .select({ id: meetingParticipants.id })
-            .from(meetingParticipants)
-            .innerJoin(meetings, eq(meetingParticipants.meetingId, meetings.id))
-            .where(and(
-              eq(meetingParticipants.meetingId, meetingId),
-              eq(meetingParticipants.userId, req.actor.userId),
-              eq(meetings.companyId, companyId),
-            ))
-            .limit(1);
-          isInvitedParticipant = !!row;
-        }
-        if (!isInvitedParticipant) {
-          assertCompanyRole(req, companyId, "member");
-        }
-      } else {
-        assertBoard(req);
-      }
-
-      const at = new AccessToken(apiKey, apiSecret, {
+      const result = await mintMeetingToken(db, {
+        actor: req.actor,
+        roomName,
+        companyId,
         identity,
-        ttl: "4h",
+        // Historical board behavior: full publish rights, 4h TTL.
+        policy: "board_full",
+        avatarEnabled,
       });
 
-      at.addGrant({
-        roomJoin: true,
-        room: roomName,
-        canPublish: true,
-        canSubscribe: true,
-        canPublishData: true,
+      return res.json({
+        token: result.token,
+        url: result.url,
+        roomName: result.roomName,
+        identity: result.identity,
       });
-
-      const token = await at.toJwt();
-      logger.info({ roomName, identity }, "livekit token issued");
-
-      await dispatchVoiceAgent(db, { roomName, companyId, avatarEnabled });
-
-      return res.json({ token, url: livekitUrl, roomName, identity });
     } catch (err) {
       if (err instanceof HttpError) {
         return res.status(err.status).json({ error: err.message });

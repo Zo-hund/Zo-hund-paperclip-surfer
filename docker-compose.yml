@@ -30,6 +30,26 @@ services:
       PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
       PAPERCLIP_AGENT_JWT_SECRET: "${PAPERCLIP_AGENT_JWT_SECRET:-}"
+      LIVEKIT_URL: "${LIVEKIT_URL:-}"
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:-}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-}"
+      # LiveKit ships OBSERVED. required:true needs BOTH of the next two flags.
+      LIVEKIT_ENABLED: "${LIVEKIT_ENABLED:-false}"
+      LIVEKIT_REQUIRED: "${LIVEKIT_REQUIRED:-false}"
+      LIVEKIT_PITSTOP_APPROVED: "${LIVEKIT_PITSTOP_APPROVED:-false}"
+      # Base44 meeting bridge — CORS allowlist + 6.8B external-client auth.
+      BASE44_ALLOWED_ORIGINS: "${BASE44_ALLOWED_ORIGINS:-}"
+      AMX_EXTERNAL_CLIENT_SECRET: "${AMX_EXTERNAL_CLIENT_SECRET:-}"
+      AMX_EXTERNAL_CLIENT_ID: "${AMX_EXTERNAL_CLIENT_ID:-}"
+      AMX_EXTERNAL_CLIENT_ISS: "${AMX_EXTERNAL_CLIENT_ISS:-}"
+      AMX_EXTERNAL_CLIENT_AUD: "${AMX_EXTERNAL_CLIENT_AUD:-}"
+      AMX_EXTERNAL_CLIENT_REDIRECT_URIS: "${AMX_EXTERNAL_CLIENT_REDIRECT_URIS:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      PAPERCLIP_HOME: "/paperclip"
+      PAPERCLIP_LOG_DIR: "/paperclip/instances/default/logs"
+      PAPERCLIP_STORAGE_LOCAL_DIR: "/paperclip/instances/default/data/storage"
+      PAPERCLIP_SECRETS_MASTER_KEY_FILE: "/paperclip/instances/default/secrets/master.key"
+      PAPERCLIP_DB_BACKUP_DIR: "/paperclip/instances/default/data/backups"
     volumes:
       - paperclip-data:/paperclip
     depends_on:

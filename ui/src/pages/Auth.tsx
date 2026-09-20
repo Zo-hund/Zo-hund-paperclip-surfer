@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
@@ -20,6 +20,19 @@ export function AuthPage() {
   const [error, setError] = useState<string | null>(null);
 
   const nextPath = useMemo(() => searchParams.get("next") || "/", [searchParams]);
+  /**
+   * `next` is normally a client route, but the 6.8B external-client flow sends
+   * the user to a SERVER route (/api/auth/external/authorize?...) which must be
+   * re-requested from the server after sign-in — a client-side navigate would
+   * never reach it. Same-origin absolute paths only; anything else is ignored.
+   */
+  const goNext = useCallback(() => {
+    if (nextPath.startsWith("/api/")) {
+      window.location.assign(nextPath);
+      return;
+    }
+    navigate(nextPath, { replace: true });
+  }, [nextPath, navigate]);
   const { data: session, isLoading: isSessionLoading } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
@@ -28,9 +41,9 @@ export function AuthPage() {
 
   useEffect(() => {
     if (session) {
-      navigate(nextPath, { replace: true });
+      goNext();
     }
-  }, [session, navigate, nextPath]);
+  }, [session, goNext]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -48,7 +61,7 @@ export function AuthPage() {
       setError(null);
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
       await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-      navigate(nextPath, { replace: true });
+      goNext();
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : "Authentication failed");
