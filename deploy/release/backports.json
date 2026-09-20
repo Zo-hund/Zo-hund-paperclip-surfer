@@ -4,9 +4,9 @@
   "expires_on": "2026-10-15",
   "source_sha256": {
     "Dockerfile": "6af10b2ea4bcccbb1b1cd89796e9cb13b0191336292eb9231b11c743d099ca2f",
-    "server/src/routes/authz.ts": "4be66c3ff0a1e97ef864cfb01ca2ac8b296e28b00a60c3ebbe636e61334188e2",
+    "server/src/routes/authz.ts": "edb9467ff364b0e7d30a53034d4dfce97d7e8f05b293620f87b631ce2d910dd8",
     "server/src/routes/access.ts": "d2d565e9aabda19d6799d5bfedc17b9928c367138f6483f9459c315eda15aa54",
-    "server/src/routes/health.ts": "cb56445a19d768d51f3b06bf8acdc08539adb9f5a134496adfa656c83c4fbe6e",
+    "server/src/routes/health.ts": "cb18a842a085e53724eab638a70f49af611c196af9a47195c7851c7b9ea311ea",
     "server/src/routes/activity.ts": "eb64036ad7e7edaf9305a074f390f5c55dfe766098ca1b1d13eb6fa4adf1e3e5",
     "server/src/routes/companies.ts": "409383a7db8324cbc5e5bc3b4a7cf1ca3a43afb7787a56ffe2360617d843ee37",
     "server/src/routes/agents.ts": "83c776c79c795b67895bb98b95163daa642954c9f081022dc296bd9d02c3bbe8",
