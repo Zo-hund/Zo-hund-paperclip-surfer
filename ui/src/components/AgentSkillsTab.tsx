@@ -37,12 +37,14 @@ export function AgentSkillsTab({
         <h3 className="text-lg font-medium">Agent Skills</h3>
         <p className="text-sm text-muted-foreground mt-1">
           Select which skills this agent should have access to during operation. 
-          Selected skills will be symlinked into the agent's worktree during execution.
+          The runtime adapter determines how selected skills are loaded; selection alone does not verify execution.
         </p>
       </div>
 
+      {mutation.isError && <p role="alert">Failed to save skills. Your selection has not been saved. Please retry.</p>}
       <div className="rounded-xl border bg-card p-6 shadow-sm">
         <AgentSkillSelector
+          key={agent.id}
           companyId={companyId}
           selectedSkills={snapshot.desiredSkills}
           onSave={(skills) => mutation.mutate(skills)}
