@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { companySkillsApi } from "../api/companySkills";
 import { queryKeys } from "../lib/queryKeys";
@@ -23,6 +23,7 @@ export function AgentSkillSelector({
 }: AgentSkillSelectorProps) {
   const [search, setSearch] = useState("");
   const [localSelection, setLocalSelection] = useState<string[]>(selectedSkills);
+  useEffect(() => setLocalSelection(selectedSkills), [selectedSkills]);
 
   const skillsQuery = useQuery({
     queryKey: queryKeys.companySkills.list(companyId),
@@ -88,19 +89,21 @@ export function AgentSkillSelector({
       ) : (
         <div className="space-y-1 max-h-80 overflow-y-auto">
           {filtered.map((skill) => {
-            const isSelected = localSelection.includes(skill.name);
+            const isSelected = localSelection.includes(skill.key);
             return (
               <Card
                 key={skill.id ?? skill.name}
                 className={`p-3 cursor-pointer transition-colors hover:bg-muted/30 ${
                   isSelected ? "border-primary/50 bg-primary/5" : ""
                 }`}
-                onClick={() => toggleSkill(skill.name)}
+                onClick={() => toggleSkill(skill.key)}
               >
                 <div className="flex items-start gap-3">
                   <Checkbox
                     checked={isSelected}
-                    onCheckedChange={() => toggleSkill(skill.name)}
+                    aria-label={skill.name}
+                    onClick={(event) => event.stopPropagation()}
+                    onCheckedChange={() => toggleSkill(skill.key)}
                     className="mt-0.5"
                   />
                   <div className="flex-1 min-w-0">

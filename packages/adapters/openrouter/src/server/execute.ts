@@ -3,6 +3,7 @@ import path from "node:path";
 import { createPaperclipApi, verifyAssignedDelivery, type VerifiedDelivery } from "./paperclip-api.js";
 import { resolveOpenRouterKey, openRouterErrorMessage, hasOpenRouterHostTools } from "./credentials.js";
 import { buildOpenRouterWakeEnv, buildOpenRouterTaskPrompt } from "./task-context.js";
+import { loadOpenRouterSkills } from "./skills.js";
 import type { AdapterExecutionContext, AdapterExecutionResult } from "@paperclipai/adapter-utils";
 import {
   asBoolean,
@@ -217,11 +218,14 @@ async function executeRun(
 
   const runModeNote = asString(context.paperclipRunModeNote, "").trim();
 
+  const skillPrefix = hostToolsEnabled ? await loadOpenRouterSkills(config, signal) : "";
+  checkDeadline();
   const systemPrompt = [
     runModeNote,
     "You are a helpful AI coding agent working in a local workspace environment.",
     "Use paperclip_api for every Paperclip platform operation including memory. It supplies runtime authentication and JSON headers. Never use shell commands to call this platform.",
     instructionsPrefix,
+    skillPrefix,
     memoryPrefix,
   ].filter(Boolean).join("\n\n");
 
