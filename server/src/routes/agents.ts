@@ -487,20 +487,10 @@ export function agentRoutes(db: Db) {
   }
 
   async function assertCanManageInstructionsPath(req: Request, targetAgent: { id: string; companyId: string }) {
+    // Instructions may select external host files or alter executable adapter state.
+    // The same trusted-operator gate as the main adapterConfig PATCH must apply.
+    assertInstanceAdmin(req);
     assertCompanyAccess(req, targetAgent.companyId);
-    if (req.actor.type === "board") return;
-    if (!req.actor.agentId) throw forbidden("Agent authentication required");
-
-    const actorAgent = await svc.getById(req.actor.agentId);
-    if (!actorAgent || actorAgent.companyId !== targetAgent.companyId) {
-      throw forbidden("Agent key cannot access another company");
-    }
-    if (actorAgent.id === targetAgent.id) return;
-
-    const chainOfCommand = await svc.getChainOfCommand(targetAgent.id);
-    if (chainOfCommand.some((manager) => manager.id === actorAgent.id)) return;
-
-    throw forbidden("Only the target agent or an ancestor manager can update instructions path");
   }
 
   function summarizeAgentUpdateDetails(patch: Record<string, unknown>) {
@@ -689,6 +679,7 @@ export function agentRoutes(db: Db) {
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const type = req.params.type as string;
+      assertInstanceAdmin(req);
       await assertCanReadConfigurations(req, companyId);
 
       const adapter = findServerAdapter(type);
@@ -1498,9 +1489,9 @@ export function agentRoutes(db: Db) {
     const explicitKey = asNonEmptyString(req.body.adapterConfigKey);
     const defaultKey = DEFAULT_INSTRUCTIONS_PATH_KEYS[existing.adapterType] ?? null;
     const adapterConfigKey = explicitKey ?? defaultKey;
-    if (!adapterConfigKey) {
+    if (!adapterConfigKey || !KNOWN_INSTRUCTIONS_PATH_KEYS.has(adapterConfigKey)) {
       res.status(422).json({
-        error: `No default instructions path key for adapter type '${existing.adapterType}'. Provide adapterConfigKey.`,
+        error: "Use a supported instructions path key (instructionsFilePath or agentsMdPath).",
       });
       return;
     }
@@ -1569,7 +1560,7 @@ export function agentRoutes(db: Db) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
-    await assertCanReadAgent(req, existing);
+    await assertCanManageInstructionsPath(req, existing);
     res.json(await instructions.getBundle(existing));
   });
 
@@ -1628,7 +1619,7 @@ export function agentRoutes(db: Db) {
       res.status(404).json({ error: "Agent not found" });
       return;
     }
-    await assertCanReadAgent(req, existing);
+    await assertCanManageInstructionsPath(req, existing);
 
     const relativePath = typeof req.query.path === "string" ? req.query.path : "";
     if (!relativePath.trim()) {
@@ -2422,6 +2413,12 @@ export function agentRoutes(db: Db) {
   router.post("/heartbeat-runs/:runId/cancel", async (req, res) => {
     assertBoard(req);
     const runId = req.params.runId as string;
+    const targetRun = await heartbeat.getRun(runId);
+    if (!targetRun) {
+      res.status(404).json({ error: "Heartbeat run not found" });
+      return;
+    }
+    assertCompanyAccess(req, targetRun.companyId);
     const run = await heartbeat.cancelRun(runId);
 
     if (run) {
@@ -2442,6 +2439,12 @@ export function agentRoutes(db: Db) {
   router.post("/heartbeat-runs/:runId/pause", async (req, res) => {
     assertBoard(req);
     const runId = req.params.runId as string;
+    const targetRun = await heartbeat.getRun(runId);
+    if (!targetRun) {
+      res.status(404).json({ error: "Heartbeat run not found" });
+      return;
+    }
+    assertCompanyAccess(req, targetRun.companyId);
     const run = await heartbeat.pauseRun(runId);
 
     if (run) {
@@ -2462,6 +2465,12 @@ export function agentRoutes(db: Db) {
   router.post("/heartbeat-runs/:runId/archive", async (req, res) => {
     assertBoard(req);
     const runId = req.params.runId as string;
+    const targetRun = await heartbeat.getRun(runId);
+    if (!targetRun) {
+      res.status(404).json({ error: "Heartbeat run not found" });
+      return;
+    }
+    assertCompanyAccess(req, targetRun.companyId);
     const run = await heartbeat.archiveRun(runId);
 
     await logActivity(db, {
@@ -2480,6 +2489,12 @@ export function agentRoutes(db: Db) {
   router.post("/heartbeat-runs/:runId/unarchive", async (req, res) => {
     assertBoard(req);
     const runId = req.params.runId as string;
+    const targetRun = await heartbeat.getRun(runId);
+    if (!targetRun) {
+      res.status(404).json({ error: "Heartbeat run not found" });
+      return;
+    }
+    assertCompanyAccess(req, targetRun.companyId);
     const run = await heartbeat.unarchiveRun(runId);
 
     await logActivity(db, {
@@ -2498,6 +2513,13 @@ export function agentRoutes(db: Db) {
   router.post("/heartbeat-runs/:runId/rollback", async (req, res) => {
     assertBoard(req);
     const runId = req.params.runId as string;
+    const targetRun = await heartbeat.getRun(runId);
+    if (!targetRun) {
+      res.status(404).json({ error: "Heartbeat run not found" });
+      return;
+    }
+    assertCompanyAccess(req, targetRun.companyId);
+    assertInstanceAdmin(req);
     const result = await heartbeat.rollbackRun(runId);
 
     await logActivity(db, {
