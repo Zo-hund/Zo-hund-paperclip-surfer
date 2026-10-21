@@ -36,3 +36,11 @@ Patched ranges were verified against the official GitHub advisory records below;
 Frozen installation uses pinned pnpm9.15.4 with lifecycle scripts disabled. Fresh audit has zero HIGH/CRITICAL findings;54 moderate and12low remain and are not suppressed. The scoped patch does not claim all vulnerabilities are resolved. Native sharp0.35.5 loads and encodes/decodes PNG; its loaded librsvg version is2.63.2. Non-network proxy trust, URI parsing, source-map round-trip, Undici exports and MCP server module-load smoke checks pass. Full repository typecheck, test and build results are recorded in the review receipt/PR, separately from calendar compatibility.
 
 This is not a container/OS scan, live authentication test, deployment approval or renewal of dated first-party backport reviews. The existing reviewed-backport document states expiry2026-10-15; retain that gate and re-evaluate through the governed image-specific process rather than changing or bypassing it. No production services, credentials, permissions or workflows are changed.
+
+## Local verification receipt
+
+Dependency-only recursive typecheck and full workspace build pass. The exact full test command remained at its banner for about five minutes; a bounded threaded diagnostic passed eight adapter tests then stopped advancing. Neither is a full-suite pass. Only those local test processes were stopped. No test or workflow was skipped/changed to manufacture a passing gate.
+
+A separate combined checkout applies this dependency patch plus the four calendar PR files. Combined recursive typecheck and full workspace build pass, all eight permanent calendar UI tests pass, and fifteen existing server calendar and native org-chart tests pass. Its whole-workspace threaded test attempt also stalled without a summary. Linux CI and the governed container/image checks remain required. Earlier current-base full-suite success predates these dependency changes and is not substituted for their incomplete full-suite results.
+
+The non-JSON `pnpm audit --audit-level=high` gate exits zero. pnpm9 JSON audit exits one whenever any severity remains, so its exit one and full66-finding report are retained; no finding is filtered from the JSON evidence.
