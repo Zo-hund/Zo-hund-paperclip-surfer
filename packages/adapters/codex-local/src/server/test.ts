@@ -15,7 +15,8 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 import path from "node:path";
 import { parseCodexJsonl } from "./parse.js";
-import { codexHomeDir, readCodexAuthInfo } from "./quota.js";
+import { readCodexAuthInfo } from "./quota.js";
+import { prepareManagedCodexHome } from "./codex-home.js";
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
   if (checks.some((check) => check.level === "error")) return "fail";
@@ -81,6 +82,12 @@ export async function testEnvironment(
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
   }
+  // Diagnostics execute a child too: never fall back to operator credentials/home.
+  const configuredCodexHome = isNonEmpty(env.CODEX_HOME) ? path.resolve(env.CODEX_HOME.trim()) : null;
+  const effectiveCodexHome = configuredCodexHome ?? await prepareManagedCodexHome(process.env, async () => {}, ctx.companyId);
+  env.CODEX_HOME = effectiveCodexHome;
+  env.OPENAI_API_KEY = isNonEmpty(env.OPENAI_API_KEY) ? env.OPENAI_API_KEY.trim() : "";
+  env.CODEX_API_KEY = isNonEmpty(env.CODEX_API_KEY) ? env.CODEX_API_KEY.trim() : "";
   const runtimeEnv = ensurePathInEnv({ ...process.env, ...env });
   try {
     await ensureCommandResolvable(command, cwd, runtimeEnv);
@@ -98,15 +105,9 @@ export async function testEnvironment(
     });
   }
 
-  const configOpenAiKey = env.OPENAI_API_KEY;
-  const hostOpenAiKey = process.env.OPENAI_API_KEY;
-  const resolvedOpenAiKey = isNonEmpty(configOpenAiKey)
-    ? configOpenAiKey
-    : isNonEmpty(hostOpenAiKey)
-      ? hostOpenAiKey
-      : undefined;
+  const resolvedOpenAiKey = isNonEmpty(env.OPENAI_API_KEY) ? env.OPENAI_API_KEY : undefined;
   if (resolvedOpenAiKey) {
-    const source = isNonEmpty(configOpenAiKey) ? "adapter config env" : "server environment";
+    const source = "adapter config env";
     checks.push({
       code: "codex_openai_api_key_present",
       level: "info",
@@ -114,21 +115,21 @@ export async function testEnvironment(
       detail: `Detected in ${source}.`,
     });
   } else {
-    const codexHome = isNonEmpty(env.CODEX_HOME) ? env.CODEX_HOME : undefined;
+    const codexHome = effectiveCodexHome;
     const codexAuth = await readCodexAuthInfo(codexHome).catch(() => null);
     if (codexAuth) {
       checks.push({
         code: "codex_native_auth_present",
         level: "info",
         message: "Codex is authenticated via its own auth configuration.",
-        detail: codexAuth.email ? `Logged in as ${codexAuth.email}.` : `Credentials found in ${path.join(codexHome ?? codexHomeDir(), "auth.json")}.`,
+        detail: "Tenant-scoped authentication configuration found.",
       });
     } else {
       checks.push({
         code: "codex_openai_api_key_missing",
         level: "warn",
         message: "OPENAI_API_KEY is not set. Codex runs may fail until authentication is configured.",
-        hint: "Set OPENAI_API_KEY in adapter env, shell environment, or run `codex auth` to log in.",
+        hint: "Set OPENAI_API_KEY in tenant adapter env or authenticate the tenant-managed Codex home.",
       });
     }
   }
@@ -217,7 +218,7 @@ export async function testEnvironment(
           level: "warn",
           message: "Codex CLI is installed, but authentication is not ready.",
           ...(detail ? { detail } : {}),
-          hint: "Configure OPENAI_API_KEY in adapter env/shell or run `codex login`, then retry the probe.",
+          hint: "Configure tenant adapter credentials or authenticate its managed Codex home, then retry the probe.",
         });
       } else {
         checks.push({

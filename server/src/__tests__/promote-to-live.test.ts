@@ -129,6 +129,7 @@ const BOOKING_ELIGIBLE = {
 describe("POST /companies/:companyId/approvals — promote_to_live eligibility guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApprovalService.getById.mockResolvedValue({ id: "approval-1", companyId: COMPANY, type: "promote_to_live" });
     mockLogActivity.mockResolvedValue(undefined);
     mockIssueApprovalService.linkManyForApproval.mockResolvedValue(undefined);
   });
@@ -209,6 +210,7 @@ describe("POST /companies/:companyId/approvals — promote_to_live eligibility g
 describe("POST /approvals/:id/approve — promote_to_live side effect", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApprovalService.getById.mockResolvedValue({ id: "approval-1", companyId: COMPANY, type: "promote_to_live" });
     mockLogActivity.mockResolvedValue(undefined);
     mockIssueApprovalService.listIssuesForApproval.mockResolvedValue([]);
     mockRecordSecurityEvent.mockResolvedValue({});

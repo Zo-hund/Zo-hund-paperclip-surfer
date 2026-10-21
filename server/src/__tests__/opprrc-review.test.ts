@@ -132,6 +132,7 @@ const APPROVED_DELIVERY = {
 describe("POST /companies/:companyId/approvals — opprrc_delivery_review eligibility guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApprovalService.getById.mockResolvedValue({ id: "approval-1", companyId: COMPANY, type: "opprrc_delivery_review" });
     mockLogActivity.mockResolvedValue(undefined);
     mockIssueApprovalService.linkManyForApproval.mockResolvedValue(undefined);
   });
@@ -221,6 +222,7 @@ describe("POST /companies/:companyId/approvals — opprrc_delivery_review eligib
 describe("POST /approvals/:id/approve — opprrc_delivery_review side effect", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApprovalService.getById.mockResolvedValue({ id: "approval-1", companyId: COMPANY, type: "opprrc_delivery_review" });
     mockLogActivity.mockResolvedValue(undefined);
     mockIssueApprovalService.listIssuesForApproval.mockResolvedValue([]);
     mockRecordSecurityEvent.mockResolvedValue({});
@@ -285,6 +287,7 @@ describe("POST /approvals/:id/approve — opprrc_delivery_review side effect", (
 describe("POST /approvals/:id/reject — opprrc_delivery_review side effect", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApprovalService.getById.mockResolvedValue({ id: "approval-1", companyId: COMPANY, type: "opprrc_delivery_review" });
     mockLogActivity.mockResolvedValue(undefined);
   });
 
@@ -320,6 +323,7 @@ describe("POST /approvals/:id/reject — opprrc_delivery_review side effect", ()
 describe("POST /approvals/:id/request-revision — opprrc_delivery_review side effect", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApprovalService.getById.mockResolvedValue({ id: "approval-1", companyId: COMPANY, type: "opprrc_delivery_review" });
     mockLogActivity.mockResolvedValue(undefined);
   });
 

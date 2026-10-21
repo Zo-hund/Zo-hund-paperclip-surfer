@@ -7,11 +7,15 @@ import { testEnvironment } from "@paperclipai/adapter-codex-local/server";
 const itWindows = process.platform === "win32" ? it : it.skip;
 
 describe("codex_local environment diagnostics", () => {
-  beforeEach(() => {
+  let managedRoot: string;
+  beforeEach(async () => {
+    managedRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-diagnostic-managed-"));
+    vi.stubEnv("PAPERCLIP_HOME", managedRoot);
     vi.stubEnv("OPENAI_API_KEY", "");
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllEnvs();
+    await fs.rm(managedRoot, { recursive: true, force: true });
   });
   it("creates a missing working directory when cwd is absolute", async () => {
     const cwd = path.join(
@@ -140,7 +144,7 @@ describe("codex_local environment diagnostics", () => {
     }
   });
 
-  itWindows("prefers host OPENAI_API_KEY for probe when adapter env value is empty", async () => {
+  itWindows("does not inherit host OPENAI_API_KEY when adapter env value is empty", async () => {
     const root = path.join(
       os.tmpdir(),
       `paperclip-codex-local-probe-hostkey-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -150,7 +154,7 @@ describe("codex_local environment diagnostics", () => {
     const fakeCodex = path.join(binDir, "codex.cmd");
     const script = [
       "@echo off",
-      "if \"%OPENAI_API_KEY%\"==\"\" exit /b 9",
+      "if not \"%OPENAI_API_KEY%\"==\"\" exit /b 9",
       "echo {\"type\":\"thread.started\",\"thread_id\":\"test-thread\"}",
       "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"hello\"}}",
       "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1}}",
