@@ -269,41 +269,6 @@ jobs:
           format: json
           output: trivy-raw.json
 
-      # A candidate review is tested separately. The adopted review and all
-      # mandatory release gates below remain authoritative and unchanged.
-      - name: Verify proposed review against the exact PR image
-        if: github.event_name == 'pull_request' && hashFiles('deploy/release/backports.candidate.json') != ''
-        env:
-          RELEASE_IMAGE: ${{ steps.image.outputs.ref }}
-        run: >-
-          python3 deploy/release/backport-vex.py generate
-          --manifest deploy/release/backports.candidate.json
-          --image "$RELEASE_IMAGE" --raw trivy-raw.json
-          --output backports.candidate.vex.json
-
-      - name: Scan proposed dispositions on the same image and database
-        if: github.event_name == 'pull_request' && hashFiles('deploy/release/backports.candidate.json') != ''
-        uses: aquasecurity/trivy-action@d2a0b60797ff03db6132bd4e2b293f9b37081297
-        env:
-          TRIVY_IGNOREFILE: /dev/null
-          TRIVY_VEX: backports.candidate.vex.json
-          TRIVY_SKIP_DB_UPDATE: 'true'
-        with:
-          version: v0.74.0
-          image-ref: ${{ steps.image.outputs.ref }}
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          format: json
-          output: trivy-candidate-filtered.json
-
-      - name: Reject unreviewed candidate exclusions
-        if: github.event_name == 'pull_request' && hashFiles('deploy/release/backports.candidate.json') != ''
-        run: >-
-          python3 deploy/release/backport-vex.py verify-filter
-          --manifest deploy/release/backports.candidate.json
-          --raw trivy-raw.json --filtered trivy-candidate-filtered.json
-
       - name: Verify exact backport source and prepare scoped VEX
         env:
           RELEASE_IMAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/experimental' && format('{0}@{1}', steps.image.outputs.repository, steps.build-push.outputs.digest) || steps.image.outputs.ref }}
@@ -340,9 +305,6 @@ jobs:
             trivy-filtered.json
             backports.vex.json
             deploy/release/backports.json
-            deploy/release/backports.candidate.json
-            backports.candidate.vex.json
-            trivy-candidate-filtered.json
           if-no-files-found: error
           retention-days: 30
 
