@@ -92,15 +92,17 @@ RUN groupmod -n node ubuntu \
 WORKDIR /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=hermes-source /opt/hermes /opt/hermes
+COPY deploy/release/runtime-cache-smoke.cjs /tmp/amx-runtime-cache-smoke.cjs
 # Node's bundled npm still contains vulnerable compatible dependency versions.
 # Upgrade the actual dependency code, retaining npm and every agent CLI.
 # npm's source-only development/workspace metadata references unpublished
 # packages, which npm resolves even with --omit=dev. Keep its runtime manifest.
 RUN node -e "const fs = require('node:fs'); const p = '/usr/local/lib/node_modules/npm/package.json'; const j = JSON.parse(fs.readFileSync(p)); delete j.devDependencies; delete j.workspaces; fs.writeFileSync(p, JSON.stringify(j, null, 2));" \
   && npm install --prefix /usr/local/lib/node_modules/npm --save-exact --ignore-scripts \
-      --omit=dev --package-lock=false brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@6.28.1 \
-  && node -e "for (const [name, version] of Object.entries({'brace-expansion':'5.0.11','ip-address':'10.3.1','tar':'7.5.21','undici':'6.28.1'})) { if (require('/usr/local/lib/node_modules/npm/node_modules/' + name + '/package.json').version !== version) throw new Error('npm dependency version mismatch: ' + name); }" \
-  && npm --version
+      --omit=dev --package-lock=false brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@6.28.1 http-cache-semantics@4.3.0 \
+  && node -e "for (const [name, version] of Object.entries({'brace-expansion':'5.0.11','ip-address':'10.3.1','tar':'7.5.21','undici':'6.28.1','http-cache-semantics':'4.3.0'})) { if (require('/usr/local/lib/node_modules/npm/node_modules/' + name + '/package.json').version !== version) throw new Error('npm dependency version mismatch: ' + name); }" \
+  && npm --version \
+  && node /tmp/amx-runtime-cache-smoke.cjs
 # The pinned Hermes source requires these old exact versions. Update only its
 # dependency metadata to reviewed runtime pins; keep its code/assets and CLIs.
 # Assert expected inputs so a changed upstream release fails rather than silently
