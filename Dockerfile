@@ -57,7 +57,13 @@ RUN for script in node_modules/.pnpm/@embedded-postgres+linux-*/node_modules/@em
 # Hermes v0.21.2 is released on GitHub but not on PyPI. Upstream requires a
 # source/editable installation to preserve its runtime assets; pin the release.
 FROM base AS hermes-source
-ADD https://github.com/NousResearch/hermes-agent/archive/939e45c91d751fadd94dcd1b873ac3cb44846213.tar.gz /tmp/hermes.tar.gz
+# Fetch the official immutable archive directly, with bounded retries and an
+# independently verified checksum. GitHub's archive redirect returned HTTP 429.
+RUN curl --fail --location --retry 4 --retry-delay 3 --retry-max-time 120 \
+      --connect-timeout 10 --max-time 45 --output /tmp/hermes.tar.gz \
+      https://codeload.github.com/NousResearch/hermes-agent/tar.gz/939e45c91d751fadd94dcd1b873ac3cb44846213 \
+  && printf '%s  %s\n' 'eb8e393dd403cc903949c877bb09624d8e961fc7097f097353b34349cdc7223d' /tmp/hermes.tar.gz \
+     | sha256sum --check --strict -
 RUN mkdir -p /opt/hermes \
   && tar -xzf /tmp/hermes.tar.gz -C /opt/hermes --strip-components=1 \
   && printf '%s\n' '939e45c91d751fadd94dcd1b873ac3cb44846213' > /opt/hermes/.hermes_build_sha

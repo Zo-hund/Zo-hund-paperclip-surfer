@@ -13,3 +13,7 @@ Validation: isolated npm 11.19.0 prefix installation, nested version assertions,
 Unresolved: http-cache-semantics 4.2.0 remains HIGH (CVE-2026-93748 / GHSA-ch52-4w7c-c8xp), with no patched version listed. Its upstream dispute is not clearance. The isolated npm audit still reports one high and three moderate findings. No waiver, suppression, version rename, gate change or expiry renewal is included.
 
 The prior backport review remains expired and source hashes must cover the actual integrated candidate. Retain exact-image raw scan, authentication smoke, governed source/image review, rollback/recovery evidence and human production approval. No production deployment is part of this change.
+
+## Source-download recovery
+
+CI run 39598841686 failed while Docker fetched the pinned Hermes archive through GitHub's archive redirect (HTTP 429), before producing the candidate image. Use the official codeload endpoint for the same immutable commit, bounded curl retries/timeouts, and SHA-256 verification before extraction. The direct endpoint returned HTTP 200 and 70,506,408 bytes; SHA-256 `eb8e393dd403cc903949c877bb09624d8e961fc7097f097353b34349cdc7223d` matches the independently preserved upstream archive. Source, version and runtime assets are unchanged by this fetch-path repair. The image must still be built and scanned; no security gate is weakened or renewed.
