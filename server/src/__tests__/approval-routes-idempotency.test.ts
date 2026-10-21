@@ -48,7 +48,7 @@ function createApp() {
       userId: "user-1",
       companyIds: ["company-1"],
       source: "session",
-      isInstanceAdmin: false,
+      isInstanceAdmin: true,
     };
     next();
   });
@@ -60,6 +60,7 @@ function createApp() {
 describe("approval routes idempotent retries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockApprovalService.getById.mockResolvedValue({ id: "approval-1", companyId: "company-1", type: "hire_agent" });
     mockHeartbeatService.wakeup.mockResolvedValue({ id: "wake-1" });
     mockIssueApprovalService.listIssuesForApproval.mockResolvedValue([{ id: "issue-1" }]);
     mockLogActivity.mockResolvedValue(undefined);

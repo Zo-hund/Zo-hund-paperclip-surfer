@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { calendarApi, type CalendarEvent as CompanyCalendarEvent } from "@/api/calendar";
+import { CalendarCreateDialog } from "@/components/CalendarCreateDialog";
 import {
   startOfWeek,
   endOfWeek,
@@ -44,7 +46,7 @@ type ViewMode = "day" | "week" | "month" | "quarter";
 interface CalendarEvent {
   id: string;
   title: string;
-  type: "meeting" | "session" | "agent_run" | "milestone";
+  type: "meeting" | "session" | "agent_run" | "milestone" | "company_event";
   date: Date;
   status?: string;
   meta?: string;
@@ -52,6 +54,7 @@ interface CalendarEvent {
 
 function eventColor(type: CalendarEvent["type"]): string {
   switch (type) {
+    case "company_event": return "bg-cyan-500/20 border-cyan-500/40 text-cyan-400";
     case "meeting": return "bg-blue-500/20 border-blue-500/40 text-blue-400";
     case "session": return "bg-emerald-500/20 border-emerald-500/40 text-emerald-400";
     case "agent_run": return "bg-amber-500/20 border-amber-500/40 text-amber-400";
@@ -61,6 +64,7 @@ function eventColor(type: CalendarEvent["type"]): string {
 
 function eventIcon(type: CalendarEvent["type"]) {
   switch (type) {
+    case "company_event": return CalendarDays;
     case "meeting": return Video;
     case "session": return GraduationCap;
     case "agent_run": return Zap;
@@ -72,6 +76,7 @@ function buildEvents(
   meetings: Meeting[],
   agents: Agent[],
   sessions: Array<{ id: string; title: string; scheduledDate: string; status: string }>,
+  companyEvents: CompanyCalendarEvent[],
 ): CalendarEvent[] {
   const events: CalendarEvent[] = [];
 
@@ -109,6 +114,11 @@ function buildEvents(
     });
   }
 
+  for (const event of companyEvents) {
+    const date = new Date(event.startAt);
+    if (!Number.isFinite(date.getTime())) continue;
+    events.push({id:`company-${event.id}`,title:event.title,type:"company_event",date,status:event.status ?? undefined,meta:event.eventType ?? event.kind});
+  }
   return events.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
@@ -117,7 +127,7 @@ function EventChip({ event }: { event: CalendarEvent }) {
   return (
     <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium truncate ${eventColor(event.type)}`}>
       <Icon className="h-3 w-3 shrink-0" />
-      <span className="truncate">{event.title}</span>
+      <span className="truncate">{event.title}</span><time className="ml-auto shrink-0 opacity-80">{format(event.date,"h:mm a")}</time>
     </div>
   );
 }
@@ -282,6 +292,17 @@ export function Calendar() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const [view, setView] = useState<ViewMode>("week");
   const [anchor, setAnchor] = useState(new Date());
+  const queryClient = useQueryClient();
+  const [createCompanyId,setCreateCompanyId] = useState<string | null>(null);
+  useEffect(()=>{setCreateCompanyId(null);},[selectedCompanyId]);
+  const since = startOfMonth(addMonths(anchor,-3)).toISOString();
+  const until = endOfMonth(addMonths(anchor,3)).toISOString();
+  const companyEventsQuery = useQuery({
+    queryKey:["company-calendar",selectedCompanyId,since,until],
+    queryFn:()=>calendarApi.getCalendar(selectedCompanyId!,{since,until}),
+    enabled:!!selectedCompanyId,
+    retry:false,
+  });
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Calendar" }]);
@@ -308,8 +329,8 @@ export function Calendar() {
   });
 
   const events = useMemo(
-    () => buildEvents(meetingsQuery.data ?? [], agentsQuery.data ?? [], sessionsQuery.data ?? []),
-    [meetingsQuery.data, agentsQuery.data, sessionsQuery.data],
+    () => buildEvents(meetingsQuery.data ?? [], agentsQuery.data ?? [], sessionsQuery.data ?? [], companyEventsQuery.data?.events ?? []),
+    [meetingsQuery.data, agentsQuery.data, sessionsQuery.data, companyEventsQuery.data],
   );
 
   function navigate(dir: -1 | 1) {
@@ -345,13 +366,17 @@ export function Calendar() {
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold text-foreground">Calendar</h1>
-          <p className="text-xs text-muted-foreground">Meetings, sessions, agent runs, and milestones</p>
+          <p className="text-xs text-muted-foreground">Meetings, sessions, agent runs, and milestones. Calendar view times: {new Intl.DateTimeFormat("en-US",{timeZoneName:"longGeneric"}).formatToParts(anchor).find(part=>part.type==="timeZoneName")?.value ?? Intl.DateTimeFormat().resolvedOptions().timeZone}.</p>
         </div>
-        <Button size="sm" className="gap-2">
+        <Button size="sm" className="gap-2" disabled={!selectedCompanyId} onClick={()=>setCreateCompanyId(selectedCompanyId)}>
           <Plus className="h-4 w-4" />
           New Event
         </Button>
       </div>
+
+      {createCompanyId && createCompanyId===selectedCompanyId && <CalendarCreateDialog key={createCompanyId} companyId={createCompanyId} onClose={()=>setCreateCompanyId(null)} onSaved={()=>{void queryClient.invalidateQueries({queryKey:["company-calendar",createCompanyId]});}} />}
+      {companyEventsQuery.isLoading && <p role="status">Loading company events...</p>}
+      {companyEventsQuery.isError && <p role="alert">Company events could not load. Check your access and connection. <Button variant="outline" size="sm" onClick={()=>void companyEventsQuery.refetch()}>Retry company events</Button></p>}
 
       {/* Controls */}
       <div className="flex items-center justify-between gap-4">

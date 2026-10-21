@@ -58,7 +58,7 @@ database or its local-trusted server. No provider API keys are inherited.
 | Private env | .env.staging, generated once | existing .env.vps, preserved |
 | App port | 127.0.0.1:3102 | 127.0.0.1:3100 |
 | Public URL | https://staging.amx-air-hubs.cc | https://amx-air-hubs.cc |
-| Data | staging-db + staging-app volumes | existing /paperclip bind and DATABASE_URL |
+| Data | staging-db + staging-app volumes | existing /paperclip storage; effective database selected by environment/config |
 | GitHub environment | staging | hostinger-prod |
 
 The trusted `self-hosted, vps` runner needs Docker, Compose, Python 3, and permission
@@ -107,12 +107,37 @@ future timestamp or restore older than seven days blocks production before stopp
 the app. This record is an operator assertion; the pipeline does not independently
 execute the restore exercise. GitHub approval is a separate required control.
 
-Production backup stops the app temporarily to quiesce application writes, dumps
-PostgreSQL in custom format and copies /paperclip (including encryption keys).
-This introduces downtime; schedule the promotion accordingly. Backups are private
-under `release-state/<UTC timestamp>`. Keep off-host encrypted backups and test a
-full restore to a disposable database and storage location. External database writers
-must also be quiesced. Existing live data is never copied into staging.
+Before stopping production, the helper reads the existing container's effective
+database configuration and probes the signed candidate with the same storage
+mounted read-only, networking disabled and application startup bypassed. The
+candidate must preserve the storage source, effective database mode and target.
+An unset `DATABASE_URL` may use a configured external URL; an explicitly empty
+value instead follows the application's embedded-database fallback. Unsupported
+targets or ambiguous configuration fail before the stop command.
+
+Production backup then stops the app temporarily to quiesce application writes
+and copies all of `/paperclip` with ownership preserved, including encryption
+keys. For embedded PostgreSQL 18, this cold copy includes the identified cluster;
+there is no separate logical dump. A zero application exit status is insufficient:
+the copied cluster must have no `postmaster.pid`, and the pinned PostgreSQL 18
+control client must report exactly `shut down` without warnings. Failure restarts
+the existing container and rejects promotion. Other embedded majors, symlink-backed
+clusters, storage outside `/paperclip`, changed configuration since process startup,
+and unreviewed custom startup commands require separate review.
+
+For external PostgreSQL, the helper uses the actual existing database URL and
+Docker network to create a custom-format logical dump as well as the full storage
+copy. The pinned client supports server majors 10 through 18; local/ambiguous
+connection targets and multiple networks are rejected. External database writers
+must also be quiesced. URLs and credentials are omitted from `before.json` and
+private command errors. Backups remain private under `release-state/<UTC timestamp>`.
+
+This introduces downtime; schedule promotion accordingly. Keep off-host encrypted
+backups and test a full restore to disposable database and storage locations.
+Cluster identification and a clean control state do not prove that the candidate's
+bundled PostgreSQL is compatible, that ownership/grants survive recovery, or that
+application startup and rollback work. Those checks belong in the real restore
+exercise for the exact image. Existing live data is never copied into staging.
 
 On successful deployment only AMX_IMAGE is updated in the existing env file.
 For manual recovery, consult `before.json`, use the saved image ID while it remains
@@ -150,3 +175,8 @@ pnpm build
 
 See the dated development report for actual results. Workflow files on a local
 branch or PR are not active cloud deployment configuration until merged.
+
+The Python release-test discovery also invokes the Node database-probe regressions;
+Node is required and a missing runtime fails the test. See
+[the embedded-backup repair note](../../doc/plans/2026-10-21-embedded-production-backup.md)
+for its fixture and mocked-command coverage and remaining restore limits.

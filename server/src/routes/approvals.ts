@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { rqSubmissions, lmsMarketplaceBookings, lmsMarketplaceListings, opprrcDeliveries } from "@paperclipai/db";
@@ -19,9 +19,9 @@ import {
   logActivity,
   secretService,
 } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertInstanceAdmin, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
-import { badRequest, notFound, unprocessable } from "../errors.js";
+import { badRequest, forbidden, notFound, unprocessable } from "../errors.js";
 import { amxChainService } from "../services/amxChainService.js";
 
 function redactApprovalPayload<T extends { payload: Record<string, unknown> }>(approval: T): T {
@@ -38,6 +38,23 @@ export function approvalRoutes(db: Db) {
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
   const strictSecretsMode = process.env.PAPERCLIP_SECRETS_STRICT_MODE === "true";
+
+  async function authorizeDecision(req: Request, id: string) {
+    assertBoard(req);
+    const approval = await svc.getById(id);
+    if (!approval) throw notFound("Approval not found");
+    assertCompanyAccess(req, approval.companyId);
+    // Hire decisions can create/activate executable agents or terminate them.
+    // Company membership alone cannot grant instance execution authority.
+    if (approval.type === "hire_agent") assertInstanceAdmin(req);
+  }
+
+  function decisionUserId(req: Request): string {
+    // The legacy input field remains accepted, but never supplies attribution.
+    if (req.actor.source === "local_implicit") return req.actor.userId ?? "local-board";
+    if (!req.actor.userId) throw forbidden("Authenticated reviewer identity is required");
+    return req.actor.userId;
+  }
 
   router.get("/companies/:companyId/approvals", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -177,7 +194,7 @@ export function approvalRoutes(db: Db) {
         await db
           .update(opprrcDeliveries)
           .set({ reviewStatus: "pending_review", updatedAt: new Date() })
-          .where(eq(opprrcDeliveries.id, opprrcReviewDeliveryId));
+          .where(and(eq(opprrcDeliveries.id, opprrcReviewDeliveryId), eq(opprrcDeliveries.companyId, companyId)));
       } catch (err) {
         logger.warn(
           { err, approvalId: approval.id, deliveryId: opprrcReviewDeliveryId },
@@ -213,11 +230,11 @@ export function approvalRoutes(db: Db) {
   });
 
   router.post("/approvals/:id/approve", validate(resolveApprovalSchema), async (req, res) => {
-    assertBoard(req);
     const id = req.params.id as string;
+    await authorizeDecision(req, id);
     const { approval, applied } = await svc.approve(
       id,
-      req.body.decidedByUserId ?? "board",
+      decisionUserId(req),
       req.body.decisionNote,
     );
 
@@ -333,12 +350,12 @@ export function approvalRoutes(db: Db) {
                 simulationStatus: "certified",
                 updatedAt: new Date(),
               })
-              .where(eq(rqSubmissions.id, entityId));
+              .where(and(eq(rqSubmissions.id, entityId), eq(rqSubmissions.companyId, approval.companyId)));
           } else if (entityType === "marketplace_booking" && entityId) {
             const [booking] = await db
               .update(lmsMarketplaceBookings)
               .set({ phase: "live" })
-              .where(eq(lmsMarketplaceBookings.id, entityId))
+              .where(and(eq(lmsMarketplaceBookings.id, entityId), eq(lmsMarketplaceBookings.companyId, approval.companyId)))
               .returning();
 
             // A promoted booking's listing becomes market-visible too — the
@@ -351,7 +368,7 @@ export function approvalRoutes(db: Db) {
                 await db
                   .update(lmsMarketplaceListings)
                   .set({ isPublic: true, updatedAt: new Date() })
-                  .where(and(eq(lmsMarketplaceListings.id, booking.listingId), eq(lmsMarketplaceListings.isPublic, false)));
+                  .where(and(eq(lmsMarketplaceListings.id, booking.listingId), eq(lmsMarketplaceListings.companyId, approval.companyId), eq(lmsMarketplaceListings.isPublic, false)));
               } catch (listingErr) {
                 logger.warn(
                   { err: listingErr, approvalId: approval.id, listingId: booking.listingId },
@@ -423,7 +440,7 @@ export function approvalRoutes(db: Db) {
           await db
             .update(opprrcDeliveries)
             .set({ reviewStatus: "approved", updatedAt: new Date() })
-            .where(eq(opprrcDeliveries.id, deliveryId));
+            .where(and(eq(opprrcDeliveries.id, deliveryId), eq(opprrcDeliveries.companyId, approval.companyId)));
 
           await logActivity(db, {
             companyId: approval.companyId,
@@ -537,11 +554,11 @@ export function approvalRoutes(db: Db) {
   });
 
   router.post("/approvals/:id/reject", validate(resolveApprovalSchema), async (req, res) => {
-    assertBoard(req);
     const id = req.params.id as string;
+    await authorizeDecision(req, id);
     const { approval, applied } = await svc.reject(
       id,
-      req.body.decidedByUserId ?? "board",
+      decisionUserId(req),
       req.body.decisionNote,
     );
 
@@ -566,7 +583,7 @@ export function approvalRoutes(db: Db) {
           await db
             .update(opprrcDeliveries)
             .set({ reviewStatus: "rejected", updatedAt: new Date() })
-            .where(eq(opprrcDeliveries.id, deliveryId));
+            .where(and(eq(opprrcDeliveries.id, deliveryId), eq(opprrcDeliveries.companyId, approval.companyId)));
 
           await logActivity(db, {
             companyId: approval.companyId,
@@ -605,11 +622,11 @@ export function approvalRoutes(db: Db) {
     "/approvals/:id/request-revision",
     validate(requestApprovalRevisionSchema),
     async (req, res) => {
-      assertBoard(req);
       const id = req.params.id as string;
+      await authorizeDecision(req, id);
       const approval = await svc.requestRevision(
         id,
-        req.body.decidedByUserId ?? "board",
+        decisionUserId(req),
         req.body.decisionNote,
       );
 
@@ -633,7 +650,7 @@ export function approvalRoutes(db: Db) {
           await db
             .update(opprrcDeliveries)
             .set({ reviewStatus: "revision_requested", updatedAt: new Date() })
-            .where(eq(opprrcDeliveries.id, deliveryId));
+            .where(and(eq(opprrcDeliveries.id, deliveryId), eq(opprrcDeliveries.companyId, approval.companyId)));
 
           await logActivity(db, {
             companyId: approval.companyId,
@@ -669,11 +686,11 @@ export function approvalRoutes(db: Db) {
   );
 
   router.post("/approvals/:id/escalate", validate(escalateApprovalSchema), async (req, res) => {
-    assertBoard(req);
     const id = req.params.id as string;
+    await authorizeDecision(req, id);
     const approval = await svc.escalate(
       id,
-      req.body.decidedByUserId ?? "board",
+      decisionUserId(req),
       req.body.decisionNote,
     );
 

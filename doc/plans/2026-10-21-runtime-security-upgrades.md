@@ -1,0 +1,23 @@
+# Runtime security package repair — October 21, 2026
+
+The PR12 raw image scan records 27 HIGH/CRITICAL identities: nine first-party findings and 18 bundled runtime-tool findings. This change targets the 17 runtime identities with published upgrades; it does not establish that a rebuilt image is clean.
+
+Upgrade actual dependencies within bundled npm to brace-expansion 5.0.11 and compatible Undici 6.28.1, retaining npm and every adapter CLI. Preserve existing ip-address/tar updates and assert installed versions.
+
+Pinned Hermes source 939e45c91d751fadd94dcd1b873ac3cb44846213 exact-pins the old certifi, PyJWT and Pillow versions. A narrow, asserted three-value pyproject metadata patch selects certifi 2026.10.19, PyJWT 2.15.1 and Pillow 13.0.0; code and assets remain pinned. The pip path requests those exact releases, retains pip check and verifies installed versions. The upstream uv.lock is not used by this editable pip path; future uv use needs separate lock reconciliation. Pillow 13 requires Python 3.11+, satisfied by the image's Python 3.12, but full optional-plugin compatibility remains unverified.
+
+Primary release metadata: https://registry.npmjs.org/brace-expansion/5.0.11 , https://registry.npmjs.org/undici/6.28.1 , https://pypi.org/pypi/PyJWT/2.15.1/json , https://pypi.org/pypi/certifi/2026.10.19/json , https://pypi.org/pypi/Pillow/13.0.0/json . Hermes pins were checked against the exact upstream commit.
+
+Validation: isolated npm 11.19.0 prefix installation, nested version assertions, npm/minimatch/brace expansion and Undici exports pass. Target-only Python installation, CA bundle loading, the actual pinned Hermes PNG conversion for RGB/RGBA/I fixtures, and its RS256 verifier's valid/wrong-audience cases pass. The Docker inline metadata command was executed against an upstream pyproject copy and all expected pins verified. These are Windows local compatibility probes, without providers or live agents; full Linux image installation/pip resolution and scanning remain required.
+
+The initial candidate retained http-cache-semantics 4.2.0 and one HIGH finding (CVE-2026-93748 / GHSA-ch52-4w7c-c8xp). Follow-up found the actual published 4.3.0 release, outside the advisory's recorded affected range (<=4.2.0), despite the advisory still having no patched-version field. Install its real package code and assert 4.3.0; the isolated npm prefix audit now reports three moderate findings and no HIGH/CRITICAL findings. This is a normal upstream upgrade, not a version rename, suppression, exception or clearance based on the upstream dispute. Exact-image scanning remains required.
+
+The npm consumer accepts 4.3.0 under its declared ^4.1.1 range. A permanent loopback-only runtime smoke runs during the image build: nine checks cover Vary wildcard/prototype handling, shared-policy no-store/private storability, actual npm public cache reuse, Vary: Authorization handling and no-store misses. Local checks pass against the actual npm prefix; two Vary defects were reproduced on preserved 4.2.0 source. Package provenance: https://registry.npmjs.org/http-cache-semantics/4.3.0 and upstream commit b1d4bd682fbab0252985de45219f4e7497c0067c.
+
+These checks are not tenant isolation proof. A separate local probe reusing one single-user npm cache across two credentials without Vary returned the first cached body. The consumer explicitly sets shared:false; identity-specific cache ownership must be verified in the platform's execution-isolation review. No live data/provider call was used, and this does not establish an application exploit. Preserve that review item rather than describing a clean package audit as system security certification.
+
+The prior backport review remains expired and source hashes must cover the actual integrated candidate. Retain exact-image raw scan, authentication smoke, governed source/image review, rollback/recovery evidence and human production approval. No production deployment is part of this change.
+
+## Source-download recovery
+
+CI run 39598841686 failed while Docker fetched the pinned Hermes archive through GitHub's archive redirect (HTTP 429), before producing the candidate image. Use the official codeload endpoint for the same immutable commit, bounded curl retries/timeouts, and SHA-256 verification before extraction. The direct endpoint returned HTTP 200 and 70,506,408 bytes; SHA-256 `eb8e393dd403cc903949c877bb09624d8e961fc7097f097353b34349cdc7223d` matches the independently preserved upstream archive. Source, version and runtime assets are unchanged by this fetch-path repair. The image must still be built and scanned; no security gate is weakened or renewed.

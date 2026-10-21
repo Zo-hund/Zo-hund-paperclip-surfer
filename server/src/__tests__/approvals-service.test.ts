@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { approvalService } from "../services/approvals.ts";
 
 const mockAgentService = vi.hoisted(() => ({
+  getById: vi.fn(),
   activatePendingApproval: vi.fn(),
   create: vi.fn(),
   terminate: vi.fn(),
@@ -58,6 +59,7 @@ function createDbStub(selectResults: ApprovalRecord[][], updateResults: Approval
 describe("approvalService resolution idempotency", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAgentService.getById.mockImplementation(async id => ({ id, companyId: "company-1", status: "pending_approval" }));
     mockAgentService.activatePendingApproval.mockResolvedValue(undefined);
     mockAgentService.create.mockResolvedValue({ id: "agent-1" });
     mockAgentService.terminate.mockResolvedValue(undefined);

@@ -57,7 +57,13 @@ RUN for script in node_modules/.pnpm/@embedded-postgres+linux-*/node_modules/@em
 # Hermes v0.21.2 is released on GitHub but not on PyPI. Upstream requires a
 # source/editable installation to preserve its runtime assets; pin the release.
 FROM base AS hermes-source
-ADD https://github.com/NousResearch/hermes-agent/archive/939e45c91d751fadd94dcd1b873ac3cb44846213.tar.gz /tmp/hermes.tar.gz
+# Fetch the official immutable archive directly, with bounded retries and an
+# independently verified checksum. GitHub's archive redirect returned HTTP 429.
+RUN curl --fail --location --retry 4 --retry-delay 3 --retry-max-time 120 \
+      --connect-timeout 10 --max-time 45 --output /tmp/hermes.tar.gz \
+      https://codeload.github.com/NousResearch/hermes-agent/tar.gz/939e45c91d751fadd94dcd1b873ac3cb44846213 \
+  && printf '%s  %s\n' 'eb8e393dd403cc903949c877bb09624d8e961fc7097f097353b34349cdc7223d' /tmp/hermes.tar.gz \
+     | sha256sum --check --strict -
 RUN mkdir -p /opt/hermes \
   && tar -xzf /tmp/hermes.tar.gz -C /opt/hermes --strip-components=1 \
   && printf '%s\n' '939e45c91d751fadd94dcd1b873ac3cb44846213' > /opt/hermes/.hermes_build_sha
@@ -86,15 +92,22 @@ RUN groupmod -n node ubuntu \
 WORKDIR /app
 COPY --chown=node:node docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=hermes-source /opt/hermes /opt/hermes
+COPY deploy/release/runtime-cache-smoke.cjs /tmp/amx-runtime-cache-smoke.cjs
 # Node's bundled npm still contains vulnerable compatible dependency versions.
 # Upgrade the actual dependency code, retaining npm and every agent CLI.
 # npm's source-only development/workspace metadata references unpublished
 # packages, which npm resolves even with --omit=dev. Keep its runtime manifest.
 RUN node -e "const fs = require('node:fs'); const p = '/usr/local/lib/node_modules/npm/package.json'; const j = JSON.parse(fs.readFileSync(p)); delete j.devDependencies; delete j.workspaces; fs.writeFileSync(p, JSON.stringify(j, null, 2));" \
   && npm install --prefix /usr/local/lib/node_modules/npm --save-exact --ignore-scripts \
-      --omit=dev --package-lock=false brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 \
-  && node -e "for (const [name, version] of Object.entries({'brace-expansion':'5.0.9','ip-address':'10.3.1','tar':'7.5.21'})) { if (require('/usr/local/lib/node_modules/npm/node_modules/' + name + '/package.json').version !== version) throw new Error('npm dependency version mismatch: ' + name); }" \
-  && npm --version
+      --omit=dev --package-lock=false brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@6.28.1 http-cache-semantics@4.3.0 \
+  && node -e "for (const [name, version] of Object.entries({'brace-expansion':'5.0.11','ip-address':'10.3.1','tar':'7.5.21','undici':'6.28.1','http-cache-semantics':'4.3.0'})) { if (require('/usr/local/lib/node_modules/npm/node_modules/' + name + '/package.json').version !== version) throw new Error('npm dependency version mismatch: ' + name); }" \
+  && npm --version \
+  && node /tmp/amx-runtime-cache-smoke.cjs
+# The pinned Hermes source requires these old exact versions. Update only its
+# dependency metadata to reviewed runtime pins; keep its code/assets and CLIs.
+# Assert expected inputs so a changed upstream release fails rather than silently
+# keeping vulnerable or incompatible requirements.
+RUN python3 -c "from pathlib import Path; p=Path('/opt/hermes/pyproject.toml'); s=p.read_text(); changes={'certifi==2026.5.20':'certifi==2026.10.19','PyJWT[crypto]==2.13.0':'PyJWT[crypto]==2.15.1','Pillow==12.3.0':'Pillow==13.0.0'}; assert all(s.count(old)==1 for old in changes), 'Hermes dependency baseline changed'; p.write_text(''.join(next((line.replace(old,new) for old,new in changes.items() if old in line),line) for line in s.splitlines(keepends=True)))"
 # Install adapter CLIs:
 #   claude_local  → @anthropic-ai/claude-code
 #   codex_local   → @openai/codex
@@ -109,8 +122,9 @@ RUN npm install --global --ignore-scripts \
   && node /usr/local/lib/node_modules/@anthropic-ai/claude-code/install.cjs \
   && (cd /usr/local/lib/node_modules/opencode-ai && node postinstall.mjs) \
   && pip3 install --break-system-packages --ignore-installed -e /opt/hermes runwayml \
-       'cryptography>=50.0.0' 'pillow>=12.3.0' 'PyJWT>=2.13.0' \
+       'cryptography>=50.0.0' 'pillow==13.0.0' 'PyJWT==2.15.1' 'certifi==2026.10.19' \
   && pip3 check \
+  && python3 -c "from importlib.metadata import version; expected={'pillow':'13.0.0','PyJWT':'2.15.1','certifi':'2026.10.19'}; assert all(version(name)==wanted for name,wanted in expected.items()), 'Python runtime dependency mismatch'" \
   && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
   && chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p /paperclip \
